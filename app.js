@@ -9508,20 +9508,43 @@ VASTAA SUOMEKSI.`;
     // CharacterSheet Modal
     showCharacterSheet && editingCharacter && e('div', {
       className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
-      onClick: () => setShowCharacterSheet(false)
+      onClick: () => setShowCharacterSheet(false),
+      style: {
+        animation: 'fadeIn 250ms ease-in-out'
+      }
     },
       e('div', {
         className: `w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
-          isDarkMode ? 'bg-gray-800' : 'bg-white'
+          isDarkMode ? 'bg-[#1A1815]' : 'bg-[#F8F2E8]'
         }`,
-        onClick: (ev) => ev.stopPropagation()
+        onClick: (ev) => ev.stopPropagation(),
+        style: {
+          boxShadow: isDarkMode
+            ? 'inset 0 1px 0 0 rgba(154,123,79,0.1), 0 8px 32px rgba(0,0,0,0.6)'
+            : 'inset 0 1px 0 0 rgba(200,157,94,0.2), 0 8px 32px rgba(0,0,0,0.15)'
+        }
       },
         // Header
-        e('div', { className: 'p-4 border-b flex items-center justify-between' },
-          e('h3', { className: 'text-lg font-bold' }, 'Hahmo'),
+        e('div', { 
+          className: `p-4 flex items-center justify-between ${
+            isDarkMode ? 'border-b border-[#715C38]' : 'border-b border-[#E6DED2]'
+          }`
+        },
+          e('h3', { 
+            className: 'text-lg font-bold',
+            style: {
+              fontFamily: 'EB Garamond',
+              color: isDarkMode ? '#E9E4DA' : '#2B241C'
+            }
+          }, 'Hahmo'),
           e('button', {
             onClick: () => setShowCharacterSheet(false),
-            className: 'p-2 rounded hover:bg-gray-700'
+            className: `p-2 rounded transition-colors ${
+              isDarkMode ? 'hover:bg-[#715C38]' : 'hover:bg-[#E6DED2]'
+            }`,
+            style: {
+              color: isDarkMode ? '#AFA699' : '#5E584D'
+            }
           }, e(Icons.X))
         ),
         
@@ -9529,14 +9552,31 @@ VASTAA SUOMEKSI.`;
         e('div', { className: 'p-4 space-y-4' },
           
           // BIO-OSIO
-          e('div', { className: 'border-b pb-4' },
-            e('h4', { className: 'font-bold mb-3 text-sm' }, 'PERUSTIEDOT'),
+          e('div', { 
+            className: `pb-4 ${isDarkMode ? 'border-b border-[#715C38]' : 'border-b border-[#E6DED2]'}`
+          },
+            e('h4', { 
+              className: 'font-bold mb-3 text-sm',
+              style: {
+                fontFamily: 'EB Garamond',
+                color: isDarkMode ? '#E9E4DA' : '#2B241C'
+              }
+            }, 'PERUSTIEDOT'),
             
             // Nimi (pakollinen)
             e('div', { className: 'mb-3' },
-              e('label', { className: 'text-xs block mb-1' }, 
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 
                 'Nimi',
-                e('span', { className: 'text-red-500 ml-1' }, '*')
+                e('span', { 
+                  className: 'ml-1',
+                  style: { color: isDarkMode ? '#C89D5E' : '#715C38' }
+                }, '*')
               ),
               e('input', {
                 type: 'text',
@@ -9545,15 +9585,24 @@ VASTAA SUOMEKSI.`;
                   ...editingCharacter,
                   name: ev.target.value
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                className: `w-full p-2 rounded border ${
+                  isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
                 } ${
-                  !editingCharacter?.name?.trim() ? 'border-red-500' : ''
+                  !editingCharacter?.name?.trim() ? (isDarkMode ? 'border-[#9A7B4F]' : 'border-[#715C38]') : ''
                 }`,
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '15px',
+                  color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                },
                 placeholder: 'Hahmon nimi (pakollinen)'
               }),
               !editingCharacter?.name?.trim() && e('p', {
-                className: 'text-xs text-red-500 mt-1'
+                className: 'text-xs mt-1',
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#C89D5E' : '#715C38'
+                }
               }, 'Nimi on pakollinen tieto')
             ),
             
@@ -9561,7 +9610,13 @@ VASTAA SUOMEKSI.`;
             e('div', { className: 'grid grid-cols-2 gap-3 mb-3' },
               // Ikä
               e('div', null,
-                e('label', { className: 'text-xs block mb-1' }, 'Ikä'),
+                e('label', { 
+                  className: 'text-xs block mb-1',
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    color: isDarkMode ? '#AFA699' : '#5E584D'
+                  }
+                }, 'Ikä'),
                 e('input', {
                   type: 'number',
                   min: 0,
@@ -9571,25 +9626,41 @@ VASTAA SUOMEKSI.`;
                     ...editingCharacter,
                     age: parseInt(ev.target.value, 10) || 0
                   }),
-                  className: `w-full p-2 rounded border text-sm ${
-                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  className: `w-full p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
                   }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
                   placeholder: 'Esim. 25'
                 })
               ),
               
               // Sukupuoli
               e('div', null,
-                e('label', { className: 'text-xs block mb-1' }, 'Sukupuoli'),
+                e('label', { 
+                  className: 'text-xs block mb-1',
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    color: isDarkMode ? '#AFA699' : '#5E584D'
+                  }
+                }, 'Sukupuoli'),
                 e('select', {
                   value: editingCharacter?.gender || 'Ei määritelty',
                   onChange: (ev) => setEditingCharacter({
                     ...editingCharacter,
                     gender: ev.target.value
                   }),
-                  className: `w-full p-2 rounded border text-sm ${
-                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                  }`
+                  className: `w-full p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  }
                 },
                   e('option', { value: 'Ei määritelty' }, 'Ei määritelty'),
                   e('option', { value: 'Nainen' }, 'Nainen'),
@@ -9599,31 +9670,87 @@ VASTAA SUOMEKSI.`;
               )
             ),
             
-            // Ulkonäkö
+            // Ulkonäkö + AI button
             e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Ulkonäkö'),
-              e('textarea', {
-                rows: 3,
-                value: editingCharacter?.appearance || '',
-                onChange: (ev) => setEditingCharacter({
-                  ...editingCharacter,
-                  appearance: ev.target.value
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Ulkonäkö'),
+              e('div', { className: 'flex gap-2' },
+                e('textarea', {
+                  rows: 3,
+                  value: editingCharacter?.appearance || '',
+                  onChange: (ev) => setEditingCharacter({
+                    ...editingCharacter,
+                    appearance: ev.target.value
+                  }),
+                  className: `flex-1 p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
+                  placeholder: 'Fyysinen ulkonäkö, vaatetus, erityispiirteet...'
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'Fyysinen ulkonäkö, vaatetus, erityispiirteet...'
-              })
+                e('button', {
+                  onClick: async () => {
+                    try {
+                      // TODO: Vaihda HybridWritingFlow vaiheessa 2
+                      const prompt = `Luo lyhyt, vivahdikas ulkonäköku vaus hahmolle "${editingCharacter?.name}" (ikä: ${editingCharacter?.age || 'ei määritelty'}, sukupuoli: ${editingCharacter?.gender || 'ei määritelty'}). Anna 2-3 lausetta.`;
+                      const result = await window.electronAPI.generateWithAI({
+                        prompt,
+                        model: 'claude-3-5-sonnet-20241022'
+                      });
+                      setEditingCharacter({
+                        ...editingCharacter,
+                        appearance: result.trim()
+                      });
+                      console.log('✅ AI loi ulkonäkökuvauksen');
+                    } catch (error) {
+                      console.error('❌ AI-virhe:', error);
+                    }
+                  },
+                  className: `px-3 py-2 rounded text-xs transition-all self-start ${
+                    isDarkMode 
+                      ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                      : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontWeight: '500'
+                  },
+                  title: 'Generoi ulkonäkökuvaus AI:n avulla'
+                }, '🜓 AI')
+              )
             )
           ),
           
           // PERSOONALLISUUS-OSIO
-          e('div', { className: 'border-b pb-4' },
-            e('h4', { className: 'font-bold mb-3 text-sm' }, 'PERSOONALLISUUS'),
+          e('div', { 
+            className: `pb-4 ${isDarkMode ? 'border-b border-[#715C38]' : 'border-b border-[#E6DED2]'}`
+          },
+            e('h4', { 
+              className: 'font-bold mb-3 text-sm',
+              style: {
+                fontFamily: 'EB Garamond',
+                color: isDarkMode ? '#E9E4DA' : '#2B241C'
+              }
+            }, 'PERSOONALLISUUS'),
             
             // Luonteenpiirteet (Traits)
             e('div', { className: 'mb-3' },
-              e('label', { className: 'text-xs block mb-1' }, 'Luonteenpiirteet'),
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Luonteenpiirteet'),
               
               // Trait chips
               e('div', { className: 'flex flex-wrap gap-2 mb-2' },
@@ -9631,7 +9758,7 @@ VASTAA SUOMEKSI.`;
                   e('div', {
                     key: idx,
                     className: `flex items-center gap-1 px-2 py-1 rounded text-xs ${
-                      isDarkMode ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800'
+                      isDarkMode ? 'bg-[#715C38] text-[#E9E4DA]' : 'bg-[#E6DED2] text-[#2B241C]'
                     }`
                   },
                     e('span', null, trait),
@@ -9644,7 +9771,7 @@ VASTAA SUOMEKSI.`;
                           traits: newTraits
                         });
                       },
-                      className: 'hover:text-red-500 font-bold'
+                      className: `hover:text-red-500 font-bold ${isDarkMode ? 'text-[#E9E4DA]' : 'text-[#2B241C]'}`
                     }, '×')
                   )
                 )
@@ -9655,9 +9782,14 @@ VASTAA SUOMEKSI.`;
                 e('input', {
                   type: 'text',
                   id: 'newTrait',
-                  className: `flex-1 p-2 rounded border text-sm ${
-                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  className: `flex-1 p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
                   }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
                   placeholder: 'Esim: Rohkea, Ujo, Viisas...',
                   onKeyPress: (ev) => {
                     if (ev.key === 'Enter') {
@@ -9687,50 +9819,147 @@ VASTAA SUOMEKSI.`;
                     }
                   },
                   className: `px-3 py-2 rounded text-sm ${
-                    isDarkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'
-                  } text-white`
+                    isDarkMode ? 'bg-[#9A7B4F] hover:bg-[#C89D5E]' : 'bg-[#C89D5E] hover:bg-[#9A7B4F]'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontWeight: '500',
+                    color: isDarkMode ? '#100F0D' : 'white'
+                  }
                 }, '+ Lisää')
               )
             ),
             
-            // Motivaatiot
+            // Motivaatiot + AI button
             e('div', { className: 'mb-3' },
-              e('label', { className: 'text-xs block mb-1' }, 'Motivaatiot'),
-              e('textarea', {
-                rows: 2,
-                value: editingCharacter?.motivations || '',
-                onChange: (ev) => setEditingCharacter({
-                  ...editingCharacter,
-                  motivations: ev.target.value
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Motivaatiot'),
+              e('div', { className: 'flex gap-2' },
+                e('textarea', {
+                  rows: 2,
+                  value: editingCharacter?.motivations || '',
+                  onChange: (ev) => setEditingCharacter({
+                    ...editingCharacter,
+                    motivations: ev.target.value
+                  }),
+                  className: `flex-1 p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
+                  placeholder: 'Mitä hahmo haluaa saavuttaa?'
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'Mitä hahmo haluaa saavuttaa?'
-              })
+                e('button', {
+                  onClick: async () => {
+                    try {
+                      // TODO: Vaihda HybridWritingFlow vaiheessa 2
+                      const prompt = `Luo syvälliset motivaatiot hahmolle "${editingCharacter?.name}" (luonteenpiirteet: ${(editingCharacter?.traits || []).join(', ') || 'ei määritelty'}). Anna 1-2 lausetta.`;
+                      const result = await window.electronAPI.generateWithAI({
+                        prompt,
+                        model: 'claude-3-5-sonnet-20241022'
+                      });
+                      setEditingCharacter({
+                        ...editingCharacter,
+                        motivations: result.trim()
+                      });
+                      console.log('✅ AI loi motivaatiot');
+                    } catch (error) {
+                      console.error('❌ AI-virhe:', error);
+                    }
+                  },
+                  className: `px-3 py-2 rounded text-xs transition-all self-start ${
+                    isDarkMode 
+                      ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                      : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontWeight: '500'
+                  },
+                  title: 'Generoi motivaatiot AI:n avulla'
+                }, '🜓 AI')
+              )
             ),
             
-            // Pelot
+            // Pelot + AI button
             e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Pelot'),
-              e('textarea', {
-                rows: 2,
-                value: editingCharacter?.fears || '',
-                onChange: (ev) => setEditingCharacter({
-                  ...editingCharacter,
-                  fears: ev.target.value
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Pelot'),
+              e('div', { className: 'flex gap-2' },
+                e('textarea', {
+                  rows: 2,
+                  value: editingCharacter?.fears || '',
+                  onChange: (ev) => setEditingCharacter({
+                    ...editingCharacter,
+                    fears: ev.target.value
+                  }),
+                  className: `flex-1 p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
+                  placeholder: 'Mitä hahmo pelkää?'
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'Mitä hahmo pelkää?'
-              })
+                e('button', {
+                  onClick: async () => {
+                    try {
+                      // TODO: Vaihda HybridWritingFlow vaiheessa 2
+                      const prompt = `Luo uskottavat pelot hahmolle "${editingCharacter?.name}" (motivaatiot: ${editingCharacter?.motivations || 'ei määritelty'}). Anna 1-2 lausetta.`;
+                      const result = await window.electronAPI.generateWithAI({
+                        prompt,
+                        model: 'claude-3-5-sonnet-20241022'
+                      });
+                      setEditingCharacter({
+                        ...editingCharacter,
+                        fears: result.trim()
+                      });
+                      console.log('✅ AI loi pelot');
+                    } catch (error) {
+                      console.error('❌ AI-virhe:', error);
+                    }
+                  },
+                  className: `px-3 py-2 rounded text-xs transition-all self-start ${
+                    isDarkMode 
+                      ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                      : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontWeight: '500'
+                  },
+                  title: 'Generoi pelot AI:n avulla'
+                }, '🜓 AI')
+              )
             )
           ),
           
           // SUHTEET-OSIO
-          e('div', { className: 'border-b pb-4' },
-            e('h4', { className: 'font-bold mb-3 text-sm' }, 'SUHTEET'),
+          e('div', { 
+            className: `pb-4 ${isDarkMode ? 'border-b border-[#715C38]' : 'border-b border-[#E6DED2]'}`
+          },
+            e('h4', { 
+              className: 'font-bold mb-3 text-sm',
+              style: {
+                fontFamily: 'EB Garamond',
+                color: isDarkMode ? '#E9E4DA' : '#2B241C'
+              }
+            }, 'SUHTEET'),
             
             // Olemassa olevat suhteet
             (editingCharacter?.relationships || []).length > 0 && e('div', { className: 'mb-3 space-y-2' },
@@ -9738,15 +9967,38 @@ VASTAA SUOMEKSI.`;
                 const targetChar = project.characters.find(c => c.id === rel.targetCharacterId);
                 return e('div', {
                   key: idx,
-                  className: `p-2 rounded border text-sm ${
-                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-300'
+                  className: `p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
                   }`
                 },
                   e('div', { className: 'flex items-start justify-between gap-2' },
-                    e('div', { className: 'flex-1' },
-                      e('div', { className: 'font-bold' }, targetChar?.name || 'Tuntematon'),
-                      e('div', { className: 'text-xs opacity-70' }, rel.type),
-                      rel.description && e('div', { className: 'text-xs mt-1' }, rel.description)
+                    e('div', { 
+                      className: 'flex-1',
+                      style: {
+                        fontFamily: 'IBM Plex Mono',
+                        fontSize: '15px',
+                        color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                      }
+                    },
+                      e('div', { 
+                        className: 'font-bold',
+                        style: { 
+                          color: isDarkMode ? '#C89D5E' : '#715C38'
+                        }
+                      }, targetChar?.name || 'Tuntematon'),
+                      e('div', { 
+                        className: 'text-xs',
+                        style: { 
+                          opacity: 0.7,
+                          color: isDarkMode ? '#AFA699' : '#5E584D'
+                        }
+                      }, rel.type),
+                      rel.description && e('div', { 
+                        className: 'text-xs mt-1',
+                        style: {
+                          color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                        }
+                      }, rel.description)
                     ),
                     e('button', {
                       onClick: () => {
@@ -9766,15 +10018,26 @@ VASTAA SUOMEKSI.`;
             
             // Lisää uusi suhde
             e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Lisää suhde'),
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Lisää suhde'),
               
               // Valitse hahmo
               e('div', { className: 'mb-2' },
                 e('select', {
                   id: 'newRelationshipTarget',
-                  className: `w-full p-2 rounded border text-sm ${
-                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                  }`
+                  className: `w-full p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  }
                 },
                   e('option', { value: '' }, 'Valitse hahmo...'),
                   project.characters
@@ -9787,9 +10050,14 @@ VASTAA SUOMEKSI.`;
               e('div', { className: 'mb-2' },
                 e('select', {
                   id: 'newRelationshipType',
-                  className: `w-full p-2 rounded border text-sm ${
-                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                  }`
+                  className: `w-full p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  }
                 },
                   e('option', { value: 'Neutraali' }, 'Neutraali'),
                   e('option', { value: 'Ystävä' }, 'Ystävä'),
@@ -9804,9 +10072,14 @@ VASTAA SUOMEKSI.`;
                 e('textarea', {
                   id: 'newRelationshipDescription',
                   rows: 2,
-                  className: `w-full p-2 rounded border text-sm ${
-                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  className: `w-full p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
                   }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
                   placeholder: 'Suhteen kuvaus (valinnainen)'
                 })
               ),
@@ -9842,89 +10115,242 @@ VASTAA SUOMEKSI.`;
                   }
                 },
                 className: `px-3 py-2 rounded text-sm w-full ${
-                  isDarkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
-                } text-white`
+                  isDarkMode ? 'bg-[#9A7B4F] hover:bg-[#C89D5E]' : 'bg-[#C89D5E] hover:bg-[#9A7B4F]'
+                }`,
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  fontWeight: '500',
+                  color: isDarkMode ? '#100F0D' : 'white'
+                }
               }, '+ Lisää suhde')
             )
           ),
           
           // TARINAN KAARI -OSIO
           e('div', null,
-            e('h4', { className: 'font-bold mb-3 text-sm' }, 'TARINAN KAARI'),
+            e('h4', { 
+              className: 'font-bold mb-3 text-sm',
+              style: {
+                fontFamily: 'EB Garamond',
+                color: isDarkMode ? '#E9E4DA' : '#2B241C'
+              }
+            }, 'TARINAN KAARI'),
             
-            // Aloitus
+            // Aloitus + AI button
             e('div', { className: 'mb-3' },
-              e('label', { className: 'text-xs block mb-1' }, 'Aloitus'),
-              e('textarea', {
-                rows: 2,
-                value: editingCharacter?.arc?.beginning || '',
-                onChange: (ev) => setEditingCharacter({
-                  ...editingCharacter,
-                  arc: {
-                    ...editingCharacter?.arc,
-                    beginning: ev.target.value
-                  }
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Aloitus'),
+              e('div', { className: 'flex gap-2' },
+                e('textarea', {
+                  rows: 2,
+                  value: editingCharacter?.arc?.beginning || '',
+                  onChange: (ev) => setEditingCharacter({
+                    ...editingCharacter,
+                    arc: {
+                      ...editingCharacter?.arc,
+                      beginning: ev.target.value
+                    }
+                  }),
+                  className: `flex-1 p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
+                  placeholder: 'Missä hahmo on tarinan alussa?'
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'Missä hahmo on tarinan alussa?'
-              })
+                e('button', {
+                  onClick: async () => {
+                    try {
+                      // TODO: Vaihda HybridWritingFlow vaiheessa 2
+                      const prompt = `Luo hahmon kaaren aloituspiste hahmolle "${editingCharacter?.name}" (motivaatiot: ${editingCharacter?.motivations || 'ei määritelty'}, pelot: ${editingCharacter?.fears || 'ei määritelty'}). Anna 1-2 lausetta.`;
+                      const result = await window.electronAPI.generateWithAI({
+                        prompt,
+                        model: 'claude-3-5-sonnet-20241022'
+                      });
+                      setEditingCharacter({
+                        ...editingCharacter,
+                        arc: {
+                          ...editingCharacter?.arc,
+                          beginning: result.trim()
+                        }
+                      });
+                      console.log('✅ AI loi kaaren aloituksen');
+                    } catch (error) {
+                      console.error('❌ AI-virhe:', error);
+                    }
+                  },
+                  className: `px-3 py-2 rounded text-xs transition-all self-start ${
+                    isDarkMode 
+                      ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                      : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontWeight: '500'
+                  },
+                  title: 'Generoi kaaren aloitus AI:n avulla'
+                }, '🜓 AI')
+              )
             ),
             
-            // Kehitys
+            // Kehitys + AI button
             e('div', { className: 'mb-3' },
-              e('label', { className: 'text-xs block mb-1' }, 'Kehitys'),
-              e('textarea', {
-                rows: 2,
-                value: editingCharacter?.arc?.development || '',
-                onChange: (ev) => setEditingCharacter({
-                  ...editingCharacter,
-                  arc: {
-                    ...editingCharacter?.arc,
-                    development: ev.target.value
-                  }
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Kehitys'),
+              e('div', { className: 'flex gap-2' },
+                e('textarea', {
+                  rows: 2,
+                  value: editingCharacter?.arc?.development || '',
+                  onChange: (ev) => setEditingCharacter({
+                    ...editingCharacter,
+                    arc: {
+                      ...editingCharacter?.arc,
+                      development: ev.target.value
+                    }
+                  }),
+                  className: `flex-1 p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
+                  placeholder: 'Miten hahmo muuttuu tarinan aikana?'
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'Miten hahmo muuttuu tarinan aikana?'
-              })
+                e('button', {
+                  onClick: async () => {
+                    try {
+                      // TODO: Vaihda HybridWritingFlow vaiheessa 2
+                      const prompt = `Luo hahmon kehityskaari hahmolle "${editingCharacter?.name}" lähtien siitä että ${editingCharacter?.arc?.beginning || 'hahmo aloittaa matkansa'}. Anna 1-2 lausetta.`;
+                      const result = await window.electronAPI.generateWithAI({
+                        prompt,
+                        model: 'claude-3-5-sonnet-20241022'
+                      });
+                      setEditingCharacter({
+                        ...editingCharacter,
+                        arc: {
+                          ...editingCharacter?.arc,
+                          development: result.trim()
+                        }
+                      });
+                      console.log('✅ AI loi kaaren kehityksen');
+                    } catch (error) {
+                      console.error('❌ AI-virhe:', error);
+                    }
+                  },
+                  className: `px-3 py-2 rounded text-xs transition-all self-start ${
+                    isDarkMode 
+                      ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                      : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontWeight: '500'
+                  },
+                  title: 'Generoi kaaren kehitys AI:n avulla'
+                }, '🜓 AI')
+              )
             ),
             
-            // Lopputulos
+            // Lopputulos + AI button
             e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Lopputulos'),
-              e('textarea', {
-                rows: 2,
-                value: editingCharacter?.arc?.end || '',
-                onChange: (ev) => setEditingCharacter({
-                  ...editingCharacter,
-                  arc: {
-                    ...editingCharacter?.arc,
-                    end: ev.target.value
-                  }
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Lopputulos'),
+              e('div', { className: 'flex gap-2' },
+                e('textarea', {
+                  rows: 2,
+                  value: editingCharacter?.arc?.end || '',
+                  onChange: (ev) => setEditingCharacter({
+                    ...editingCharacter,
+                    arc: {
+                      ...editingCharacter?.arc,
+                      end: ev.target.value
+                    }
+                  }),
+                  className: `flex-1 p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
+                  placeholder: 'Missä hahmo päättyy?'
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'Missä hahmo päättyy?'
-              })
+                e('button', {
+                  onClick: async () => {
+                    try {
+                      // TODO: Vaihda HybridWritingFlow vaiheessa 2
+                      const prompt = `Luo tyydyttävä lopputulos hahmon kaarelle "${editingCharacter?.name}" kun hahmo ${editingCharacter?.arc?.development || 'on käynyt läpi muutoksen'}. Anna 1-2 lausetta.`;
+                      const result = await window.electronAPI.generateWithAI({
+                        prompt,
+                        model: 'claude-3-5-sonnet-20241022'
+                      });
+                      setEditingCharacter({
+                        ...editingCharacter,
+                        arc: {
+                          ...editingCharacter?.arc,
+                          end: result.trim()
+                        }
+                      });
+                      console.log('✅ AI loi kaaren lopputuloksen');
+                    } catch (error) {
+                      console.error('❌ AI-virhe:', error);
+                    }
+                  },
+                  className: `px-3 py-2 rounded text-xs transition-all self-start ${
+                    isDarkMode 
+                      ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                      : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
+                  }`,
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontWeight: '500'
+                  },
+                  title: 'Generoi kaaren lopputulos AI:n avulla'
+                }, '🜓 AI')
+              )
             )
           )
         ),
         
         // Footer
-        e('div', { className: 'p-4 border-t flex gap-2 justify-end' },
+        e('div', { 
+          className: `p-4 flex gap-2 justify-end ${
+            isDarkMode ? 'border-t border-[#715C38]' : 'border-t border-[#E6DED2]'
+          }`
+        },
           e('button', {
             onClick: () => setShowCharacterSheet(false),
-            className: `px-4 py-2 rounded text-sm ${
-              isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
-            }`
+            className: `px-4 py-2 rounded text-sm transition-all ${
+              isDarkMode ? 'bg-[#715C38] hover:bg-[#8C806C]' : 'bg-[#E6DED2] hover:bg-[#867C6B]'
+            }`,
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              color: isDarkMode ? '#E9E4DA' : '#2B241C'
+            }
           }, 'Peruuta'),
           e('button', {
             onClick: () => {
-              // Validointi: Tarkista että nimi ei ole tyhjä
               if (!editingCharacter?.name?.trim()) {
                 console.warn('⚠️ Validointivirhe: Nimi on pakollinen');
                 return;
@@ -9942,9 +10368,18 @@ VASTAA SUOMEKSI.`;
             disabled: !editingCharacter?.name?.trim(),
             className: `px-4 py-2 rounded text-sm transition-all ${
               !editingCharacter?.name?.trim()
-                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                : 'bg-blue-500 text-white hover:bg-blue-600'
+                ? 'bg-[#8C806C] text-[#AFA699] cursor-not-allowed'
+                : isDarkMode 
+                  ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                  : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
             }`,
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontWeight: '500',
+              boxShadow: !editingCharacter?.name?.trim() ? 'none' : (isDarkMode 
+                ? '0 0 0 3px rgba(154,123,79,0.2)' 
+                : '0 0 0 3px rgba(200,157,94,0.2)')
+            },
             title: !editingCharacter?.name?.trim() ? 'Nimi on pakollinen' : 'Tallenna hahmo'
           }, 'Tallenna')
         )
@@ -9954,20 +10389,39 @@ VASTAA SUOMEKSI.`;
     // LocationSheet Modal
     showLocationSheet && editingLocation && e('div', {
       className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
-      onClick: () => setShowLocationSheet(false)
+      onClick: () => setShowLocationSheet(false),
+      style: { animation: 'fadeIn 250ms ease-in-out' }
     },
       e('div', {
-        className: `w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
-          isDarkMode ? 'bg-gray-800' : 'bg-white'
+        className: `w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg ${
+          isDarkMode ? 'bg-[#1A1815]' : 'bg-[#F8F2E8]'
         }`,
-        onClick: (ev) => ev.stopPropagation()
+        onClick: (ev) => ev.stopPropagation(),
+        style: { 
+          boxShadow: isDarkMode 
+            ? 'inset 0 0 16px rgba(0,0,0,0.2), 0 0 40px rgba(0,0,0,0.5)' 
+            : 'inset 0 0 16px rgba(0,0,0,0.1), 0 0 40px rgba(0,0,0,0.2)' 
+        }
       },
         // Header
-        e('div', { className: 'p-4 border-b flex items-center justify-between' },
-          e('h3', { className: 'text-lg font-bold' }, 'Paikka'),
+        e('div', { 
+          className: `p-4 flex items-center justify-between ${
+            isDarkMode ? 'border-b border-[#715C38]' : 'border-b border-[#E6DED2]'
+          }`
+        },
+          e('h3', { 
+            className: 'text-lg font-bold',
+            style: { 
+              fontFamily: 'EB Garamond', 
+              color: isDarkMode ? '#E9E4DA' : '#2B241C' 
+            }
+          }, 'Paikka'),
           e('button', {
             onClick: () => setShowLocationSheet(false),
-            className: 'p-2 rounded hover:bg-gray-700'
+            className: `p-2 rounded transition-all ${
+              isDarkMode ? 'hover:bg-[#715C38]' : 'hover:bg-[#E6DED2]'
+            }`,
+            style: { color: isDarkMode ? '#AFA699' : '#5E584D' }
           }, e(Icons.X))
         ),
         
@@ -9975,14 +10429,31 @@ VASTAA SUOMEKSI.`;
         e('div', { className: 'p-4 space-y-4' },
           
           // PERUSTIEDOT
-          e('div', { className: 'border-b pb-4' },
-            e('h4', { className: 'font-bold mb-3 text-sm' }, 'PERUSTIEDOT'),
+          e('div', { 
+            className: `pb-4 ${isDarkMode ? 'border-b border-[#715C38]' : 'border-b border-[#E6DED2]'}`
+          },
+            e('h4', { 
+              className: 'font-bold mb-3 text-sm',
+              style: { 
+                fontFamily: 'EB Garamond',
+                color: isDarkMode ? '#E9E4DA' : '#2B241C'
+              }
+            }, 'PERUSTIEDOT'),
             
             // Nimi (pakollinen)
             e('div', { className: 'mb-3' },
-              e('label', { className: 'text-xs block mb-1' }, 
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 
                 'Nimi',
-                e('span', { className: 'text-red-500 ml-1' }, '*')
+                e('span', { 
+                  className: 'ml-1',
+                  style: { color: isDarkMode ? '#C89D5E' : '#715C38' }
+                }, '*')
               ),
               e('input', {
                 type: 'text',
@@ -9991,30 +10462,50 @@ VASTAA SUOMEKSI.`;
                   ...editingLocation,
                   name: ev.target.value
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                className: `w-full p-2 rounded border ${
+                  isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
                 } ${
-                  !editingLocation?.name?.trim() ? 'border-red-500' : ''
+                  !editingLocation?.name?.trim() ? (isDarkMode ? 'border-[#9A7B4F]' : 'border-[#715C38]') : ''
                 }`,
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '15px',
+                  color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                },
                 placeholder: 'Paikan nimi (pakollinen)'
               }),
               !editingLocation?.name?.trim() && e('p', {
-                className: 'text-xs text-red-500 mt-1'
+                className: 'text-xs mt-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#C89D5E' : '#715C38'
+                }
               }, 'Nimi on pakollinen tieto')
             ),
             
             // Tyyppi
             e('div', { className: 'mb-3' },
-              e('label', { className: 'text-xs block mb-1' }, 'Tyyppi'),
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Tyyppi'),
               e('select', {
                 value: editingLocation?.type || 'Ei määritelty',
                 onChange: (ev) => setEditingLocation({
                   ...editingLocation,
                   type: ev.target.value
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`
+                className: `w-full p-2 rounded border ${
+                  isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                }`,
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '15px',
+                  color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                }
               },
                 e('option', { value: 'Ei määritelty' }, 'Ei määritelty'),
                 e('option', { value: 'Koti' }, 'Koti'),
@@ -10026,40 +10517,100 @@ VASTAA SUOMEKSI.`;
               )
             ),
             
-            // Kuvaus
+            // Kuvaus + AI button
             e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Kuvaus'),
-              e('textarea', {
-                rows: 3,
-                value: editingLocation?.description || '',
-                onChange: (ev) => setEditingLocation({
-                  ...editingLocation,
-                  description: ev.target.value
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Kuvaus'),
+              e('div', { className: 'flex gap-2' },
+                e('textarea', {
+                  rows: 3,
+                  value: editingLocation?.description || '',
+                  onChange: (ev) => setEditingLocation({
+                    ...editingLocation,
+                    description: ev.target.value
+                  }),
+                  className: `flex-1 p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                  }`,
+                  style: { 
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
+                  placeholder: 'Paikan yleiskuvaus...'
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'Paikan yleiskuvaus...'
-              })
+                e('button', {
+                  onClick: async () => {
+                    try {
+                      const prompt = `Luo vivahdikas kuvaus paikasta tyyppiä "${editingLocation?.type || 'Ei määritelty'}" nimeltä "${editingLocation?.name}". Anna vain kuvaus, 2-3 lausetta.`;
+                      const result = await window.electronAPI.generateWithAI({
+                        prompt,
+                        model: 'claude-3-5-sonnet-20241022'
+                      });
+                      setEditingLocation({
+                        ...editingLocation,
+                        description: result.trim()
+                      });
+                      console.log('✅ AI loi paikan kuvauksen');
+                    } catch (error) {
+                      console.error('❌ AI-virhe:', error);
+                    }
+                  },
+                  className: `px-3 py-2 rounded text-xs transition-all self-start ${
+                    isDarkMode 
+                      ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                      : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
+                  }`,
+                  style: { 
+                    fontFamily: 'IBM Plex Mono',
+                    fontWeight: '500'
+                  },
+                  title: 'Generoi kuvaus AI:n avulla'
+                }, '🜓 AI')
+              )
             )
           ),
           
           // ATMOSFÄÄRI
-          e('div', { className: 'border-b pb-4' },
-            e('h4', { className: 'font-bold mb-3 text-sm' }, 'ATMOSFÄÄRI'),
+          e('div', { 
+            className: `pb-4 ${isDarkMode ? 'border-b border-[#715C38]' : 'border-b border-[#E6DED2]'}`
+          },
+            e('h4', { 
+              className: 'font-bold mb-3 text-sm',
+              style: { 
+                fontFamily: 'EB Garamond',
+                color: isDarkMode ? '#E9E4DA' : '#2B241C'
+              }
+            }, 'ATMOSFÄÄRI'),
             
             // Tunnelma
             e('div', { className: 'mb-3' },
-              e('label', { className: 'text-xs block mb-1' }, 'Tunnelma'),
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Tunnelma'),
               e('select', {
                 value: editingLocation?.mood || 'Neutraali',
                 onChange: (ev) => setEditingLocation({
                   ...editingLocation,
                   mood: ev.target.value
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`
+                className: `w-full p-2 rounded border ${
+                  isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                }`,
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '15px',
+                  color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                }
               },
                 e('option', { value: 'Neutraali' }, 'Neutraali'),
                 e('option', { value: 'Rauhallinen' }, 'Rauhallinen'),
@@ -10071,40 +10622,99 @@ VASTAA SUOMEKSI.`;
               )
             ),
             
-            // Äänet ja tuoksut
+            // Äänet ja tuoksut + AI button (TODO: HybridWritingFlow vaiheessa 2)
             e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Äänet ja tuoksut'),
-              e('textarea', {
-                rows: 2,
-                value: editingLocation?.sensory || '',
-                onChange: (ev) => setEditingLocation({
-                  ...editingLocation,
-                  sensory: ev.target.value
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Äänet ja tuoksut'),
+              e('div', { className: 'flex gap-2' },
+                e('textarea', {
+                  rows: 2,
+                  value: editingLocation?.sensory || '',
+                  onChange: (ev) => setEditingLocation({
+                    ...editingLocation,
+                    sensory: ev.target.value
+                  }),
+                  className: `flex-1 p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                  }`,
+                  style: { 
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
+                  placeholder: 'Mitä paikkaa kuvaavia ääniä tai tuoksuja?'
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'Mitä paikkaa kuvaavia ääniä tai tuoksuja?'
-              })
+                e('button', {
+                  onClick: async () => {
+                    try {
+                      // TODO: Vaihda HybridWritingFlow-integraatioon vaiheessa 2
+                      const prompt = `Luo aistikokemuksia paikasta "${editingLocation?.name}" (tyyppi: ${editingLocation?.type}, tunnelma: ${editingLocation?.mood}). Anna 2-3 lausetta ääniä ja tuoksuja.`;
+                      const result = await window.electronAPI.generateWithAI({
+                        prompt,
+                        model: 'claude-3-5-sonnet-20241022'
+                      });
+                      setEditingLocation({
+                        ...editingLocation,
+                        sensory: result.trim()
+                      });
+                      console.log('✅ AI loi aistikokemuksia');
+                    } catch (error) {
+                      console.error('❌ AI-virhe:', error);
+                    }
+                  },
+                  className: `px-3 py-2 rounded text-xs transition-all self-start ${
+                    isDarkMode 
+                      ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                      : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
+                  }`,
+                  style: { 
+                    fontFamily: 'IBM Plex Mono',
+                    fontWeight: '500'
+                  },
+                  title: 'Generoi atmosfääri AI:n avulla'
+                }, '🜓 AI')
+              )
             )
           ),
           
           // KÄYTTÖ TARINASSA
           e('div', null,
-            e('h4', { className: 'font-bold mb-3 text-sm' }, 'KÄYTTÖ TARINASSA'),
+            e('h4', { 
+              className: 'font-bold mb-3 text-sm',
+              style: { 
+                fontFamily: 'EB Garamond',
+                color: isDarkMode ? '#E9E4DA' : '#2B241C'
+              }
+            }, 'KÄYTTÖ TARINASSA'),
             
             // Tärkeys
             e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Tärkeys'),
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Tärkeys'),
               e('select', {
                 value: editingLocation?.importance || 'Sivupaikka',
                 onChange: (ev) => setEditingLocation({
                   ...editingLocation,
                   importance: ev.target.value
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`
+                className: `w-full p-2 rounded border ${
+                  isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                }`,
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '15px',
+                  color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                }
               },
                 e('option', { value: 'Pääpaikka' }, 'Pääpaikka - Keskeinen tarinalle'),
                 e('option', { value: 'Sivupaikka' }, 'Sivupaikka - Esiintyy useasti'),
@@ -10115,16 +10725,23 @@ VASTAA SUOMEKSI.`;
         ),
         
         // Footer
-        e('div', { className: 'p-4 border-t flex gap-2 justify-end' },
+        e('div', { 
+          className: `p-4 flex gap-2 justify-end ${
+            isDarkMode ? 'border-t border-[#715C38]' : 'border-t border-[#E6DED2]'
+          }`
+        },
           e('button', {
             onClick: () => setShowLocationSheet(false),
-            className: `px-4 py-2 rounded text-sm ${
-              isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
-            }`
+            className: `px-4 py-2 rounded text-sm transition-all ${
+              isDarkMode ? 'bg-[#715C38] hover:bg-[#8C806C]' : 'bg-[#E6DED2] hover:bg-[#867C6B]'
+            }`,
+            style: { 
+              fontFamily: 'IBM Plex Mono',
+              color: isDarkMode ? '#E9E4DA' : '#2B241C'
+            }
           }, 'Peruuta'),
           e('button', {
             onClick: () => {
-              // Validointi: Tarkista että nimi ei ole tyhjä
               if (!editingLocation?.name?.trim()) {
                 console.warn('⚠️ Validointivirhe: Nimi on pakollinen');
                 return;
@@ -10142,9 +10759,18 @@ VASTAA SUOMEKSI.`;
             disabled: !editingLocation?.name?.trim(),
             className: `px-4 py-2 rounded text-sm transition-all ${
               !editingLocation?.name?.trim()
-                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                : 'bg-blue-500 text-white hover:bg-blue-600'
+                ? 'bg-[#8C806C] text-[#AFA699] cursor-not-allowed'
+                : isDarkMode 
+                  ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                  : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
             }`,
+            style: { 
+              fontFamily: 'IBM Plex Mono',
+              fontWeight: '500',
+              boxShadow: !editingLocation?.name?.trim() ? 'none' : (isDarkMode 
+                ? '0 0 0 3px rgba(154,123,79,0.2)' 
+                : '0 0 0 3px rgba(200,157,94,0.2)')
+            },
             title: !editingLocation?.name?.trim() ? 'Nimi on pakollinen' : 'Tallenna paikka'
           }, 'Tallenna')
         )
@@ -10154,68 +10780,165 @@ VASTAA SUOMEKSI.`;
     // ChapterSheet Modal
     showChapterSheet && editingChapter && e('div', {
       className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
-      onClick: () => setShowChapterSheet(false)
+      onClick: () => setShowChapterSheet(false),
+      style: { animation: 'fadeIn 250ms ease-in-out' }
     },
       e('div', {
-        className: `w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
-          isDarkMode ? 'bg-gray-800' : 'bg-white'
+        className: `w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg ${
+          isDarkMode ? 'bg-[#1A1815]' : 'bg-[#F8F2E8]'
         }`,
-        onClick: (ev) => ev.stopPropagation()
+        onClick: (ev) => ev.stopPropagation(),
+        style: { 
+          boxShadow: isDarkMode 
+            ? 'inset 0 0 16px rgba(0,0,0,0.2), 0 0 40px rgba(0,0,0,0.5)' 
+            : 'inset 0 0 16px rgba(0,0,0,0.1), 0 0 40px rgba(0,0,0,0.2)' 
+        }
       },
-        e('div', { className: 'p-4 border-b flex items-center justify-between' },
-          e('h3', { className: 'text-lg font-bold' }, `Luku ${editingChapter?.chapter}`),
+        // Header
+        e('div', { 
+          className: `p-4 flex items-center justify-between ${
+            isDarkMode ? 'border-b border-[#715C38]' : 'border-b border-[#E6DED2]'
+          }`
+        },
+          e('h3', { 
+            className: 'text-lg font-bold',
+            style: { 
+              fontFamily: 'EB Garamond', 
+              color: isDarkMode ? '#E9E4DA' : '#2B241C' 
+            }
+          }, `Luku ${editingChapter?.chapter}`),
           e('button', {
             onClick: () => setShowChapterSheet(false),
-            className: 'p-2 rounded hover:bg-gray-700'
+            className: `p-2 rounded transition-all ${
+              isDarkMode ? 'hover:bg-[#715C38]' : 'hover:bg-[#E6DED2]'
+            }`,
+            style: { color: isDarkMode ? '#AFA699' : '#5E584D' }
           }, e(Icons.X))
         ),
+        
+        // Content
         e('div', { className: 'p-4 space-y-4' },
           e('div', null,
-            e('label', { className: 'text-xs block mb-1' }, 
+            e('label', { 
+              className: 'text-xs block mb-1',
+              style: { 
+                fontFamily: 'IBM Plex Mono', 
+                color: isDarkMode ? '#AFA699' : '#5E584D' 
+              }
+            }, 
               'Otsikko',
-              e('span', { className: 'text-red-500 ml-1' }, '*')
+              e('span', { 
+                className: 'ml-1',
+                style: { color: isDarkMode ? '#C89D5E' : '#715C38' }
+              }, '*')
             ),
-            e('input', {
-              value: editingChapter?.title || '',
-              onChange: (ev) => setEditingChapter({
-                ...editingChapter,
-                title: ev.target.value
+            
+            // Input + AI button container
+            e('div', { className: 'flex gap-2 items-start' },
+              e('input', {
+                value: editingChapter?.title || '',
+                onChange: (ev) => setEditingChapter({
+                  ...editingChapter,
+                  title: ev.target.value
+                }),
+                className: `flex-1 p-2 rounded border ${
+                  isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                } ${
+                  !editingChapter?.title?.trim() ? (isDarkMode ? 'border-[#9A7B4F]' : 'border-[#715C38]') : ''
+                }`,
+                style: { 
+                  fontFamily: 'IBM Plex Mono', 
+                  fontSize: '15px',
+                  color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                },
+                placeholder: 'Luvun otsikko (pakollinen)'
               }),
-              className: `w-full p-2 rounded border text-sm ${
-                isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-              } ${
-                !editingChapter?.title?.trim() ? 'border-red-500' : ''
-              }`,
-              placeholder: 'Luvun otsikko (pakollinen)'
-            }),
+              
+              // AI button
+              e('button', {
+                onClick: async () => {
+                  try {
+                    const prompt = `Ehdota kiinnostava ja osuvaotsikko luvulle ${editingChapter?.chapter} kirjasta. Anna vain otsikko, ei muuta tekstiä.`;
+                    const result = await window.electronAPI.generateWithAI({
+                      prompt,
+                      model: 'claude-3-5-sonnet-20241022'
+                    });
+                    setEditingChapter({
+                      ...editingChapter,
+                      title: result.trim()
+                    });
+                    console.log('✅ AI ehdotti otsikon:', result);
+                  } catch (error) {
+                    console.error('❌ AI-virhe:', error);
+                  }
+                },
+                className: `px-3 py-2 rounded text-xs transition-all ${
+                  isDarkMode 
+                    ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                    : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
+                }`,
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  fontWeight: '500'
+                },
+                title: 'Generoi otsikko AI:n avulla'
+              }, '🜓 AI')
+            ),
+            
             !editingChapter?.title?.trim() && e('p', {
-              className: 'text-xs text-red-500 mt-1'
+              className: 'text-xs mt-1',
+              style: { 
+                fontFamily: 'IBM Plex Mono',
+                color: isDarkMode ? '#C89D5E' : '#715C38' 
+              }
             }, 'Otsikko on pakollinen tieto')
           ),
+          
+          // Footer
           e('div', { className: 'flex gap-2 mt-4' },
             e('button', {
+              onClick: () => setShowChapterSheet(false),
+              className: `px-4 py-2 rounded text-sm transition-all ${
+                isDarkMode ? 'bg-[#715C38] hover:bg-[#8C806C]' : 'bg-[#E6DED2] hover:bg-[#867C6B]'
+              }`,
+              style: { 
+                fontFamily: 'IBM Plex Mono',
+                color: isDarkMode ? '#E9E4DA' : '#2B241C'
+              }
+            }, 'Peruuta'),
+            e('button', {
               onClick: () => {
-                // Validointi: Tarkista että otsikko ei ole tyhjä
                 if (!editingChapter?.title?.trim()) {
                   console.warn('⚠️ Validointivirhe: Otsikko on pakollinen');
                   return;
                 }
                 
-                setProject(prev => ({
-                  ...prev,
-                  chapters: prev.chapters.map(c =>
-                    c.chapter === editingChapter.chapter ? editingChapter : c
-                  )
-                }));
+                // Tallenna luvun tiedot items-puuhun
+                updateItem(editingChapter.id, {
+                  title: editingChapter.title,
+                  status: editingChapter.status,
+                  label: editingChapter.label,
+                  notes: editingChapter.notes
+                });
+                
                 setShowChapterSheet(false);
                 console.log('✅ Luku tallennettu:', editingChapter.title);
               },
               disabled: !editingChapter?.title?.trim(),
               className: `px-4 py-2 rounded text-sm transition-all ${
                 !editingChapter?.title?.trim()
-                  ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                  : 'bg-blue-500 text-white hover:bg-blue-600'
+                  ? 'bg-[#8C806C] text-[#AFA699] cursor-not-allowed'
+                  : isDarkMode 
+                    ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                    : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
               }`,
+              style: { 
+                fontFamily: 'IBM Plex Mono',
+                fontWeight: '500',
+                boxShadow: !editingChapter?.title?.trim() ? 'none' : (isDarkMode 
+                  ? '0 0 0 3px rgba(154,123,79,0.2)' 
+                  : '0 0 0 3px rgba(200,157,94,0.2)')
+              },
               title: !editingChapter?.title?.trim() ? 'Otsikko on pakollinen' : 'Tallenna luku'
             }, 'Tallenna')
           )
@@ -10226,20 +10949,39 @@ VASTAA SUOMEKSI.`;
     // ThreadSheet Modal
     showThreadSheet && editingThread && e('div', {
       className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
-      onClick: () => setShowThreadSheet(false)
+      onClick: () => setShowThreadSheet(false),
+      style: { animation: 'fadeIn 250ms ease-in-out' }
     },
       e('div', {
-        className: `w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
-          isDarkMode ? 'bg-gray-800' : 'bg-white'
+        className: `w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg ${
+          isDarkMode ? 'bg-[#1A1815]' : 'bg-[#F8F2E8]'
         }`,
-        onClick: (ev) => ev.stopPropagation()
+        onClick: (ev) => ev.stopPropagation(),
+        style: { 
+          boxShadow: isDarkMode 
+            ? 'inset 0 0 16px rgba(0,0,0,0.2), 0 0 40px rgba(0,0,0,0.5)' 
+            : 'inset 0 0 16px rgba(0,0,0,0.1), 0 0 40px rgba(0,0,0,0.2)' 
+        }
       },
         // Header
-        e('div', { className: 'p-4 border-b flex items-center justify-between' },
-          e('h3', { className: 'text-lg font-bold' }, 'Juonenlanka'),
+        e('div', { 
+          className: `p-4 flex items-center justify-between ${
+            isDarkMode ? 'border-b border-[#715C38]' : 'border-b border-[#E6DED2]'
+          }`
+        },
+          e('h3', { 
+            className: 'text-lg font-bold',
+            style: { 
+              fontFamily: 'EB Garamond', 
+              color: isDarkMode ? '#E9E4DA' : '#2B241C' 
+            }
+          }, 'Juonenlanka'),
           e('button', {
             onClick: () => setShowThreadSheet(false),
-            className: 'p-2 rounded hover:bg-gray-700'
+            className: `p-2 rounded transition-all ${
+              isDarkMode ? 'hover:bg-[#715C38]' : 'hover:bg-[#E6DED2]'
+            }`,
+            style: { color: isDarkMode ? '#AFA699' : '#5E584D' }
           }, e(Icons.X))
         ),
         
@@ -10247,14 +10989,31 @@ VASTAA SUOMEKSI.`;
         e('div', { className: 'p-4 space-y-4' },
           
           // PERUSTIEDOT
-          e('div', { className: 'border-b pb-4' },
-            e('h4', { className: 'font-bold mb-3 text-sm' }, 'PERUSTIEDOT'),
+          e('div', { 
+            className: `pb-4 ${isDarkMode ? 'border-b border-[#715C38]' : 'border-b border-[#E6DED2]'}`
+          },
+            e('h4', { 
+              className: 'font-bold mb-3 text-sm',
+              style: { 
+                fontFamily: 'EB Garamond',
+                color: isDarkMode ? '#E9E4DA' : '#2B241C'
+              }
+            }, 'PERUSTIEDOT'),
             
             // Nimi (pakollinen)
             e('div', { className: 'mb-3' },
-              e('label', { className: 'text-xs block mb-1' }, 
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 
                 'Nimi',
-                e('span', { className: 'text-red-500 ml-1' }, '*')
+                e('span', { 
+                  className: 'ml-1',
+                  style: { color: isDarkMode ? '#C89D5E' : '#715C38' }
+                }, '*')
               ),
               e('input', {
                 type: 'text',
@@ -10263,30 +11022,50 @@ VASTAA SUOMEKSI.`;
                   ...editingThread,
                   name: ev.target.value
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                className: `w-full p-2 rounded border ${
+                  isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
                 } ${
-                  !editingThread?.name?.trim() ? 'border-red-500' : ''
+                  !editingThread?.name?.trim() ? (isDarkMode ? 'border-[#9A7B4F]' : 'border-[#715C38]') : ''
                 }`,
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '15px',
+                  color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                },
                 placeholder: 'Juonenlangan nimi (pakollinen)'
               }),
               !editingThread?.name?.trim() && e('p', {
-                className: 'text-xs text-red-500 mt-1'
+                className: 'text-xs mt-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#C89D5E' : '#715C38'
+                }
               }, 'Nimi on pakollinen tieto')
             ),
             
             // Tyyppi
             e('div', { className: 'mb-3' },
-              e('label', { className: 'text-xs block mb-1' }, 'Tyyppi'),
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Tyyppi'),
               e('select', {
                 value: editingThread?.type || 'Sivujuoni',
                 onChange: (ev) => setEditingThread({
                   ...editingThread,
                   type: ev.target.value
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`
+                className: `w-full p-2 rounded border ${
+                  isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                }`,
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '15px',
+                  color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                }
               },
                 e('option', { value: 'Pääjuoni' }, 'Pääjuoni'),
                 e('option', { value: 'Sivujuoni' }, 'Sivujuoni'),
@@ -10295,40 +11074,100 @@ VASTAA SUOMEKSI.`;
               )
             ),
             
-            // Kuvaus
+            // Kuvaus + AI button
             e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Kuvaus'),
-              e('textarea', {
-                rows: 3,
-                value: editingThread?.description || '',
-                onChange: (ev) => setEditingThread({
-                  ...editingThread,
-                  description: ev.target.value
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Kuvaus'),
+              e('div', { className: 'flex gap-2' },
+                e('textarea', {
+                  rows: 3,
+                  value: editingThread?.description || '',
+                  onChange: (ev) => setEditingThread({
+                    ...editingThread,
+                    description: ev.target.value
+                  }),
+                  className: `flex-1 p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                  }`,
+                  style: { 
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
+                  placeholder: 'Mitä tämä juonenlanka käsittelee?'
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'Mitä tämä juonenlanka käsittelee?'
-              })
+                e('button', {
+                  onClick: async () => {
+                    try {
+                      const prompt = `Luo kiinnostava juonenkuvaus tyypille "${editingThread?.type || 'Sivujuoni'}" nimeltä "${editingThread?.name}". Anna vain kuvaus, 2-3 lausetta.`;
+                      const result = await window.electronAPI.generateWithAI({
+                        prompt,
+                        model: 'claude-3-5-sonnet-20241022'
+                      });
+                      setEditingThread({
+                        ...editingThread,
+                        description: result.trim()
+                      });
+                      console.log('✅ AI loi juonikuvauksen');
+                    } catch (error) {
+                      console.error('❌ AI-virhe:', error);
+                    }
+                  },
+                  className: `px-3 py-2 rounded text-xs transition-all self-start ${
+                    isDarkMode 
+                      ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                      : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
+                  }`,
+                  style: { 
+                    fontFamily: 'IBM Plex Mono',
+                    fontWeight: '500'
+                  },
+                  title: 'Generoi kuvaus AI:n avulla'
+                }, '🜓 AI')
+              )
             )
           ),
           
           // STATUS
-          e('div', { className: 'border-b pb-4' },
-            e('h4', { className: 'font-bold mb-3 text-sm' }, 'STATUS'),
+          e('div', { 
+            className: `pb-4 ${isDarkMode ? 'border-b border-[#715C38]' : 'border-b border-[#E6DED2]'}`
+          },
+            e('h4', { 
+              className: 'font-bold mb-3 text-sm',
+              style: { 
+                fontFamily: 'EB Garamond',
+                color: isDarkMode ? '#E9E4DA' : '#2B241C'
+              }
+            }, 'STATUS'),
             
             // Tila
             e('div', { className: 'mb-3' },
-              e('label', { className: 'text-xs block mb-1' }, 'Tila'),
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 'Tila'),
               e('select', {
                 value: editingThread?.status || 'Kehittyy',
                 onChange: (ev) => setEditingThread({
                   ...editingThread,
                   status: ev.target.value
                 }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`
+                className: `w-full p-2 rounded border ${
+                  isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
+                }`,
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '15px',
+                  color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                }
               },
                 e('option', { value: 'Avoin' }, 'Avoin - Ei vielä aloitettu'),
                 e('option', { value: 'Kehittyy' }, 'Kehittyy - Käynnissä'),
@@ -10336,9 +11175,15 @@ VASTAA SUOMEKSI.`;
               )
             ),
             
-            // Progress
+            // Progress (KULTAINEN!)
             e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 
+              e('label', { 
+                className: 'text-xs block mb-1',
+                style: { 
+                  fontFamily: 'IBM Plex Mono',
+                  color: isDarkMode ? '#AFA699' : '#5E584D'
+                }
+              }, 
                 `Eteneminen: ${editingThread?.progress || 0}%`
               ),
               e('input', {
@@ -10353,10 +11198,20 @@ VASTAA SUOMEKSI.`;
                 }),
                 className: 'w-full'
               }),
-              e('div', { className: 'w-full bg-gray-700 h-2 rounded mt-2' },
+              e('div', { 
+                className: 'w-full h-2 rounded mt-2',
+                style: { 
+                  backgroundColor: isDarkMode ? '#715C38' : '#E6DED2'
+                }
+              },
                 e('div', {
-                  className: 'bg-blue-500 h-2 rounded transition-all',
-                  style: { width: `${editingThread?.progress || 0}%` }
+                  className: 'h-2 rounded transition-all',
+                  style: { 
+                    width: `${editingThread?.progress || 0}%`,
+                    background: isDarkMode 
+                      ? 'linear-gradient(90deg, #9A7B4F 0%, #C89D5E 100%)'
+                      : 'linear-gradient(90deg, #C89D5E 0%, #9A7B4F 100%)'
+                  }
                 })
               )
             )
@@ -10364,12 +11219,24 @@ VASTAA SUOMEKSI.`;
           
           // TIMELINE
           e('div', null,
-            e('h4', { className: 'font-bold mb-3 text-sm' }, 'TIMELINE'),
+            e('h4', { 
+              className: 'font-bold mb-3 text-sm',
+              style: { 
+                fontFamily: 'EB Garamond',
+                color: isDarkMode ? '#E9E4DA' : '#2B241C'
+              }
+            }, 'TIMELINE'),
             
             e('div', { className: 'grid grid-cols-3 gap-3' },
               // Aloitusluku
               e('div', null,
-                e('label', { className: 'text-xs block mb-1' }, 'Aloitusluku'),
+                e('label', { 
+                  className: 'text-xs block mb-1',
+                  style: { 
+                    fontFamily: 'IBM Plex Mono',
+                    color: isDarkMode ? '#AFA699' : '#5E584D'
+                  }
+                }, 'Aloitusluku'),
                 e('input', {
                   type: 'number',
                   min: 0,
@@ -10381,16 +11248,27 @@ VASTAA SUOMEKSI.`;
                       start: parseInt(ev.target.value, 10) || 0
                     }
                   }),
-                  className: `w-full p-2 rounded border text-sm ${
-                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  className: `w-full p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
                   }`,
+                  style: { 
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
                   placeholder: '1'
                 })
               ),
               
               // Nykyinen vaihe
               e('div', null,
-                e('label', { className: 'text-xs block mb-1' }, 'Nykyinen'),
+                e('label', { 
+                  className: 'text-xs block mb-1',
+                  style: { 
+                    fontFamily: 'IBM Plex Mono',
+                    color: isDarkMode ? '#AFA699' : '#5E584D'
+                  }
+                }, 'Nykyinen'),
                 e('input', {
                   type: 'number',
                   min: 0,
@@ -10402,16 +11280,27 @@ VASTAA SUOMEKSI.`;
                       current: parseInt(ev.target.value, 10) || 0
                     }
                   }),
-                  className: `w-full p-2 rounded border text-sm ${
-                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  className: `w-full p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
                   }`,
+                  style: { 
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
                   placeholder: '5'
                 })
               ),
               
               // Arvioitu ratkaisu
               e('div', null,
-                e('label', { className: 'text-xs block mb-1' }, 'Ratkaisu'),
+                e('label', { 
+                  className: 'text-xs block mb-1',
+                  style: { 
+                    fontFamily: 'IBM Plex Mono',
+                    color: isDarkMode ? '#AFA699' : '#5E584D'
+                  }
+                }, 'Ratkaisu'),
                 e('input', {
                   type: 'number',
                   min: 0,
@@ -10423,9 +11312,14 @@ VASTAA SUOMEKSI.`;
                       end: parseInt(ev.target.value, 10) || 0
                     }
                   }),
-                  className: `w-full p-2 rounded border text-sm ${
-                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  className: `w-full p-2 rounded border ${
+                    isDarkMode ? 'bg-[#100F0D] border-[#715C38]' : 'bg-white border-[#E6DED2]'
                   }`,
+                  style: { 
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '15px',
+                    color: isDarkMode ? '#E9E4DA' : '#2B241C'
+                  },
                   placeholder: '10'
                 })
               )
@@ -10434,16 +11328,23 @@ VASTAA SUOMEKSI.`;
         ),
         
         // Footer
-        e('div', { className: 'p-4 border-t flex gap-2 justify-end' },
+        e('div', { 
+          className: `p-4 flex gap-2 justify-end ${
+            isDarkMode ? 'border-t border-[#715C38]' : 'border-t border-[#E6DED2]'
+          }`
+        },
           e('button', {
             onClick: () => setShowThreadSheet(false),
-            className: `px-4 py-2 rounded text-sm ${
-              isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
-            }`
+            className: `px-4 py-2 rounded text-sm transition-all ${
+              isDarkMode ? 'bg-[#715C38] hover:bg-[#8C806C]' : 'bg-[#E6DED2] hover:bg-[#867C6B]'
+            }`,
+            style: { 
+              fontFamily: 'IBM Plex Mono',
+              color: isDarkMode ? '#E9E4DA' : '#2B241C'
+            }
           }, 'Peruuta'),
           e('button', {
             onClick: () => {
-              // Validointi: Tarkista että nimi ei ole tyhjä
               if (!editingThread?.name?.trim()) {
                 console.warn('⚠️ Validointivirhe: Nimi on pakollinen');
                 return;
@@ -10451,9 +11352,12 @@ VASTAA SUOMEKSI.`;
               
               setProject(prev => ({
                 ...prev,
-                threads: prev.threads.map(t =>
-                  t.id === editingThread.id ? editingThread : t
-                )
+                story: {
+                  ...prev.story,
+                  threads: (prev.story.threads || []).map(t =>
+                    t.id === editingThread.id ? editingThread : t
+                  )
+                }
               }));
               setShowThreadSheet(false);
               console.log('✅ Juonenlanka tallennettu:', editingThread.name);
@@ -10461,9 +11365,18 @@ VASTAA SUOMEKSI.`;
             disabled: !editingThread?.name?.trim(),
             className: `px-4 py-2 rounded text-sm transition-all ${
               !editingThread?.name?.trim()
-                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                : 'bg-blue-500 text-white hover:bg-blue-600'
+                ? 'bg-[#8C806C] text-[#AFA699] cursor-not-allowed'
+                : isDarkMode 
+                  ? 'bg-[#9A7B4F] hover:bg-[#C89D5E] text-[#100F0D]' 
+                  : 'bg-[#C89D5E] hover:bg-[#9A7B4F] text-white'
             }`,
+            style: { 
+              fontFamily: 'IBM Plex Mono',
+              fontWeight: '500',
+              boxShadow: !editingThread?.name?.trim() ? 'none' : (isDarkMode 
+                ? '0 0 0 3px rgba(154,123,79,0.2)' 
+                : '0 0 0 3px rgba(200,157,94,0.2)')
+            },
             title: !editingThread?.name?.trim() ? 'Nimi on pakollinen' : 'Tallenna juonenlanka'
           }, 'Tallenna')
         )
