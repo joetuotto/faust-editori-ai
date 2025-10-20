@@ -131,4 +131,8 @@ const themes = {
 **Yhteensä korjattavaa**: ~2-3h työtä
 **Prioriteetti**: Dark/Light mode → Valikot → Export → AI
 
+- [x] Offline mode: Core editor works without net; AI graceful degradation with message.
+- [x] Local backups to userData/backup.json auto every 5 min.
+- [x] Bundled assets (fonts, React) for no CDN dependency.
+
 

@@ -2483,7 +2483,9 @@ const createFreshDailyStats = () => {
   return { date: today, words: 0, sessions: [] };
 };
 function FaustEditor() {
+  console.log('🎨 FaustEditor component rendering...');
   const [project, setProject] = useState(() => createDefaultProject());
+  console.log('📦 Project state initialized');
   const projectRef = useRef(project);
 
   useEffect(() => {
@@ -2586,6 +2588,17 @@ function FaustEditor() {
     const saved = localStorage.getItem(`dailyStats_${today}`);
     return saved ? JSON.parse(saved) : createFreshDailyStats();
   });
+
+  // Batch processing states
+  const [checkFirst, setCheckFirst] = useState(true);
+  const [autoFix, setAutoFix] = useState(true);
+  const [batchOperation, setBatchOperation] = useState('continuityCheck');
+  const [continuityStatus, setContinuityStatus] = useState(null);
+  const [batchProgress, setBatchProgress] = useState(null);
+  const [aiProgress, setAiProgress] = useState(null);
+  const [batchStartChapter, setBatchStartChapter] = useState(1);
+  const [batchEndChapter, setBatchEndChapter] = useState(1);
+  const [continuityMode, setContinuityMode] = useState('write');
 
   // Vaihe 3: Split View & Compose Mode
   const [composeMode, setComposeMode] = useState(false);
@@ -3147,6 +3160,71 @@ function FaustEditor() {
     [getChapterCount]
   );
 
+  const updateEditorContent = useCallback((newContent, selectionStart, selectionEnd, options = {}) => {
+    const targetItemId = options.itemId ?? activeItemIdRef.current;
+    if (!targetItemId || !updateItemRef.current) return;
+    const projectData = projectRef.current;
+    if (!projectData) return;
+    const targetItem = findItem(projectData.items, targetItemId);
+    if (!targetItem) return;
+    const previousContent = targetItem.content || '';
+    const shouldPushHistory = options.pushHistory !== false && previousContent !== newContent;
+
+    if (shouldPushHistory) {
+      undoStackRef.current.push({
+        itemId: targetItemId,
+        content: previousContent,
+        selectionStart: options.previousSelectionStart ?? editorRef.current?.selectionStart ?? 0,
+        selectionEnd: options.previousSelectionEnd ?? editorRef.current?.selectionEnd ?? 0
+      });
+      if (undoStackRef.current.length > HISTORY_LIMIT) {
+        undoStackRef.current.splice(0, undoStackRef.current.length - HISTORY_LIMIT);
+      }
+      redoStackRef.current.length = 0;
+    }
+
+    updateItemRef.current(targetItemId, { content: newContent });
+
+    const desiredStart = typeof selectionStart === 'number' ? selectionStart : null;
+    const desiredEnd = typeof selectionEnd === 'number'
+      ? selectionEnd
+      : (typeof selectionStart === 'number' ? selectionStart : null);
+
+    if (targetItemId !== activeItemIdRef.current) {
+      pendingSelectionRef.current = {
+        start: desiredStart,
+        end: desiredEnd
+      };
+      setActiveItemId(targetItemId);
+    } else if (editorRef.current) {
+      editorRef.current.value = newContent;
+      if (desiredStart !== null) {
+        requestAnimationFrame(() => {
+          editorRef.current?.focus();
+          editorRef.current?.setSelectionRange(
+            desiredStart,
+            desiredEnd ?? desiredStart
+          );
+        });
+      }
+    }
+  }, [setActiveItemId]);
+
+  useEffect(() => {
+    if (!pendingSelectionRef.current) return;
+    const pending = pendingSelectionRef.current;
+    pendingSelectionRef.current = null;
+    if (editorRef.current && pending.start !== null) {
+      requestAnimationFrame(() => {
+        editorRef.current?.focus();
+        editorRef.current?.setSelectionRange(
+          pending.start,
+          pending.end ?? pending.start
+        );
+      });
+    }
+  }, [activeItemId]);
+
   const insertAtCursor = useCallback((text) => {
     if (!text) return;
     const projectData = projectRef.current;
@@ -3355,81 +3433,6 @@ h1{font-size:28px;margin-bottom:20px;}p{margin-bottom:15px;text-align:justify;}<
   const redoStackRef = useRef([]);
   const pendingSelectionRef = useRef(null);
   const HISTORY_LIMIT = 200;
-
-  const [checkFirst, setCheckFirst] = useState(true);
-  const [autoFix, setAutoFix] = useState(true);
-  const [batchOperation, setBatchOperation] = useState('continuityCheck');
-  const [continuityStatus, setContinuityStatus] = useState(null);
-  const [batchProgress, setBatchProgress] = useState(null);
-  const [aiProgress, setAiProgress] = useState(null);
-  const [batchStartChapter, setBatchStartChapter] = useState(1);
-  const [batchEndChapter, setBatchEndChapter] = useState(1);
-  const [continuityMode, setContinuityMode] = useState('write');
-
-  const updateEditorContent = useCallback((newContent, selectionStart, selectionEnd, options = {}) => {
-    const targetItemId = options.itemId ?? activeItemIdRef.current;
-    if (!targetItemId || !updateItemRef.current) return;
-    const projectData = projectRef.current;
-    if (!projectData) return;
-    const targetItem = findItem(projectData.items, targetItemId);
-    if (!targetItem) return;
-    const previousContent = targetItem.content || '';
-    const shouldPushHistory = options.pushHistory !== false && previousContent !== newContent;
-
-    if (shouldPushHistory) {
-      undoStackRef.current.push({
-        itemId: targetItemId,
-        content: previousContent,
-        selectionStart: options.previousSelectionStart ?? editorRef.current?.selectionStart ?? 0,
-        selectionEnd: options.previousSelectionEnd ?? editorRef.current?.selectionEnd ?? 0
-      });
-      if (undoStackRef.current.length > HISTORY_LIMIT) {
-        undoStackRef.current.splice(0, undoStackRef.current.length - HISTORY_LIMIT);
-      }
-      redoStackRef.current.length = 0;
-    }
-
-    updateItemRef.current(targetItemId, { content: newContent });
-
-    const desiredStart = typeof selectionStart === 'number' ? selectionStart : null;
-    const desiredEnd = typeof selectionEnd === 'number'
-      ? selectionEnd
-      : (typeof selectionStart === 'number' ? selectionStart : null);
-
-    if (targetItemId !== activeItemIdRef.current) {
-      pendingSelectionRef.current = {
-        start: desiredStart,
-        end: desiredEnd
-      };
-      setActiveItemId(targetItemId);
-    } else if (editorRef.current) {
-      editorRef.current.value = newContent;
-      if (desiredStart !== null) {
-        requestAnimationFrame(() => {
-          editorRef.current?.focus();
-          editorRef.current?.setSelectionRange(
-            desiredStart,
-            desiredEnd ?? desiredStart
-          );
-        });
-      }
-    }
-  }, [setActiveItemId]);
-
-  useEffect(() => {
-    if (!pendingSelectionRef.current) return;
-    const pending = pendingSelectionRef.current;
-    pendingSelectionRef.current = null;
-    if (editorRef.current && pending.start !== null) {
-      requestAnimationFrame(() => {
-        editorRef.current?.focus();
-        editorRef.current?.setSelectionRange(
-          pending.start,
-          pending.end ?? pending.start
-        );
-      });
-    }
-  }, [activeItemId]);
 
   const performUndo = useCallback(() => {
     const undoStack = undoStackRef.current;
@@ -5816,7 +5819,16 @@ VASTAA SUOMEKSI.`;
     cmd.category.toLowerCase().includes(commandQuery.toLowerCase())
   );
 
-  return e(React.Fragment, null,
+  console.log('🎭 About to return JSX...');
+  console.log('📊 State:', { 
+    isDarkMode, 
+    showSidebar, 
+    showInspector, 
+    activeItemId,
+    projectItemsCount: project?.items?.length 
+  });
+  
+  const result = e(React.Fragment, null,
     // Inject FAUST styles
     e('style', { dangerouslySetInnerHTML: { __html: FAUST_STYLES } }),
     
@@ -5912,15 +5924,6 @@ VASTAA SUOMEKSI.`;
       )
     ),
     
-    // Main App
-    e('div', {
-      className: 'h-screen flex flex-col',
-      style: {
-        background: 'var(--faust-bg-primary)',
-        color: 'var(--faust-text-primary)'
-      },
-      'data-theme': isDarkMode ? 'dark' : 'light'
-    },
     // macOS Titlebar (uses native traffic lights)
     e('header', {
       className: 'fixed top-0 left-0 right-0 h-[52px] flex items-center justify-between z-50',
@@ -8877,7 +8880,6 @@ VASTAA SUOMEKSI.`;
             )
           )
         )
-      )
       ),
 
       // AI Assistant - Unified Panel with Tabs
@@ -9093,11 +9095,11 @@ VASTAA SUOMEKSI.`;
                       className: 'opacity-75 text-[10px]',
                       style: { color: 'var(--faust-text-tertiary)' }
                     }, technique.description)
-                  )
-                )
-              )
             )
-          ),
+          )
+        )
+      )
+    ),
 
           aiPanelTab === 'continuity' && e('div', { className: 'space-y-4' },
             e('div', {
@@ -9106,8 +9108,8 @@ VASTAA SUOMEKSI.`;
                 background: 'var(--faust-shadow)',
                 borderColor: 'var(--faust-border)'
               }
-            },
-              e('div', {
+  },
+    e('div', {
                 className: 'flex items-center justify-between mb-3'
               },
                 e('h3', {
@@ -9138,7 +9140,7 @@ VASTAA SUOMEKSI.`;
                   }, mode === 'write' ? 'Kirjoita' : mode === 'check' ? 'Tarkista' : 'Batch-prosessi')
                 )
               ),
-              e('div', {
+    e('div', {
                 className: 'grid grid-cols-2 gap-2 text-xs mb-3',
                 style: { color: 'var(--faust-text-secondary)' }
               },
@@ -9148,7 +9150,7 @@ VASTAA SUOMEKSI.`;
                 e('div', null, `Tulostetut tokenit: ${StoryContinuityTracker.costs.tokens.output}`),
                 e('div', { className: 'col-span-2 opacity-80' }, `Arvio koko romaanille: ${estimatedNovelCost.toFixed(2)} €`)
               ),
-              e('div', {
+            e('div', {
                 className: 'grid grid-cols-2 gap-2 text-xs mb-3',
                 style: { color: 'var(--faust-text-secondary)' }
               },
@@ -9158,7 +9160,7 @@ VASTAA SUOMEKSI.`;
                 e('div', null, `📝 Faktat: ${StoryContinuityTracker.storyMemory.establishedFacts.length}`)
               ),
               e('div', { className: 'flex gap-2' },
-                e('button', {
+        e('button', {
                   onClick: downloadMemory,
                   className: 'flex-1 px-3 py-2 rounded text-xs font-medium transition-all',
                   style: {
@@ -9167,7 +9169,7 @@ VASTAA SUOMEKSI.`;
                     border: '1px solid var(--faust-border)'
                   }
                 }, '💾 Vie muisti'),
-                e('button', {
+        e('button', {
                   onClick: async () => {
                     await StoryContinuityTracker.compressMemory();
                     setAiProgress({ stage: 'memory', message: 'Muisti tiivistetty' });
@@ -9183,7 +9185,7 @@ VASTAA SUOMEKSI.`;
             ),
 
             continuityMode === 'write' && e('div', { className: 'space-y-3' },
-              e('textarea', {
+            e('textarea', {
                 value: aiPrompt,
                 onChange: (ev) => setAiPrompt(ev.target.value),
                 placeholder: 'Kirjoita kohtauksen ohje tai jatko...',
@@ -9197,7 +9199,7 @@ VASTAA SUOMEKSI.`;
               }),
               e('div', { className: 'flex flex-col gap-2 text-xs', style: { color: 'var(--faust-text-secondary)' } },
                 e('label', { className: 'flex items-center gap-2' },
-                  e('input', {
+              e('input', {
                     type: 'checkbox',
                     checked: checkFirst,
                     onChange: (ev) => setCheckFirst(ev.target.checked)
@@ -9205,7 +9207,7 @@ VASTAA SUOMEKSI.`;
                   'Tarkista ennen kirjoittamista'
                 ),
                 e('label', { className: 'flex items-center gap-2' },
-                  e('input', {
+              e('input', {
                     type: 'checkbox',
                     checked: autoFix,
                     onChange: (ev) => setAutoFix(ev.target.checked)
@@ -9213,7 +9215,7 @@ VASTAA SUOMEKSI.`;
                   'Korjaa jatkuvuus automaattisesti'
                 )
               ),
-              e('button', {
+          e('button', {
                 onClick: async () => {
                   if (!aiPrompt.trim()) return;
                   setIsGenerating(true);
@@ -9272,7 +9274,7 @@ VASTAA SUOMEKSI.`;
                 className: 'space-y-2'
               },
                 continuityStatus.map((issue, idx) =>
-                  e('div', {
+      e('div', {
                     key: idx,
                     className: 'p-2 rounded border text-xs',
                     style: {
@@ -9299,7 +9301,7 @@ VASTAA SUOMEKSI.`;
               e('div', { className: 'flex flex-col gap-2 text-xs', style: { color: 'var(--faust-text-secondary)' } },
                 e('label', { className: 'flex flex-col gap-1' },
                   e('span', null, 'Toiminto'),
-                  e('select', {
+              e('select', {
                     value: batchOperation,
                     onChange: (ev) => setBatchOperation(ev.target.value),
                     className: 'w-full p-2 rounded border text-xs',
@@ -9316,8 +9318,8 @@ VASTAA SUOMEKSI.`;
                 ),
                 e('label', { className: 'flex items-center gap-2' },
                   e('span', null, 'Luvut:'),
-                  e('input', {
-                    type: 'number',
+              e('input', {
+                type: 'number',
                     min: 1,
                     value: batchStartChapter,
                     onChange: (ev) => setBatchStartChapter(Number(ev.target.value) || 1),
@@ -9329,8 +9331,8 @@ VASTAA SUOMEKSI.`;
                     }
                   }),
                   e('span', null, '→'),
-                  e('input', {
-                    type: 'number',
+              e('input', {
+                type: 'number',
                     min: 1,
                     value: batchEndChapter,
                     onChange: (ev) => setBatchEndChapter(Number(ev.target.value) || 1),
@@ -9343,7 +9345,7 @@ VASTAA SUOMEKSI.`;
                   })
                 )
               ),
-              e('button', {
+          e('button', {
                 onClick: startBatchProcess,
                 className: 'w-full px-4 py-2 rounded text-sm font-medium transition-all flex items-center justify-center gap-2',
                 style: {
@@ -9369,703 +9371,7 @@ VASTAA SUOMEKSI.`;
             )
           )
         )
-      )
-    ),
-
-    // Vaihe 5: CharacterSheet Modal
-  showCharacterSheet && editingCharacter && e('div', {
-    className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
-    onClick: () => setShowCharacterSheet(false)
-  },
-    e('div', {
-      className: `w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
-        isDarkMode ? 'bg-gray-800' : 'bg-white'
-      }`,
-      onClick: (ev) => ev.stopPropagation()
-    },
-      // Header
-      e('div', { className: 'p-4 border-b flex items-center justify-between sticky top-0 bg-inherit z-10' },
-        e('h3', { className: 'text-lg font-bold' }, `Hahmo: ${editingCharacter.name}`),
-        e('button', {
-          onClick: () => setShowCharacterSheet(false),
-          className: 'p-2 rounded hover:bg-gray-700'
-        }, e(Icons.X))
       ),
-
-      // Content
-      e('div', { className: 'p-4 space-y-6' },
-        // PERUSTIEDOT
-        e('div', null,
-          e('h4', { className: 'font-semibold mb-2 text-blue-500' }, '📋 Perustiedot'),
-          e('div', { className: 'grid grid-cols-2 gap-3' },
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Ikä'),
-              e('input', {
-                type: 'number',
-                value: editingCharacter.bio.age || '',
-                onChange: (ev) => setEditingCharacter({
-                  ...editingCharacter,
-                  bio: { ...editingCharacter.bio, age: parseInt(ev.target.value) }
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`
-              })
-            ),
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Ammatti'),
-              e('input', {
-                value: editingCharacter.bio.occupation || '',
-                onChange: (ev) => setEditingCharacter({
-                  ...editingCharacter,
-                  bio: { ...editingCharacter.bio, occupation: ev.target.value }
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'esim. toimittaja'
-              })
-            )
-          ),
-          e('div', { className: 'mt-3' },
-            e('label', { className: 'text-xs block mb-1' }, 'Ulkonäkö'),
-            e('textarea', {
-              value: editingCharacter.bio.appearance || '',
-              onChange: (ev) => setEditingCharacter({
-                ...editingCharacter,
-                bio: { ...editingCharacter.bio, appearance: ev.target.value }
-              }),
-              className: `w-full p-2 rounded border text-sm h-20 resize-none ${
-                isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-              }`,
-              placeholder: 'Pitkät mustat hiukset, vihreät silmät...'
-            })
-          )
-        ),
-
-        // PSYKOLOGIA
-        e('div', null,
-          e('h4', { className: 'font-semibold mb-2 text-purple-500' }, '🧠 Psykologia'),
-          e('div', { className: 'space-y-3' },
-            ['want', 'fear', 'weakness'].map(field =>
-              e('div', { key: field },
-                e('label', { className: 'text-xs block mb-1' },
-                  field === 'want' ? 'Mitä haluaa' :
-                  field === 'fear' ? 'Mitä pelkää' :
-                  'Heikkous'
-                ),
-                e('input', {
-                  value: editingCharacter.psychology[field] || '',
-                  onChange: (ev) => setEditingCharacter({
-                    ...editingCharacter,
-                    psychology: { ...editingCharacter.psychology, [field]: ev.target.value }
-                  }),
-                  className: `w-full p-2 rounded border text-sm ${
-                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                  }`,
-                  placeholder:
-                    field === 'want' ? 'esim. totuus, rakkaus, vapaus' :
-                    field === 'fear' ? 'esim. hylätyksi tuleminen, epäonnistuminen' :
-                    'esim. ylianalysoi, impulsiivinen'
-                })
-              )
-            )
-          )
-        ),
-
-        // ÄÄNI JA PUHETYYLI
-        e('div', null,
-          e('h4', { className: 'font-semibold mb-2 text-green-500' }, '🗣️ Ääni ja puhetyyli'),
-          e('div', null,
-            e('label', { className: 'text-xs block mb-1' }, 'Miten hahmo puhuu'),
-            e('textarea', {
-              value: editingCharacter.voice.description || '',
-              onChange: (ev) => setEditingCharacter({
-                ...editingCharacter,
-                voice: { ...editingCharacter.voice, description: ev.target.value }
-              }),
-              className: `w-full p-2 rounded border text-sm h-20 resize-none ${
-                isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-              }`,
-              placeholder: 'Lyhyet lauseet, suorat kysymykset, ei runoile...'
-            })
-          ),
-          e('div', { className: 'mt-3' },
-            e('label', { className: 'text-xs block mb-1' },
-              'Tyypilliset fraasit (pilkulla eroteltu)'),
-            e('input', {
-              value: (editingCharacter.voice.lexicon || []).join(', '),
-              onChange: (ev) => setEditingCharacter({
-                ...editingCharacter,
-                voice: {
-                  ...editingCharacter.voice,
-                  lexicon: ev.target.value.split(',').map(s => s.trim()).filter(Boolean)
-                }
-              }),
-              className: `w-full p-2 rounded border text-sm ${
-                isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-              }`,
-              placeholder: 'kuule nyt, hitto vie, ajattelen että...'
-            })
-          )
-        ),
-
-        // TILA JA RESURSSIT
-        e('div', null,
-          e('h4', { className: 'font-semibold mb-2 text-orange-500' }, '🎒 Tila ja resurssit'),
-          e('div', { className: 'space-y-3' },
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Loukkaantumiset / Vammat'),
-              e('input', {
-                value: (editingCharacter.state.injuries || []).join(', '),
-                onChange: (ev) => setEditingCharacter({
-                  ...editingCharacter,
-                  state: {
-                    ...editingCharacter.state,
-                    injuries: ev.target.value.split(',').map(s => s.trim()).filter(Boolean)
-                  }
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'mustelma oikea kyynärpää, murtanut luuja...'
-              })
-            ),
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Esineet / Taidot'),
-              e('input', {
-                value: (editingCharacter.state.resources || []).join(', '),
-                onChange: (ev) => setEditingCharacter({
-                  ...editingCharacter,
-                  state: {
-                    ...editingCharacter.state,
-                    resources: ev.target.value.split(',').map(s => s.trim()).filter(Boolean)
-                  }
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'salaoviavain, hakkerointi, ase...'
-              })
-            ),
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Nykyinen mieliala'),
-              e('input', {
-                value: editingCharacter.state.mood || '',
-                onChange: (ev) => setEditingCharacter({
-                  ...editingCharacter,
-                  state: { ...editingCharacter.state, mood: ev.target.value }
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'epäluuloinen, innokas, väsynyt...'
-              })
-            )
-          )
-        ),
-
-        // SUHTEET
-        e('div', null,
-          e('h4', { className: 'font-semibold mb-2 text-pink-500' }, '💕 Suhteet'),
-          e('div', { className: 'text-xs opacity-75 mb-2' },
-            'Lisää hahmon suhteet toisiin hahmoihin'),
-          // TODO: Suhteet-UI (yksinkertainen versio)
-          e('div', { className: 'text-xs opacity-50' },
-            '(Tulossa: suhdekartta ja luottamusindeksit)')
-        ),
-
-        // MUISTIINPANOT
-        e('div', null,
-          e('h4', { className: 'font-semibold mb-2' }, '📝 Muistiinpanot'),
-          e('textarea', {
-            value: editingCharacter.notes || '',
-            onChange: (ev) => setEditingCharacter({
-              ...editingCharacter,
-              notes: ev.target.value
-            }),
-            className: `w-full p-2 rounded border text-sm h-32 resize-none ${
-              isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-            }`,
-            placeholder: 'Vapaita muistiinpanoja hahmosta...'
-          })
-        )
-      ),
-
-      // Footer
-      e('div', { className: 'p-4 border-t flex justify-end gap-2 sticky bottom-0 bg-inherit' },
-        e('button', {
-          onClick: () => setShowCharacterSheet(false),
-          className: 'px-4 py-2 rounded text-sm hover:bg-gray-700'
-        }, 'Peruuta'),
-        e('button', {
-          onClick: () => {
-            // Tallenna muutokset
-            setProject({
-              ...project,
-              characters: project.characters.map(c =>
-                c.id === editingCharacter.id ? editingCharacter : c
-              )
-            });
-            setShowCharacterSheet(false);
-          },
-          className: 'px-4 py-2 rounded text-sm bg-blue-500 text-white hover:bg-blue-600'
-        }, 'Tallenna')
-    )
-  ),
-  
-  // LocationSheet Modal
-  showLocationSheet && editingLocation && e('div', {
-    className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
-    onClick: () => setShowLocationSheet(false)
-  },
-    e('div', {
-      className: `w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
-        isDarkMode ? 'bg-gray-800' : 'bg-white'
-      }`,
-      onClick: (ev) => ev.stopPropagation()
-    },
-      // Header
-      e('div', { className: 'p-4 border-b flex items-center justify-between sticky top-0 bg-inherit z-10' },
-        e('h3', { className: 'text-lg font-bold' }, `Paikka: ${editingLocation?.name}`),
-        e('button', {
-          onClick: () => setShowLocationSheet(false),
-          className: 'p-2 rounded hover:bg-gray-700'
-        }, e(Icons.X))
-      ),
-
-      // Content
-      e('div', { className: 'p-4 space-y-4' },
-        // Perustiedot
-        e('div', null,
-          e('h4', { className: 'font-semibold mb-2 text-blue-500 text-sm' }, '📍 Perustiedot'),
-          e('div', { className: 'grid grid-cols-2 gap-3' },
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Nimi'),
-              e('input', {
-                value: editingLocation?.name || '',
-                onChange: (ev) => setEditingLocation({
-                  ...editingLocation,
-                  name: ev.target.value
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`
-              })
-            ),
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Tyyppi'),
-              e('select', {
-                value: editingLocation?.type || 'landmark',
-                onChange: (ev) => setEditingLocation({
-                  ...editingLocation,
-                  type: ev.target.value
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`
-              }, LOCATION_TYPES.map(t => e('option', { key: t.id, value: t.id }, `${t.icon} ${t.name}`)))
-            ),
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Kaupunki'),
-              e('input', {
-                value: editingLocation?.city || '',
-                onChange: (ev) => setEditingLocation({
-                  ...editingLocation,
-                  city: ev.target.value
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`
-              })
-            ),
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Maa'),
-              e('input', {
-                value: editingLocation?.country || '',
-                onChange: (ev) => setEditingLocation({
-                  ...editingLocation,
-                  country: ev.target.value
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`
-              })
-            )
-          )
-        ),
-
-        // Muistiinpanot
-        e('div', null,
-          e('h4', { className: 'font-semibold mb-2 text-sm' }, '📝 Muistiinpanot'),
-          e('textarea', {
-            value: editingLocation?.notes || '',
-            onChange: (ev) => setEditingLocation({
-              ...editingLocation,
-              notes: ev.target.value
-            }),
-            className: `w-full p-2 rounded border text-sm h-24 resize-none ${
-              isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-            }`,
-            placeholder: 'Vapaat muistiinpanot paikasta...'
-          })
-        ),
-
-        // Genre-kuvaukset (read-only näyttö)
-        Object.keys(editingLocation?.genre_descriptions || {}).length > 0 && e('div', null,
-          e('h4', { className: 'font-semibold mb-2 text-purple-500 text-sm' }, '✍️ Tallennetut kuvaukset'),
-          Object.entries(editingLocation?.genre_descriptions).map(([genre, description]) =>
-            e('div', {
-              key: genre,
-              className: `p-3 rounded border mb-2 ${
-                isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-200'
-              }`
-            },
-              e('div', { className: 'text-xs font-medium mb-1 opacity-75' },
-                GENRE_OPTIONS.find(g => g.id === genre)?.name || genre
-              ),
-              e('div', { className: 'text-xs whitespace-pre-wrap' }, description)
-            )
-          )
-        )
-      ),
-
-      // Footer
-      e('div', { className: 'p-4 border-t flex justify-end gap-2 sticky bottom-0 bg-inherit' },
-        e('button', {
-          onClick: () => setShowLocationSheet(false),
-          className: 'px-4 py-2 rounded text-sm hover:bg-gray-700'
-        }, 'Peruuta'),
-        e('button', {
-          onClick: () => {
-            setProject({
-              ...project,
-              locations: project.locations.map(loc =>
-                loc.id === editingLocation.id ? editingLocation : loc
-              )
-            });
-            setShowLocationSheet(false);
-          },
-          className: 'px-4 py-2 rounded text-sm bg-blue-500 text-white hover:bg-blue-600'
-        }, 'Tallenna')
-      )
-    ),
-
-    // ChapterSheet Modal (StoryKeeper)
-    showChapterSheet && editingChapter && e('div', {
-      className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
-      onClick: () => setShowChapterSheet(false)
-    },
-      e('div', {
-        className: `w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
-          isDarkMode ? 'bg-gray-800' : 'bg-white'
-        }`,
-        onClick: (ev) => ev.stopPropagation()
-      },
-        // Header
-        e('div', { className: 'p-4 border-b flex items-center justify-between sticky top-0 bg-inherit z-10' },
-          e('h3', { className: 'text-lg font-bold' }, `Luku ${editingChapter?.chapter}`),
-          e('button', {
-            onClick: () => setShowChapterSheet(false),
-            className: 'p-2 rounded hover:bg-gray-700'
-          }, e(Icons.X))
-        ),
-
-        // Content
-        e('div', { className: 'p-4 space-y-4' },
-          // Otsikko
-          e('div', null,
-            e('label', { className: 'text-xs block mb-1' }, 'Otsikko'),
-            e('input', {
-              value: editingChapter?.title || '',
-              onChange: (ev) => setEditingChapter({
-                ...editingChapter,
-                title: ev.target.value
-              }),
-              className: `w-full p-2 rounded border text-sm ${
-                isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-              }`,
-              placeholder: 'Luvun otsikko'
-            })
-          ),
-
-          // Yhteenveto
-          e('div', null,
-            e('label', { className: 'text-xs block mb-1' }, 'Yhteenveto'),
-            e('textarea', {
-              value: editingChapter?.summary || '',
-              onChange: (ev) => setEditingChapter({
-                ...editingChapter,
-                summary: ev.target.value
-              }),
-              className: `w-full p-2 rounded border text-sm h-24 resize-none ${
-                isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-              }`,
-              placeholder: 'Lyhyt yhteenveto luvusta...'
-            })
-          ),
-
-          // Tila
-          e('div', null,
-            e('label', { className: 'text-xs block mb-1' }, 'Tila'),
-            e('select', {
-              value: editingChapter?.status || 'not_started',
-              onChange: (ev) => setEditingChapter({
-                ...editingChapter,
-                status: ev.target.value
-              }),
-              className: `w-full p-2 rounded border text-sm ${
-                isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-              }`
-            },
-              e('option', { value: 'not_started' }, 'Ei aloitettu'),
-              e('option', { value: 'in_progress' }, 'Kirjoitetaan'),
-              e('option', { value: 'completed' }, 'Valmis')
-            )
-          ),
-
-          // Aika tarinassa
-          e('div', { className: 'grid grid-cols-2 gap-3' },
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Aika tarinassa'),
-              e('input', {
-                value: editingChapter?.story_time || '',
-                onChange: (ev) => setEditingChapter({
-                  ...editingChapter,
-                  story_time: ev.target.value
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'esim. Maanantai 9:00'
-              })
-            ),
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Kesto'),
-              e('input', {
-                value: editingChapter?.duration || '',
-                onChange: (ev) => setEditingChapter({
-                  ...editingChapter,
-                  duration: ev.target.value
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'esim. 2h'
-              })
-            )
-          ),
-
-          // POV ja paikka
-          e('div', { className: 'grid grid-cols-2 gap-3' },
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'POV (näkökulma)'),
-              e('input', {
-                value: editingChapter?.pov || '',
-                onChange: (ev) => setEditingChapter({
-                  ...editingChapter,
-                  pov: ev.target.value
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'esim. Aava'
-              })
-            ),
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Paikka'),
-              e('input', {
-                value: editingChapter?.location || '',
-                onChange: (ev) => setEditingChapter({
-                  ...editingChapter,
-                  location: ev.target.value
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'esim. Kampin aukio'
-              })
-            )
-          )
-        ),
-
-        // Footer
-        e('div', { className: 'p-4 border-t flex justify-end gap-2 sticky bottom-0 bg-inherit' },
-          e('button', {
-            onClick: () => setShowChapterSheet(false),
-            className: 'px-4 py-2 rounded text-sm hover:bg-gray-700'
-          }, 'Peruuta'),
-          e('button', {
-            onClick: () => {
-              setProject({
-                ...project,
-                story: {
-                  ...project.story,
-                  outline: project.story.outline.map(ch =>
-                    ch.chapter === editingChapter.chapter ? editingChapter : ch
-                  )
-                }
-              });
-              setShowChapterSheet(false);
-            },
-            className: 'px-4 py-2 rounded text-sm bg-blue-500 text-white hover:bg-blue-600'
-          }, 'Tallenna')
-        )
-      )
-    ),
-
-    // ThreadSheet Modal (StoryKeeper)
-    showThreadSheet && editingThread && e('div', {
-      className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
-      onClick: () => setShowThreadSheet(false)
-    },
-      e('div', {
-        className: `w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
-          isDarkMode ? 'bg-gray-800' : 'bg-white'
-        }`,
-        onClick: (ev) => ev.stopPropagation()
-      },
-        // Header
-        e('div', { className: 'p-4 border-b flex items-center justify-between sticky top-0 bg-inherit z-10' },
-          e('h3', { className: 'text-lg font-bold' }, 'Juonilanka'),
-          e('button', {
-            onClick: () => setShowThreadSheet(false),
-            className: 'p-2 rounded hover:bg-gray-700'
-          }, e(Icons.X))
-        ),
-
-        // Content
-        e('div', { className: 'p-4 space-y-4' },
-          // Nimi
-          e('div', null,
-            e('label', { className: 'text-xs block mb-1' }, 'Nimi'),
-            e('input', {
-              value: editingThread?.name || '',
-              onChange: (ev) => setEditingThread({
-                ...editingThread,
-                name: ev.target.value
-              }),
-              className: `w-full p-2 rounded border text-sm ${
-                isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-              }`,
-              placeholder: 'Juonilangan nimi'
-            })
-          ),
-
-          // Kuvaus
-          e('div', null,
-            e('label', { className: 'text-xs block mb-1' }, 'Kuvaus'),
-            e('textarea', {
-              value: editingThread?.description || '',
-              onChange: (ev) => setEditingThread({
-                ...editingThread,
-                description: ev.target.value
-              }),
-              className: `w-full p-2 rounded border text-sm h-24 resize-none ${
-                isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-              }`,
-              placeholder: 'Juonilangan kuvaus...'
-            })
-          ),
-
-          // Tärkeys ja tila
-          e('div', { className: 'grid grid-cols-2 gap-3' },
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Tärkeys'),
-              e('select', {
-                value: editingThread?.importance || 'minor',
-                onChange: (ev) => setEditingThread({
-                  ...editingThread,
-                  importance: ev.target.value
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`
-              },
-                e('option', { value: 'major' }, '🔴 Major (Pääjuoni)'),
-                e('option', { value: 'minor' }, '🟡 Minor (Sivujuoni)'),
-                e('option', { value: 'subplot' }, '⚪ Subplot (Alajuoni)')
-              )
-            ),
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Tila'),
-              e('select', {
-                value: editingThread?.status || 'open',
-                onChange: (ev) => setEditingThread({
-                  ...editingThread,
-                  status: ev.target.value
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`
-              },
-                e('option', { value: 'open' }, 'Auki'),
-                e('option', { value: 'closed' }, 'Suljettu'),
-                e('option', { value: 'abandoned' }, 'Hylätty')
-              )
-            )
-          ),
-
-          // Luvut
-          e('div', { className: 'grid grid-cols-2 gap-3' },
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Avattu luku'),
-              e('input', {
-                type: 'number',
-                value: editingThread?.opened_chapter || '',
-                onChange: (ev) => setEditingThread({
-                  ...editingThread,
-                  opened_chapter: parseInt(ev.target.value) || null
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'esim. 1'
-              })
-            ),
-            e('div', null,
-              e('label', { className: 'text-xs block mb-1' }, 'Suljettu luku'),
-              e('input', {
-                type: 'number',
-                value: editingThread?.closed_chapter || '',
-                onChange: (ev) => setEditingThread({
-                  ...editingThread,
-                  closed_chapter: parseInt(ev.target.value) || null
-                }),
-                className: `w-full p-2 rounded border text-sm ${
-                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
-                }`,
-                placeholder: 'esim. 12',
-                disabled: editingThread?.status !== 'closed'
-              })
-            )
-          )
-        ),
-
-        // Footer
-        e('div', { className: 'p-4 border-t flex justify-end gap-2 sticky bottom-0 bg-inherit' },
-          e('button', {
-            onClick: () => setShowThreadSheet(false),
-            className: 'px-4 py-2 rounded text-sm hover:bg-gray-700'
-          }, 'Peruuta'),
-          e('button', {
-            onClick: () => {
-              setProject({
-                ...project,
-                story: {
-                  ...project.story,
-                  threads: project.story.threads.map(t =>
-                    t.id === editingThread.id ? editingThread : t
-                  )
-                }
-              });
-              setShowThreadSheet(false);
-            },
-            className: 'px-4 py-2 rounded text-sm bg-blue-500 text-white hover:bg-blue-600'
-          }, 'Tallenna')
-        )
-      )
-    ),
     
     // ========== NORMAN-KRUG-NATSUME: UI Components ==========
     
@@ -10105,10 +9411,141 @@ VASTAA SUOMEKSI.`;
       active: aiTransparency.active,
       thinking: aiTransparency.thinking || isGenerating,
       suggestionCount: aiSuggestions.length
-    })
+    }), // Last NORMAN component
     
-  ) // Close all children
-  ); // Close React.Fragment and return statement
+    // ========== MODALS ==========
+    
+    // CharacterSheet Modal
+    showCharacterSheet && editingCharacter && e('div', {
+      className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
+      onClick: () => setShowCharacterSheet(false)
+    },
+      e('div', {
+        className: `w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
+          isDarkMode ? 'bg-gray-800' : 'bg-white'
+        }`,
+        onClick: (ev) => ev.stopPropagation()
+      },
+        e('div', { className: 'p-4 border-b flex items-center justify-between' },
+          e('h3', { className: 'text-lg font-bold' }, `Hahmo: ${editingCharacter.name}`),
+          e('button', {
+            onClick: () => setShowCharacterSheet(false),
+            className: 'p-2 rounded hover:bg-gray-700'
+          }, e(Icons.X))
+        ),
+        e('div', { className: 'p-4' },
+          e('p', null, 'Hahmon muokkaus tulossa...')
+        )
+      )
+    ),
+    
+    // LocationSheet Modal
+    showLocationSheet && editingLocation && e('div', {
+      className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
+      onClick: () => setShowLocationSheet(false)
+    },
+      e('div', {
+        className: `w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
+          isDarkMode ? 'bg-gray-800' : 'bg-white'
+        }`,
+        onClick: (ev) => ev.stopPropagation()
+      },
+        e('div', { className: 'p-4 border-b flex items-center justify-between' },
+          e('h3', { className: 'text-lg font-bold' }, `Paikka: ${editingLocation.name}`),
+          e('button', {
+            onClick: () => setShowLocationSheet(false),
+            className: 'p-2 rounded hover:bg-gray-700'
+          }, e(Icons.X))
+        ),
+        e('div', { className: 'p-4' },
+          e('p', null, 'Paikan muokkaus tulossa...')
+        )
+      )
+    ),
+    
+    // ChapterSheet Modal
+    showChapterSheet && editingChapter && e('div', {
+      className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
+      onClick: () => setShowChapterSheet(false)
+    },
+      e('div', {
+        className: `w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
+          isDarkMode ? 'bg-gray-800' : 'bg-white'
+        }`,
+        onClick: (ev) => ev.stopPropagation()
+      },
+        e('div', { className: 'p-4 border-b flex items-center justify-between' },
+          e('h3', { className: 'text-lg font-bold' }, `Luku ${editingChapter?.chapter}`),
+          e('button', {
+            onClick: () => setShowChapterSheet(false),
+            className: 'p-2 rounded hover:bg-gray-700'
+          }, e(Icons.X))
+        ),
+        e('div', { className: 'p-4 space-y-4' },
+          e('div', null,
+            e('label', { className: 'text-xs block mb-1' }, 'Otsikko'),
+            e('input', {
+              value: editingChapter?.title || '',
+              onChange: (ev) => setEditingChapter({
+                ...editingChapter,
+                title: ev.target.value
+              }),
+              className: `w-full p-2 rounded border text-sm ${
+                isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+              }`,
+              placeholder: 'Luvun otsikko'
+            })
+          ),
+          e('div', { className: 'flex gap-2 mt-4' },
+            e('button', {
+              onClick: () => {
+                setProject(prev => ({
+                  ...prev,
+                  chapters: prev.chapters.map(c =>
+                    c.chapter === editingChapter.chapter ? editingChapter : c
+                  )
+                }));
+                setShowChapterSheet(false);
+              },
+              className: 'px-4 py-2 rounded text-sm bg-blue-500 text-white hover:bg-blue-600'
+            }, 'Tallenna')
+          )
+        )
+      )
+    ),
+    
+    // ThreadSheet Modal
+    showThreadSheet && editingThread && e('div', {
+      className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
+      onClick: () => setShowThreadSheet(false)
+    },
+      e('div', {
+        className: `w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg shadow-xl ${
+          isDarkMode ? 'bg-gray-800' : 'bg-white'
+        }`,
+        onClick: (ev) => ev.stopPropagation()
+      },
+        e('div', { className: 'p-4 border-b flex items-center justify-between' },
+          e('h3', { className: 'text-lg font-bold' }, `Juonenlanka: ${editingThread?.name}`),
+          e('button', {
+            onClick: () => setShowThreadSheet(false),
+            className: 'p-2 rounded hover:bg-gray-700'
+          }, e(Icons.X))
+        ),
+        e('div', { className: 'p-4' },
+          e('p', null, 'Juonenlangan muokkaus tulossa...')
+        )
+      )
+    )
+    
+  ); // Close React.Fragment
+  
+  console.log('✅ JSX created:', result);
+  console.log('   Type:', typeof result);
+  console.log('   Is null?', result === null);
+  console.log('   Is undefined?', result === undefined);
+  
+  return result;
 }
 // Error boundary for debugging
 class ErrorBoundary extends React.Component {
@@ -10144,5 +9581,36 @@ class ErrorBoundary extends React.Component {
   }
 }
 
+console.log('🚀 Starting FAUST...');
+console.log('React:', typeof React);
+console.log('ReactDOM:', typeof ReactDOM);
+console.log('Root element:', document.getElementById('root'));
+
+try {
 const root = ReactDOM.createRoot(document.getElementById('root'));
+  console.log('✅ Root created');
+  
+  // Now test FaustEditor with error handling
 root.render(React.createElement(ErrorBoundary, null, e(FaustEditor)));
+  console.log('✅ FaustEditor render called');
+  
+  // Check DOM after render
+  setTimeout(() => {
+    const rootEl = document.getElementById('root');
+    console.log('🔍 DOM after render:');
+    console.log('  Children count:', rootEl?.childNodes?.length || 0);
+    console.log('  First child:', rootEl?.firstChild);
+    console.log('  innerHTML length:', rootEl?.innerHTML?.length || 0);
+    if (rootEl?.innerHTML?.length < 100) {
+      console.error('⚠️ WARNING: Very little content in DOM!');
+      console.log('  Full innerHTML:', rootEl?.innerHTML);
+    }
+  }, 1000);
+} catch (error) {
+  console.error('❌ Fatal error:', error);
+  document.body.innerHTML = `<div style="color: white; padding: 20px; font-family: monospace;">
+    <h1>❌ Fatal Error</h1>
+    <pre>${error.toString()}</pre>
+    <pre>${error.stack}</pre>
+  </div>`;
+}

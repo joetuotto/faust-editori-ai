@@ -197,3 +197,4 @@ Jos et löydä virhettä:
 3. Jaa `changes.patch` tiedosto
 4. Dokumentoi tarkat askeleet jotka johtivat virheeseen
 
+

@@ -11,6 +11,22 @@ const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
+// Global config
+let apiConfig = {};
+
+// Config path
+const configPath = path.join(app.getPath('userData'), 'config.json');
+
+async function loadApiConfig() {
+  try {
+    const data = await fs.readFile(configPath, 'utf-8');
+    const config = JSON.parse(data);
+    apiConfig = config.apiKeys || {};
+  } catch (error) {
+    apiConfig = {};
+  }
+}
+
 let mainWindow;
 
 function createWindow() {
@@ -29,7 +45,7 @@ function createWindow() {
     backgroundColor: '#1f2937'
   });
 
-  mainWindow.loadFile('index.html');
+  mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
   
   // Luo valikko
   createMenu();
@@ -397,7 +413,8 @@ async function loadProject() {
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await loadApiConfig();
   createWindow();
 
   app.on('activate', () => {
@@ -470,17 +487,20 @@ ipcMain.handle('export-document', async (event, { content, title, format }) => {
 
     if (!filePath) return { success: false };
 
-    let fileContent = content;
+    if (format === 'docx') {
+      const buffer = await convertToDocx(content, title);
+      await fs.writeFile(filePath, buffer);
+    } else {
+      let fileContent = content;
 
-    if (format === 'rtf') {
-      fileContent = convertToRTF(content);
-    } else if (format === 'html') {
-      fileContent = convertToHTML(content, title);
-    } else if (format === 'docx') {
-      fileContent = convertToDocx(content, title);
+      if (format === 'rtf') {
+        fileContent = convertToRTF(content);
+      } else if (format === 'html') {
+        fileContent = convertToHTML(content, title);
+      }
+
+      await fs.writeFile(filePath, fileContent, 'utf-8');
     }
-
-    await fs.writeFile(filePath, fileContent, 'utf-8');
     return { success: true, path: filePath };
   } catch (error) {
     return { success: false, error: error.message };
@@ -608,15 +628,49 @@ ipcMain.handle('web-search', async (event, query) => {
   }
 });
 
+// Load API Keys
+ipcMain.handle('load-api-keys', async () => {
+  return apiConfig;
+});
+
+// Save API Keys
+ipcMain.handle('save-api-keys', async (event, keys) => {
+  try {
+    const config = { apiKeys: keys };
+    await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    await loadApiConfig(); // Reload
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// After save-api-keys
+ipcMain.handle('save-backup', async (event, project) => {
+  const backupPath = path.join(app.getPath('userData'), 'backup.json');
+  await fs.writeFile(backupPath, JSON.stringify(project, null, 2), 'utf-8');
+  return { success: true };
+});
+
+ipcMain.handle('load-backup', async () => {
+  try {
+    const backupPath = path.join(app.getPath('userData'), 'backup.json');
+    const data = await fs.readFile(backupPath, 'utf-8');
+    return { success: true, data: JSON.parse(data) };
+  } catch (error) {
+    return { success: false };
+  }
+});
+
 // Claude API (Anthropic SDK - REAL IMPLEMENTATION)
 ipcMain.handle('claude-api', async (event, prompt) => {
   try {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    let apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
     
     if (!apiKey) {
       return {
         success: false,
-        error: 'ANTHROPIC_API_KEY puuttuu. Luo .env tiedosto ja lisää avain. Katso API_KEYS.md'
+        error: 'ANTHROPIC_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.'
       };
     }
 
@@ -642,7 +696,7 @@ ipcMain.handle('claude-api', async (event, prompt) => {
 // Grok API (xAI)
 ipcMain.handle('grok-api', async (event, prompt) => {
   try {
-    const apiKey = process.env.GROK_API_KEY || 'your-grok-api-key-here';
+    let apiKey = process.env.GROK_API_KEY || apiConfig.GROK_API_KEY || 'your-grok-api-key-here';
 
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
       method: "POST",
@@ -672,12 +726,12 @@ ipcMain.handle('grok-api', async (event, prompt) => {
 // OpenAI API (SDK - REAL IMPLEMENTATION)
 ipcMain.handle('openai-api', async (event, prompt) => {
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
+    let apiKey = process.env.OPENAI_API_KEY || apiConfig.OPENAI_API_KEY;
     
     if (!apiKey) {
       return {
         success: false,
-        error: 'OPENAI_API_KEY puuttuu. Luo .env tiedosto ja lisää avain. Katso API_KEYS.md'
+        error: 'OPENAI_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.'
       };
     }
 
@@ -704,12 +758,12 @@ ipcMain.handle('openai-api', async (event, prompt) => {
 // Google Gemini API (SDK - REAL IMPLEMENTATION)
 ipcMain.handle('gemini-api', async (event, prompt) => {
   try {
-    const apiKey = process.env.GOOGLE_API_KEY;
+    let apiKey = process.env.GOOGLE_API_KEY || apiConfig.GOOGLE_API_KEY;
     
     if (!apiKey) {
       return {
         success: false,
-        error: 'GOOGLE_API_KEY puuttuu. Luo .env tiedosto ja lisää avain. Katso API_KEYS.md'
+        error: 'GOOGLE_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.'
       };
     }
 
@@ -733,7 +787,7 @@ ipcMain.handle('gemini-api', async (event, prompt) => {
 // Cursor API (oletetaan että tämä on custom API)
 ipcMain.handle('cursor-api', async (event, prompt) => {
   try {
-    const apiKey = process.env.CURSOR_API_KEY || 'your-cursor-api-key-here';
+    let apiKey = process.env.CURSOR_API_KEY || apiConfig.CURSOR_API_KEY || 'your-cursor-api-key-here';
 
     const response = await fetch("https://api.cursor.com/v1/chat/completions", {
       method: "POST",
@@ -758,6 +812,109 @@ ipcMain.handle('cursor-api', async (event, prompt) => {
   } catch (error) {
     return { success: false, error: error.message };
   }
+});
+
+// DeepSeek API (OpenAI-compatible)
+ipcMain.handle('deepseek-api', async (event, payload) => {
+  try {
+    let apiKey = process.env.DEEPSEEK_API_KEY || apiConfig.DEEPSEEK_API_KEY;
+    
+    if (!apiKey) {
+      return {
+        success: false,
+        error: 'DEEPSEEK_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.'
+      };
+    }
+
+    const { prompt, options = {} } = typeof payload === 'object' && payload !== null
+      ? { prompt: payload.prompt, options: payload.options || {} }
+      : { prompt: payload, options: {} };
+
+    if (!prompt || typeof prompt !== 'string') {
+      throw new Error('DeepSeek API error: invalid prompt payload');
+    }
+
+    const temperature = typeof options.temperature === 'number' ? options.temperature : 0.7;
+    const maxTokens = typeof options.max_tokens === 'number' ? options.max_tokens : 2000;
+    const topP = typeof options.top_p === 'number' ? options.top_p : 0.9;
+    const model = options.model || 'deepseek-chat';
+
+    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: maxTokens,
+        temperature,
+        top_p: topP,
+        stream: false
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`DeepSeek API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return { success: true, data: data.choices[0].message.content, usage: data.usage };
+  } catch (error) {
+    console.error('DeepSeek API error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Add after export handlers or before AI APIs
+ipcMain.on('show-context-menu', async (event, { x, y, selection, isEditable }) => {
+  const { Menu } = require('electron');
+  const template = [
+    {
+      label: 'Kopioi',
+      accelerator: 'CmdOrCtrl+C',
+      click: () => {
+        // Renderer handles copy
+      }
+    },
+    {
+      label: 'Liitä',
+      accelerator: 'CmdOrCtrl+V',
+      click: () => {
+        // Renderer handles paste
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'AI-ehdotus valitulle tekstille',
+      enabled: !!selection,
+      click: () => {
+        mainWindow.webContents.send('ai-suggest', selection);
+      }
+    },
+    {
+      label: 'Etsi',
+      click: () => {
+        mainWindow.webContents.send('show-find');
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Lisää kommentti',
+      click: () => {
+        mainWindow.webContents.send('insert-comment');
+      }
+    },
+    {
+      label: 'Lisää muistiinpano',
+      click: () => {
+        mainWindow.webContents.send('insert-note');
+      }
+    }
+  ];
+  const menu = Menu.buildFromTemplate(template);
+  menu.popup({ window: mainWindow, x, y });
 });
 
 // Export functions for testing

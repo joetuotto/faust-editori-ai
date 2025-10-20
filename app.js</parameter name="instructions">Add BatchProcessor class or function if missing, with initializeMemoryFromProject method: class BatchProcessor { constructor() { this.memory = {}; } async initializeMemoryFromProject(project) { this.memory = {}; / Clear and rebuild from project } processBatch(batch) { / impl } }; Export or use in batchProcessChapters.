@@ -1,0 +1,15 @@
+// Add before batchProcessChapters or chainAI
+class BatchProcessor {
+  constructor() {
+    this.memory = {};
+  }
+  async initializeMemoryFromProject(project) {
+    this.memory = {}; // Rebuild from project.story, characters etc.
+    // Stub for now
+  }
+  processBatch(batch) {
+    // Process logic
+  }
+}
+
+

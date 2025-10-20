@@ -60,22 +60,17 @@ describe('Electron Main Process - Export Functions', () => {
   });
 
   describe('convertToDocx', () => {
-    test('creates Word XML structure correctly', () => {
+    test('returns a DOCX buffer', async () => {
       const { convertToDocx } = require('../../utils/documentConverters');
 
       const text = 'First paragraph\n\nSecond paragraph';
       const title = 'Test Document';
-      const result = convertToDocx(text, title);
+      const result = await convertToDocx(text, title);
 
-      expect(result).toContain('<?xml version="1.0"');
-      expect(result).toContain('<w:document');
-      expect(result).toContain('<w:p>');
-      expect(result).toContain('<w:pPr>');
-      expect(result).toContain('<w:pStyle w:val="Normal"/>');
-      expect(result).toContain('<w:t>First paragraph</w:t>');
-      expect(result).toContain('<w:t>Second paragraph</w:t>');
-      expect(result).toContain('First paragraph');
-      expect(result).toContain('Second paragraph');
+      expect(Buffer.isBuffer(result)).toBe(true);
+      expect(result.length).toBeGreaterThan(0);
+      // DOCX files are ZIP archives, which should start with PK header
+      expect(result.slice(0, 2).toString()).toBe('PK');
     });
   });
 

@@ -1,6 +1,8 @@
 // Document conversion utility functions
 // These functions can be tested independently of Electron
 
+const { Document, Packer, Paragraph, TextRun } = require('docx');
+
 function convertToRTF(text) {
   const rtfHeader = '{\\rtf1\\ansi\\deff0 {\\fonttbl {\\f0 Times New Roman;}}';
   const rtfContent = text
@@ -46,26 +48,23 @@ function convertToHTML(text, title) {
 </html>`;
 }
 
-function convertToDocx(text, title) {
-  const paragraphs = text.split('\n\n');
-  
-  const xmlContent = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
-  <w:body>
-    ${paragraphs.map(para => `
-      <w:p>
-        <w:pPr>
-          <w:pStyle w:val="Normal"/>
-        </w:pPr>
-        <w:r>
-          <w:t>${para.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</w:t>
-        </w:r>
-      </w:p>`).join('')}
-  </w:body>
-</w:document>`;
-
-  return xmlContent;
-}
+const convertToDocx = async (content, title) => {
+  const doc = new Document({
+    sections: [{
+      properties: {},
+      children: [
+        new Paragraph({
+          children: [new TextRun(title)]
+        }),
+        ...content.split('\n').map(line => new Paragraph({
+          children: [new TextRun(line)]
+        }))
+      ]
+    }]
+  });
+  const buffer = await Packer.toBuffer(doc);
+  return buffer;
+};
 
 module.exports = {
   convertToRTF,

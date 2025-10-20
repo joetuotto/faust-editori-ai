@@ -1,5 +1,81 @@
-const { useState, useRef, useEffect } = React;
+const { useState, useRef, useEffect, useCallback, useMemo } = React;
 const e = React.createElement;
+
+const StoryContinuityTracker = require('./modules/StoryContinuityTracker');
+const HybridWritingFlow = require('./modules/HybridWritingFlow');
+const BatchProcessor = require('./modules/BatchProcessor');
+const CostOptimizer = require('./modules/CostOptimizer');
+
+const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const levenshtein = (a = '', b = '', maxDistance = 2) => {
+  if (a === b) return 0;
+  if (!a) return b.length;
+  if (!b) return a.length;
+
+  const lenA = a.length;
+  const lenB = b.length;
+
+  if (Math.abs(lenA - lenB) > maxDistance) {
+    return maxDistance + 1;
+  }
+
+  const previous = new Array(lenB + 1);
+  const current = new Array(lenB + 1);
+
+  for (let j = 0; j <= lenB; j += 1) {
+    previous[j] = j;
+  }
+
+  for (let i = 0; i < lenA; i += 1) {
+    current[0] = i + 1;
+    let rowMin = current[0];
+
+    for (let j = 0; j < lenB; j += 1) {
+      const cost = a[i] === b[j] ? 0 : 1;
+      const insertion = current[j] + 1;
+      const deletion = previous[j + 1] + 1;
+      const substitution = previous[j] + cost;
+
+      const value = Math.min(insertion, deletion, substitution);
+      current[j + 1] = value;
+      if (value < rowMin) {
+        rowMin = value;
+      }
+    }
+
+    if (rowMin > maxDistance) {
+      return maxDistance + 1;
+    }
+
+    for (let j = 0; j <= lenB; j += 1) {
+      previous[j] = current[j];
+    }
+  }
+
+  return previous[lenB];
+};
+
+// At top, add style tag or in existing CSS
+const style = document.createElement('style');
+style.textContent = `
+@font-face {
+  font-family: 'Inter';
+  src: url('./build/fonts/Inter-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('./build/fonts/Inter-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-display: swap;
+}
+:root {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+`;
+document.head.appendChild(style);
 
 // Ikonit
 const Icons = {
@@ -85,7 +161,7 @@ const Icons = {
     e('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4' })
   ),
   Columns: () => e('svg', { className: 'w-4 h-4', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' },
-    e('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v2m0 0V7a2 2 0 00-2-2h-2m-4 0h-2' })
+    e('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v2m0 0V7a2 2 0 00-2-2h-2' })
   ),
   Typewriter: () => e('svg', { className: 'w-4 h-4', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' },
     e('path', { strokeLinecap: 'round', strokeLinejoin: 'round', strokeWidth: 2, d: 'M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253' }),
@@ -93,6 +169,7 @@ const Icons = {
   )
 };
 
+// Story Continuity Tracker - centralizes chronology, thread status, and immutable facts
 // FAUST Visual System: DEIS (Light) & NOX (Dark)
 const FAUST_STYLES = `
   :root {
@@ -345,7 +422,6 @@ const FAUST_STYLES = `
     50% { opacity: 1; transform: translateY(-1px); }
     100% { opacity: 1; transform: translateY(0); }
   }
-  
   @keyframes slideIn {
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
@@ -476,11 +552,9 @@ const FAUST_STYLES = `
     filter: drop-shadow(0 0 4px rgba(154, 123, 79, 0.4));
     transition: all 200ms ease-out;
   }
-  
   .sigil:hover {
     filter: drop-shadow(0 0 8px rgba(154, 123, 79, 0.6));
   }
-  
   /* FAUST Component Overrides - Selective */
   
   /* Light backgrounds need dark text */
@@ -499,7 +573,6 @@ const FAUST_STYLES = `
     background-color: var(--faust-shadow) !important;
     color: var(--faust-text-primary) !important;
   }
-  
   /* Buttons and interactive elements on dark backgrounds */
   button, .button, [role="button"] {
     color: var(--faust-text-primary) !important;
@@ -623,7 +696,6 @@ const FAUST_STYLES = `
       opacity: 0.6;
     }
   }
-  
   @keyframes pulse-glow {
     0%, 100% { 
       filter: blur(20px);
@@ -632,7 +704,6 @@ const FAUST_STYLES = `
       filter: blur(30px);
     }
   }
-  
   .glow-suggestion {
     position: relative;
     display: inline-block;
@@ -648,7 +719,6 @@ const FAUST_STYLES = `
     border-radius: 4px;
     animation: glow-slide 3s ease-in-out infinite, pulse-glow 2s ease-in-out infinite;
   }
-  
   /* SAGMEISTER: Living Typography - adapts to writing speed */
   .living-typography {
     transition: font-size 1.5s cubic-bezier(0.4, 0.0, 0.2, 1),
@@ -682,7 +752,6 @@ const LABEL_COLORS = [
   { id: 'purple', name: 'Violetti', color: '#a855f7' },
   { id: 'pink', name: 'Pinkki', color: '#ec4899' }
 ];
-
 // LocationKeeper - Paikkamalli
 const LOCATION_TEMPLATE = {
   id: null,
@@ -914,7 +983,7 @@ SYMBOLINEN REDUNDANSSI: Toista keskeinen motiivi/symboli/kuva hienovaraisesti er
 ESIMERKKI:
 Motiivi: "Murtuminen"
 - Rivi 1: "Lasi säröili ikkunassa"
-- Rivi 45: "Hänen äänensä katkesi"
+- Rivi 45: "Hänän äänensä katkesi"
 - Rivi 89: "Luottamus repeytyi"
 
 TEHTÄVÄ:
@@ -963,10 +1032,8 @@ VASTAA SUOMEKSI.`
         name: 'Tyhjä tila',
         description: 'Jätä aukkoja lukijan täytettäväksi',
         prompt: `Luo TYHJÄÄ TILAA (negative space) tekstiin:
-
 TEKSTI:
 \{{CONTENT}}
-
 TYHJÄ TILA: Älä kerro kaikkea. Jätä aukkoja, epävarmuutta, tulkinnanvaraa.
 
 TEKNIIKAT:
@@ -998,11 +1065,10 @@ VASTAA SUOMEKSI.`
         name: 'Peak-End Rule',
         description: 'Huippu keskellä, ankkuri lopussa',
         prompt: `Sovella PEAK-END RULE tähän tekstiin:
-
 TEKSTI:
 \{{CONTENT}}
 
-PEAK-END RULE: Lukijat muistavat kaksi asiaa: 1) Intensiivisimmän hetken (peak), 2) Lopun (end).
+PEAK-END RULE: Lukijat muistavat kaksi asiaa: ensiksi intensiivisimmän hetken ja toiseksi lopun.
 
 RAKENNE:
 1. **Alku**: Johdanto, aseta odotukset
@@ -1030,7 +1096,6 @@ VASTAA SUOMEKSI.`
 
 TEKSTI:
 \{{CONTENT}}
-
 TUNNETARTUNTA: Äänteiden (foneemien) valinnalla voit tartuttaa tunteita.
 
 ÄÄNNE-EMOTIO MAP:
@@ -1186,12 +1251,12 @@ PATHOS: Kosketa lukijan tunteisiin niin että hänen KEHONSA reagoi.
 TEKNIIKAT:
 1. **Bodily sensations**: "Kurkkua kuristaa", "Vatsa kiristyy"
 2. **Universaalit tunteet**: Menetys, pelko, rakkaus, pettymys
-3. **Henkilökohtainen + universaali**: "Hänen äitinsä" → jokainen muistaa omansa
+3. **Henkilökohtainen + universaali**: "Hänän kätensä" → jokainen muistaa omansa
 4. **Konkreetti, ei abstrakti**: "Tyhjä tuoli" > "Yksinäisyys"
 
 ESIMERKKI:
 HEIKKO PATHOS: "Hän oli surullinen kun muisti äitiään."
-VAHVA PATHOS: "Äidin tuoli oli tyhjä. Vain se peite, taitettu, niin kuin hän oli opettanut. Hänen kätensä värisivät kun hän kosketti sitä."
+VAHVA PATHOS: "Äidin tuoli oli tyhjä. Vain se peite, taitettu, niin kuin hän oli opettanut. Hänän kätensä värisivät kun hän kosketti sitä."
 
 TEHTÄVÄ:
 1. Tunnista abstraktit tunnekuvaukset
@@ -1261,29 +1326,23 @@ VASTAA SUOMEKSI.`
         name: 'Kontrastin voima',
         description: 'Vastakohtaisuus vahvistaa',
         prompt: `Käytä KONTRASTIN VOIMAA:
-
 TEKSTI:
 \{{CONTENT}}
-
 KONTRASTIN VOIMA: Aseta vastakohdat vierekkäin → kumpikin vahvistuu.
-
 KONTRASTI-TYYPIT:
 1. **Valo/Varjo**: "Aurinko paistoi, mutta hänen sisällään oli pimeys"
 2. **Nopea/Hidas**: "Maailma kiiti ohi. Hän seisoi paikallaan."
 3. **Hiljainen/Äänekäs**: "Kaupunki karjui. Hän kuiskasi."
 4. **Suuri/Pieni**: "Vuoret kohoavat. Hän oli pieni kuin hiekanjyvä."
 5. **Elämä/Kuolema**: "Vauva nauroi. Ruumis makasi hiljaa."
-
 TEHTÄVÄ:
 1. Tunnista koht at missä kontrasti vahvistaisi
 2. Aseta vastakohdat vierekkäin (ei erilleen)
 3. Älä selitä kontrastia - anna sen toimia
 4. Anna 3-5 kontrasti-ehdotusta
-
 ESIMERKKI:
 ENNEN: "Hän oli onnellinen vaikka ympärillä oli surkeutta"
 JÄLKEEN: "Ruumiita kadulla. Tuhkaa ilmassa. Hän hymyili ensimmäistä kertaa viikkoon."
-
 VASTAA SUOMEKSI.`
       },
       {
@@ -1291,18 +1350,14 @@ VASTAA SUOMEKSI.`
         name: 'Ankkurointi',
         description: 'Ensimmäinen mielikuva hallitsee kaikkea',
         prompt: `Käytä ANKKUROINTIA:
-
 TEKSTI:
 \{{CONTENT}}
-
 ANKKUROINTI: Ensimmäinen kuvaus henkilöstä/paikasta/asiasta määrittää miten lukija tulkitsee kaiken myöhemmän.
-
 TEKNIIKAT:
 1. **Vahva ensivaikutelma**: Ensimmäinen lause hahmon esittelyssä on KRIITTINEN
 2. **Kontrastoitu myöhemmin**: Ankkuri vs. realiteetti = jännite
 3. **Moniaistillinen ankkuri**: Käytä useita aisteja ensikuvauksessa
 4. **Emotionaalinen lataus**: Ankkuroi tunteeseen, ei vain ulkonäköön
-
 ESIMERKKI:
 HEIKKO ANKKURI: "Mies astui sisään. Hän oli pitkä."
 VAHVA ANKKURI: "Mies täytti oviaukon. Ei vain kokonsa takia - jotain hänen katseessaan nielaisi valon, tilan, ilman. Huone pieneni."
@@ -1366,7 +1421,6 @@ TASOT:
 1. **Pääkertomus**: Nykyhetki
 2. **Sisempi kertomus**: Muisto/flashback/tarina-tarinan-sisällä
 3. **Symbolinen kerros**: Metaforat/kuvat jotka peilaavat pääkertomusta
-
 TEKNIIKAT:
 - **Frame narrative**: "Hän kertoi tarinan..." → sisempi tarina
 - **Rinnakkaisuus**: Kaksi tarinaa samanaikaisesti, toinen peilaa toista
@@ -1380,7 +1434,7 @@ Kerros 3: "Ikkunassa sadeet iski lasin, yksinäiset pisarat."
 TEHTÄVÄ:
 1. Tunnista mahdolliset kerrokset
 2. Ehdota sisempi tarina/muisto joka peilaa pääkertomusta
-3. Lisää symbolinen kerros (luonto/säă/objekti)
+3. Lisää symbolinen kerros (luonto/sää/objekti)
 4. Varmista että kerrokset keskustelevat keskenään
 
 VASTAA SUOMEKSI.`
@@ -1458,7 +1512,6 @@ VASTAA SUOMEKSI.`
         name: 'Tunnista paikat',
         description: 'Etsi kaikki paikat tekstistä automaattisesti',
         prompt: `Tunnista KAIKKI paikat tästä tekstistä. Sisällytä kaupungit, rakennukset, kadut, luontokohteet, maamerkit.
-
 TEKSTI:
 {{CONTENT}}
 
@@ -1474,7 +1527,6 @@ Palauta VAIN JSON (ei mitään muuta tekstiä):
     }
   ]
 }
-
 Jos ei paikkoja, palauta: {"locations": []}
 
 VASTAA PELKKÄ JSON.`
@@ -1505,7 +1557,6 @@ Palauta JSON:
     "writing_opportunities": ["kirjoitusmahdollisuudet"]
   }
 }
-
 VASTAA SUOMEKSI, JSON-MUODOSSA.`
       },
       {
@@ -1716,7 +1767,6 @@ ANNA 2-3 KONKREETTISTA KAARI-IDEAA. VASTAA SUOMEKSI.`
         name: 'Luo trigger-hetki',
         description: 'Luo uskottava syy isommalle muutokselle',
         prompt: `Luo TRIGGER-HETKI hahmon muutokselle:
-
 HAHMO:
 {selectedCharacter}
 
@@ -1796,13 +1846,7 @@ const AIContextualBubble = ({ isVisible, suggestion, onApply, onDismiss, positio
   if (!isVisible || !suggestion) return null;
   
   return e('div', { 
-    className: 'absolute z-50 animate-breatheIn',
-    style: {
-      top: position?.top || '50%',
-      left: position?.left || '50%',
-      transform: 'translate(-50%, -100%)',
-      marginTop: '-8px'
-    }
+    className: 'absolute z-50 animate-breatheIn'
   },
     e('div', { className: 'relative' },
       // Arrow
@@ -1902,7 +1946,6 @@ const FlowModeIndicator = ({ mode }) => {
     style: { color: 'var(--mac-text-primary)' }
   }, labels[mode] || '');
 };
-
 // NORMAN: Learning Feedback - Shows AI learned from rejection
 const LearningFeedback = ({ message, isVisible, onDismiss }) => {
   if (!isVisible) return null;
@@ -1929,7 +1972,6 @@ const LearningFeedback = ({ message, isVisible, onDismiss }) => {
     )
   );
 };
-
 // KRUG: Simple Status Bar - Always visible, minimal
 const SimpleStatusBar = ({ wordCount, saveStatus }) => {
   const statusIcons = {
@@ -1955,7 +1997,6 @@ const SimpleStatusBar = ({ wordCount, saveStatus }) => {
     )
   );
 };
-
 // NORMAN: Writer-Centric Sidebar Section
 const WriterSidebarSection = ({ title, icon, children, defaultExpanded = true }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
@@ -2008,7 +2049,6 @@ const SecondaryButton = ({ children, onClick, className = '', title }) => {
     title
   }, children);
 };
-
 const TertiaryButton = ({ children, onClick, className = '', title }) => {
   return e('button', {
     className: `px-2 py-1 text-sm rounded transition-opacity hover:opacity-100 opacity-70 ${className}`,
@@ -2064,7 +2104,6 @@ const CognitiveLoadIndicator = ({ load }) => {
     )
   );
 };
-
 // SUPERSIDE: Work Phase Indicator
 const WorkPhaseIndicator = ({ phase }) => {
   const phaseConfig = {
@@ -2203,12 +2242,12 @@ const SPACING_SCALE = {
   xxxxl: '96px',  // 12 * 8
   xxxl: '72px',   // 9 * 8
   xxl: '48px',    // 6 * 8
-  xl: '32px',     // 4 * 8
-  lg: '24px',     // 3 * 8
-  md: '16px',     // 2 * 8
-  sm: '12px',     // 1.5 * 8
-  xs: '8px',      // 1 * 8
-  xxs: '4px'      // 0.5 * 8
+  xl: '32px',    // 4 * 8
+  lg: '24px',    // 3 * 8
+  md: '16px',    // 2 * 8
+  sm: '12px',    // 1.5 * 8
+  xs: '8px',     // 1 * 8
+  xxs: '4px'     // 0.5 * 8
 };
 
 // SUPERSIDE: Comprehensive Design Tokens
@@ -2380,53 +2419,99 @@ const getOptimalFontSize = (containerWidth) => {
   return Math.max(15, Math.min(20, optimalSize)); // Clamp 15-20px
 };
 
+const DEFAULT_TARGETS = Object.freeze({
+  project: 80000,
+  daily: 1000,
+  session: 500
+});
+
+const createDefaultProject = () => {
+  const baseProject = {
+  title: 'Nimetön projekti',
+  collections: [],
+  targets: { ...DEFAULT_TARGETS },
+
+  // Vaihe 5: Hahmotietokanta
+  characters: [],
+
+  // Vaihe 6: Paikkatietokanta
+  locations: [],
+  genre: 'psychological_thriller', // Kirjan genre
+  
+  // StoryKeeper: Tarinan rakenne ja kausaalisuus
+  story: {
+    outline: [],      // Lukujen rakenne
+    events: [],       // Keskeiset tapahtumat
+    threads: [],      // Juonilangat
+    timeline: [],     // Aikajana
+    immutable_facts: [] // Faktat jotka eivät voi muuttua
+  },
+  
+  items: [
+    {
+      id: 1,
+      type: 'folder',
+      title: 'Käsikirjoitus',
+      expanded: true,
+      children: [
+        { id: 11, type: 'chapter', title: 'Luku 1', content: '', wordCount: 0, notes: '', status: 'draft', label: 'none', tilannekuvat: [] }
+      ]
+    },
+    {
+      id: 2,
+      type: 'folder',
+      title: 'Tutkimus',
+      expanded: false,
+      children: []
+    }
+  ]
+  };
+
+  return baseProject;
+};
+
+const createDefaultSessionStats = () => ({
+  startTime: Date.now(),
+  startWords: 0,
+  currentWords: 0,
+  wordsWritten: 0,
+  duration: 0
+});
+
+const createFreshDailyStats = () => {
+  const today = new Date().toISOString().split('T')[0];
+  return { date: today, words: 0, sessions: [] };
+};
 function FaustEditor() {
-  const [project, setProject] = useState({
-    title: 'Nimetön projekti',
-    collections: [],
-    targets: {
-      project: 80000,
-      daily: 1000,
-      session: 500
-    },
+  console.log('🎨 FaustEditor component rendering...');
+  const [project, setProject] = useState(() => createDefaultProject());
+  console.log('📦 Project state initialized');
+  const projectRef = useRef(project);
 
-    // Vaihe 5: Hahmotietokanta
-    characters: [],
-
-    // Vaihe 6: Paikkatietokanta
-    locations: [],
-    genre: 'psychological_thriller', // Kirjan genre
-    
-    // StoryKeeper: Tarinan rakenne ja kausaalisuus
-    story: {
-      outline: [],      // Lukujen rakenne
-      events: [],       // Keskeiset tapahtumat
-      threads: [],      // Juonilangat
-      timeline: [],     // Aikajana
-      immutable_facts: [] // Faktat jotka eivät voi muuttua
-    },
-    
-    items: [
-      {
-        id: 1,
-        type: 'folder',
-        title: 'Käsikirjoitus',
-        expanded: true,
-        children: [
-          { id: 11, type: 'chapter', title: 'Luku 1', content: '', wordCount: 0, notes: '', status: 'draft', label: 'none', tilannekuvat: [] }
-        ]
-      },
-      {
-        id: 2,
-        type: 'folder',
-        title: 'Tutkimus',
-        expanded: false,
-        children: []
+  useEffect(() => {
+    const saved = localStorage.getItem('kirjoitusstudio_project');
+    if (saved) {
+      try {
+        const loadedProject = JSON.parse(saved);
+        setProject(loadedProject);
+        StoryContinuityTracker.initializeMemoryFromProject(loadedProject);
+      } catch (e) {
+        console.error('Failed to load saved project:', e);
       }
-    ]
-  });
+    } else {
+      StoryContinuityTracker.initializeMemoryFromProject(projectRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    projectRef.current = project;
+  }, [project]);
 
   const [activeItemId, setActiveItemId] = useState(11);
+  const activeItemIdRef = useRef(activeItemId);
+  useEffect(() => {
+    activeItemIdRef.current = activeItemId;
+  }, [activeItemId]);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showInspector, setShowInspector] = useState(true);
@@ -2466,29 +2551,54 @@ function FaustEditor() {
   // Inline metadata - #tags and @entities
   const [projectTags, setProjectTags] = useState(new Set());
   const [hoveredTag, setHoveredTag] = useState(null);
+  
+  // Graph view
+  const [showGraphView, setShowGraphView] = useState(false);
+  const [graphViewMode, setGraphViewMode] = useState('all'); // 'all', 'characters', 'locations'
+  
+  // PHASE 2: Timeline / Kanban view
+  const [showTimelineView, setShowTimelineView] = useState(false);
+  const [timelineViewMode, setTimelineViewMode] = useState('timeline'); // 'timeline', 'kanban'
+  
+  // PHASE 2: Natural language queries
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [naturalQuery, setNaturalQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showFindDialog, setShowFindDialog] = useState(false);
+  const [findMode, setFindMode] = useState('find');
+  const [findQuery, setFindQuery] = useState('');
+  const [findReplaceValue, setFindReplaceValue] = useState('');
+  const [findCaseSensitive, setFindCaseSensitive] = useState(false);
+  const [findMatches, setFindMatches] = useState([]);
+  const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
+  
+  // PHASE 3: AI Concept Map
+  const [showConceptMap, setShowConceptMap] = useState(false);
+  const [selectedConcept, setSelectedConcept] = useState(null);
 
   // Projektin tavoitteet
-  const [targets, setTargets] = useState({
-    project: 80000,      // Koko projektin sanamäärätavoite
-    daily: 1000,         // Päivittäinen tavoite
-    session: 500         // Istunnon tavoite
-  });
+  const [targets, setTargets] = useState(() => ({ ...DEFAULT_TARGETS }));
 
   // Nykyinen kirjoitusistunto
-  const [sessionStats, setSessionStats] = useState({
-    startTime: Date.now(),
-    startWords: 0,
-    currentWords: 0,
-    wordsWritten: 0,
-    duration: 0
-  });
+  const [sessionStats, setSessionStats] = useState(() => createDefaultSessionStats());
 
   // Päivittäiset tilastot (tallennetaan localStorage)
   const [dailyStats, setDailyStats] = useState(() => {
     const today = new Date().toISOString().split('T')[0];
     const saved = localStorage.getItem(`dailyStats_${today}`);
-    return saved ? JSON.parse(saved) : { date: today, words: 0, sessions: [] };
+    return saved ? JSON.parse(saved) : createFreshDailyStats();
   });
+
+  // Batch processing states
+  const [checkFirst, setCheckFirst] = useState(true);
+  const [autoFix, setAutoFix] = useState(true);
+  const [batchOperation, setBatchOperation] = useState('continuityCheck');
+  const [continuityStatus, setContinuityStatus] = useState(null);
+  const [batchProgress, setBatchProgress] = useState(null);
+  const [aiProgress, setAiProgress] = useState(null);
+  const [batchStartChapter, setBatchStartChapter] = useState(1);
+  const [batchEndChapter, setBatchEndChapter] = useState(1);
+  const [continuityMode, setContinuityMode] = useState('write');
 
   // Vaihe 3: Split View & Compose Mode
   const [composeMode, setComposeMode] = useState(false);
@@ -2514,6 +2624,12 @@ function FaustEditor() {
 
   const [focusMode, setFocusMode] = useState(false);
   const [showWordCount, setShowWordCount] = useState(true);
+  const [showTargetSettings, setShowTargetSettings] = useState(false);
+  const [showProjectStats, setShowProjectStats] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Vaihe 5: CharacterKeeper - hahmojen jatkuvuuden valvoja
   const [editingCharacter, setEditingCharacter] = useState(null);
@@ -2608,6 +2724,91 @@ function FaustEditor() {
   ];
 
   const editorRef = useRef(null);
+  const findInputRef = useRef(null);
+  const findMatchesRef = useRef([]);
+  const currentMatchIndexRef = useRef(0);
+  const highlightMatch = useCallback((matchIndex, matches) => {
+    if (!editorRef.current || !matches.length || !findQuery) return;
+
+    const start = matches[matchIndex];
+    if (typeof start !== 'number' || Number.isNaN(start) || start < 0) return;
+    const end = start + findQuery.length;
+
+    requestAnimationFrame(() => {
+      const textarea = editorRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(start, end);
+    });
+  }, [findQuery]);
+  const dictionaryRef = useRef(new Set());
+  const [dictionaryStatus, setDictionaryStatus] = useState('loading');
+  const [dictionaryError, setDictionaryError] = useState(null);
+  const [spellcheckModalOpen, setSpellcheckModalOpen] = useState(false);
+  const [spellcheckResults, setSpellcheckResults] = useState([]);
+  const [spellcheckLoading, setSpellcheckLoading] = useState(false);
+  const computeMatchPositions = useCallback((text, query, isCaseSensitive) => {
+    if (!text || !query) return [];
+
+    const haystack = isCaseSensitive ? text : text.toLowerCase();
+    const needle = isCaseSensitive ? query : query.toLowerCase();
+    if (!needle) return [];
+
+    const matches = [];
+    let fromIndex = 0;
+
+    while (fromIndex <= haystack.length) {
+      const foundIndex = haystack.indexOf(needle, fromIndex);
+      if (foundIndex === -1) break;
+      matches.push(foundIndex);
+      fromIndex = foundIndex + Math.max(needle.length, 1);
+    }
+
+    return matches;
+  }, []);
+
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadDictionary = async () => {
+      try {
+        const baseResponse = await fetch('utils/dictionaries/fi-basic.json');
+        if (!baseResponse.ok) {
+          throw new Error(`HTTP ${baseResponse.status}`);
+        }
+        const baseWords = await baseResponse.json();
+        let combined = Array.isArray(baseWords) ? baseWords : [];
+
+        try {
+          const extraResponse = await fetch('utils/dictionaries/fi-expanded.txt');
+          if (extraResponse.ok) {
+            const extraText = await extraResponse.text();
+            const extraWords = extraText
+              .split(/\r?\n/)
+              .map(word => word.trim())
+              .filter(Boolean);
+            combined = combined.concat(extraWords);
+          }
+        } catch (extraError) {
+          console.warn('Optional dictionary extension not loaded:', extraError);
+        }
+
+        if (cancelled) return;
+        dictionaryRef.current = new Set(combined.map(word => (word || '').toLowerCase()));
+        setDictionaryStatus('ready');
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Spell-check dictionary load failed:', error);
+        setDictionaryError(error.message || 'Tuntematon virhe');
+        setDictionaryStatus('error');
+      }
+    };
+
+    loadDictionary();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const statusOptions = [
     { value: 'draft', label: 'Luonnos' },
@@ -2623,6 +2824,30 @@ function FaustEditor() {
     { label: 'Paranna dialogia', prompt: 'Tee dialogista luonnollisempaa ja kiinnostavampaa.' },
     { label: 'Luo jännitettä', prompt: 'Ehdota tapoja lisätä jännitettä tähän kohtaukseen.' }
   ];
+
+  const findInitialActiveId = (items = []) => {
+    for (const item of items) {
+      if (item.type !== 'folder') {
+        return item.id;
+      }
+      if (item.children && item.children.length > 0) {
+        const childId = findInitialActiveId(item.children);
+        if (childId) return childId;
+      }
+    }
+    return items[0]?.id || null;
+  };
+
+  const findParentId = (items, targetId, parentId = null) => {
+    for (const item of items) {
+      if (item.id === targetId) return parentId;
+      if (item.children) {
+        const found = findParentId(item.children, targetId, item.id);
+        if (found !== null) return found;
+      }
+    }
+    return null;
+  };
 
   const findItem = (items, id) => {
     for (const item of items) {
@@ -2648,6 +2873,45 @@ function FaustEditor() {
     return countRecursive(project.items);
   };
 
+  const resetProjectState = useCallback(() => {
+    const freshProject = createDefaultProject();
+    setProject(freshProject);
+    StoryContinuityTracker.initializeMemoryFromProject(freshProject);
+    setTargets({ ...DEFAULT_TARGETS });
+    const initialId = findInitialActiveId(freshProject.items);
+    if (initialId) {
+      setActiveItemId(initialId);
+    }
+    setSessionStats(createDefaultSessionStats());
+    setDailyStats(createFreshDailyStats());
+    setShowSidebar(true);
+    setShowInspector(true);
+    setAiAssistantOpen(false);
+    setComposeMode(false);
+    setFocusMode(false);
+    setShowSearchModal(false);
+    localStorage.removeItem('kirjoitusstudio_project');
+  }, []);
+
+  const applyLoadedProject = useCallback((data) => {
+    if (!data) return;
+    setProject(data);
+    StoryContinuityTracker.initializeMemoryFromProject(data);
+    if (data.targets) {
+      setTargets({
+        project: data.targets.project ?? DEFAULT_TARGETS.project,
+        daily: data.targets.daily ?? DEFAULT_TARGETS.daily,
+        session: data.targets.session ?? DEFAULT_TARGETS.session
+      });
+    } else {
+      setTargets({ ...DEFAULT_TARGETS });
+    }
+    const initialId = findInitialActiveId(data.items || []);
+    if (initialId) {
+      setActiveItemId(initialId);
+    }
+  }, []);
+
   const updateItem = (id, updates) => {
     const updateRecursive = (items) => items.map(item => {
       if (item.id === id) {
@@ -2660,6 +2924,10 @@ function FaustEditor() {
     });
     setProject({ ...project, items: updateRecursive(project.items) });
   };
+  const updateItemRef = useRef(updateItem);
+  useEffect(() => {
+    updateItemRef.current = updateItem;
+  }, [updateItem]);
 
   // Luo snapshot (tilannekuva)
   const createSnapshot = () => {
@@ -2709,7 +2977,6 @@ function FaustEditor() {
 
     setProject({ ...project, collections: [...(project.collections || []), newCollection] });
   };
-
   // Lisää dokumentti kokoelmaan
   const addToCollection = (collectionId, itemId) => {
     setProject({
@@ -2766,6 +3033,10 @@ function FaustEditor() {
     setProject({ ...project, items: addRecursive(project.items) });
     setActiveItemId(newId);
   };
+  const addItemRef = useRef(addItem);
+  useEffect(() => {
+    addItemRef.current = addItem;
+  }, [addItem]);
 
   const deleteItem = (id) => {
     const deleteRecursive = (items) => items.filter(item => {
@@ -2791,6 +3062,258 @@ function FaustEditor() {
     setProject({ ...project, items: toggleRecursive(project.items) });
   };
 
+  const callAI = useCallback(async (model, prompt, modelOptions = {}) => {
+    let result;
+    const payload = model === 'deepseek'
+      ? { prompt, options: modelOptions }
+      : prompt;
+
+    switch (model) {
+      case 'claude':
+        result = await window.electronAPI.claudeAPI(prompt);
+        break;
+      case 'grok':
+        result = await window.electronAPI.grokAPI(prompt);
+        break;
+      case 'openai':
+        result = await window.electronAPI.openaiAPI(prompt);
+        break;
+      case 'gemini':
+        result = await window.electronAPI.geminiAPI(prompt);
+        break;
+      case 'cursor':
+        result = await window.electronAPI.cursorAPI(prompt);
+        break;
+      case 'deepseek':
+        result = await window.electronAPI.deepseekAPI(payload);
+        break;
+      default:
+        result = await window.electronAPI.claudeAPI(prompt);
+    }
+    return result;
+  }, []);
+  useEffect(() => {
+    StoryContinuityTracker.configure({
+      deepseekClient: async ({ prompt, options }) => {
+        const response = await callAI('deepseek', prompt, options || {});
+        if (!response?.success) {
+          const error = new Error(response?.error || 'DeepSeek request failed');
+          throw error;
+        }
+        return response;
+      },
+      getProject: () => projectRef.current
+    });
+
+    HybridWritingFlow.configure({
+      callAI: (model, prompt, options = {}) => callAI(model, prompt, options),
+      getProject: () => projectRef.current,
+      defaultModel: selectedAIApi
+    });
+
+    BatchProcessor.configure({
+      getProject: () => projectRef.current,
+      setProject: (updatedProject) => {
+        if (!updatedProject) return;
+        projectRef.current = updatedProject;
+        setProject(updatedProject);
+      },
+      onProgress: (payload) => setBatchProgress(payload)
+    });
+  }, [callAI, selectedAIApi, setProject]);
+
+  const handleAIProgress = useCallback((payload) => {
+    if (!payload) return;
+    setAiProgress(payload);
+  }, []);
+
+  const getChapterCount = useCallback(() => {
+    const story = project?.story || {};
+    if (Array.isArray(story.chapters) && story.chapters.length > 0) {
+      return story.chapters.length;
+    }
+    if (Array.isArray(story.outline) && story.outline.length > 0) {
+      return story.outline.length;
+    }
+
+    const countFromItems = (items) => {
+      if (!Array.isArray(items)) return 0;
+      return items.reduce((sum, item) => {
+        if (!item) return sum;
+        const isChapter = item.type === 'chapter' || item.type === 'scene';
+        return sum + (isChapter ? 1 : 0) + countFromItems(item.children);
+      }, 0);
+    };
+
+    const itemCount = countFromItems(project?.items);
+    return itemCount || 1;
+  }, [project]);
+
+  useEffect(() => {
+    const total = Math.max(1, getChapterCount());
+    setBatchStartChapter((current) => Math.min(current || 1, total));
+    setBatchEndChapter(total);
+  }, [getChapterCount]);
+
+  const estimatedNovelCost = useMemo(
+    () => CostOptimizer.estimateFullNovelCost({ chapters: getChapterCount() }),
+    [getChapterCount]
+  );
+
+  const updateEditorContent = useCallback((newContent, selectionStart, selectionEnd, options = {}) => {
+    const targetItemId = options.itemId ?? activeItemIdRef.current;
+    if (!targetItemId || !updateItemRef.current) return;
+    const projectData = projectRef.current;
+    if (!projectData) return;
+    const targetItem = findItem(projectData.items, targetItemId);
+    if (!targetItem) return;
+    const previousContent = targetItem.content || '';
+    const shouldPushHistory = options.pushHistory !== false && previousContent !== newContent;
+
+    if (shouldPushHistory) {
+      undoStackRef.current.push({
+        itemId: targetItemId,
+        content: previousContent,
+        selectionStart: options.previousSelectionStart ?? editorRef.current?.selectionStart ?? 0,
+        selectionEnd: options.previousSelectionEnd ?? editorRef.current?.selectionEnd ?? 0
+      });
+      if (undoStackRef.current.length > HISTORY_LIMIT) {
+        undoStackRef.current.splice(0, undoStackRef.current.length - HISTORY_LIMIT);
+      }
+      redoStackRef.current.length = 0;
+    }
+
+    updateItemRef.current(targetItemId, { content: newContent });
+
+    const desiredStart = typeof selectionStart === 'number' ? selectionStart : null;
+    const desiredEnd = typeof selectionEnd === 'number'
+      ? selectionEnd
+      : (typeof selectionStart === 'number' ? selectionStart : null);
+
+    if (targetItemId !== activeItemIdRef.current) {
+      pendingSelectionRef.current = {
+        start: desiredStart,
+        end: desiredEnd
+      };
+      setActiveItemId(targetItemId);
+    } else if (editorRef.current) {
+      editorRef.current.value = newContent;
+      if (desiredStart !== null) {
+        requestAnimationFrame(() => {
+          editorRef.current?.focus();
+          editorRef.current?.setSelectionRange(
+            desiredStart,
+            desiredEnd ?? desiredStart
+          );
+        });
+      }
+    }
+  }, [setActiveItemId]);
+
+  useEffect(() => {
+    if (!pendingSelectionRef.current) return;
+    const pending = pendingSelectionRef.current;
+    pendingSelectionRef.current = null;
+    if (editorRef.current && pending.start !== null) {
+      requestAnimationFrame(() => {
+        editorRef.current?.focus();
+        editorRef.current?.setSelectionRange(
+          pending.start,
+          pending.end ?? pending.start
+        );
+      });
+    }
+  }, [activeItemId]);
+
+  const insertAtCursor = useCallback((text) => {
+    if (!text) return;
+    const projectData = projectRef.current;
+    const activeId = activeItemIdRef.current;
+    if (!projectData || !activeId) return;
+    const activeItem = findItem(projectData.items, activeId) || {};
+    const existing = activeItem.content || '';
+    const textarea = editorRef.current;
+    const selectionStart = textarea?.selectionStart ?? existing.length;
+    const selectionEnd = textarea?.selectionEnd ?? selectionStart;
+    const newContent = `${existing.slice(0, selectionStart)}${text}${existing.slice(selectionEnd)}`;
+    updateEditorContent(newContent, selectionStart + text.length, selectionStart + text.length, {
+      previousSelectionStart: selectionStart,
+      previousSelectionEnd: selectionEnd,
+      itemId: activeId
+    });
+  }, [updateEditorContent]);
+
+  const downloadMemory = useCallback(() => {
+    const payload = StoryContinuityTracker.exportMemory();
+    const blob = new Blob([payload], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `story-memory-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  const checkFullStory = useCallback(async () => {
+    const total = getChapterCount();
+    setBatchProgress(null);
+    setAiProgress({ stage: 'check', message: 'Scanning entire story for continuity...' });
+    try {
+      const result = await BatchProcessor.processFullNovel({
+        startChapter: 1,
+        endChapter: total,
+        operation: 'continuityCheck'
+      });
+      setContinuityStatus(result.issues || []);
+      setAiProgress({ stage: 'check-complete', message: 'Continuity scan complete', summary: result });
+      return result.issues || [];
+    } catch (error) {
+      console.error('Continuity check failed', error);
+      setAiProgress({ stage: 'error', message: error.message });
+      throw error;
+    }
+  }, [getChapterCount]);
+
+  const startBatchProcess = useCallback(async () => {
+    const total = getChapterCount();
+    const normalizedStart = Math.max(1, Math.min(batchStartChapter, total));
+    const normalizedEnd = Math.max(normalizedStart, Math.min(batchEndChapter, total));
+    setAiProgress({ stage: 'batch-start', message: 'Running batch process...' });
+    setBatchProgress({ stage: 'batch-start', current: normalizedStart, total: normalizedEnd });
+
+    try {
+      const result = await BatchProcessor.processFullNovel({
+        startChapter: normalizedStart,
+        endChapter: normalizedEnd,
+        operation: batchOperation
+      });
+      setContinuityStatus(result.issues || []);
+      setAiProgress({ stage: 'batch-complete', message: 'Batch process complete', summary: result });
+      return result;
+    } catch (error) {
+      console.error('Batch process failed', error);
+      setAiProgress({ stage: 'error', message: error.message });
+      throw error;
+    }
+  }, [batchOperation, batchStartChapter, batchEndChapter, getChapterCount]);
+
+  const resolveActiveChapter = useCallback(() => {
+    const projectData = projectRef.current;
+    const activeId = activeItemIdRef.current;
+    if (projectData && activeId) {
+      const activeItem = findItem(projectData.items, activeId);
+      if (activeItem?.chapter) return Number(activeItem.chapter);
+      if (activeItem?.number) return Number(activeItem.number);
+      if (projectData.story?.chapters) {
+        const index = projectData.story.chapters.findIndex((ch) => ch.id === activeItem.id);
+        if (index >= 0) return index + 1;
+      }
+    }
+    return Math.max(1, getChapterCount());
+  }, [getChapterCount]);
+
   const callAIAPI = async (prompt, includeContext = true) => {
     setIsGenerating(true);
     setAiResponse('');
@@ -2803,26 +3326,11 @@ function FaustEditor() {
 
       const fullPrompt = `Olet luova kirjoitusavustaja, joka auttaa kirjailijaa kirjoittamaan kirjaansa suomeksi.\n\n${prompt}${context}\n\nAnna hyödyllistä, luovaa ja rakentavaa apua. Ole konkreettinen ja käytännöllinen. Vastaa AINA suomeksi.`;
 
-      let result;
-      switch (selectedAIApi) {
-        case 'claude':
-          result = await window.electronAPI.claudeAPI(fullPrompt);
-          break;
-        case 'grok':
-          result = await window.electronAPI.grokAPI(fullPrompt);
-          break;
-        case 'openai':
-          result = await window.electronAPI.openaiAPI(fullPrompt);
-          break;
-        case 'cursor':
-          result = await window.electronAPI.cursorAPI(fullPrompt);
-          break;
-        default:
-          result = await window.electronAPI.claudeAPI(fullPrompt);
-      }
+      const result = await callAI(selectedAIApi, fullPrompt);
 
       if (result.success) {
         setAiResponse(result.data);
+        if (result.feedback) console.log('Logic feedback:', result.feedback);
       } else {
         setAiResponse(`Vastauksen luominen epäonnistui (${selectedAIApi}): ` + result.error);
       }
@@ -2832,16 +3340,20 @@ function FaustEditor() {
       setIsGenerating(false);
     }
   };
-
   const insertAiResponse = () => {
     if (!aiResponse) return;
     const activeItem = getActiveItem();
-    const newContent = (activeItem?.content || '') + (activeItem?.content ? '\n\n' : '') + aiResponse;
-    updateItem(activeItemId, { content: newContent });
+    const existingContent = activeItem?.content || '';
+    const addition = (existingContent ? '\n\n' : '') + aiResponse;
+    const newContent = existingContent + addition;
+    const previousStart = editorRef.current?.selectionStart ?? existingContent.length;
+    const previousEnd = editorRef.current?.selectionEnd ?? previousStart;
+    const cursorPos = newContent.length;
+    updateEditorContent(newContent, cursorPos, cursorPos, {
+      previousSelectionStart: previousStart,
+      previousSelectionEnd: previousEnd
+    });
     setAiResponse('');
-    if (editorRef.current) {
-      editorRef.current.value = newContent;
-    }
   };
 
   const saveProject = async () => {
@@ -2862,10 +3374,7 @@ function FaustEditor() {
   const loadProject = async () => {
     const result = await window.electronAPI.loadProject();
     if (result.success) {
-      setProject(result.data);
-      if (result.data.targets) {
-        setTargets(result.data.targets);
-      }
+      applyLoadedProject(result.data);
       alert('Projekti ladattu!');
     }
   };
@@ -2882,14 +3391,14 @@ function FaustEditor() {
 <html><head><meta charset="UTF-8"><title>${activeItem.title}</title>
 <style>body{font-family:'Times New Roman',serif;max-width:800px;margin:40px auto;line-height:1.6;padding:20px;}
 h1{font-size:28px;margin-bottom:20px;}p{margin-bottom:15px;text-align:justify;}</style></head>
-<body><h1>${activeItem.title}</h1>${activeItem.content.split('\n\n').map(p => `<p>${p}</p>`).join('')}</body></html>`;
+<body><h1>${activeItem?.title}</h1>${activeItem?.content?.split('\n\n').map(p => `<p>${p}</p>`).join('')}</body></html>`;
 
-      const result = await window.electronAPI.exportPDF({ html, title: activeItem.title });
+      const result = await window.electronAPI.exportPDF({ html, title: activeItem?.title });
       if (result.success) alert('PDF viety onnistuneesti!');
     } else {
       const result = await window.electronAPI.exportDocument({
-        content: activeItem.content,
-        title: activeItem.title,
+        content: activeItem?.content,
+        title: activeItem?.title,
         format
       });
       if (result.success) alert(`Dokumentti viety ${format.toUpperCase()}-muodossa!`);
@@ -2904,6 +3413,601 @@ h1{font-size:28px;margin-bottom:20px;}p{margin-bottom:15px;text-align:justify;}<
     }
     setShowExportMenu(false);
   };
+
+  const saveProjectRef = useRef(saveProject);
+  useEffect(() => {
+    saveProjectRef.current = saveProject;
+  }, [saveProject]);
+
+  const exportDocumentRef = useRef(exportDocument);
+  useEffect(() => {
+    exportDocumentRef.current = exportDocument;
+  }, [exportDocument]);
+
+  const exportFullProjectRef = useRef(exportFullProject);
+  useEffect(() => {
+    exportFullProjectRef.current = exportFullProject;
+  }, [exportFullProject]);
+
+  const undoStackRef = useRef([]);
+  const redoStackRef = useRef([]);
+  const pendingSelectionRef = useRef(null);
+  const HISTORY_LIMIT = 200;
+
+  const performUndo = useCallback(() => {
+    const undoStack = undoStackRef.current;
+    if (!undoStack.length) {
+      return;
+    }
+    const snapshot = undoStack.pop();
+    const projectData = projectRef.current;
+    if (!snapshot || !projectData) return;
+
+    const activeId = activeItemIdRef.current;
+    if (activeId) {
+      const currentItem = findItem(projectData.items, activeId);
+      if (currentItem) {
+        redoStackRef.current.push({
+          itemId: activeId,
+          content: currentItem.content || '',
+          selectionStart: editorRef.current?.selectionStart ?? 0,
+          selectionEnd: editorRef.current?.selectionEnd ?? 0
+        });
+        if (redoStackRef.current.length > HISTORY_LIMIT) {
+          redoStackRef.current.splice(0, redoStackRef.current.length - HISTORY_LIMIT);
+        }
+      }
+    }
+
+    updateEditorContent(
+      snapshot.content,
+      snapshot.selectionStart ?? 0,
+      snapshot.selectionEnd ?? snapshot.selectionStart ?? 0,
+      { pushHistory: false, itemId: snapshot.itemId }
+    );
+  }, [updateEditorContent]);
+
+  const performRedo = useCallback(() => {
+    const redoStack = redoStackRef.current;
+    if (!redoStack.length) {
+      return;
+    }
+    const snapshot = redoStack.pop();
+    const projectData = projectRef.current;
+    if (!snapshot || !projectData) return;
+
+    const activeId = activeItemIdRef.current;
+    if (activeId) {
+      const currentItem = findItem(projectData.items, activeId);
+      if (currentItem) {
+        undoStackRef.current.push({
+          itemId: activeId,
+          content: currentItem.content || '',
+          selectionStart: editorRef.current?.selectionStart ?? 0,
+          selectionEnd: editorRef.current?.selectionEnd ?? 0
+        });
+        if (undoStackRef.current.length > HISTORY_LIMIT) {
+          undoStackRef.current.splice(0, undoStackRef.current.length - HISTORY_LIMIT);
+        }
+      }
+    }
+
+    updateEditorContent(
+      snapshot.content,
+      snapshot.selectionStart ?? 0,
+      snapshot.selectionEnd ?? snapshot.selectionStart ?? 0,
+      { pushHistory: false, itemId: snapshot.itemId }
+    );
+  }, [updateEditorContent]);
+
+  const openFindDialog = useCallback((mode = 'find') => {
+    setFindMode(mode);
+    if (mode === 'replace') {
+      setFindReplaceValue(prev => (prev ? prev : (findQuery || '')));
+    }
+    setShowFindDialog(true);
+    requestAnimationFrame(() => {
+      if (findInputRef.current) {
+        findInputRef.current.focus();
+        findInputRef.current.select();
+      }
+    });
+  }, [findQuery]);
+
+  const closeFindDialog = useCallback(() => {
+    setShowFindDialog(false);
+  }, []);
+
+  const goToMatch = useCallback((direction = 1) => {
+    const matches = findMatchesRef.current;
+    if (!matches.length) return;
+    setCurrentMatchIndex(prev => {
+      const length = matches.length;
+      const next = ((prev + direction) % length + length) % length;
+      return next;
+    });
+  }, []);
+
+  const goToNextMatch = useCallback(() => goToMatch(1), [goToMatch]);
+  const goToPreviousMatch = useCallback(() => goToMatch(-1), [goToMatch]);
+
+  const replaceCurrentMatch = useCallback(() => {
+    if (!findQuery) return;
+    const matches = findMatchesRef.current;
+    if (!matches.length) return;
+    const projectData = projectRef.current;
+    const activeId = activeItemIdRef.current;
+    if (!projectData || !activeId) return;
+    const activeItem = findItem(projectData.items, activeId);
+    if (!activeItem) return;
+    const content = activeItem.content || '';
+    const matchStart = matches[currentMatchIndexRef.current] ?? matches[0];
+    if (matchStart === undefined) return;
+    const matchEnd = matchStart + findQuery.length;
+    const newContent = `${content.slice(0, matchStart)}${findReplaceValue}${content.slice(matchEnd)}`;
+    const newCursor = matchStart + findReplaceValue.length;
+    updateEditorContent(newContent, newCursor, newCursor, {
+      previousSelectionStart: matchStart,
+      previousSelectionEnd: matchEnd
+    });
+  }, [findQuery, findReplaceValue, updateEditorContent]);
+
+  const replaceAllMatches = useCallback(() => {
+    if (!findQuery) return;
+    const matches = findMatchesRef.current;
+    if (!matches.length) return;
+    const projectData = projectRef.current;
+    const activeId = activeItemIdRef.current;
+    if (!projectData || !activeId) return;
+    const activeItem = findItem(projectData.items, activeId);
+    if (!activeItem) return;
+    const content = activeItem.content || '';
+    const flags = findCaseSensitive ? 'g' : 'gi';
+    const regex = new RegExp(escapeRegExp(findQuery), flags);
+    regex.lastIndex = 0;
+    if (!regex.test(content)) return;
+    regex.lastIndex = 0;
+    const currentSelectionStart = editorRef.current?.selectionStart ?? 0;
+    const currentSelectionEnd = editorRef.current?.selectionEnd ?? currentSelectionStart;
+    const newContent = content.replace(regex, (match) => {
+      if (!findCaseSensitive && match === match.toUpperCase()) return findReplaceValue.toUpperCase();
+      if (!findCaseSensitive && match[0] === match[0].toUpperCase()) {
+        return findReplaceValue.charAt(0).toUpperCase() + findReplaceValue.slice(1);
+      }
+      return findReplaceValue;
+    });
+    const firstMatch = matches[0] ?? 0;
+    const cursorPos = firstMatch + findReplaceValue.length;
+    updateEditorContent(newContent, cursorPos, cursorPos, {
+      previousSelectionStart: currentSelectionStart,
+      previousSelectionEnd: currentSelectionEnd
+    });
+    setCurrentMatchIndex(0);
+  }, [findCaseSensitive, findQuery, findReplaceValue, updateEditorContent]);
+
+  useEffect(() => {
+    const projectData = projectRef.current;
+    const activeId = activeItemIdRef.current;
+    if (!findQuery || !projectData || !activeId) {
+      setFindMatches([]);
+      setCurrentMatchIndex(0);
+      return;
+    }
+    const activeItem = findItem(projectData.items, activeId);
+    if (!activeItem?.content) {
+      setFindMatches([]);
+      setCurrentMatchIndex(0);
+      return;
+    }
+    const matches = computeMatchPositions(activeItem.content, findQuery, findCaseSensitive);
+    setFindMatches(matches);
+    if (matches.length === 0) {
+      setCurrentMatchIndex(0);
+    } else {
+      setCurrentMatchIndex(prev => Math.min(prev, matches.length - 1));
+    }
+  }, [findQuery, findCaseSensitive, project.items, activeItemId, computeMatchPositions]);
+
+  useEffect(() => {
+    findMatchesRef.current = findMatches;
+  }, [findMatches]);
+
+  useEffect(() => {
+    currentMatchIndexRef.current = currentMatchIndex;
+  }, [currentMatchIndex]);
+
+  useEffect(() => {
+    if (!findMatches.length || !findQuery) return;
+    const safeIndex = Math.min(currentMatchIndex, findMatches.length - 1);
+    highlightMatch(safeIndex, findMatches);
+  }, [currentMatchIndex, findMatches, findQuery, highlightMatch]);
+
+  const getSuggestions = useCallback((word) => {
+    const dictionary = dictionaryRef.current;
+    if (!dictionary || dictionary.size === 0) return [];
+    const lowerWord = (word || '').toLowerCase();
+    const suggestions = [];
+    dictionary.forEach(candidate => {
+      const distance = levenshtein(lowerWord, candidate);
+      if (distance <= 2) {
+        suggestions.push({ candidate, distance });
+      }
+    });
+    suggestions.sort((a, b) => {
+      if (a.distance !== b.distance) return a.distance - b.distance;
+      return a.candidate.localeCompare(b.candidate);
+    });
+    return suggestions.slice(0, 5).map(item => item.candidate);
+  }, []);
+
+  const performSpellCheck = useCallback(() => {
+    if (dictionaryStatus === 'loading') {
+      alert('Sanakirja latautuu, yritä hetken päästä.');
+      return;
+    }
+    if (dictionaryStatus === 'error') {
+      alert('Sanakirjan lataus epäonnistui. ' + (dictionaryError || ''));
+      return;
+    }
+    const projectData = projectRef.current;
+    const activeId = activeItemIdRef.current;
+    if (!projectData || !activeId) {
+      alert('Valitse dokumentti tarkistusta varten.');
+      return;
+    }
+    const activeItem = findItem(projectData.items, activeId);
+    if (!activeItem?.content) {
+      alert('Ei sisältöä tarkistettavaksi.');
+      return;
+    }
+    const content = activeItem.content || '';
+    setSpellcheckLoading(true);
+    requestAnimationFrame(() => {
+      const tokens = content.toLowerCase().match(/\p{L}+/gu) || [];
+      const counts = new Map();
+      tokens.forEach(token => {
+        if (token.length <= 2) return;
+        if (!dictionaryRef.current.has(token)) {
+          counts.set(token, (counts.get(token) || 0) + 1);
+        }
+      });
+      const results = Array.from(counts.entries()).map(([word, count]) => ({
+        word,
+        count,
+        suggestions: getSuggestions(word)
+      }));
+      setSpellcheckResults(results);
+      setSpellcheckModalOpen(true);
+      setSpellcheckLoading(false);
+    });
+  }, [dictionaryError, dictionaryStatus, getSuggestions]);
+
+  const replaceMisspelling = useCallback((word, replacement) => {
+    if (!word || !replacement) return;
+    const projectData = projectRef.current;
+    const activeId = activeItemIdRef.current;
+    if (!projectData || !activeId) return;
+    const activeItem = findItem(projectData.items, activeId);
+    if (!activeItem) return;
+    const content = activeItem.content || '';
+    const regex = new RegExp(`\\b${escapeRegExp(word)}\\b`, 'gi');
+    let replaced = false;
+    const newContent = content.replace(regex, (match) => {
+      replaced = true;
+      if (match === match.toUpperCase()) return replacement.toUpperCase();
+      if (match[0] === match[0].toUpperCase()) {
+        return replacement.charAt(0).toUpperCase() + replacement.slice(1);
+      }
+      return replacement;
+    });
+    if (!replaced) return;
+    const previousStart = editorRef.current?.selectionStart ?? 0;
+    const previousEnd = editorRef.current?.selectionEnd ?? previousStart;
+    updateEditorContent(newContent, previousStart, previousStart, {
+      previousSelectionStart: previousStart,
+      previousSelectionEnd: previousEnd
+    });
+    setSpellcheckModalOpen(false);
+  }, [updateEditorContent]);
+
+  const focusEditor = useCallback(() => {
+    editorRef.current?.focus();
+  }, []);
+
+  const appendTextToActiveItem = useCallback((text) => {
+    if (!text) return;
+    const projectData = projectRef.current;
+    const activeId = activeItemIdRef.current;
+    if (!projectData || !activeId) return;
+    const activeItem = findItem(projectData.items, activeId);
+    const existingContent = activeItem?.content || '';
+    const textarea = editorRef.current;
+    const previousStart = textarea?.selectionStart ?? existingContent.length;
+    const previousEnd = textarea?.selectionEnd ?? previousStart;
+    const newContent = existingContent + text;
+    const cursorPos = newContent.length;
+    updateEditorContent(newContent, cursorPos, cursorPos, {
+      previousSelectionStart: previousStart,
+      previousSelectionEnd: previousEnd
+    });
+  }, [updateEditorContent]);
+
+  const applyInlineFormatting = useCallback((type, options = {}) => {
+    const textarea = editorRef.current;
+    const projectData = projectRef.current;
+    const activeId = activeItemIdRef.current;
+    if (!textarea || !projectData || !activeId) return;
+    const activeItem = findItem(projectData.items, activeId);
+    if (!activeItem) return;
+
+    const text = activeItem.content || '';
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? start;
+    const selection = text.slice(start, end);
+    let newContent = text;
+    let newSelectionStart = start;
+    let newSelectionEnd = end;
+
+    const wrapSelection = (prefix, suffix = prefix, placeholder = 'teksti') => {
+      if (selection.length === 0) {
+        const insertion = `${prefix}${placeholder}${suffix}`;
+        newContent = text.slice(0, start) + insertion + text.slice(end);
+        newSelectionStart = start + prefix.length;
+        newSelectionEnd = newSelectionStart + placeholder.length;
+      } else {
+        const wrapped = `${prefix}${selection}${suffix}`;
+        newContent = text.slice(0, start) + wrapped + text.slice(end);
+        newSelectionStart = start + prefix.length;
+        newSelectionEnd = newSelectionStart + selection.length;
+      }
+    };
+
+    const applyLinePrefix = (prefix) => {
+      const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+      const lineEnd = text.indexOf('\n', end);
+      const effectiveEnd = lineEnd === -1 ? text.length : lineEnd;
+      const targetText = text.slice(lineStart, effectiveEnd);
+      const lines = targetText.split('\n').map(line => (line.startsWith(prefix) ? line : `${prefix}${line}`));
+      const replaced = lines.join('\n');
+      newContent = text.slice(0, lineStart) + replaced + text.slice(effectiveEnd);
+      const cursorOffset = lineStart + replaced.length;
+      newSelectionStart = cursorOffset;
+      newSelectionEnd = cursorOffset;
+    };
+
+    const applyHeading = (level) => {
+      const headingLevel = Math.min(Math.max(level || 1, 1), 6);
+      const hashes = '#'.repeat(headingLevel);
+      const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+      const lineEnd = text.indexOf('\n', end);
+      const effectiveEnd = lineEnd === -1 ? text.length : lineEnd;
+      const line = text.slice(lineStart, effectiveEnd).replace(/^#{1,6}\s*/, '').trimStart();
+      const newLine = `${hashes} ${line}`;
+      newContent = text.slice(0, lineStart) + newLine + text.slice(effectiveEnd);
+      const cursorPos = lineStart + newLine.length;
+      newSelectionStart = cursorPos;
+      newSelectionEnd = cursorPos;
+    };
+
+    switch (type) {
+      case 'bold':
+        wrapSelection('**', '**', 'vahva teksti');
+        break;
+      case 'italic':
+        wrapSelection('*', '*', 'kursivoitu teksti');
+        break;
+      case 'underline':
+        wrapSelection('__', '__', 'alleviivattu teksti');
+        break;
+      case 'heading':
+        applyHeading(options.level || 1);
+        break;
+      case 'quote':
+        applyLinePrefix('> ');
+        break;
+      case 'list': {
+        const lineStart = text.lastIndexOf('\n', start - 1) + 1;
+        const lineEnd = text.indexOf('\n', end);
+        const effectiveEnd = lineEnd === -1 ? text.length : lineEnd;
+        const targetText = text.slice(lineStart, effectiveEnd);
+        const lines = targetText.split('\n').map(line => {
+          if (!line.trim()) return line;
+          return line.startsWith('- ') ? line : `- ${line}`;
+        });
+        const replaced = lines.join('\n');
+        newContent = text.slice(0, lineStart) + replaced + text.slice(effectiveEnd);
+        const cursorPos = lineStart + replaced.length;
+        newSelectionStart = cursorPos;
+        newSelectionEnd = cursorPos;
+        break;
+      }
+      default:
+        return;
+    }
+
+    updateEditorContent(newContent, newSelectionStart, newSelectionEnd, {
+      previousSelectionStart: start,
+      previousSelectionEnd: end
+    });
+  }, [updateEditorContent]);
+
+  const handleAddItemFromMenu = (type) => {
+    if (!addItemRef.current) return;
+    const currentProject = projectRef.current;
+    if (!currentProject || !currentProject.items?.length) return;
+
+    const activeId = activeItemIdRef.current;
+    let parentId = currentProject.items[0].id;
+
+    if (activeId) {
+      const activeItem = findItem(currentProject.items, activeId);
+      if (activeItem?.type === 'folder') {
+        parentId = activeItem.id;
+      } else {
+        const parent = findParentId(currentProject.items, activeId);
+        if (parent) parentId = parent;
+      }
+    }
+
+    addItemRef.current(parentId, type);
+  };
+  const handleMenuAction = useCallback(async (action, payload) => {
+    switch (action) {
+      case 'new-project':
+        resetProjectState();
+        break;
+      case 'save-project-trigger':
+      case 'save-project-as-trigger':
+        if (saveProjectRef.current) {
+          try {
+            await saveProjectRef.current();
+          } catch (error) {
+            console.error('[Menu] Project save failed:', error);
+          }
+        }
+        break;
+      case 'export-trigger':
+        if (typeof payload === 'string' && exportDocumentRef.current) {
+          try {
+            await exportDocumentRef.current(payload);
+          } catch (error) {
+            console.error('[Menu] Export failed:', error);
+          }
+        }
+        break;
+      case 'export-pdf-trigger':
+        if (exportDocumentRef.current) {
+          try {
+            await exportDocumentRef.current('pdf');
+          } catch (error) {
+            console.error('[Menu] PDF export failed:', error);
+          }
+        }
+        break;
+      case 'load-project-data':
+        applyLoadedProject(payload);
+        break;
+      case 'undo':
+        focusEditor();
+        performUndo();
+        break;
+      case 'redo':
+        focusEditor();
+        performRedo();
+        break;
+      case 'show-find':
+        openFindDialog('find');
+        break;
+      case 'find-next':
+        if (!findQuery) {
+          openFindDialog('find');
+        } else {
+          goToNextMatch();
+        }
+        break;
+      case 'show-find-replace':
+        openFindDialog('replace');
+        break;
+      case 'toggle-sidebar':
+        setShowSidebar(prev => !prev);
+        break;
+      case 'toggle-inspector':
+        setShowInspector(prev => !prev);
+        break;
+      case 'toggle-ai-panel':
+        setAiAssistantOpen(prev => !prev);
+        break;
+      case 'toggle-focus-mode':
+        setComposeMode(prev => !prev);
+        setFocusMode(prev => !prev);
+        break;
+      case 'new-chapter':
+        handleAddItemFromMenu('chapter');
+        break;
+      case 'new-scene':
+        handleAddItemFromMenu('chapter');
+        break;
+      case 'insert-comment':
+        appendTextToActiveItem('\n[Kommentti]\n');
+        break;
+      case 'insert-note':
+        appendTextToActiveItem('\n[Muistiinpano]\n');
+        break;
+      case 'insert-text':
+        if (typeof payload === 'string') {
+          appendTextToActiveItem(payload);
+        }
+        break;
+      case 'format-bold':
+        applyInlineFormatting('bold');
+        break;
+      case 'format-italic':
+        applyInlineFormatting('italic');
+        break;
+      case 'format-underline':
+        applyInlineFormatting('underline');
+        break;
+      case 'format-heading':
+        applyInlineFormatting('heading', { level: typeof payload === 'number' ? payload : 1 });
+        break;
+      case 'format-quote':
+        applyInlineFormatting('quote');
+        break;
+      case 'format-list':
+        applyInlineFormatting('list');
+        break;
+      case 'show-word-count':
+        setShowWordCount(true);
+        break;
+      case 'show-target-settings':
+        setShowTargetSettings(true);
+        break;
+      case 'spell-check':
+        performSpellCheck();
+        break;
+      case 'show-project-stats':
+        setShowProjectStats(true);
+        break;
+      case 'show-help':
+        setShowHelp(true);
+        break;
+      case 'show-shortcuts':
+        setShowShortcuts(true);
+        break;
+      case 'show-about':
+        setShowAbout(true);
+        break;
+      case 'show-settings':
+        setShowSettings(true);
+        break;
+      case 'ai-suggest':
+        setAiPrompt(`AI-ehdotus valitulle tekstille: ${payload}`);
+        setAiAssistantOpen(true);
+        break;
+      default:
+        console.info('[Menu] Unhandled action:', action, payload);
+    }
+  }, [
+    appendTextToActiveItem,
+    applyInlineFormatting,
+    applyLoadedProject,
+    findQuery,
+    focusEditor,
+    goToNextMatch,
+    openFindDialog,
+    performRedo,
+    performSpellCheck,
+    performUndo,
+    resetProjectState
+  ]);
+
+  useEffect(() => {
+    if (!window?.electronAPI?.onMenuAction) return;
+    const listener = (event, payload) => {
+      handleMenuAction(event, payload);
+    };
+    window.electronAPI.onMenuAction(listener);
+  }, [handleMenuAction]);
 
   const renderTree = (items, depth = 0) => items.map(item => {
     const labelColor = LABEL_COLORS.find(l => l.id === (item.label || 'none'));
@@ -3043,7 +4147,6 @@ h1{font-size:28px;margin-bottom:20px;}p{margin-bottom:15px;text-align:justify;}<
     const preferences = { editorFont, fontSize, lineHeight };
     localStorage.setItem('editorPreferences', JSON.stringify(preferences));
   }, [editorFont, fontSize, lineHeight]);
-
   // Automaattinen jatkuvuustarkistus (debounced)
   useEffect(() => {
     if (!autoCheckEnabled) return;
@@ -3057,7 +4160,7 @@ h1{font-size:28px;margin-bottom:20px;}p{margin-bottom:15px;text-align:justify;}<
     
     const timer = setTimeout(async () => {
       // Kerää kaikki hahmot jotka mainitaan tekstissä
-      const content = activeItem.content || '';
+      const content = activeItem?.content || '';
       const mentionedCharacters = project.characters.filter(char => 
         content.toLowerCase().includes(char.name.toLowerCase())
       );
@@ -3102,54 +4205,65 @@ h1{font-size:28px;margin-bottom:20px;}p{margin-bottom:15px;text-align:justify;}<
     
     return () => mediaQuery.removeEventListener('change', updateTheme);
   }, []);
-
   // macOS Keyboard Shortcuts
   useEffect(() => {
     const handleKeyboard = (e) => {
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const mod = isMac ? e.metaKey : e.ctrlKey;
       
+      const key = e.key.toLowerCase();
+
       // Cmd+S: Save
-      if (mod && e.key === 's') {
+      if (mod && key === 's') {
         e.preventDefault();
         saveProject();
       }
-      
+
       // Cmd+B: Toggle Sidebar
-      if (mod && e.key === 'b') {
+      if (mod && key === 'b') {
         e.preventDefault();
         setShowSidebar(prev => !prev);
       }
-      
+
       // Cmd+Option+I: Toggle Inspector
-      if (mod && e.altKey && e.key === 'i') {
+      if (mod && e.altKey && key === 'i') {
         e.preventDefault();
         setShowInspector(prev => !prev);
       }
-      
+
       // Cmd+K: AI Assistant
-      if (mod && e.key === 'k') {
+      if (mod && key === 'k') {
         e.preventDefault();
         setAiAssistantOpen(prev => !prev);
       }
-      
+
       // Cmd+Shift+F: Focus Mode
-      if (mod && e.shiftKey && e.key === 'f') {
+      if (mod && e.shiftKey && key === 'f') {
         e.preventDefault();
         setComposeMode(prev => !prev);
       }
+
+      // Cmd+Z / Cmd+Shift+Z: Undo / Redo
+      if (mod && key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          performRedo();
+        } else {
+          performUndo();
+        }
+      }
     };
-    
+
     window.addEventListener('keydown', handleKeyboard);
     return () => window.removeEventListener('keydown', handleKeyboard);
-  }, []);
+  }, [performRedo, performUndo, saveProject]);
 
   // ========== NORMAN-KRUG-NATSUME: Effects ==========
   
   // NATSUME: Emotional tone detection - Analyzes text and adapts UI
   useEffect(() => {
     const activeItem = getActiveItem();
-    if (!activeItem || !activeItem.content) return;
+    if (!activeItem || !activeItem?.content) return;
     
     // Debounce analysis - don't run on every keystroke
     const timeout = setTimeout(() => {
@@ -3191,7 +4305,7 @@ h1{font-size:28px;margin-bottom:20px;}p{margin-bottom:15px;text-align:justify;}<
   // KRUG: Track edit time for stuck detection
   useEffect(() => {
     const activeItem = getActiveItem();
-    if (activeItem && activeItem.content) {
+    if (activeItem && activeItem?.content) {
       setLastEditTime(Date.now());
     }
   }, [project.items]);
@@ -3281,7 +4395,7 @@ h1{font-size:28px;margin-bottom:20px;}p{margin-bottom:15px;text-align:justify;}<
   // SAGMEISTER: Analyze emotional arc from content
   useEffect(() => {
     const activeItem = getActiveItem();
-    if (!activeItem || !activeItem.content) return;
+    if (!activeItem || !activeItem?.content) return;
     
     const timeout = setTimeout(() => {
       const arc = analyzeEmotionalArc(activeItem.content);
@@ -3302,7 +4416,7 @@ h1{font-size:28px;margin-bottom:20px;}p{margin-bottom:15px;text-align:justify;}<
       }
     }, 3000); // Check every 3s
     
-    return () => clearTimeout(timeout);
+    return () => clearInterval(timeout);
   }, [activityMetrics]);
   
   // IDEO: Calculate cognitive load
@@ -3334,11 +4448,10 @@ h1{font-size:28px;margin-bottom:20px;}p{margin-bottom:15px;text-align:justify;}<
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, []);
-
   // Vaihe 6: LocationKeeper-funktiot
   const detectLocationsInText = async () => {
     const activeItem = getActiveItem();
-    if (!activeItem || !activeItem.content) {
+    if (!activeItem || !activeItem?.content) {
       alert('Ei sisältöä analysoitavaksi!');
       return;
     }
@@ -3346,9 +4459,8 @@ h1{font-size:28px;margin-bottom:20px;}p{margin-bottom:15px;text-align:justify;}<
     setIsGenerating(true);
 
     const prompt = `Tunnista KAIKKI paikat tästä tekstistä. Sisällytä kaupungit, rakennukset, kadut, luontokohteet, maamerkit.
-
 TEKSTI:
-${activeItem.content}
+${activeItem?.content}
 
 Palauta VAIN JSON (ei mitään muuta tekstiä):
 {
@@ -3362,9 +4474,7 @@ Palauta VAIN JSON (ei mitään muuta tekstiä):
     }
   ]
 }
-
 Jos ei paikkoja, palauta: {"locations": []}
-
 VASTAA PELKKÄ JSON.`;
 
     try {
@@ -3474,7 +4584,7 @@ VASTAA SUOMEKSI, JSON-MUODOSSA.`;
         if (!aiAssistantOpen) setAiAssistantOpen(true);
         setAiResponse(`📍 ${location.name} - Tiedot haettu!\n\n` +
           `📚 FAKTAT:\n${JSON.stringify(analysis.facts, null, 2)}\n\n` +
-          `🎨 VISUAALISUUS:\n${JSON.stringify(analysis.visual, null, 2)}\n\n` +
+          `🎨 VISUAALISET ELEMENTIT:\n${JSON.stringify(analysis.visual, null, 2)}\n\n` +
           `💡 KIRJOITUSVINKIT:\n${analysis.writing_tips.join('\n')}`
         );
 
@@ -3507,39 +4617,31 @@ ${location.name} (${location.city}, ${location.country})
 
 FAKTAT:
 ${JSON.stringify(location.facts, null, 2)}
-
 VISUAALISET ELEMENTIT:
 ${JSON.stringify(location.visual, null, 2)}
-
 KIRJAN GENRE:
 {{GENRE}}
-
 KOHTAUKSEN KONTEKSTI:
 ${context}
-
 TEHTÄVÄ:
 Kirjoita 2-4 kappaletta paikka-kuvausta joka:
-
 1. **Faktatarkka**: Käytä todellisia yksityiskohtia paikasta
 2. **Aistillinen**: Aktivoi näkö, kuulo, haju, tunto (ja maku jos relevantti)
 3. **Genrespesifi**: Sovita tunnelma genreen ({{GENRE}})
 4. **Tyylillinen**: Käytä defamiliarisaatiota, rytmiä, konkretiaa
 5. **Emotionaalinen**: Luo tunnelma joka tukee kohtausta
-
 GENRE-OHJEET:
 {{GENRE_GUIDANCE}}
-
 ÄLÄ:
 - Listaa faktoja ("Paikalla on X ja Y")
 - Kerro tunnelmaa suoraan ("Paikka oli ahdistava")
 - Käytä kliseitä
 - Ylihypettele
-
 KIRJOITA NIIN ETTÄ SE SOPII SUORAAN ROMAANIIN.
 VASTAA SUOMEKSI.`;
 
     try {
-      const result = await window.electronAPI.claudeAPI(prompt);
+      const result = await callAI(selectedAIApi, prompt);
 
       if (result.success) {
         // Tallenna genre-spesifi kuvaus
@@ -3567,6 +4669,331 @@ VASTAA SUOMEKSI.`;
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  // ========== PHASE 3: AI CONCEPT MAP ==========
+
+  // Build concept map data - themes, motifs, connections
+  const buildConceptMap = () => {
+    const concepts = new Map();
+    const connections = [];
+
+    // Collect all tags as concepts
+    const allTags = getAllTags();
+    allTags.forEach(tag => {
+      const docs = getDocumentsWithTag(tag);
+      concepts.set(`tag:${tag}`, {
+        id: `tag:${tag}`,
+        name: `#${tag}`,
+        type: 'theme',
+        weight: docs.length,
+        color: 'var(--faust-gold)',
+        documents: docs
+      });
+    });
+
+    // Collect characters as concepts
+    (project.characters || []).forEach(char => {
+      const docs = getDocumentsMentioningEntity(char.name);
+      concepts.set(`char:${char.id}`, {
+        id: `char:${char.id}`,
+        name: char.name,
+        type: 'character',
+        weight: docs.length,
+        color: 'rgba(100, 200, 255, 0.8)',
+        data: char,
+        documents: docs
+      });
+    });
+
+    // Collect locations as concepts
+    (project.locations || []).forEach(loc => {
+      const docs = getDocumentsMentioningEntity(loc.name);
+      concepts.set(`loc:${loc.id}`, {
+        id: `loc:${loc.id}`,
+        name: loc.name,
+        type: 'location',
+        weight: docs.length,
+        color: 'rgba(255, 200, 100, 0.8)',
+        data: loc,
+        documents: docs
+      });
+    });
+
+    // Find connections based on co-occurrence in same documents
+    const conceptArray = Array.from(concepts.values());
+    conceptArray.forEach((concept1, i) => {
+      conceptArray.slice(i + 1).forEach(concept2 => {
+        // Count documents where both appear
+        const sharedDocs = concept1.documents.filter(doc1 =>
+          concept2.documents.some(doc2 => doc2.id === doc1.id)
+        );
+
+        if (sharedDocs.length > 0) {
+          connections.push({
+            source: concept1.id,
+            target: concept2.id,
+            weight: sharedDocs.length,
+            documents: sharedDocs
+          });
+        }
+      });
+    });
+
+    return {
+      concepts: conceptArray,
+      connections: connections.sort((a, b) => b.weight - a.weight).slice(0, 50) // Top 50 connections
+    };
+  };
+
+  // ========== PHASE 2: NATURAL LANGUAGE QUERIES ==========
+
+  // Parse natural language query into search parameters
+  const parseNaturalQuery = (query) => {
+    const lowerQuery = query.toLowerCase();
+    const params = {
+      characters: [],
+      locations: [],
+      tags: [],
+      keywords: []
+    };
+
+    // Extract character references (with @character or "character")
+    project.characters?.forEach(char => {
+      const namePattern = new RegExp(`(@|")${char.name.toLowerCase()}("|\\s|$)`, 'i');
+      if (lowerQuery.match(namePattern) || lowerQuery.includes(char.name.toLowerCase())) {
+        params.characters.push(char.id);
+      }
+    });
+
+    // Extract location references
+    project.locations?.forEach(loc => {
+      const namePattern = new RegExp(`(@|")${loc.name.toLowerCase()}("|\\s|$)`, 'i');
+      if (lowerQuery.match(namePattern) || lowerQuery.includes(loc.name.toLowerCase())) {
+        params.locations.push(loc.id);
+      }
+    });
+
+    // Extract tags
+    const tagMatches = lowerQuery.match(/#[\wäöå-]+/g);
+    if (tagMatches) {
+      params.tags = tagMatches.map(tag => tag.substring(1));
+    }
+
+    // Extract keywords (words not part of common query terms)
+    const stopWords = ['show', 'find', 'search', 'where', 'with', 'in', 'at', 'the', 'all', 'scenes', 'chapters', 'näytä', 'etsi', 'hae', 'missä', 'kanssa', 'kaikki', 'kohtaukset', 'luvut'];
+    const words = lowerQuery.split(/\s+/)
+      .filter(word => !stopWords.includes(word) && word.length > 2 && !word.startsWith('#') && !word.startsWith('@'));
+    params.keywords = words;
+
+    return params;
+  };
+  // Search documents based on natural language query
+  const executeNaturalSearch = (query) => {
+    const params = parseNaturalQuery(query);
+    const results = [];
+
+    const searchItems = (items) => {
+      items.forEach(item => {
+        if (item.content) {
+          let relevanceScore = 0;
+          const matchReasons = [];
+
+          // Check for character matches
+          const { mentions } = parseMetadata(item.content);
+          params.characters.forEach(charId => {
+            if (mentions.some(m => m.entity && m.entity.id === charId)) {
+              relevanceScore += 10;
+              matchReasons.push(`Sisältää hahmon: ${mentions.find(m => m.entity && m.entity.id === charId).name}`);
+            }
+          });
+
+          // Check for location matches
+          params.locations.forEach(locId => {
+            if (mentions.some(m => m.entity && m.entity.id === locId)) {
+              relevanceScore += 10;
+              matchReasons.push(`Sisältää paikan: ${mentions.find(m => m.entity && m.entity.id === locId).name}`);
+            }
+          });
+
+          // Check for tag matches
+          const { tags } = parseMetadata(item.content);
+          params.tags.forEach(tag => {
+            if (tags.some(t => t.tag.toLowerCase() === tag.toLowerCase())) {
+              relevanceScore += 5;
+              matchReasons.push(`Tagi: #${tag}`);
+            }
+          });
+
+          // Check for keyword matches
+          params.keywords.forEach(keyword => {
+            const regex = new RegExp(keyword, 'gi');
+            const matches = item.content.match(regex);
+            if (matches) {
+              relevanceScore += matches.length;
+              matchReasons.push(`Avainsana: "${keyword}" (${matches.length}x)`);
+            }
+          });
+
+          if (relevanceScore > 0) {
+            results.push({
+              item,
+              score: relevanceScore,
+              reasons: matchReasons,
+              preview: item.content.substring(0, 200) + '...'
+            });
+          }
+        }
+
+        if (item.children) {
+          searchItems(item.children);
+        }
+      });
+    };
+
+    searchItems(project.items);
+
+    // Sort by relevance
+    results.sort((a, b) => b.score - a.score);
+
+    return results;
+  };
+
+  // ========== PHASE 2: TIMELINE / KANBAN VIEW ==========
+  // Build timeline data from project chapters
+  const buildTimelineData = () => {
+    const chapters = [];
+    
+    const collectChapters = (items, level = 0) => {
+      items.forEach((item, index) => {
+        if (item.type === 'chapter') {
+          const { tags, mentions } = parseMetadata(item.content || '');
+          const links = parseLinks(item.content || '');
+          
+          chapters.push({
+            id: item.id,
+            title: item.title || `Luku ${index + 1}`,
+            content: item.content || '',
+            wordCount: item.wordCount || 0,
+            level,
+            order: index,
+            tags,
+            characters: mentions
+              .filter(m => m.entity && m.entity.type === 'character')
+              .map(m => m.entity.data),
+            locations: mentions
+              .filter(m => m.entity && m.entity.type === 'location')
+              .map(m => m.entity.data),
+            links,
+            status: item.status || 'draft', // 'draft', 'review', 'done'
+            notes: item.notes || '',
+            createdAt: item.createdAt || Date.now(),
+            updatedAt: item.updatedAt || Date.now()
+          });
+        }
+        
+        if (item.children && item.children.length > 0) {
+          collectChapters(item.children, level + 1);
+        }
+      });
+    };
+    
+    collectChapters(project.items);
+    return chapters;
+  };
+
+  // Update chapter status
+  const updateChapterStatus = (chapterId, newStatus) => {
+    const updateItemsRecursively = (items) => {
+      return items.map(item => {
+        if (item.id === chapterId) {
+          return { ...item, status: newStatus, updatedAt: Date.now() };
+        }
+        if (item.children) {
+          return { ...item, children: updateItemsRecursively(item.children) };
+        }
+        return item;
+      });
+    };
+    
+    setProject({
+      ...project,
+      items: updateItemsRecursively(project.items)
+    });
+  };
+
+  // ========== GRAPH VIEW: Entity relationships ==========
+  // Build graph data from project
+  const buildGraphData = () => {
+    const nodes = [];
+    const links = [];
+    const nodeMap = new Map();
+
+    // Add character nodes
+    (project.characters || []).forEach(char => {
+      const node = {
+        id: `char-${char.id}`,
+        name: char.name,
+        type: 'character',
+        data: char
+      };
+      nodes.push(node);
+      nodeMap.set(char.name.toLowerCase(), node);
+    });
+
+    // Add location nodes
+    (project.locations || []).forEach(loc => {
+      const node = {
+        id: `loc-${loc.id}`,
+        name: loc.name,
+        type: 'location',
+        data: loc
+      };
+      nodes.push(node);
+      nodeMap.set(loc.name.toLowerCase(), node);
+    });
+
+    // Find links by analyzing all documents
+    const analyzeItems = (items) => {
+      items.forEach(item => {
+        if (item.content) {
+          // Find [[entity]] links
+          const itemLinks = parseLinks(item.content);
+          itemLinks.forEach(link => {
+            const sourceNode = nodeMap.get(link.entityName.toLowerCase());
+            if (sourceNode) {
+              // Check if there are co-occurrences in the same document
+              itemLinks.forEach(otherLink => {
+                if (link !== otherLink) {
+                  const targetNode = nodeMap.get(otherLink.entityName.toLowerCase());
+                  if (targetNode && sourceNode.id !== targetNode.id) {
+                    // Check if link already exists
+                    const existingLink = links.find(l => 
+                      (l.source === sourceNode.id && l.target === targetNode.id) ||
+                      (l.source === targetNode.id && l.target === sourceNode.id)
+                    );
+                    if (!existingLink) {
+                      links.push({
+                        source: sourceNode.id,
+                        target: targetNode.id,
+                        document: item.title || 'Nimetön'
+                      });
+                    }
+                  }
+                }
+              });
+            }
+          });
+        }
+        if (item.children) {
+          analyzeItems(item.children);
+        }
+      });
+    };
+
+    analyzeItems(project.items);
+
+    return { nodes, links };
   };
 
   // ========== INLINE METADATA: #tags and @entities ==========
@@ -3650,7 +5077,6 @@ VASTAA SUOMEKSI.`;
     searchItems(project.items);
     return documents;
   };
-
   // Get all documents mentioning an entity
   const getDocumentsMentioningEntity = (entityName) => {
     const documents = [];
@@ -3680,9 +5106,7 @@ VASTAA SUOMEKSI.`;
       name: 'Uusi luku',
       description: 'Luo uusi luku',
       template: `# [Luvun otsikko]
-
 ## Kohtaus 1
-
 [Kirjoita tähän...]
 
 ---
@@ -3700,11 +5124,9 @@ VASTAA SUOMEKSI.`;
       name: 'Uusi kohtaus',
       description: 'Lisää kohtauspohja',
       template: `## Kohtaus: [Otsikko]
-
 **Paikka:** [Missä tämä tapahtuu?]
 **Aika:** [Milloin?]
 **Läsnä:** [Ketkä hahmot paikalla?]
-
 **Tavoite:** [Mitä kohtauksen tulisi saavuttaa?]
 
 ---
@@ -3765,13 +5187,9 @@ VASTAA SUOMEKSI.`;
       name: 'Kuvauspohja',
       description: 'Aistillinen kuvaus',
       template: `[Näkö:] 
-
 [Kuulo:] 
-
 [Haju:] 
-
 [Tunto:] 
-
 [Tunnelma:]`
     }
   };
@@ -3788,7 +5206,7 @@ VASTAA SUOMEKSI.`;
       // Insert result text into editor
       const activeItem = getActiveItem();
       if (activeItem && editorRef.current) {
-        const currentContent = activeItem.content || '';
+        const currentContent = activeItem?.content || '';
         const cursorPos = editorRef.current.selectionStart;
         const beforeCursor = currentContent.substring(0, cursorPos);
         const afterCursor = currentContent.substring(cursorPos);
@@ -3812,7 +5230,7 @@ VASTAA SUOMEKSI.`;
       // Insert template text
       const activeItem = getActiveItem();
       if (activeItem && editorRef.current) {
-        const currentContent = activeItem.content || '';
+        const currentContent = activeItem?.content || '';
         const cursorPos = editorRef.current.selectionStart;
         const beforeCursor = currentContent.substring(0, cursorPos);
         const afterCursor = currentContent.substring(cursorPos);
@@ -3890,7 +5308,7 @@ VASTAA SUOMEKSI.`;
     
     const searchItems = (items) => {
       items.forEach(item => {
-        if (item.content) {
+        if (item?.content) {
           const links = parseLinks(item.content);
           const matchingLinks = links.filter(link => 
             link.entityName.toLowerCase() === entityName.toLowerCase()
@@ -3976,7 +5394,7 @@ VASTAA SUOMEKSI.`;
     if (!activeItem) return;
 
     // Replace the text
-    const newContent = activeItem.content.replace(edit.original, edit.suggested);
+    const newContent = activeItem?.content?.replace(edit.original, edit.suggested);
     updateItem(activeItemId, { content: newContent });
 
     // Record in Grimoire
@@ -3999,7 +5417,6 @@ VASTAA SUOMEKSI.`;
     // Remove from pending
     setPendingEdits(pendingEdits.filter(e => e.id !== editId));
   };
-
   // Reject an edit
   const rejectEdit = (editId) => {
     const edit = pendingEdits.find(e => e.id === editId);
@@ -4047,7 +5464,6 @@ FYYSISET FAKTAT:
 - Resurssit/Taidot: ${character.resources?.join(', ') || 'Ei määritelty'}
 - Loukkaantumiset: ${character.injuries?.join(', ') || 'Ei loukkaantumisia'}
 - Ulkonäkö: ${character.bio?.appearance || 'Ei kuvausta'}
-
 HAHMON ÄÄNI:
 - Tyyli: ${character.voice?.description || 'Ei määritelty'}
 - Tyypilliset sanat: ${character.voice?.lexicon?.join(', ') || 'Ei määritelty'}
@@ -4081,7 +5497,7 @@ VASTAA JSON-muodossa:
 Jos ei ongelmia, palauta tyhjä issues-taulukko.`;
 
     try {
-      const result = await window.electronAPI.claudeAPI(prompt);
+      const result = await callAI(selectedAIApi, prompt);
       if (result.success) {
         try {
           const analysis = JSON.parse(result.data);
@@ -4143,7 +5559,7 @@ VASTAA:
 VASTAA SUOMEKSI.`;
 
     try {
-      const result = await window.electronAPI.claudeAPI(prompt);
+      const result = await callAI(selectedAIApi, prompt);
       if (result.success) {
         if (!aiAssistantOpen) setAiAssistantOpen(true);
         setAiResponse(result.data);
@@ -4174,13 +5590,12 @@ Palauta JSON:
     }
   ]
 }
-
 VAIN MERKITTÄVÄT TAPAHTUMAT (ei jokaista pientä toimintoa).
 
 VASTAA PELKKÄ JSON.`;
 
     try {
-      const result = await window.electronAPI.claudeAPI(prompt);
+      const result = await callAI(selectedAIApi, prompt);
       if (result.success) {
         let responseText = result.data.replace(/\`\`\`json\n?/g, '').replace(/\`\`\`\n?/g, '').trim();
         const eventData = JSON.parse(responseText);
@@ -4251,7 +5666,7 @@ VASTAA:
 VASTAA SUOMEKSI.`;
 
     try {
-      const result = await window.electronAPI.claudeAPI(prompt);
+      const result = await callAI(selectedAIApi, prompt);
       if (result.success) {
         if (!aiAssistantOpen) setAiAssistantOpen(true);
         setAiResponse(result.data);
@@ -4272,12 +5687,10 @@ ${(project.story.outline || []).map(ch =>
   `Luku ${ch.chapter}: ${ch.title || 'Nimetön'}
   ${ch.summary || 'Ei yhteenvetoa'}`
 ).join('\n\n')}
-
 AVOIMET JUONILANGAT:
 ${(project.story.threads || []).filter(t => t.status === 'open').map(t =>
   `- ${t.name} (${t.importance})`
 ).join('\n')}
-
 GENRE: ${GENRE_OPTIONS.find(g => g.id === project.genre)?.name || 'Ei määritelty'}
 
 EHDOTA:
@@ -4290,7 +5703,7 @@ EHDOTA:
 VASTAA SUOMEKSI, SELKEÄSTI NUMEROITUNA.`;
 
     try {
-      const result = await window.electronAPI.claudeAPI(prompt);
+      const result = await callAI(selectedAIApi, prompt);
       if (result.success) {
         if (!aiAssistantOpen) setAiAssistantOpen(true);
         setAiResponse(result.data);
@@ -4320,7 +5733,7 @@ VASTAA SUOMEKSI, SELKEÄSTI NUMEROITUNA.`;
   // Vaihe 5: CharacterKeeper - checkCharacterContinuity-funktio
   const checkCharacterContinuity = (character) => {
     const activeItem = getActiveItem();
-    if (!activeItem || !activeItem.content) {
+    if (!activeItem || !activeItem?.content) {
       alert('Ei sisältöä tarkistettavaksi!');
       return;
     }
@@ -4340,25 +5753,19 @@ LOUKKAANTUMISET: ${(character.state.injuries || []).join(', ') || 'ei'}
 `.trim();
 
     const prompt = `Olet CharacterKeeper - hahmojen jatkuvuuden valvoja.
-
 Tarkista tämän hahmon jatkuvuus kohtauksessa:
-
 ${characterInfo}
-
 KOHTAUKSEN TEKSTI:
-${activeItem.content}
-
+${activeItem?.content}
 TARKISTA:
 1. **Ääni**: Puhuuko hahmo tyylilleen uskollisesti?
 2. **Psykologia**: Ovatko teot/päätökset johdonmukaisia tavoitteiden/pelkojen kanssa?
 3. **Faktat**: Käytetäänkö esineitä/taitoja joita hänellä ei ole?
 4. **Loukkaantumiset**: Mainitaanko/huomioidaanko loukkaantumiset?
-
 ANNA:
 ✅ Mikä toimii hyvin
 ⚠️ Pienet epäjohdonmukaisuudet + korjausehdotus
 ❌ Kriittiset ongelmat + konkreettinen korjaus
-
 VASTAA SUOMEKSI.`;
 
     // Avaa AI-avustaja ja lähetä tarkistus
@@ -4395,6 +5802,10 @@ VASTAA SUOMEKSI.`;
     { id: 'focus-mode', name: 'Focus Mode', category: 'Näkymä', action: () => setViewMode(viewMode === 'focus' ? 'editor' : 'focus') },
     { id: 'typewriter-mode', name: 'Typewriter Mode', category: 'Näkymä', action: () => setTypewriterMode(!typewriterMode) },
     { id: 'toggle-theme', name: 'Vaihda NOX/DEIS', category: 'Ulkoasu', action: () => setIsDarkMode(!isDarkMode) },
+    { id: 'timeline-view', name: '🜕 Aikajana / Kanban', category: 'Näkymä', action: () => setShowTimelineView(!showTimelineView) },
+    { id: 'graph-view', name: '🜍 Verkkonäkymä', category: 'Näkymä', action: () => setShowGraphView(!showGraphView) },
+    { id: 'concept-map', name: '🜖 Käsitekartta', category: 'Näkymä', action: () => setShowConceptMap(!showConceptMap) },
+    { id: 'natural-search', name: '🔍 Luonnollinen haku', category: 'Haku', action: () => setShowSearchModal(!showSearchModal) },
     { id: 'ai-assistant', name: 'Avaa AI-avustaja', category: 'AI', action: () => setAiAssistantOpen(true) },
     { id: 'snapshot', name: 'Luo tilannekuva', category: 'Versiot', action: () => createSnapshot() },
     { id: 'characters', name: 'Hahmot', category: 'Inspector', action: () => { setInspectorTab('characters'); setShowInspector(true); } },
@@ -4408,7 +5819,16 @@ VASTAA SUOMEKSI.`;
     cmd.category.toLowerCase().includes(commandQuery.toLowerCase())
   );
 
-  return e(React.Fragment, null,
+  console.log('🎭 About to return JSX...');
+  console.log('📊 State:', { 
+    isDarkMode, 
+    showSidebar, 
+    showInspector, 
+    activeItemId,
+    projectItemsCount: project?.items?.length 
+  });
+  
+  const result = e(React.Fragment, null,
     // Inject FAUST styles
     e('style', { dangerouslySetInnerHTML: { __html: FAUST_STYLES } }),
     
@@ -4693,19 +6113,6 @@ VASTAA SUOMEKSI.`;
           ),
           renderTree(project.items)
         )
-      ),
-        // Resize handle for sidebar
-        e('div', {
-          className: 'absolute top-0 right-0 bottom-0 w-1 cursor-col-resize hover:bg-[var(--faust-gold)] transition-colors',
-          style: {
-            background: 'transparent',
-            zIndex: 10
-          },
-          onMouseDown: (e) => {
-            e.preventDefault();
-            setIsResizingSidebar(true);
-          }
-        })
       ),
 
       // Collections Panel - macOS Source List
@@ -5356,14 +6763,14 @@ VASTAA SUOMEKSI.`;
                               color: 'var(--faust-dark)'
                             },
                             title: 'Poista tilannekuva'
-                          }, '×')
+                          }, '🗑')
                         )
                       )
                     )
                   )
                 )
           ),
-
+          
           inspectorTab === 'targets' && e('div', { className: 'space-y-4' },
             e('h4', { className: 'text-sm font-semibold mb-3' }, 'Kirjoitustavoitteet'),
 
@@ -5436,20 +6843,19 @@ VASTAA SUOMEKSI.`;
               )
             )
           ),
-
           inspectorTab === 'contextus' && e('div', { className: 'space-y-4' },
             e('h4', {
               className: 'text-sm font-semibold mb-3 flex items-center gap-2',
               style: { color: 'var(--faust-text-primary)' }
             },
               e('span', null, '🜏'),
-              'Contextus - Linkitykset'
+              'Contextus - Metadata'
             ),
 
-            // Current document links
+            // Current document metadata
             (() => {
               const activeItem = getActiveItem();
-              if (!activeItem || !activeItem.content) {
+              if (!activeItem || !activeItem?.content) {
                 return e('div', {
                   className: 'text-xs text-center py-4',
                   style: { color: 'var(--faust-text-tertiary)' }
@@ -5457,8 +6863,109 @@ VASTAA SUOMEKSI.`;
               }
 
               const links = parseLinks(activeItem.content);
+              const { tags, mentions } = parseMetadata(activeItem.content);
+              const allTags = getAllTags();
 
               return e('div', null,
+                // Tags in current document
+                e('div', {
+                  className: 'p-3 rounded border mb-3',
+                  style: {
+                    background: 'var(--faust-shadow)',
+                    borderColor: 'var(--faust-border)'
+                  }
+                },
+                  e('div', {
+                    className: 'font-medium mb-2',
+                    style: { color: 'var(--faust-gold)' }
+                  }, '#Tagit tässä dokumentissa'),
+                  tags.length === 0
+                    ? e('div', {
+                        className: 'text-xs',
+                        style: { color: 'var(--faust-text-tertiary)' }
+                      }, 'Ei tageja. Käytä #tagi syntaksia.')
+                    : e('div', { className: 'flex flex-wrap gap-2' },
+                        ...tags.map((tag, idx) =>
+                          e('span', {
+                            key: idx,
+                            className: 'inline-tag text-xs',
+                            onClick: () => {
+                              const docs = getDocumentsWithTag(tag.tag);
+                              console.log(`Tag #${tag.tag} found in ${docs.length} documents:`, docs);
+                            }
+                          }, tag.text)
+                        )
+                      )
+                ),
+
+                // Mentions in current document
+                e('div', {
+                  className: 'p-3 rounded border mb-3',
+                  style: {
+                    background: 'var(--faust-shadow)',
+                    borderColor: 'var(--faust-border)'
+                  }
+                },
+                  e('div', {
+                    className: 'font-medium mb-2',
+                    style: { color: 'var(--faust-brass)' }
+                  }, '@Maininnat tässä dokumentissa'),
+                  mentions.length === 0
+                    ? e('div', {
+                        className: 'text-xs',
+                        style: { color: 'var(--faust-text-tertiary)' }
+                      }, 'Ei mainintoja. Käytä @nimi syntaksia.')
+                    : e('div', { className: 'space-y-1' },
+                        ...mentions.map((mention, idx) =>
+                          e('div', {
+                            key: idx,
+                            className: 'inline-mention text-xs',
+                            onClick: () => {
+                              if (mention.entity) {
+                                if (mention.entity.type === 'character') {
+                                  setInspectorTab('characters');
+                                } else if (mention.entity.type === 'location') {
+                                  setInspectorTab('locations');
+                                }
+                              }
+                            }
+                          }, 
+                            mention.entity 
+                              ? `${mention.text} (${mention.entity.type === 'character' ? 'hahmo' : 'paikka'})`
+                              : `${mention.text} (ei löytynyt)`
+                          )
+                        )
+                      )
+                ),
+
+                // All project tags
+                allTags.length > 0 && e('div', {
+                  className: 'p-3 rounded border mb-3',
+                  style: {
+                    background: 'var(--faust-shadow)',
+                    borderColor: 'var(--faust-border)'
+                  }
+                },
+                  e('div', {
+                    className: 'font-medium mb-2',
+                    style: { color: 'var(--faust-text-primary)' }
+                  }, `Kaikki tagit projektissa (${allTags.length})`),
+                  e('div', { className: 'flex flex-wrap gap-2' },
+                    ...allTags.map((tag, idx) => {
+                      const count = getDocumentsWithTag(tag).length;
+                      return e('span', {
+                        key: idx,
+                        className: 'inline-tag text-xs cursor-pointer',
+                        style: { opacity: tags.some(t => t.tag === tag) ? 1 : 0.5 },
+                        onClick: () => {
+                          const docs = getDocumentsWithTag(tag);
+                          console.log(`Tag #${tag} used in ${docs.length} documents`, docs);
+                        }
+                      }, `#${tag} (${count})`);
+                    })
+                  )
+                ),
+
                 // Links in current document
                 e('div', {
                   className: 'p-3 rounded border mb-3',
@@ -5470,7 +6977,7 @@ VASTAA SUOMEKSI.`;
                   e('div', {
                     className: 'font-medium mb-2',
                     style: { color: 'var(--faust-text-primary)' }
-                  }, 'Linkit tässä dokumentissa'),
+                  }, '[[Linkit]] tässä dokumentissa'),
                   links.length === 0 
                     ? e('div', {
                         className: 'text-xs',
@@ -5511,7 +7018,7 @@ VASTAA SUOMEKSI.`;
                       )
                 ),
 
-                // Quick link creator
+                // Quick reference guide
                 e('div', {
                   className: 'p-3 rounded border',
                   style: {
@@ -5522,20 +7029,853 @@ VASTAA SUOMEKSI.`;
                   e('div', {
                     className: 'font-medium mb-2',
                     style: { color: 'var(--faust-text-primary)' }
-                  }, 'Pikaohje'),
+                  }, 'Pikaohje - Metadata syntaksi'),
                   e('div', {
                     className: 'text-xs space-y-1',
                     style: { color: 'var(--faust-text-secondary)' }
                   },
-                    e('div', null, '• Kirjoita [[hahmon nimi]] luodaksesi linkin'),
-                    e('div', null, '• Kirjoita [[paikan nimi]] linkittääksesi paikkaan'),
-                    e('div', null, '• Hover näyttää entiteetin tiedot (tulossa)')
+                    e('div', null, '• #tagi → Kategorisoi dokumentti'),
+                    e('div', null, '• @nimi → Viittaa hahmoon tai paikkaan'),
+                    e('div', null, '• [[nimi]] → Linkitä entiteettiin'),
+                    e('div', null, '• Klikkaa tageä nähdäksesi kaikki käyttökerrat')
+                  )
+                ),
+
+                // Graph view toggle
+                e('div', {
+                  className: 'mt-4'
+                },
+                  e('button', {
+                    onClick: () => setShowGraphView(!showGraphView),
+                    className: 'w-full p-3 rounded-lg font-medium transition-all',
+                    style: {
+                      background: showGraphView 
+                        ? 'var(--faust-gold)' 
+                        : 'rgba(154, 123, 79, 0.2)',
+                      color: showGraphView 
+                        ? 'var(--faust-dark)' 
+                        : 'var(--faust-gold)',
+                      border: '1px solid var(--faust-gold)'
+                    }
+                  }, 
+                    showGraphView ? '🜍 Sulje Verkkonäkymä' : '🜍 Avaa Verkkonäkymä'
                   )
                 )
               );
             })()
           ),
+          // Timeline / Kanban View Modal
+          showTimelineView && (() => {
+            const chapters = buildTimelineData();
+            const statusCounts = {
+              draft: chapters.filter(c => c.status === 'draft').length,
+              review: chapters.filter(c => c.status === 'review').length,
+              done: chapters.filter(c => c.status === 'done').length
+            };
 
+            return e('div', {
+              className: 'fixed inset-0 bg-black/80 flex items-center justify-center z-50',
+              onClick: () => setShowTimelineView(false)
+            },
+              e('div', {
+                className: 'rounded-lg border shadow-2xl',
+                style: {
+                  background: 'var(--faust-dark)',
+                  borderColor: 'var(--faust-gold)',
+                  width: '95vw',
+                  height: '90vh',
+                  maxWidth: '1600px',
+                  display: 'flex',
+                  flexDirection: 'column'
+                },
+                onClick: (e) => e.stopPropagation()
+              },
+                // Header
+                e('div', {
+                  className: 'p-4 border-b flex items-center justify-between',
+                  style: { borderColor: 'var(--faust-border)' }
+                },
+                  e('div', {
+                    className: 'flex items-center gap-3'
+                  },
+                    e('h3', {
+                      className: 'text-lg font-semibold',
+                      style: { color: 'var(--faust-gold)' }
+                    }, '🜕 Rakennenäkymä'),
+                    e('div', {
+                      className: 'flex gap-2'
+                    },
+                      ['timeline', 'kanban'].map(mode =>
+                        e('button', {
+                          key: mode,
+                          onClick: () => setTimelineViewMode(mode),
+                          className: 'px-3 py-1 rounded text-xs font-medium transition-all',
+                          style: {
+                            background: timelineViewMode === mode 
+                              ? 'var(--faust-gold)' 
+                              : 'rgba(154, 123, 79, 0.2)',
+                            color: timelineViewMode === mode 
+                              ? 'var(--faust-dark)' 
+                              : 'var(--faust-text-secondary)'
+                          }
+                        }, 
+                          mode === 'timeline' ? 'Aikajana' : 'Kanban'
+                        )
+                      )
+                    )
+                  ),
+                  e('button', {
+                    onClick: () => setShowTimelineView(false),
+                    className: 'px-4 py-2 rounded hover:bg-white/10 transition-all',
+                    style: { color: 'var(--faust-text-secondary)' }
+                  }, '✕ Sulje')
+                ),
+
+                // Content
+                e('div', {
+                  className: 'flex-1 overflow-auto p-4',
+                  style: { background: 'var(--faust-bg-primary)' }
+                },
+                  timelineViewMode === 'timeline' ? (
+                    // Timeline View
+                    e('div', { className: 'space-y-4' },
+                      chapters.map((chapter, idx) =>
+                        e('div', {
+                          key: chapter.id,
+                          className: 'p-4 rounded-lg border cursor-pointer transition-all hover:border-[var(--faust-gold)]',
+                          style: {
+                            background: 'var(--faust-shadow)',
+                            borderColor: 'var(--faust-border)',
+                            borderLeft: `4px solid ${
+                              chapter.status === 'done' ? 'var(--faust-gold)' :
+                              chapter.status === 'review' ? 'var(--faust-brass)' :
+                              'var(--faust-bronze)'
+                            }`
+                          },
+                          onClick: () => {
+                            setActiveItemId(chapter.id);
+                            setShowTimelineView(false);
+                          }
+                        },
+                          e('div', {
+                            className: 'flex items-start justify-between mb-2'
+                          },
+                            e('div', { className: 'flex-1' },
+                              e('div', {
+                                className: 'font-semibold mb-1',
+                                style: { color: 'var(--faust-text-primary)' }
+                              }, chapter.title),
+                              e('div', {
+                                className: 'text-xs',
+                                style: { color: 'var(--faust-text-tertiary)' }
+                              }, `${chapter.wordCount} sanaa • Luku ${idx + 1}`)
+                            ),
+                            e('div', {
+                              className: 'flex items-center gap-2'
+                            },
+                              // Status badge
+                              e('select', {
+                                value: chapter.status,
+                                onChange: (ev) => {
+                                  ev.stopPropagation();
+                                  updateChapterStatus(chapter.id, ev.target.value);
+                                },
+                                className: 'px-2 py-1 rounded text-xs font-medium',
+                                style: {
+                                  background: chapter.status === 'done' ? 'var(--faust-gold)' :
+                                             chapter.status === 'review' ? 'var(--faust-brass)' :
+                                             'var(--faust-bronze)',
+                                  color: 'var(--faust-dark)',
+                                  border: 'none',
+                                  cursor: 'pointer'
+                                }
+                              },
+                                e('option', { value: 'draft' }, 'Luonnos'),
+                                e('option', { value: 'review' }, 'Tarkistus'),
+                                e('option', { value: 'done' }, 'Valmis')
+                              )
+                            )
+                          ),
+                          // Tags
+                          chapter.tags.length > 0 && e('div', {
+                            className: 'flex flex-wrap gap-1 mb-2'
+                          },
+                            ...chapter.tags.map(tag =>
+                              e('span', {
+                                key: tag.tag,
+                                className: 'inline-tag text-xs'
+                              }, tag.text)
+                            )
+                          ),
+                          // Characters
+                          chapter.characters.length > 0 && e('div', {
+                            className: 'text-xs',
+                            style: { color: 'var(--faust-text-secondary)' }
+                          }, `Hahmot: ${chapter.characters.map(c => c.name).join(', ')}`)
+                        )
+                      )
+                    )
+                  ) : (
+                    // Kanban View
+                    e('div', {
+                      className: 'grid grid-cols-3 gap-4 h-full'
+                    },
+                      ['draft', 'review', 'done'].map(status => {
+                        const statusChapters = chapters.filter(c => c.status === status);
+                        return e('div', {
+                          key: status,
+                          className: 'flex flex-col'
+                        },
+                          // Column header
+                          e('div', {
+                            className: 'p-3 rounded-t-lg font-semibold flex items-center justify-between mb-2',
+                            style: {
+                              background: status === 'done' ? 'var(--faust-gold)' :
+                                         status === 'review' ? 'var(--faust-brass)' :
+                                         'var(--faust-bronze)',
+                              color: 'var(--faust-dark)'
+                            }
+                          },
+                            e('span', null, 
+                              status === 'draft' ? 'Luonnos' :
+                              status === 'review' ? 'Tarkistus' : 'Valmis'
+                            ),
+                            e('span', {
+                              className: 'px-2 py-1 rounded text-xs',
+                              style: {
+                                background: 'rgba(0,0,0,0.2)'
+                              }
+                            }, statusChapters.length)
+                          ),
+                          // Cards
+                          e('div', {
+                            className: 'flex-1 space-y-2 overflow-y-auto',
+                            style: {
+                              minHeight: '400px',
+                              maxHeight: 'calc(90vh - 200px)'
+                            }
+                          },
+                            ...statusChapters.map((chapter, idx) =>
+                              e('div', {
+                                key: chapter.id,
+                                className: 'p-3 rounded-lg border cursor-pointer transition-all',
+                                style: {
+                                  background: 'var(--faust-shadow)',
+                                  borderColor: 'var(--faust-border)'
+                                },
+                                onClick: () => {
+                                  setActiveItemId(chapter.id);
+                                  setShowTimelineView(false);
+                                },
+                                onMouseEnter: (e) => {
+                                  e.currentTarget.style.borderColor = 'var(--faust-gold)';
+                                },
+                                onMouseLeave: (e) => {
+                                  e.currentTarget.style.borderColor = 'var(--faust-border)';
+                                }
+                              },
+                                e('div', {
+                                  className: 'font-medium mb-2',
+                                  style: { color: 'var(--faust-text-primary)', fontSize: '13px' }
+                                }, chapter.title),
+                                e('div', {
+                                  className: 'text-xs mb-2',
+                                  style: { color: 'var(--faust-text-tertiary)' }
+                                }, `${chapter.wordCount} sanaa`),
+                                chapter.tags.length > 0 && e('div', {
+                                  className: 'flex flex-wrap gap-1'
+                                },
+                                  ...chapter.tags.slice(0, 3).map(tag =>
+                                    e('span', {
+                                      key: tag.tag,
+                                      className: 'inline-tag text-xs'
+                                    }, tag.text)
+                                  )
+                                )
+                              )
+                            )
+                          )
+                        );
+                      })
+                    )
+                  )
+                ),
+
+                // Footer stats
+                e('div', {
+                  className: 'p-3 border-t flex items-center justify-between',
+                  style: { borderColor: 'var(--faust-border)' }
+                },
+                  e('div', {
+                    className: 'text-xs flex gap-4',
+                    style: { color: 'var(--faust-text-secondary)' }
+                  },
+                    e('div', null, `Yhteensä: ${chapters.length} lukua`),
+                    e('div', null, `Luonnoksia: ${statusCounts.draft}`),
+                    e('div', null, `Tarkistuksessa: ${statusCounts.review}`),
+                    e('div', null, `Valmiita: ${statusCounts.done}`)
+                  ),
+                  e('div', {
+                    className: 'text-xs',
+                    style: { color: 'var(--faust-text-tertiary)' }
+                  }, `Edistyminen: ${Math.round((statusCounts.done / Math.max(chapters.length, 1)) * 100)}%`)
+                )
+              )
+            );
+          })(),
+
+          // Find / Replace Modal
+          showFindDialog && e('div', {
+            className: 'fixed inset-0 bg-black/70 flex items-center justify-center z-50',
+            onClick: closeFindDialog
+          },
+            e('div', {
+              className: 'w-full max-w-xl rounded-lg border shadow-2xl p-4 space-y-4',
+              style: {
+                background: 'var(--faust-dark)',
+                borderColor: 'var(--faust-gold)'
+              },
+              onClick: (ev) => ev.stopPropagation()
+            },
+              e('div', {
+                className: 'flex items-center justify-between'
+              },
+                e('h3', {
+                  className: 'text-lg font-semibold',
+                  style: { color: 'var(--faust-gold)' }
+                }, findMode === 'replace' ? 'Etsi ja korvaa' : 'Etsi tekstistä'),
+                e('button', {
+                  className: 'px-3 py-1 text-sm rounded hover:bg-white/10 transition-all',
+                  onClick: closeFindDialog
+                }, 'Sulje')
+              ),
+              e('div', null,
+                e('label', {
+                  className: 'block text-xs uppercase tracking-wide mb-1',
+                  style: { color: 'var(--faust-text-secondary)' }
+                }, 'Hakusana'),
+                e('input', {
+                  ref: findInputRef,
+                  type: 'text',
+                  value: findQuery,
+                  onChange: (ev) => setFindQuery(ev.target.value),
+                  onKeyDown: (ev) => {
+                    if (ev.key === 'Enter') {
+                      ev.preventDefault();
+                      if (ev.shiftKey) {
+                        goToPreviousMatch();
+                      } else {
+                        goToNextMatch();
+                      }
+                    }
+                  },
+                  className: 'w-full p-2 rounded border text-sm',
+                  style: {
+                    background: 'var(--faust-paper)',
+                    color: 'var(--faust-ink)',
+                    borderColor: 'var(--faust-border)'
+                  },
+                  placeholder: 'Kirjoita haettava sana tai lause'
+                })
+              ),
+              e('div', {
+                className: 'flex items-center justify-between text-xs',
+                style: { color: 'var(--faust-text-secondary)' }
+              },
+                e('label', { className: 'flex items-center gap-2' },
+                  e('input', {
+                    type: 'checkbox',
+                    checked: findCaseSensitive,
+                    onChange: (ev) => setFindCaseSensitive(ev.target.checked)
+                  }),
+                  'Huomioi kirjainkoko'
+                ),
+                e('div', null,
+                  findMatches.length > 0
+                    ? `Osumia: ${currentMatchIndex + 1}/${findMatches.length}`
+                    : findQuery
+                      ? 'Ei osumia'
+                      : ' '
+                )
+              ),
+              findMode === 'replace' && e('div', null,
+                e('label', {
+                  className: 'block text-xs uppercase tracking-wide mb-1',
+                  style: { color: 'var(--faust-text-secondary)' }
+                }, 'Korvaa'),
+                e('input', {
+                  type: 'text',
+                  value: findReplaceValue,
+                  onChange: (ev) => setFindReplaceValue(ev.target.value),
+                  onKeyDown: (ev) => {
+                    if (ev.key === 'Enter') {
+                      ev.preventDefault();
+                      if (ev.shiftKey) {
+                        replaceAllMatches();
+                      } else {
+                        replaceCurrentMatch();
+                      }
+                    }
+                  },
+                  className: 'w-full p-2 rounded border text-sm',
+                  style: {
+                    background: 'var(--faust-paper)',
+                    color: 'var(--faust-ink)',
+                    borderColor: 'var(--faust-border)'
+                  },
+                  placeholder: 'Korvaava teksti'
+                })
+              ),
+              e('div', {
+                className: 'flex flex-wrap gap-2'
+              },
+                e('button', {
+                  className: 'px-3 py-1 rounded text-sm',
+                  onClick: goToPreviousMatch,
+                  disabled: findMatches.length === 0,
+                  style: {
+                    background: 'rgba(154, 123, 79, 0.2)',
+                    color: 'var(--faust-text-secondary)',
+                    opacity: findMatches.length === 0 ? 0.5 : 1
+                  }
+                }, 'Edellinen'),
+                e('button', {
+                  className: 'px-3 py-1 rounded text-sm',
+                  onClick: goToNextMatch,
+                  disabled: findMatches.length === 0 && !findQuery,
+                  style: {
+                    background: 'var(--faust-gold)',
+                    color: 'var(--faust-dark)',
+                    opacity: findMatches.length === 0 && !findQuery ? 0.5 : 1
+                  }
+                }, 'Seuraava'),
+                findMode === 'replace' && e('button', {
+                  className: 'px-3 py-1 rounded text-sm',
+                  onClick: replaceCurrentMatch,
+                  disabled: findMatches.length === 0 || !findQuery,
+                  style: {
+                    background: 'rgba(154, 123, 79, 0.2)',
+                    color: 'var(--faust-text-secondary)',
+                    opacity: findMatches.length === 0 || !findQuery ? 0.5 : 1
+                  }
+                }, 'Korvaa'),
+                findMode === 'replace' && e('button', {
+                  className: 'px-3 py-1 rounded text-sm',
+                  onClick: replaceAllMatches,
+                  disabled: findMatches.length === 0 || !findQuery,
+                  style: {
+                    background: 'rgba(154, 123, 79, 0.4)',
+                    color: 'var(--faust-dark)',
+                    opacity: findMatches.length === 0 || !findQuery ? 0.5 : 1
+                  }
+                }, 'Korvaa kaikki')
+              )
+            )
+          ),
+
+          // Natural Language Search Modal
+          showSearchModal && e('div', {
+            className: 'fixed inset-0 bg-black/80 flex items-center justify-center z-50',
+            onClick: () => setShowSearchModal(false)
+          },
+            e('div', {
+              className: 'w-full max-w-4xl rounded-lg border shadow-2xl p-5 space-y-4',
+              style: {
+                background: 'var(--faust-dark)',
+                borderColor: 'var(--faust-gold)',
+                maxHeight: '85vh',
+                overflowY: 'auto'
+              },
+              onClick: (ev) => ev.stopPropagation()
+            },
+              e('div', {
+                className: 'flex items-center justify-between'
+              },
+                e('h3', {
+                  className: 'text-lg font-semibold',
+                  style: { color: 'var(--faust-gold)' }
+                }, '🔍 Luonnollinen haku'),
+                e('button', {
+                  className: 'px-3 py-1 text-sm rounded hover:bg-white/10 transition-all',
+                  onClick: () => setShowSearchModal(false)
+                }, 'Sulje')
+              ),
+              e('div', { className: 'flex gap-3 items-center flex-wrap' },
+                e('input', {
+                  type: 'text',
+                  value: naturalQuery,
+                  onChange: (ev) => setNaturalQuery(ev.target.value),
+                  onKeyDown: (ev) => {
+                    if (ev.key === 'Enter') {
+                      const results = executeNaturalSearch(naturalQuery);
+                      setSearchResults(results);
+                    }
+                  },
+                  className: 'flex-1 min-w-[220px] p-2 rounded border text-sm',
+                  style: {
+                    background: 'var(--faust-paper)',
+                    color: 'var(--faust-ink)',
+                    borderColor: 'var(--faust-border)'
+                  },
+                  placeholder: 'Esim: "näytä kaikki kohtaukset joissa Anna"'
+                }),
+                e('button', {
+                  className: 'px-4 py-2 rounded text-sm font-medium',
+                  style: {
+                    background: 'var(--faust-gold)',
+                    color: 'var(--faust-dark)'
+                  },
+                  onClick: () => {
+                    const results = executeNaturalSearch(naturalQuery);
+                    setSearchResults(results);
+                  }
+                }, 'Hae')
+              ),
+              e('div', {
+                className: 'text-xs',
+                style: { color: 'var(--faust-text-secondary)' }
+              }, searchResults.length > 0
+                ? `Osumia: ${searchResults.length}`
+                : 'Kirjoita haku ja paina Enter tai Hae'),
+              e('div', {
+                className: 'space-y-3'
+              },
+                searchResults.length > 0
+                  ? searchResults.map(result =>
+                      e('div', {
+                        key: result.item.id,
+                        className: 'p-3 rounded border cursor-pointer transition-all',
+                        style: {
+                          background: 'var(--faust-shadow)',
+                          borderColor: 'var(--faust-border)'
+                        },
+                        onClick: () => {
+                          setActiveItemId(result.item.id);
+                          setShowSearchModal(false);
+                        },
+                        onMouseEnter: (ev) => {
+                          ev.currentTarget.style.borderColor = 'var(--faust-gold)';
+                        },
+                        onMouseLeave: (ev) => {
+                          ev.currentTarget.style.borderColor = 'var(--faust-border)';
+                        }
+                      },
+                        e('div', {
+                          className: 'text-sm font-medium mb-1',
+                          style: { color: 'var(--faust-text-primary)' }
+                        }, result.item.title || 'Nimetön dokumentti'),
+                        e('div', {
+                          className: 'text-xs mb-2',
+                          style: { color: 'var(--faust-text-secondary)' }
+                        }, result.reasons?.join(' • ') || 'Hakutulos'),
+                        e('div', {
+                          className: 'text-xs italic',
+                          style: { color: 'var(--faust-text-tertiary)' }
+                        }, result.preview || '')
+                      )
+                    )
+                  : [
+                      e('p', {
+                        key: 'no-results',
+                        className: 'text-sm',
+                        style: { color: 'var(--faust-text-secondary)' }
+                      }, 'Ei hakutuloksia vielä.')
+                    ])
+              )
+            )
+          ),
+
+          // Spellcheck Modal
+          spellcheckModalOpen && e('div', {
+            className: 'fixed inset-0 bg-black/70 flex items-center justify-center z-50',
+            onClick: () => setSpellcheckModalOpen(false)
+          },
+            e('div', {
+              className: 'w-full max-w-3xl rounded-lg border shadow-2xl p-5 space-y-4',
+              style: {
+                background: 'var(--faust-dark)',
+                borderColor: 'var(--faust-gold)',
+                maxHeight: '80vh',
+                overflowY: 'auto'
+              },
+              onClick: (ev) => ev.stopPropagation()
+            },
+              e('div', {
+                className: 'flex items-center justify-between'
+              },
+                e('h3', {
+                  className: 'text-lg font-semibold',
+                  style: { color: 'var(--faust-gold)' }
+                }, 'Oikeinkirjoituksen tarkistus'),
+                e('button', {
+                  className: 'px-3 py-1 text-sm rounded hover:bg-white/10 transition-all',
+                  onClick: () => setSpellcheckModalOpen(false)
+                }, 'Sulje')
+              ),
+              dictionaryStatus === 'error'
+                ? e('p', {
+                    className: 'text-sm',
+                    style: { color: 'var(--faust-text-secondary)' }
+                  }, 'Sanakirja ei ole käytettävissä. Tarkista, että utils/dictionaries/fi-basic.json on mukana asennuksessa.')
+                : spellcheckLoading
+                  ? e('p', {
+                      className: 'text-sm',
+                      style: { color: 'var(--faust-text-secondary)' }
+                    }, 'Tarkistetaan oikeinkirjoitusta...')
+                  : spellcheckResults.length === 0
+                    ? e('p', {
+                        className: 'text-sm',
+                        style: { color: 'var(--faust-text-secondary)' }
+                      }, 'Ei kirjoitusvirheitä tässä dokumentissa.')
+                    : e('div', {
+                        className: 'space-y-3'
+                      },
+                        ...spellcheckResults.map(result =>
+                          e('div', {
+                            key: result.word,
+                            className: 'p-3 rounded border',
+                            style: {
+                              background: 'var(--faust-shadow)',
+                              borderColor: 'var(--faust-border)'
+                            }
+                          },
+                            e('div', {
+                              className: 'flex items-center justify-between mb-2'
+                            },
+                              e('div', {
+                                className: 'text-sm font-medium',
+                                style: { color: 'var(--faust-gold)' }
+                              }, result.word),
+                              e('div', {
+                                className: 'text-xs',
+                                style: { color: 'var(--faust-text-secondary)' }
+                              }, `Esiintymät: ${result.count}`)
+                            ),
+                            result.suggestions.length > 0
+                              ? e('div', {
+                                  className: 'flex flex-wrap gap-2'
+                                },
+                                  ...result.suggestions.map(suggestion =>
+                                    e('button', {
+                                      key: suggestion,
+                                      className: 'px-3 py-1 text-xs rounded',
+                                      onClick: () => replaceMisspelling(result.word, suggestion),
+                                      style: {
+                                        background: 'rgba(154, 123, 79, 0.3)',
+                                        color: 'var(--faust-dark)'
+                                      }
+                                    }, `Korvaa "${suggestion}"`)
+                                  )
+                                )
+                              : e('div', {
+                                  className: 'text-xs italic',
+                                  style: { color: 'var(--faust-text-secondary)' }
+                                }, 'Ei ehdotuksia – korjaa manuaalisesti')
+                          )
+                        )
+                      )
+            )
+          ),
+          // Graph View Modal
+          showGraphView && (() => {
+            const graphData = buildGraphData();
+            const { nodes, links } = graphData;
+            
+            // Filter nodes based on mode
+            const filteredNodes = graphViewMode === 'all' 
+              ? nodes 
+              : nodes.filter(n => n.type === graphViewMode.replace('s', ''));
+            
+            // Simple force-directed layout (manual positioning)
+            const centerX = 400;
+            const centerY = 300;
+            const radius = 150;
+            
+            const positionedNodes = filteredNodes.map((node, idx) => {
+              const angle = (idx / filteredNodes.length) * 2 * Math.PI;
+              return {
+                ...node,
+                x: centerX + radius * Math.cos(angle),
+                y: centerY + radius * Math.sin(angle)
+              };
+            });
+
+            return e('div', {
+              className: 'fixed inset-0 bg-black/80 flex items-center justify-center z-50',
+              onClick: () => setShowGraphView(false)
+            },
+              e('div', {
+                className: 'rounded-lg border shadow-2xl',
+                style: {
+                  background: 'var(--faust-dark)',
+                  borderColor: 'var(--faust-gold)',
+                  width: '90vw',
+                  height: '90vh',
+                  maxWidth: '1400px',
+                  display: 'flex',
+                  flexDirection: 'column'
+                },
+                onClick: (e) => e.stopPropagation()
+              },
+                // Header
+                e('div', {
+                  className: 'p-4 border-b flex items-center justify-between',
+                  style: { borderColor: 'var(--faust-border)' }
+                },
+                  e('div', {
+                    className: 'flex items-center gap-3'
+                  },
+                    e('h3', {
+                      className: 'text-lg font-semibold',
+                      style: { color: 'var(--faust-gold)' }
+                    }, '🜍 Verkkonäkymä - Entiteettien suhteet'),
+                    e('div', {
+                      className: 'flex gap-2'
+                    },
+                      ['all', 'characters', 'locations'].map(mode =>
+                        e('button', {
+                          key: mode,
+                          onClick: () => setGraphViewMode(mode),
+                          className: 'px-3 py-1 rounded text-xs font-medium transition-all',
+                          style: {
+                            background: graphViewMode === mode 
+                              ? 'var(--faust-gold)' 
+                              : 'rgba(154, 123, 79, 0.2)',
+                            color: graphViewMode === mode 
+                              ? 'var(--faust-dark)' 
+                              : 'var(--faust-text-secondary)'
+                          }
+                        }, 
+                          mode === 'all' ? 'Kaikki' : 
+                          mode === 'characters' ? 'Hahmot' : 'Paikat'
+                        )
+                      )
+                    )
+                  ),
+                  e('button', {
+                    onClick: () => setShowGraphView(false),
+                    className: 'px-4 py-2 rounded hover:bg-white/10 transition-all',
+                    style: { color: 'var(--faust-text-secondary)' }
+                  }, '✕ Sulje')
+                ),
+
+                // Graph Canvas
+                e('div', {
+                  className: 'flex-1 overflow-hidden relative',
+                  style: { background: 'var(--faust-bg-primary)' }
+                },
+                  // SVG for graph
+                  e('svg', {
+                    width: '100%',
+                    height: '100%',
+                    viewBox: '0 0 800 600'
+                  },
+                    // Draw links
+                    e('g', { id: 'links' },
+                      ...links
+                        .filter(link => 
+                          positionedNodes.find(n => n.id === link.source) &&
+                          positionedNodes.find(n => n.id === link.target)
+                        )
+                        .map((link, idx) => {
+                          const sourceNode = positionedNodes.find(n => n.id === link.source);
+                          const targetNode = positionedNodes.find(n => n.id === link.target);
+                          if (!sourceNode || !targetNode) return null;
+                          
+                          return e('line', {
+                            key: `link-${idx}`,
+                            x1: sourceNode.x,
+                            y1: sourceNode.y,
+                            x2: targetNode.x,
+                            y2: targetNode.y,
+                            stroke: 'var(--faust-bronze)',
+                            strokeWidth: 2,
+                            strokeOpacity: 0.3
+                          });
+                        })
+                    ),
+
+                    // Draw nodes
+                    e('g', { id: 'nodes' },
+                      ...positionedNodes.map(node =>
+                        e('g', {
+                          key: node.id,
+                          transform: `translate(${node.x}, ${node.y})`,
+                          style: { cursor: 'pointer' },
+                          onClick: () => {
+                            if (node.type === 'character') {
+                              setInspectorTab('characters');
+                              setShowGraphView(false);
+                            } else if (node.type === 'location') {
+                              setInspectorTab('locations');
+                              setShowGraphView(false);
+                            }
+                          }
+                        },
+                          // Node circle
+                          e('circle', {
+                            r: 30,
+                            fill: node.type === 'character' 
+                              ? 'rgba(100, 200, 255, 0.3)' 
+                              : 'rgba(255, 200, 100, 0.3)',
+                            stroke: node.type === 'character'
+                              ? 'var(--faust-gold)'
+                              : 'var(--faust-brass)',
+                            strokeWidth: 2,
+                            onMouseEnter: (e) => {
+                              e.target.setAttribute('r', 35);
+                              e.target.setAttribute('stroke-width', 3);
+                            },
+                            onMouseLeave: (e) => {
+                              e.target.setAttribute('r', 30);
+                              e.target.setAttribute('stroke-width', 2);
+                            }
+                          }),
+                          
+                          // Node icon
+                          e('text', {
+                            textAnchor: 'middle',
+                            dy: 6,
+                            fontSize: 20,
+                            fill: 'var(--faust-text-primary)',
+                            style: { pointerEvents: 'none' }
+                          }, node.type === 'character' ? '👤' : '📍'),
+
+                          // Node label
+                          e('text', {
+                            textAnchor: 'middle',
+                            dy: 50,
+                            fontSize: 12,
+                            fill: 'var(--faust-text-primary)',
+                            fontWeight: 500,
+                            style: { pointerEvents: 'none' }
+                          }, node.name)
+                        )
+                      )
+                    )
+                  ),
+
+                  // Stats overlay
+                  e('div', {
+                    className: 'absolute top-4 left-4 p-3 rounded-lg',
+                    style: {
+                      background: 'rgba(0, 0, 0, 0.7)',
+                      color: 'var(--faust-text-primary)',
+                      backdropFilter: 'blur(10px)'
+                    }
+                  },
+                    e('div', { className: 'text-xs font-semibold mb-2' }, 'Tilastot:'),
+                    e('div', { className: 'text-xs space-y-1' },
+                      e('div', null, `• Solmuja: ${positionedNodes.length}`),
+                      e('div', null, `• Yhteyksiä: ${links.length}`),
+                      e('div', null, `• Hahmoja: ${nodes.filter(n => n.type === 'character').length}`),
+                      e('div', null, `• Paikkoja: ${nodes.filter(n => n.type === 'location').length}`)
+                    )
+                  )
+                )
+              )
+            );
+          })(),
           inspectorTab === 'grimoire' && e('div', { className: 'space-y-4' },
             e('h4', {
               className: 'text-sm font-semibold mb-3 flex items-center gap-2',
@@ -5565,7 +7905,7 @@ VASTAA SUOMEKSI.`;
                 style: { color: 'var(--faust-text-tertiary)' }
               }, `${project.grimoire?.acceptedChanges?.length || 0} hyväksyttyä muutosta`),
               (project.grimoire?.acceptedChanges || []).length > 0 && e('div', { className: 'mt-2 space-y-2' },
-                ...(project.grimoire.acceptedChanges.slice(-3).reverse().map(change =>
+                project.grimoire.acceptedChanges.slice(-3).reverse().map(change =>
                   e('div', {
                     key: change.timestamp,
                     className: 'p-2 rounded text-xs',
@@ -5606,7 +7946,7 @@ VASTAA SUOMEKSI.`;
                 style: { color: 'var(--faust-text-tertiary)' }
               }, `${project.grimoire?.rejectedSuggestions?.length || 0} hylättyä ehdotusta`),
               (project.grimoire?.rejectedSuggestions || []).length > 0 && e('div', { className: 'mt-2 space-y-2' },
-                ...(project.grimoire.rejectedSuggestions.slice(-3).reverse().map(rejection =>
+                project.grimoire.rejectedSuggestions.slice(-3).reverse().map(rejection =>
                   e('div', {
                     key: rejection.timestamp,
                     className: 'p-2 rounded text-xs',
@@ -5620,7 +7960,7 @@ VASTAA SUOMEKSI.`;
                       style: { color: 'var(--faust-text-primary)' }
                     }, rejection.explanation || 'Ehdotus'),
                     e('div', {
-                      style: { color: 'var(--faust-text-tertiary)' }
+                      style: { color: 'var(--faust-text-secondary)' }
                     }, new Date(rejection.timestamp).toLocaleString('fi-FI'))
                   )
                 ))
@@ -5639,7 +7979,7 @@ VASTAA SUOMEKSI.`;
                 className: 'font-medium mb-2 flex items-center justify-between',
                 style: { color: 'var(--faust-text-primary)' }
               },
-                e('span', null, 'Tyylisäännöt'),
+                e('span', null, 'Tyylisääntöjä'),
                 e('button', {
                   onClick: () => {
                     const rule = prompt('Lisää tyylisääntö:');
@@ -5668,7 +8008,7 @@ VASTAA SUOMEKSI.`;
                 style: { color: 'var(--faust-text-tertiary)' }
               }, `${project.grimoire?.styleRules?.length || 0} sääntöä`),
               (project.grimoire?.styleRules || []).length > 0 && e('ul', { className: 'mt-2 space-y-1' },
-                ...(project.grimoire.styleRules.map((rule, idx) =>
+                project.grimoire.styleRules.map((rule, idx) =>
                   e('li', {
                     key: idx,
                     className: 'text-xs flex items-start gap-2',
@@ -5677,7 +8017,7 @@ VASTAA SUOMEKSI.`;
                     e('span', null, '•'),
                     e('span', null, rule.rule)
                   )
-                ))
+                )
               )
             ),
 
@@ -5699,7 +8039,6 @@ VASTAA SUOMEKSI.`;
               }, `${project.grimoire?.conversations?.length || 0} keskustelua AI:n kanssa`)
             )
           ),
-
           inspectorTab === 'agents' && e('div', { className: 'space-y-4' },
             e('h4', {
               className: 'text-sm font-semibold mb-3 flex items-center gap-2',
@@ -5764,7 +8103,7 @@ VASTAA SUOMEKSI.`;
               e('button', {
                 onClick: async () => {
                   const activeItem = getActiveItem();
-                  if (!activeItem || !activeItem.content) {
+                  if (!activeItem || !activeItem?.content) {
                     alert('Valitse ensin luku jossa on tekstiä!');
                     return;
                   }
@@ -5977,7 +8316,6 @@ VASTAA SUOMEKSI.`;
               )
             )
           ),
-
           // HAHMOT-välilehti - CharacterKeeper
           inspectorTab === 'characters' && e('div', { className: 'space-y-3' },
             e('div', { className: 'flex items-center justify-between mb-3' },
@@ -6072,7 +8410,7 @@ VASTAA SUOMEKSI.`;
                     }, '🔍 Tarkista')
                   ),
 
-                  // Backlinks - Näytä missä hahmoa mainitaan
+                  // Backlinks - Näytä missä hahmoa mainittu
                   (() => {
                     const backlinks = getBacklinks(char.name);
                     if (backlinks.length === 0) return null;
@@ -6129,7 +8467,7 @@ VASTAA SUOMEKSI.`;
                       // Käytä tekniikkaa nykyiseen sisältöön
                       const activeItem = getActiveItem();
                       const prompt = technique.prompt
-                        .replace(/\{\{CONTENT\}\}/g, activeItem?.content || '[Ei sisältöä]')
+                        .replace(/\{\{CONTENT\}\}/g, activeItem?.content?.substring(0,100) || '')
                         .replace('{characterList}', project.characters?.map(char => `
 - ${char.name} (${char.bio.age || '?'}v, ${char.bio.occupation || 'ammatti?'})
   Tavoite: ${char.psychology.want || '?'}
@@ -6308,7 +8646,6 @@ VASTAA SUOMEKSI.`;
               style: { borderColor: isDarkMode ? '#4b5563' : '#d1d5db' }
             }, '+ Lisää paikka manuaalisesti')
           ),
-          
           // TARINA-välilehti (StoryKeeper)
           inspectorTab === 'story' && e('div', { className: 'space-y-3' },
             // Header
@@ -6518,7 +8855,7 @@ VASTAA SUOMEKSI.`;
                       // Käytä tekniikkaa nykyiseen sisältöön
                       const activeItem = getActiveItem();
                       const prompt = technique.prompt
-                        .replace(/\{\{CONTENT\}\}/g, activeItem?.content || '[Ei sisältöä]')
+                        .replace(/\{\{CONTENT\}\}/g, activeItem?.content?.substring(0,100) || '')
                         .replace('{characterList}', project.characters?.map(char => `
 - ${char.name} (${char.bio.age || '?'}v, ${char.bio.occupation || 'ammatti?'})
   Tavoite: ${char.psychology.want || '?'}
@@ -6614,7 +8951,9 @@ VASTAA SUOMEKSI.`;
             e('option', { key: 'claude', value: 'claude' }, 'Claude (Anthropic)'),
             e('option', { key: 'grok', value: 'grok' }, 'Grok (xAI)'),
             e('option', { key: 'openai', value: 'openai' }, 'OpenAI (GPT-4)'),
-            e('option', { key: 'cursor', value: 'cursor' }, 'Cursor')
+            e('option', { key: 'gemini', value: 'gemini' }, 'Gemini (Google)'),
+            e('option', { key: 'cursor', value: 'cursor' }, 'Cursor'),
+            e('option', { key: 'deepseek', value: 'deepseek' }, 'DeepSeek')
           ])
         ),
         
@@ -6626,8 +8965,8 @@ VASTAA SUOMEKSI.`;
             background: 'var(--faust-shadow)'
           }
         },
-          ['chat', 'quick', 'techniques'].map(tab => {
-            const labels = { chat: 'Chat', quick: 'Pikatoiminnot', techniques: 'Tekniikat' };
+          ['chat', 'quick', 'techniques', 'continuity'].map(tab => {
+            const labels = { chat: 'Chat', quick: 'Pikatoiminnot', techniques: 'Tekniikat', continuity: 'Jatkuvuus' };
             const isActive = aiPanelTab === tab;
             return e('button', {
               key: tab,
@@ -6643,7 +8982,6 @@ VASTAA SUOMEKSI.`;
             }, labels[tab]);
           })
         ),
-        
         // Tab Content
         e('div', { className: 'flex-1 overflow-y-auto p-4 space-y-4' },
           // CHAT TAB
@@ -6748,7 +9086,7 @@ VASTAA SUOMEKSI.`;
                     key: technique.id,
                     onClick: () => {
                       const activeItem = getActiveItem();
-                      const prompt = technique.prompt.replace(/\{\{CONTENT\}\}/g, activeItem?.content || '[Ei sisältöä]');
+                      const prompt = technique.prompt.replace(/\{\{CONTENT\}\}/g, activeItem?.content?.substring(0,100) || '');
                       setAiPrompt(`${technique.name}: ${technique.description}`);
                       callAIAPI(prompt, false);
                       setAiPanelTab('chat'); // Switch to chat to see response
@@ -6771,14 +9109,322 @@ VASTAA SUOMEKSI.`;
                 )
               )
             )
+          ),
+
+          aiPanelTab === 'continuity' && e('div', { className: 'space-y-4' },
+            e('div', {
+              className: 'p-4 rounded border',
+              style: {
+                background: 'var(--faust-shadow)',
+                borderColor: 'var(--faust-border)'
+              }
+            },
+              e('div', {
+                className: 'flex items-center justify-between mb-3'
+              },
+                e('h3', {
+                  className: 'text-sm font-semibold flex items-center gap-2',
+                  style: { color: 'var(--faust-gold)', fontFamily: 'var(--font-heading)' }
+                },
+                  e('span', null, '🎯'),
+                  'Hybrid Writing Mode'
+                ),
+                e('div', {
+                  className: 'text-xs',
+                  style: { color: 'var(--faust-text-tertiary)' }
+                }, `Akt. luku: ${resolveActiveChapter()}`)
+              ),
+              e('div', {
+                className: 'flex gap-2 mb-3'
+              },
+                ['write', 'check', 'batch'].map((mode) =>
+                  e('button', {
+                    key: mode,
+                    onClick: () => setContinuityMode(mode),
+                    className: 'flex-1 px-3 py-2 rounded text-xs font-medium transition-all',
+                    style: {
+                      background: continuityMode === mode ? 'var(--faust-gold)' : 'rgba(154, 123, 79, 0.15)',
+                      color: continuityMode === mode ? '#141210' : 'var(--faust-text-primary)',
+                      border: '1px solid var(--faust-border)'
+                    }
+                  }, mode === 'write' ? 'Kirjoita' : mode === 'check' ? 'Tarkista' : 'Batch-prosessi')
+                )
+              ),
+              e('div', {
+                className: 'grid grid-cols-2 gap-2 text-xs mb-3',
+                style: { color: 'var(--faust-text-secondary)' }
+              },
+                e('div', null, `DeepSeek-tarkistuksia: ${StoryContinuityTracker.costs.checks}`),
+                e('div', null, `Kustannukset yhteensä: ${Number(StoryContinuityTracker.costs.total || 0).toFixed(4)} €`),
+                e('div', null, `Syötetyt tokenit: ${StoryContinuityTracker.costs.tokens.input}`),
+                e('div', null, `Tulostetut tokenit: ${StoryContinuityTracker.costs.tokens.output}`),
+                e('div', { className: 'col-span-2 opacity-80' }, `Arvio koko romaanille: ${estimatedNovelCost.toFixed(2)} €`)
+              ),
+              e('div', {
+                className: 'grid grid-cols-2 gap-2 text-xs mb-3',
+                style: { color: 'var(--faust-text-secondary)' }
+              },
+                e('div', null, `📍 Timeline: ${StoryContinuityTracker.storyMemory.timeline.length}`),
+                e('div', null, `👥 Hahmot: ${Object.keys(StoryContinuityTracker.storyMemory.characterStates).length}`),
+                e('div', null, `🧵 Juonilangat: ${Object.keys(StoryContinuityTracker.storyMemory.plotThreads).length}`),
+                e('div', null, `📝 Faktat: ${StoryContinuityTracker.storyMemory.establishedFacts.length}`)
+              ),
+              e('div', { className: 'flex gap-2' },
+                e('button', {
+                  onClick: downloadMemory,
+                  className: 'flex-1 px-3 py-2 rounded text-xs font-medium transition-all',
+                  style: {
+                    background: 'rgba(154, 123, 79, 0.2)',
+                    color: 'var(--faust-text-primary)',
+                    border: '1px solid var(--faust-border)'
+                  }
+                }, '💾 Vie muisti'),
+                e('button', {
+                  onClick: async () => {
+                    await StoryContinuityTracker.compressMemory();
+                    setAiProgress({ stage: 'memory', message: 'Muisti tiivistetty' });
+                  },
+                  className: 'flex-1 px-3 py-2 rounded text-xs font-medium transition-all',
+                  style: {
+                    background: 'rgba(154, 123, 79, 0.2)',
+                    color: 'var(--faust-text-primary)',
+                    border: '1px solid var(--faust-border)'
+                  }
+                }, '🗜️ Tiivistä muisti')
+              )
+            ),
+
+            continuityMode === 'write' && e('div', { className: 'space-y-3' },
+              e('textarea', {
+                value: aiPrompt,
+                onChange: (ev) => setAiPrompt(ev.target.value),
+                placeholder: 'Kirjoita kohtauksen ohje tai jatko...',
+                className: 'w-full h-28 p-3 rounded border text-sm resize-none',
+                style: {
+                  background: 'var(--faust-paper)',
+                  color: 'var(--faust-ink)',
+                  borderColor: 'var(--faust-border)',
+                  fontFamily: 'var(--font-body)'
+                }
+              }),
+              e('div', { className: 'flex flex-col gap-2 text-xs', style: { color: 'var(--faust-text-secondary)' } },
+                e('label', { className: 'flex items-center gap-2' },
+                  e('input', {
+                    type: 'checkbox',
+                    checked: checkFirst,
+                    onChange: (ev) => setCheckFirst(ev.target.checked)
+                  }),
+                  'Tarkista ennen kirjoittamista'
+                ),
+                e('label', { className: 'flex items-center gap-2' },
+                  e('input', {
+                    type: 'checkbox',
+                    checked: autoFix,
+                    onChange: (ev) => setAutoFix(ev.target.checked)
+                  }),
+                  'Korjaa jatkuvuus automaattisesti'
+                )
+              ),
+              e('button', {
+                onClick: async () => {
+                  if (!aiPrompt.trim()) return;
+                  setIsGenerating(true);
+                  setAiProgress({ stage: 'writing', message: 'Kirjoitetaan...' });
+                  try {
+                    const chapter = resolveActiveChapter();
+                    const result = await HybridWritingFlow.writeWithContinuity(aiPrompt, {
+                      chapter,
+                      checkFirst,
+                      autoFix,
+                      onProgress: handleAIProgress
+                    });
+                    if (result.success && result.data) {
+                      insertAtCursor(`\n${result.data}\n`);
+                      setAiResponse(result.data);
+                      if (result.continuityCheck?.issues?.length) {
+                        setContinuityWarnings([{ character: 'Jatkuvuus', issues: result.continuityCheck.issues }]);
+                      }
+                    } else if (result.issues) {
+                      setContinuityWarnings([{ character: 'Jatkuvuus', issues: result.issues }]);
+                    }
+                  } catch (error) {
+                    console.error('Hybrid writing failed', error);
+                    setAiProgress({ stage: 'error', message: error.message });
+                  } finally {
+                    setIsGenerating(false);
+                  }
+                },
+                disabled: isGenerating || !aiPrompt.trim(),
+                className: 'w-full px-4 py-2 rounded text-sm font-medium transition-all flex items-center justify-center gap-2',
+                style: isGenerating || !aiPrompt.trim()
+                  ? { background: '#4b5563', color: '#9ca3af', cursor: 'not-allowed' }
+                  : { background: 'var(--faust-gold)', color: '#141210', border: '1px solid var(--faust-border)' }
+              }, isGenerating ? [e(Icons.Loader, { className: 'w-4 h-4 animate-spin' }), ' Kirjoitetaan...'] : '✍️ Kirjoita jatkuvuuden kanssa'),
+              aiProgress && e('div', {
+                className: 'text-xs italic',
+                style: { color: 'var(--faust-text-secondary)' }
+              }, aiProgress.message || aiProgress.stage)
+            ),
+
+            continuityMode === 'check' && e('div', { className: 'space-y-3' },
+              e('button', {
+                onClick: checkFullStory,
+                className: 'w-full px-4 py-2 rounded text-sm font-medium transition-all flex items-center justify-center gap-2',
+                style: {
+                  background: 'rgba(154, 123, 79, 0.2)',
+                  color: 'var(--faust-text-primary)',
+                  border: '1px solid var(--faust-border)'
+                }
+              }, '🔍 Skannaa koko tarina'),
+              aiProgress && e('div', {
+                className: 'text-xs italic',
+                style: { color: 'var(--faust-text-secondary)' }
+              }, aiProgress.message || aiProgress.stage),
+              Array.isArray(continuityStatus) && continuityStatus.length > 0 && e('div', {
+                className: 'space-y-2'
+              },
+                continuityStatus.map((issue, idx) =>
+                  e('div', {
+                    key: idx,
+                    className: 'p-2 rounded border text-xs',
+                    style: {
+                      background: 'rgba(255, 159, 64, 0.1)',
+                      borderColor: 'rgba(255, 159, 64, 0.3)',
+                      color: 'var(--faust-text-primary)'
+                    }
+                  },
+                    e('div', { className: 'font-medium flex items-center gap-2 mb-1' },
+                      e('span', null, issue.chapter ? `Luku ${issue.chapter}` : 'Tuntematon luku'),
+                      e('span', { style: { color: '#FF9F40' } }, issue.type || 'issue')
+                    ),
+                    e('div', null, issue.detail || issue.description || JSON.stringify(issue)),
+                    issue.suggestion && e('div', {
+                      className: 'mt-1 italic',
+                      style: { color: 'var(--faust-text-tertiary)' }
+                    }, `Ehdotus: ${issue.suggestion}`)
+                  )
+                )
+              )
+            ),
+
+            continuityMode === 'batch' && e('div', { className: 'space-y-3' },
+              e('div', { className: 'flex flex-col gap-2 text-xs', style: { color: 'var(--faust-text-secondary)' } },
+                e('label', { className: 'flex flex-col gap-1' },
+                  e('span', null, 'Toiminto'),
+                  e('select', {
+                    value: batchOperation,
+                    onChange: (ev) => setBatchOperation(ev.target.value),
+                    className: 'w-full p-2 rounded border text-xs',
+                    style: {
+                      background: 'var(--faust-paper)',
+                      color: 'var(--faust-ink)',
+                      borderColor: 'var(--faust-border)'
+                    }
+                  },
+                    e('option', { value: 'continuityCheck' }, 'Vain tarkistus'),
+                    e('option', { value: 'rewrite' }, 'Korjaa ongelmat'),
+                    e('option', { value: 'polish' }, 'Viimeistele tekstin laatu')
+                  )
+                ),
+                e('label', { className: 'flex items-center gap-2' },
+                  e('span', null, 'Luvut:'),
+                  e('input', {
+                    type: 'number',
+                    min: 1,
+                    value: batchStartChapter,
+                    onChange: (ev) => setBatchStartChapter(Number(ev.target.value) || 1),
+                    className: 'w-20 p-2 rounded border text-xs',
+                    style: {
+                      background: 'var(--faust-paper)',
+                      color: 'var(--faust-ink)',
+                      borderColor: 'var(--faust-border)'
+                    }
+                  }),
+                  e('span', null, '→'),
+                  e('input', {
+                    type: 'number',
+                    min: 1,
+                    value: batchEndChapter,
+                    onChange: (ev) => setBatchEndChapter(Number(ev.target.value) || 1),
+                    className: 'w-20 p-2 rounded border text-xs',
+                    style: {
+                      background: 'var(--faust-paper)',
+                      color: 'var(--faust-ink)',
+                      borderColor: 'var(--faust-border)'
+                    }
+                  })
+                )
+              ),
+              e('button', {
+                onClick: startBatchProcess,
+                className: 'w-full px-4 py-2 rounded text-sm font-medium transition-all flex items-center justify-center gap-2',
+                style: {
+                  background: 'rgba(154, 123, 79, 0.2)',
+                  color: 'var(--faust-text-primary)',
+                  border: '1px solid var(--faust-border)'
+                }
+              }, '🚀 Käynnistä batch-prosessi'),
+              batchProgress && e('div', {
+                className: 'w-full bg-black/30 rounded h-2 overflow-hidden'
+              },
+                e('div', {
+                  className: 'h-full bg-[var(--faust-gold)] transition-all',
+                  style: {
+                    width: `${Math.min(100, (batchProgress.current / batchProgress.total) * 100)}%`
+                  }
+                })
+              ),
+              aiProgress && e('div', {
+                className: 'text-xs italic',
+                style: { color: 'var(--faust-text-secondary)' }
+              }, aiProgress.message || aiProgress.stage)
+            )
           )
         )
       )
-    ),
-
-    // Vaihe 5: CharacterSheet Modal
-  showCharacterSheet && editingCharacter && e('div', {
-    className: 'fixed inset-0 bg-black/50 flex items-center justify-center z-[10000]',
+    ), // Close Main content area
+    
+    // ========== NORMAN-KRUG-NATSUME: UI Components ==========
+    
+    // NORMAN: AI Feedback - Shows what AI did
+    e(AIFeedback, {
+      action: showAIFeedback?.action,
+      details: showAIFeedback?.details,
+      type: showAIFeedback?.type || 'info',
+      onDismiss: () => setShowAIFeedback(null)
+    }),
+    
+    // NATSUME: Inspiration Panel - Appears when stuck
+    e(InspirationPanel, {
+      isVisible: showInspiration,
+      inspiration: inspirationData,
+      onDismiss: () => setShowInspiration(false)
+    }),
+    
+    // NATSUME: Flow Mode Indicator - Subtle mode display
+    e(FlowModeIndicator, { mode: flowMode }),
+    
+    // NATSUME: Genre Visual Metaphor - Shows genre theme
+    project.genre && e('div', {
+      className: 'fixed top-20 left-4 text-4xl opacity-10 pointer-events-none z-10'
+    }, GENRE_OPTIONS.find(g => g.id === project.genre)?.icon || ''),
+    
+    // ========== VISUAL MASTERS: Indicators ==========
+    
+    // IDEO: Cognitive Load Indicator
+    e(CognitiveLoadIndicator, { load: cognitiveLoad }),
+    
+    // SUPERSIDE: Work Phase Indicator
+    e(WorkPhaseIndicator, { phase: workPhase }),
+    
+    // IDEO: Transparent AI Indicator
+    e(TransparentAIIndicator, {
+      active: aiTransparency.active,
+      thinking: aiTransparency.thinking || isGenerating,
+      suggestionCount: aiSuggestions.length
+    }) // Last NORMAN component
+    
+  ); // Close React.Fragment
     onClick: () => setShowCharacterSheet(false)
   },
     e('div', {
@@ -7016,8 +9662,6 @@ VASTAA SUOMEKSI.`;
           className: 'px-4 py-2 rounded text-sm bg-blue-500 text-white hover:bg-blue-600'
         }, 'Tallenna')
       )
-    )
-  ),
   
   // LocationSheet Modal
   showLocationSheet && editingLocation && e('div', {
@@ -7032,7 +9676,7 @@ VASTAA SUOMEKSI.`;
     },
       // Header
       e('div', { className: 'p-4 border-b flex items-center justify-between sticky top-0 bg-inherit z-10' },
-        e('h3', { className: 'text-lg font-bold' }, `Paikka: ${editingLocation.name}`),
+        e('h3', { className: 'text-lg font-bold' }, `Paikka: ${editingLocation?.name}`),
         e('button', {
           onClick: () => setShowLocationSheet(false),
           className: 'p-2 rounded hover:bg-gray-700'
@@ -7048,7 +9692,7 @@ VASTAA SUOMEKSI.`;
             e('div', null,
               e('label', { className: 'text-xs block mb-1' }, 'Nimi'),
               e('input', {
-                value: editingLocation.name || '',
+                value: editingLocation?.name || '',
                 onChange: (ev) => setEditingLocation({
                   ...editingLocation,
                   name: ev.target.value
@@ -7061,7 +9705,7 @@ VASTAA SUOMEKSI.`;
             e('div', null,
               e('label', { className: 'text-xs block mb-1' }, 'Tyyppi'),
               e('select', {
-                value: editingLocation.type || 'landmark',
+                value: editingLocation?.type || 'landmark',
                 onChange: (ev) => setEditingLocation({
                   ...editingLocation,
                   type: ev.target.value
@@ -7074,7 +9718,7 @@ VASTAA SUOMEKSI.`;
             e('div', null,
               e('label', { className: 'text-xs block mb-1' }, 'Kaupunki'),
               e('input', {
-                value: editingLocation.city || '',
+                value: editingLocation?.city || '',
                 onChange: (ev) => setEditingLocation({
                   ...editingLocation,
                   city: ev.target.value
@@ -7087,7 +9731,7 @@ VASTAA SUOMEKSI.`;
             e('div', null,
               e('label', { className: 'text-xs block mb-1' }, 'Maa'),
               e('input', {
-                value: editingLocation.country || '',
+                value: editingLocation?.country || '',
                 onChange: (ev) => setEditingLocation({
                   ...editingLocation,
                   country: ev.target.value
@@ -7104,7 +9748,7 @@ VASTAA SUOMEKSI.`;
         e('div', null,
           e('h4', { className: 'font-semibold mb-2 text-sm' }, '📝 Muistiinpanot'),
           e('textarea', {
-            value: editingLocation.notes || '',
+            value: editingLocation?.notes || '',
             onChange: (ev) => setEditingLocation({
               ...editingLocation,
               notes: ev.target.value
@@ -7117,9 +9761,9 @@ VASTAA SUOMEKSI.`;
         ),
 
         // Genre-kuvaukset (read-only näyttö)
-        Object.keys(editingLocation.genre_descriptions || {}).length > 0 && e('div', null,
+        Object.keys(editingLocation?.genre_descriptions || {}).length > 0 && e('div', null,
           e('h4', { className: 'font-semibold mb-2 text-purple-500 text-sm' }, '✍️ Tallennetut kuvaukset'),
-          Object.entries(editingLocation.genre_descriptions).map(([genre, description]) =>
+          Object.entries(editingLocation?.genre_descriptions).map(([genre, description]) =>
             e('div', {
               key: genre,
               className: `p-3 rounded border mb-2 ${
@@ -7169,7 +9813,7 @@ VASTAA SUOMEKSI.`;
       },
         // Header
         e('div', { className: 'p-4 border-b flex items-center justify-between sticky top-0 bg-inherit z-10' },
-          e('h3', { className: 'text-lg font-bold' }, `Luku ${editingChapter.chapter}`),
+          e('h3', { className: 'text-lg font-bold' }, `Luku ${editingChapter?.chapter}`),
           e('button', {
             onClick: () => setShowChapterSheet(false),
             className: 'p-2 rounded hover:bg-gray-700'
@@ -7182,7 +9826,7 @@ VASTAA SUOMEKSI.`;
           e('div', null,
             e('label', { className: 'text-xs block mb-1' }, 'Otsikko'),
             e('input', {
-              value: editingChapter.title || '',
+              value: editingChapter?.title || '',
               onChange: (ev) => setEditingChapter({
                 ...editingChapter,
                 title: ev.target.value
@@ -7198,7 +9842,7 @@ VASTAA SUOMEKSI.`;
           e('div', null,
             e('label', { className: 'text-xs block mb-1' }, 'Yhteenveto'),
             e('textarea', {
-              value: editingChapter.summary || '',
+              value: editingChapter?.summary || '',
               onChange: (ev) => setEditingChapter({
                 ...editingChapter,
                 summary: ev.target.value
@@ -7214,7 +9858,7 @@ VASTAA SUOMEKSI.`;
           e('div', null,
             e('label', { className: 'text-xs block mb-1' }, 'Tila'),
             e('select', {
-              value: editingChapter.status || 'not_started',
+              value: editingChapter?.status || 'not_started',
               onChange: (ev) => setEditingChapter({
                 ...editingChapter,
                 status: ev.target.value
@@ -7234,7 +9878,7 @@ VASTAA SUOMEKSI.`;
             e('div', null,
               e('label', { className: 'text-xs block mb-1' }, 'Aika tarinassa'),
               e('input', {
-                value: editingChapter.story_time || '',
+                value: editingChapter?.story_time || '',
                 onChange: (ev) => setEditingChapter({
                   ...editingChapter,
                   story_time: ev.target.value
@@ -7248,7 +9892,7 @@ VASTAA SUOMEKSI.`;
             e('div', null,
               e('label', { className: 'text-xs block mb-1' }, 'Kesto'),
               e('input', {
-                value: editingChapter.duration || '',
+                value: editingChapter?.duration || '',
                 onChange: (ev) => setEditingChapter({
                   ...editingChapter,
                   duration: ev.target.value
@@ -7266,7 +9910,7 @@ VASTAA SUOMEKSI.`;
             e('div', null,
               e('label', { className: 'text-xs block mb-1' }, 'POV (näkökulma)'),
               e('input', {
-                value: editingChapter.pov || '',
+                value: editingChapter?.pov || '',
                 onChange: (ev) => setEditingChapter({
                   ...editingChapter,
                   pov: ev.target.value
@@ -7280,7 +9924,7 @@ VASTAA SUOMEKSI.`;
             e('div', null,
               e('label', { className: 'text-xs block mb-1' }, 'Paikka'),
               e('input', {
-                value: editingChapter.location || '',
+                value: editingChapter?.location || '',
                 onChange: (ev) => setEditingChapter({
                   ...editingChapter,
                   location: ev.target.value
@@ -7345,7 +9989,7 @@ VASTAA SUOMEKSI.`;
           e('div', null,
             e('label', { className: 'text-xs block mb-1' }, 'Nimi'),
             e('input', {
-              value: editingThread.name || '',
+              value: editingThread?.name || '',
               onChange: (ev) => setEditingThread({
                 ...editingThread,
                 name: ev.target.value
@@ -7361,7 +10005,7 @@ VASTAA SUOMEKSI.`;
           e('div', null,
             e('label', { className: 'text-xs block mb-1' }, 'Kuvaus'),
             e('textarea', {
-              value: editingThread.description || '',
+              value: editingThread?.description || '',
               onChange: (ev) => setEditingThread({
                 ...editingThread,
                 description: ev.target.value
@@ -7378,7 +10022,7 @@ VASTAA SUOMEKSI.`;
             e('div', null,
               e('label', { className: 'text-xs block mb-1' }, 'Tärkeys'),
               e('select', {
-                value: editingThread.importance || 'minor',
+                value: editingThread?.importance || 'minor',
                 onChange: (ev) => setEditingThread({
                   ...editingThread,
                   importance: ev.target.value
@@ -7395,7 +10039,7 @@ VASTAA SUOMEKSI.`;
             e('div', null,
               e('label', { className: 'text-xs block mb-1' }, 'Tila'),
               e('select', {
-                value: editingThread.status || 'open',
+                value: editingThread?.status || 'open',
                 onChange: (ev) => setEditingThread({
                   ...editingThread,
                   status: ev.target.value
@@ -7417,7 +10061,7 @@ VASTAA SUOMEKSI.`;
               e('label', { className: 'text-xs block mb-1' }, 'Avattu luku'),
               e('input', {
                 type: 'number',
-                value: editingThread.opened_chapter || '',
+                value: editingThread?.opened_chapter || '',
                 onChange: (ev) => setEditingThread({
                   ...editingThread,
                   opened_chapter: parseInt(ev.target.value) || null
@@ -7432,7 +10076,7 @@ VASTAA SUOMEKSI.`;
               e('label', { className: 'text-xs block mb-1' }, 'Suljettu luku'),
               e('input', {
                 type: 'number',
-                value: editingThread.closed_chapter || '',
+                value: editingThread?.closed_chapter || '',
                 onChange: (ev) => setEditingThread({
                   ...editingThread,
                   closed_chapter: parseInt(ev.target.value) || null
@@ -7441,7 +10085,7 @@ VASTAA SUOMEKSI.`;
                   isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
                 }`,
                 placeholder: 'esim. 12',
-                disabled: editingThread.status !== 'closed'
+                disabled: editingThread?.status !== 'closed'
               })
             )
           )
@@ -7471,49 +10115,16 @@ VASTAA SUOMEKSI.`;
         )
       )
     ),
+  */
     
-    // ========== NORMAN-KRUG-NATSUME: UI Components ==========
-    
-    // NORMAN: AI Feedback - Shows what AI did
-    e(AIFeedback, {
-      action: showAIFeedback?.action,
-      details: showAIFeedback?.details,
-      type: showAIFeedback?.type || 'info',
-      onDismiss: () => setShowAIFeedback(null)
-    }),
-    
-    // NATSUME: Inspiration Panel - Appears when stuck
-    e(InspirationPanel, {
-      isVisible: showInspiration,
-      inspiration: inspirationData,
-      onDismiss: () => setShowInspiration(false)
-    }),
-    
-    // NATSUME: Flow Mode Indicator - Subtle mode display
-    e(FlowModeIndicator, { mode: flowMode }),
-    
-    // NATSUME: Genre Visual Metaphor - Shows genre theme
-    project.genre && e('div', {
-      className: 'fixed top-20 left-4 text-4xl opacity-10 pointer-events-none z-10'
-    }, GENRE_OPTIONS.find(g => g.id === project.genre)?.icon || ''),
-    
-    // ========== VISUAL MASTERS: Indicators ==========
-    
-    // IDEO: Cognitive Load Indicator
-    e(CognitiveLoadIndicator, { load: cognitiveLoad }),
-    
-    // SUPERSIDE: Work Phase Indicator
-    e(WorkPhaseIndicator, { phase: workPhase }),
-    
-    // IDEO: Transparent AI Indicator
-    e(TransparentAIIndicator, {
-      active: aiTransparency.active,
-      thinking: aiTransparency.thinking || isGenerating,
-      suggestionCount: aiSuggestions.length
-    })
-    
-  )) // Close Fragment
-  ); // Close return statement
+  ); // Close React.Fragment
+  
+  console.log('✅ JSX created:', result);
+  console.log('   Type:', typeof result);
+  console.log('   Is null?', result === null);
+  console.log('   Is undefined?', result === undefined);
+  
+  return result;
 }
 // Error boundary for debugging
 class ErrorBoundary extends React.Component {
@@ -7549,18 +10160,36 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-console.log('🔍 Starting app initialization...');
-console.log('✅ React:', typeof React);
-console.log('✅ ReactDOM:', typeof ReactDOM);
-console.log('✅ FaustEditor:', typeof FaustEditor);
+console.log('🚀 Starting FAUST...');
+console.log('React:', typeof React);
+console.log('ReactDOM:', typeof ReactDOM);
+console.log('Root element:', document.getElementById('root'));
 
 try {
-  const root = ReactDOM.createRoot(document.getElementById('root'));
+const root = ReactDOM.createRoot(document.getElementById('root'));
   console.log('✅ Root created');
   
-  root.render(React.createElement(ErrorBoundary, null, e(FaustEditor)));
-  console.log('✅ Render called');
+  // Now test FaustEditor with error handling
+root.render(React.createElement(ErrorBoundary, null, e(FaustEditor)));
+  console.log('✅ FaustEditor render called');
+  
+  // Check DOM after render
+  setTimeout(() => {
+    const rootEl = document.getElementById('root');
+    console.log('🔍 DOM after render:');
+    console.log('  Children count:', rootEl?.childNodes?.length || 0);
+    console.log('  First child:', rootEl?.firstChild);
+    console.log('  innerHTML length:', rootEl?.innerHTML?.length || 0);
+    if (rootEl?.innerHTML?.length < 100) {
+      console.error('⚠️ WARNING: Very little content in DOM!');
+      console.log('  Full innerHTML:', rootEl?.innerHTML);
+    }
+  }, 1000);
 } catch (error) {
-  console.error('❌ Error during initialization:', error);
-  document.body.innerHTML = '<div style="padding:20px;color:white;background:#1e1e1e;font-family:monospace"><h1>Error</h1><pre>' + error.toString() + '</pre><pre>' + error.stack + '</pre></div>';
+  console.error('❌ Fatal error:', error);
+  document.body.innerHTML = `<div style="color: white; padding: 20px; font-family: monospace;">
+    <h1>❌ Fatal Error</h1>
+    <pre>${error.toString()}</pre>
+    <pre>${error.stack}</pre>
+  </div>`;
 }

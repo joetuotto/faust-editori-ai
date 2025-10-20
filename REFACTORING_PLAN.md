@@ -110,3 +110,4 @@ src/
 - Testaa aina muutosten jälkeen
 - Käytä git-versionhallintaa (commit jokaisen vaiheen jälkeen)
 
+

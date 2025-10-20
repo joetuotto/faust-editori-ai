@@ -265,4 +265,8 @@ Rakennettu Claude AI:n ja Cursorin avulla, yhdistäen maailman parhaiden suunnit
 - **Scrivener** - Kirjoittajan työkalu
 - **Cursor** - AI-avusteinen kehitys
 
+## Offline Mode
+
+FAUST toimii täysin offline core-toiminnoissa (kirjoittaminen, tallennus localStorageen + backup.json userData-kansioon), UI ja layout. AI-ominaisuudet (Claude, GPT, Gemini jne.) ja web-haku vaativat internet-yhteyden – offline-tilassa näytetään 'Offline – AI ei käytettävissä'. Fontit ja React bundlattu paikallisesti webpack:lla. Rakenna offline-asennus npm run build:lla.
+
 

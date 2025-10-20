@@ -17,7 +17,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   geminiAPI: (prompt) => ipcRenderer.invoke('gemini-api', prompt),
   grokAPI: (prompt) => ipcRenderer.invoke('grok-api', prompt),
   cursorAPI: (prompt) => ipcRenderer.invoke('cursor-api', prompt),
+  deepseekAPI: (payload) => ipcRenderer.invoke('deepseek-api', payload),
   webSearch: (query) => ipcRenderer.invoke('web-search', query),
+
+  // API Key management
+  loadApiKeys: () => ipcRenderer.invoke('load-api-keys'),
+  saveApiKeys: (keys) => ipcRenderer.invoke('save-api-keys', keys),
+  saveBackup: (project) => ipcRenderer.invoke('save-backup', project),
+  loadBackup: () => ipcRenderer.invoke('load-backup'),
   
   // Menu actions (listening)
   onMenuAction: (callback) => {

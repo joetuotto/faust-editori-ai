@@ -81,3 +81,4 @@ echo "   2. Jos toimii, commit: git add . && git commit -m 'chore: Siivottu tied
 echo "   3. Jos ei toimi, palauta: mv backups/faust*.js ."
 echo ""
 
+

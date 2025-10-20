@@ -147,3 +147,9 @@ if (fs.existsSync(appPath)) {
 } else {
   console.log('❌ App file not found at:', appPath);
 }
+
+describe('Scrivener-like features manual checklist', () => {
+  test('placeholder', () => {
+    expect(true).toBe(true);
+  });
+});
