@@ -9516,15 +9516,437 @@ VASTAA SUOMEKSI.`;
         }`,
         onClick: (ev) => ev.stopPropagation()
       },
+        // Header
         e('div', { className: 'p-4 border-b flex items-center justify-between' },
-          e('h3', { className: 'text-lg font-bold' }, `Hahmo: ${editingCharacter.name}`),
+          e('h3', { className: 'text-lg font-bold' }, 'Hahmo'),
           e('button', {
             onClick: () => setShowCharacterSheet(false),
             className: 'p-2 rounded hover:bg-gray-700'
           }, e(Icons.X))
         ),
-        e('div', { className: 'p-4' },
-          e('p', null, 'Hahmon muokkaus tulossa...')
+        
+        // Content
+        e('div', { className: 'p-4 space-y-4' },
+          
+          // BIO-OSIO
+          e('div', { className: 'border-b pb-4' },
+            e('h4', { className: 'font-bold mb-3 text-sm' }, 'PERUSTIEDOT'),
+            
+            // Nimi (pakollinen)
+            e('div', { className: 'mb-3' },
+              e('label', { className: 'text-xs block mb-1' }, 
+                'Nimi',
+                e('span', { className: 'text-red-500 ml-1' }, '*')
+              ),
+              e('input', {
+                type: 'text',
+                value: editingCharacter?.name || '',
+                onChange: (ev) => setEditingCharacter({
+                  ...editingCharacter,
+                  name: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                } ${
+                  !editingCharacter?.name?.trim() ? 'border-red-500' : ''
+                }`,
+                placeholder: 'Hahmon nimi (pakollinen)'
+              }),
+              !editingCharacter?.name?.trim() && e('p', {
+                className: 'text-xs text-red-500 mt-1'
+              }, 'Nimi on pakollinen tieto')
+            ),
+            
+            // Ikä ja Sukupuoli (rinnakkain)
+            e('div', { className: 'grid grid-cols-2 gap-3 mb-3' },
+              // Ikä
+              e('div', null,
+                e('label', { className: 'text-xs block mb-1' }, 'Ikä'),
+                e('input', {
+                  type: 'number',
+                  min: 0,
+                  max: 999,
+                  value: editingCharacter?.age || '',
+                  onChange: (ev) => setEditingCharacter({
+                    ...editingCharacter,
+                    age: parseInt(ev.target.value, 10) || 0
+                  }),
+                  className: `w-full p-2 rounded border text-sm ${
+                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  }`,
+                  placeholder: 'Esim. 25'
+                })
+              ),
+              
+              // Sukupuoli
+              e('div', null,
+                e('label', { className: 'text-xs block mb-1' }, 'Sukupuoli'),
+                e('select', {
+                  value: editingCharacter?.gender || 'Ei määritelty',
+                  onChange: (ev) => setEditingCharacter({
+                    ...editingCharacter,
+                    gender: ev.target.value
+                  }),
+                  className: `w-full p-2 rounded border text-sm ${
+                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  }`
+                },
+                  e('option', { value: 'Ei määritelty' }, 'Ei määritelty'),
+                  e('option', { value: 'Nainen' }, 'Nainen'),
+                  e('option', { value: 'Mies' }, 'Mies'),
+                  e('option', { value: 'Muu' }, 'Muu')
+                )
+              )
+            ),
+            
+            // Ulkonäkö
+            e('div', null,
+              e('label', { className: 'text-xs block mb-1' }, 'Ulkonäkö'),
+              e('textarea', {
+                rows: 3,
+                value: editingCharacter?.appearance || '',
+                onChange: (ev) => setEditingCharacter({
+                  ...editingCharacter,
+                  appearance: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`,
+                placeholder: 'Fyysinen ulkonäkö, vaatetus, erityispiirteet...'
+              })
+            )
+          ),
+          
+          // PERSOONALLISUUS-OSIO
+          e('div', { className: 'border-b pb-4' },
+            e('h4', { className: 'font-bold mb-3 text-sm' }, 'PERSOONALLISUUS'),
+            
+            // Luonteenpiirteet (Traits)
+            e('div', { className: 'mb-3' },
+              e('label', { className: 'text-xs block mb-1' }, 'Luonteenpiirteet'),
+              
+              // Trait chips
+              e('div', { className: 'flex flex-wrap gap-2 mb-2' },
+                (editingCharacter?.traits || []).map((trait, idx) =>
+                  e('div', {
+                    key: idx,
+                    className: `flex items-center gap-1 px-2 py-1 rounded text-xs ${
+                      isDarkMode ? 'bg-blue-900 text-blue-200' : 'bg-blue-100 text-blue-800'
+                    }`
+                  },
+                    e('span', null, trait),
+                    e('button', {
+                      onClick: () => {
+                        const newTraits = [...(editingCharacter.traits || [])];
+                        newTraits.splice(idx, 1);
+                        setEditingCharacter({
+                          ...editingCharacter,
+                          traits: newTraits
+                        });
+                      },
+                      className: 'hover:text-red-500 font-bold'
+                    }, '×')
+                  )
+                )
+              ),
+              
+              // Add trait input
+              e('div', { className: 'flex gap-2' },
+                e('input', {
+                  type: 'text',
+                  id: 'newTrait',
+                  className: `flex-1 p-2 rounded border text-sm ${
+                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  }`,
+                  placeholder: 'Esim: Rohkea, Ujo, Viisas...',
+                  onKeyPress: (ev) => {
+                    if (ev.key === 'Enter') {
+                      ev.preventDefault();
+                      const input = document.getElementById('newTrait');
+                      const value = input.value.trim();
+                      if (value) {
+                        setEditingCharacter({
+                          ...editingCharacter,
+                          traits: [...(editingCharacter.traits || []), value]
+                        });
+                        input.value = '';
+                      }
+                    }
+                  }
+                }),
+                e('button', {
+                  onClick: () => {
+                    const input = document.getElementById('newTrait');
+                    const value = input.value.trim();
+                    if (value) {
+                      setEditingCharacter({
+                        ...editingCharacter,
+                        traits: [...(editingCharacter.traits || []), value]
+                      });
+                      input.value = '';
+                    }
+                  },
+                  className: `px-3 py-2 rounded text-sm ${
+                    isDarkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'
+                  } text-white`
+                }, '+ Lisää')
+              )
+            ),
+            
+            // Motivaatiot
+            e('div', { className: 'mb-3' },
+              e('label', { className: 'text-xs block mb-1' }, 'Motivaatiot'),
+              e('textarea', {
+                rows: 2,
+                value: editingCharacter?.motivations || '',
+                onChange: (ev) => setEditingCharacter({
+                  ...editingCharacter,
+                  motivations: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`,
+                placeholder: 'Mitä hahmo haluaa saavuttaa?'
+              })
+            ),
+            
+            // Pelot
+            e('div', null,
+              e('label', { className: 'text-xs block mb-1' }, 'Pelot'),
+              e('textarea', {
+                rows: 2,
+                value: editingCharacter?.fears || '',
+                onChange: (ev) => setEditingCharacter({
+                  ...editingCharacter,
+                  fears: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`,
+                placeholder: 'Mitä hahmo pelkää?'
+              })
+            )
+          ),
+          
+          // SUHTEET-OSIO
+          e('div', { className: 'border-b pb-4' },
+            e('h4', { className: 'font-bold mb-3 text-sm' }, 'SUHTEET'),
+            
+            // Olemassa olevat suhteet
+            (editingCharacter?.relationships || []).length > 0 && e('div', { className: 'mb-3 space-y-2' },
+              (editingCharacter?.relationships || []).map((rel, idx) => {
+                const targetChar = project.characters.find(c => c.id === rel.targetCharacterId);
+                return e('div', {
+                  key: idx,
+                  className: `p-2 rounded border text-sm ${
+                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-gray-50 border-gray-300'
+                  }`
+                },
+                  e('div', { className: 'flex items-start justify-between gap-2' },
+                    e('div', { className: 'flex-1' },
+                      e('div', { className: 'font-bold' }, targetChar?.name || 'Tuntematon'),
+                      e('div', { className: 'text-xs opacity-70' }, rel.type),
+                      rel.description && e('div', { className: 'text-xs mt-1' }, rel.description)
+                    ),
+                    e('button', {
+                      onClick: () => {
+                        const newRels = [...(editingCharacter.relationships || [])];
+                        newRels.splice(idx, 1);
+                        setEditingCharacter({
+                          ...editingCharacter,
+                          relationships: newRels
+                        });
+                      },
+                      className: 'text-red-500 hover:text-red-700 font-bold'
+                    }, '×')
+                  )
+                );
+              })
+            ),
+            
+            // Lisää uusi suhde
+            e('div', null,
+              e('label', { className: 'text-xs block mb-1' }, 'Lisää suhde'),
+              
+              // Valitse hahmo
+              e('div', { className: 'mb-2' },
+                e('select', {
+                  id: 'newRelationshipTarget',
+                  className: `w-full p-2 rounded border text-sm ${
+                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  }`
+                },
+                  e('option', { value: '' }, 'Valitse hahmo...'),
+                  project.characters
+                    .filter(c => c.id !== editingCharacter?.id)
+                    .map(c => e('option', { key: c.id, value: c.id }, c.name))
+                )
+              ),
+              
+              // Suhteen tyyppi
+              e('div', { className: 'mb-2' },
+                e('select', {
+                  id: 'newRelationshipType',
+                  className: `w-full p-2 rounded border text-sm ${
+                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  }`
+                },
+                  e('option', { value: 'Neutraali' }, 'Neutraali'),
+                  e('option', { value: 'Ystävä' }, 'Ystävä'),
+                  e('option', { value: 'Vihollinen' }, 'Vihollinen'),
+                  e('option', { value: 'Perhe' }, 'Perhe'),
+                  e('option', { value: 'Romanttinen' }, 'Romanttinen')
+                )
+              ),
+              
+              // Kuvaus
+              e('div', { className: 'mb-2' },
+                e('textarea', {
+                  id: 'newRelationshipDescription',
+                  rows: 2,
+                  className: `w-full p-2 rounded border text-sm ${
+                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  }`,
+                  placeholder: 'Suhteen kuvaus (valinnainen)'
+                })
+              ),
+              
+              // Lisää-nappi
+              e('button', {
+                onClick: () => {
+                  const targetSelect = document.getElementById('newRelationshipTarget');
+                  const typeSelect = document.getElementById('newRelationshipType');
+                  const descTextarea = document.getElementById('newRelationshipDescription');
+                  
+                  const targetId = targetSelect.value;
+                  const type = typeSelect.value;
+                  const description = descTextarea.value.trim();
+                  
+                  if (targetId) {
+                    setEditingCharacter({
+                      ...editingCharacter,
+                      relationships: [
+                        ...(editingCharacter.relationships || []),
+                        { targetCharacterId: targetId, type, description }
+                      ]
+                    });
+                    
+                    // Tyhjennä kentät
+                    targetSelect.value = '';
+                    typeSelect.value = 'Neutraali';
+                    descTextarea.value = '';
+                    
+                    console.log('✅ Suhde lisätty');
+                  } else {
+                    console.warn('⚠️ Valitse ensin hahmo');
+                  }
+                },
+                className: `px-3 py-2 rounded text-sm w-full ${
+                  isDarkMode ? 'bg-green-600 hover:bg-green-700' : 'bg-green-500 hover:bg-green-600'
+                } text-white`
+              }, '+ Lisää suhde')
+            )
+          ),
+          
+          // TARINAN KAARI -OSIO
+          e('div', null,
+            e('h4', { className: 'font-bold mb-3 text-sm' }, 'TARINAN KAARI'),
+            
+            // Aloitus
+            e('div', { className: 'mb-3' },
+              e('label', { className: 'text-xs block mb-1' }, 'Aloitus'),
+              e('textarea', {
+                rows: 2,
+                value: editingCharacter?.arc?.beginning || '',
+                onChange: (ev) => setEditingCharacter({
+                  ...editingCharacter,
+                  arc: {
+                    ...editingCharacter?.arc,
+                    beginning: ev.target.value
+                  }
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`,
+                placeholder: 'Missä hahmo on tarinan alussa?'
+              })
+            ),
+            
+            // Kehitys
+            e('div', { className: 'mb-3' },
+              e('label', { className: 'text-xs block mb-1' }, 'Kehitys'),
+              e('textarea', {
+                rows: 2,
+                value: editingCharacter?.arc?.development || '',
+                onChange: (ev) => setEditingCharacter({
+                  ...editingCharacter,
+                  arc: {
+                    ...editingCharacter?.arc,
+                    development: ev.target.value
+                  }
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`,
+                placeholder: 'Miten hahmo muuttuu tarinan aikana?'
+              })
+            ),
+            
+            // Lopputulos
+            e('div', null,
+              e('label', { className: 'text-xs block mb-1' }, 'Lopputulos'),
+              e('textarea', {
+                rows: 2,
+                value: editingCharacter?.arc?.end || '',
+                onChange: (ev) => setEditingCharacter({
+                  ...editingCharacter,
+                  arc: {
+                    ...editingCharacter?.arc,
+                    end: ev.target.value
+                  }
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`,
+                placeholder: 'Missä hahmo päättyy?'
+              })
+            )
+          )
+        ),
+        
+        // Footer
+        e('div', { className: 'p-4 border-t flex gap-2 justify-end' },
+          e('button', {
+            onClick: () => setShowCharacterSheet(false),
+            className: `px-4 py-2 rounded text-sm ${
+              isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
+            }`
+          }, 'Peruuta'),
+          e('button', {
+            onClick: () => {
+              // Validointi: Tarkista että nimi ei ole tyhjä
+              if (!editingCharacter?.name?.trim()) {
+                console.warn('⚠️ Validointivirhe: Nimi on pakollinen');
+                return;
+              }
+              
+              setProject(prev => ({
+                ...prev,
+                characters: prev.characters.map(c =>
+                  c.id === editingCharacter.id ? editingCharacter : c
+                )
+              }));
+              setShowCharacterSheet(false);
+              console.log('✅ Hahmo tallennettu:', editingCharacter.name);
+            },
+            disabled: !editingCharacter?.name?.trim(),
+            className: `px-4 py-2 rounded text-sm transition-all ${
+              !editingCharacter?.name?.trim()
+                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                : 'bg-blue-500 text-white hover:bg-blue-600'
+            }`,
+            title: !editingCharacter?.name?.trim() ? 'Nimi on pakollinen' : 'Tallenna hahmo'
+          }, 'Tallenna')
         )
       )
     ),
