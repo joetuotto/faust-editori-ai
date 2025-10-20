@@ -9573,7 +9573,10 @@ VASTAA SUOMEKSI.`;
         ),
         e('div', { className: 'p-4 space-y-4' },
           e('div', null,
-            e('label', { className: 'text-xs block mb-1' }, 'Otsikko'),
+            e('label', { className: 'text-xs block mb-1' }, 
+              'Otsikko',
+              e('span', { className: 'text-red-500 ml-1' }, '*')
+            ),
             e('input', {
               value: editingChapter?.title || '',
               onChange: (ev) => setEditingChapter({
@@ -9582,13 +9585,24 @@ VASTAA SUOMEKSI.`;
               }),
               className: `w-full p-2 rounded border text-sm ${
                 isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+              } ${
+                !editingChapter?.title?.trim() ? 'border-red-500' : ''
               }`,
-              placeholder: 'Luvun otsikko'
-            })
+              placeholder: 'Luvun otsikko (pakollinen)'
+            }),
+            !editingChapter?.title?.trim() && e('p', {
+              className: 'text-xs text-red-500 mt-1'
+            }, 'Otsikko on pakollinen tieto')
           ),
           e('div', { className: 'flex gap-2 mt-4' },
             e('button', {
               onClick: () => {
+                // Validointi: Tarkista että otsikko ei ole tyhjä
+                if (!editingChapter?.title?.trim()) {
+                  console.warn('⚠️ Validointivirhe: Otsikko on pakollinen');
+                  return;
+                }
+                
                 setProject(prev => ({
                   ...prev,
                   chapters: prev.chapters.map(c =>
@@ -9596,8 +9610,15 @@ VASTAA SUOMEKSI.`;
                   )
                 }));
                 setShowChapterSheet(false);
+                console.log('✅ Luku tallennettu:', editingChapter.title);
               },
-              className: 'px-4 py-2 rounded text-sm bg-blue-500 text-white hover:bg-blue-600'
+              disabled: !editingChapter?.title?.trim(),
+              className: `px-4 py-2 rounded text-sm transition-all ${
+                !editingChapter?.title?.trim()
+                  ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                  : 'bg-blue-500 text-white hover:bg-blue-600'
+              }`,
+              title: !editingChapter?.title?.trim() ? 'Otsikko on pakollinen' : 'Tallenna luku'
             }, 'Tallenna')
           )
         )
