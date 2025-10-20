@@ -2512,6 +2512,57 @@ function FaustEditor() {
   useEffect(() => {
     activeItemIdRef.current = activeItemId;
   }, [activeItemId]);
+  
+  // Auto-check continuity when user is typing
+  useEffect(() => {
+    if (!autoCheckEnabled) {
+      setContinuityWarnings([]);
+      return;
+    }
+    
+    const activeItem = getActiveItem();
+    const content = activeItem?.content || '';
+    
+    // Skip if content too short
+    if (content.length < 100) {
+      setContinuityWarnings([]);
+      return;
+    }
+    
+    // Debounce: wait 3 seconds after user stops typing
+    const timer = setTimeout(async () => {
+      const warnings = [];
+      
+      try {
+        // Check characters (silent mode)
+        if (project.story?.characters?.length > 0) {
+          for (const char of project.story.characters) {
+            const result = await window.electronAPI.generateWithAI(
+              `Tarkista tämän hahmon jatkuvuus tekstissä. Vastaa VAIN jos havaitset ongelmia.\n\nHahmo: ${char.name}\nTiedot: ${JSON.stringify(char)}\n\nTeksti:\n${content}`
+            );
+            if (result && result.trim().length > 10) {
+              warnings.push(`⚠️ ${char.name}: ${result.substring(0, 100)}`);
+            }
+          }
+        }
+        
+        // Check story logic (silent mode)
+        const storyCheck = await window.electronAPI.generateWithAI(
+          `Tarkista tarinan logiikka ja johdonmukaisuus. Vastaa VAIN jos havaitset ristiriitoja.\n\nTeksti:\n${content}`
+        );
+        if (storyCheck && storyCheck.trim().length > 10) {
+          warnings.push(`⚠️ Juoni: ${storyCheck.substring(0, 100)}`);
+        }
+        
+        setContinuityWarnings(warnings);
+      } catch (error) {
+        console.error('Auto-check failed:', error);
+      }
+    }, 3000); // 3 seconds debounce
+    
+    return () => clearTimeout(timer);
+  }, [activeItemId, project.items, autoCheckEnabled]);
+  
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showInspector, setShowInspector] = useState(true);
@@ -2530,13 +2581,21 @@ function FaustEditor() {
   const [inspectorTab, setInspectorTab] = useState('notes');
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showCollectionsPanel, setShowCollectionsPanel] = useState(false);
+  
+  // Quick Actions for selected text
+  const [selectedText, setSelectedText] = useState('');
+  const [selectionRange, setSelectionRange] = useState({ start: 0, end: 0 });
+  const [showQuickActions, setShowQuickActions] = useState(false);
+  const [showInsertMenu, setShowInsertMenu] = useState(false);
+  
+  // Auto-check continuity
+  const [autoCheckEnabled, setAutoCheckEnabled] = useState(false);
+  const [continuityWarnings, setContinuityWarnings] = useState([]);
   const [activeCollection, setActiveCollection] = useState(null);
   const [selectedAIApi, setSelectedAIApi] = useState('claude'); // Valittu AI-palvelu
   const [showSaveIndicator, setShowSaveIndicator] = useState(false);
   
   // AI Agents - CharacterKeeper & StoryKeeper
-  const [continuityWarnings, setContinuityWarnings] = useState([]);
-  const [autoCheckEnabled, setAutoCheckEnabled] = useState(false);
   const [lastCheckTime, setLastCheckTime] = useState(Date.now());
   const [pendingEdits, setPendingEdits] = useState([]); // AI:n ehdottamat muutokset
   
@@ -3364,20 +3423,107 @@ function FaustEditor() {
       setIsGenerating(false);
     }
   };
-  const insertAiResponse = () => {
+  // Replace selected text with new text
+  const replaceSelectedText = (newText) => {
+    if (!editorRef.current) return;
+    
+    const editor = editorRef.current;
+    const start = selectionRange.start;
+    const end = selectionRange.end;
+    const currentContent = editor.value;
+    
+    if (start === end) {
+      // No selection - insert at cursor
+      const newContent = 
+        currentContent.substring(0, start) + 
+        newText + 
+        currentContent.substring(start);
+      
+      updateEditorContent(newContent, start + newText.length, start + newText.length);
+    } else {
+      // Replace selection
+      const newContent = 
+        currentContent.substring(0, start) + 
+        newText + 
+        currentContent.substring(end);
+      
+      updateEditorContent(newContent, start, start + newText.length);
+    }
+    
+    editor.focus();
+  };
+
+  // Insert AI response with different modes
+  const insertAiResponse = (mode = 'append') => {
     if (!aiResponse) return;
     const activeItem = getActiveItem();
     const existingContent = activeItem?.content || '';
-    const addition = (existingContent ? '\n\n' : '') + aiResponse;
-    const newContent = existingContent + addition;
-    const previousStart = editorRef.current?.selectionStart ?? existingContent.length;
-    const previousEnd = editorRef.current?.selectionEnd ?? previousStart;
-    const cursorPos = newContent.length;
-    updateEditorContent(newContent, cursorPos, cursorPos, {
-      previousSelectionStart: previousStart,
-      previousSelectionEnd: previousEnd
-    });
+    
+    switch (mode) {
+      case 'append':
+        // Original behavior - add to end
+        const addition = (existingContent ? '\n\n' : '') + aiResponse;
+        const newContent = existingContent + addition;
+        const cursorPos = newContent.length;
+        updateEditorContent(newContent, cursorPos, cursorPos);
+        break;
+        
+      case 'replace-selection':
+        // Replace selected text
+        replaceSelectedText(aiResponse);
+        break;
+        
+      case 'replace-all':
+        // Replace entire content
+        updateEditorContent(aiResponse, 0, 0);
+        break;
+        
+      case 'at-cursor':
+        // Insert at cursor position
+        replaceSelectedText(aiResponse);
+        break;
+    }
+    
     setAiResponse('');
+    setShowInsertMenu(false);
+  };
+
+  // Handle text selection in editor
+  const handleTextSelection = () => {
+    if (!editorRef.current) return;
+    
+    const editor = editorRef.current;
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    
+    setSelectionRange({ start, end });
+    
+    if (start !== end) {
+      const selected = editor.value.substring(start, end);
+      setSelectedText(selected);
+      setShowQuickActions(true);
+    } else {
+      setShowQuickActions(false);
+      setSelectedText('');
+    }
+  };
+
+  // Handle Quick Action (Improve, Shorten, Expand, Fix)
+  const handleQuickAction = async (action) => {
+    if (!selectedText) return;
+    
+    const prompts = {
+      improve: `Paranna tätä tekstiä tyylillisesti ja sujuvuudeltaan, säilytä merkitys:\n\n${selectedText}`,
+      shorten: `Lyhennä tämä teksti noin puoleen, säilytä ydinsisältö ja tärkeimmät asiat:\n\n${selectedText}`,
+      expand: `Laajenna tämä teksti lisäämällä yksityiskohtia, kuvausta ja syvyyttä:\n\n${selectedText}`,
+      fix: `Korjaa kielioppi- ja tyylvirheet tästä tekstistä:\n\n${selectedText}`
+    };
+    
+    setShowQuickActions(false);
+    setAiAssistantOpen(true);
+    
+    // Call AI with the prompt
+    await callAIAPI(prompts[action], false);
   };
 
   const saveProject = async () => {
@@ -6602,7 +6748,7 @@ VASTAA SUOMEKSI.`;
             )
           ) : (
             // Normaali editori
-            e('div', { className: 'max-w-4xl mx-auto p-8' },
+            e('div', { className: 'max-w-4xl mx-auto p-8 relative' },
               e('div', { className: 'mb-4' },
                 e('input', {
                   value: getActiveItem()?.title || '',
@@ -6613,10 +6759,38 @@ VASTAA SUOMEKSI.`;
                 }),
                 e('div', { className: 'text-sm opacity-60' }, `${getActiveItem()?.wordCount || 0} sanaa`)
               ),
+              
+              // Continuity warnings
+              continuityWarnings.length > 0 && e('div', {
+                className: 'mb-4 p-3 rounded-lg',
+                style: {
+                  background: 'rgba(251, 191, 36, 0.9)',
+                  color: '#78350f',
+                  border: '2px solid #f59e0b'
+                }
+              },
+                e('div', { className: 'text-xs font-bold mb-2 flex items-center gap-2' },
+                  '⚠️ Jatkuvuusvaroitukset',
+                  e('button', {
+                    onClick: () => setContinuityWarnings([]),
+                    className: 'ml-auto px-2 py-1 rounded text-[10px]',
+                    style: {
+                      background: 'rgba(0,0,0,0.1)',
+                      color: '#78350f'
+                    }
+                  }, 'Piilota')
+                ),
+                ...continuityWarnings.map((warning, i) =>
+                  e('div', { key: i, className: 'text-xs mt-1' }, warning)
+                )
+              ),
+              
               e('textarea', {
                 ref: editorRef,
                 defaultValue: getActiveItem()?.content || '',
                 onChange: (ev) => updateItem(activeItemId, { content: ev.target.value }),
+                onMouseUp: handleTextSelection,
+                onKeyUp: handleTextSelection,
                 placeholder: 'Aloita kirjoittaminen...',
                 className: `w-full min-h-[600px] p-6 rounded-lg border-2 resize-none outline-none ${
                   isDarkMode
@@ -8420,6 +8594,28 @@ VASTAA SUOMEKSI.`;
                 className: 'px-2 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600'
               }, '+ Lisää hahmo')
             ),
+            
+            // Auto-check toggle
+            e('label', { 
+              className: 'flex items-center gap-2 text-xs p-2 rounded',
+              style: {
+                background: isDarkMode ? '#374151' : '#F3F4F6',
+                cursor: 'pointer'
+              }
+            },
+              e('input', {
+                type: 'checkbox',
+                checked: autoCheckEnabled,
+                onChange: (ev) => setAutoCheckEnabled(ev.target.checked),
+                className: 'rounded'
+              }),
+              e('span', { className: autoCheckEnabled ? 'font-semibold' : '' },
+                '⚙️ Automaattinen valvonta'
+              ),
+              e('span', { className: 'text-[10px] opacity-60' },
+                '(tarkistaa 3s jälkeen)'
+              )
+            ),
 
             // Hahmolista
             (project.characters || []).length === 0 ?
@@ -9110,15 +9306,71 @@ VASTAA SUOMEKSI.`;
                   className: 'text-sm font-medium',
                   style: { color: 'var(--faust-ink)' }
                 }, 'Vastaus'),
-                e('button', {
-                  onClick: insertAiResponse,
-                  className: 'text-xs px-3 py-1 rounded transition-all',
-                  style: {
-                    background: 'var(--faust-gold)',
-                    color: '#141210',
-                    fontWeight: '500'
-                  }
-                }, 'Lisää tekstiin')
+                e('div', { className: 'flex gap-2' },
+                  // Korvaa valinta -nappi (näkyy vain kun teksti valittuna)
+                  selectedText && e('button', {
+                    onClick: () => insertAiResponse('replace-selection'),
+                    className: 'flex-1 text-xs px-3 py-2 rounded transition-all font-medium',
+                    style: {
+                      background: '#8B5CF6',
+                      color: 'white',
+                      fontWeight: '500'
+                    }
+                  }, '↺ Korvaa valinta'),
+                  
+                  // Dropdown-valikko
+                  e('div', { className: 'relative', style: { flex: selectedText ? '' : '1' } },
+                    e('button', {
+                      onClick: () => {
+                        if (!selectedText) {
+                          // Jos ei valintaa, lisää suoraan loppuun
+                          insertAiResponse('append');
+                        } else {
+                          // Jos valinta, näytä menu
+                          setShowInsertMenu(!showInsertMenu);
+                        }
+                      },
+                      className: 'text-xs px-3 py-2 rounded transition-all',
+                      style: {
+                        background: 'var(--faust-gold)',
+                        color: '#141210',
+                        fontWeight: '500',
+                        width: selectedText ? 'auto' : '100%'
+                      }
+                    }, selectedText ? '▼' : 'Lisää tekstiin'),
+                    
+                    // Dropdown menu
+                    showInsertMenu && e('div', {
+                      className: 'absolute right-0 mt-1 rounded-lg shadow-xl p-1 min-w-[180px] z-10',
+                      style: {
+                        background: isDarkMode ? '#1F2937' : 'white',
+                        border: `1px solid ${isDarkMode ? '#374151' : '#E5E7EB'}`
+                      }
+                    },
+                      [
+                        { label: '➕ Lisää loppuun', mode: 'append' },
+                        { label: '📍 Lisää kursorin kohtaan', mode: 'at-cursor' },
+                        { label: '⚠️ Korvaa kaikki', mode: 'replace-all', danger: true }
+                      ].map(({ label, mode, danger }) =>
+                        e('button', {
+                          key: mode,
+                          onClick: () => insertAiResponse(mode),
+                          className: 'w-full text-left px-3 py-2 rounded text-xs transition-all',
+                          style: {
+                            color: danger ? '#EF4444' : (isDarkMode ? '#F9FAFB' : '#111827'),
+                            background: 'transparent'
+                          },
+                          onMouseEnter: (ev) => {
+                            ev.target.style.background = isDarkMode ? '#374151' : '#F3F4F6';
+                          },
+                          onMouseLeave: (ev) => {
+                            ev.target.style.background = 'transparent';
+                          }
+                        }, label)
+                      )
+                    )
+                  )
+                )
               ),
               e('div', { 
                 className: 'text-sm whitespace-pre-wrap',
@@ -9502,6 +9754,58 @@ VASTAA SUOMEKSI.`;
       thinking: aiTransparency.thinking || isGenerating,
       suggestionCount: aiSuggestions.length
     }), // Last NORMAN component
+    
+    // Quick Actions popup for selected text
+    showQuickActions && selectedText && e('div', {
+      className: 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[9999] rounded-lg shadow-2xl p-3',
+      style: {
+        background: isDarkMode ? '#1F2937' : 'white',
+        border: `2px solid ${isDarkMode ? '#374151' : '#E5E7EB'}`
+      }
+    },
+      e('div', { className: 'text-xs mb-2 opacity-60', style: { color: isDarkMode ? '#9CA3AF' : '#6B7280' } },
+        `"${selectedText.substring(0, 50)}${selectedText.length > 50 ? '...' : ''}"`
+      ),
+      e('div', { className: 'flex gap-2' },
+        [
+          { icon: '✨', label: 'Paranna', action: 'improve' },
+          { icon: '📏', label: 'Lyhennä', action: 'shorten' },
+          { icon: '📖', label: 'Laajenna', action: 'expand' },
+          { icon: '✅', label: 'Korjaa', action: 'fix' }
+        ].map(({ icon, label, action }) =>
+          e('button', {
+            key: action,
+            onClick: () => handleQuickAction(action),
+            className: 'px-4 py-2 rounded text-sm font-medium transition-all',
+            style: {
+              background: isDarkMode ? '#374151' : '#F3F4F6',
+              color: isDarkMode ? '#F9FAFB' : '#111827'
+            },
+            onMouseEnter: (ev) => {
+              ev.target.style.background = isDarkMode ? '#4B5563' : '#E5E7EB';
+            },
+            onMouseLeave: (ev) => {
+              ev.target.style.background = isDarkMode ? '#374151' : '#F3F4F6';
+            },
+            title: label
+          }, `${icon} ${label}`)
+        ),
+        e('button', {
+          onClick: () => setShowQuickActions(false),
+          className: 'px-3 py-2 rounded text-sm transition-all',
+          style: {
+            background: isDarkMode ? '#1F2937' : '#F9FAFB',
+            color: isDarkMode ? '#9CA3AF' : '#6B7280'
+          },
+          onMouseEnter: (ev) => {
+            ev.target.style.background = isDarkMode ? '#111827' : '#F3F4F6';
+          },
+          onMouseLeave: (ev) => {
+            ev.target.style.background = isDarkMode ? '#1F2937' : '#F9FAFB';
+          }
+        }, '✕')
+      )
+    ),
     
     // ========== MODALS ==========
     
