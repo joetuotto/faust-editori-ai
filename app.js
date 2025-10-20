@@ -2532,6 +2532,7 @@ function FaustEditor() {
   const [showCollectionsPanel, setShowCollectionsPanel] = useState(false);
   const [activeCollection, setActiveCollection] = useState(null);
   const [selectedAIApi, setSelectedAIApi] = useState('claude'); // Valittu AI-palvelu
+  const [showSaveIndicator, setShowSaveIndicator] = useState(false);
   
   // AI Agents - CharacterKeeper & StoryKeeper
   const [continuityWarnings, setContinuityWarnings] = useState([]);
@@ -3380,17 +3381,50 @@ function FaustEditor() {
   };
 
   const saveProject = async () => {
-    const projectWithAll = {
-      ...project,
-      targets,
-      characters: project.characters || [], // Varmista että hahmot tallennetaan
-      locations: project.locations || [], // Varmista että paikat tallennetaan
-      genre: project.genre || 'psychological_thriller', // Varmista että genre tallennetaan
-      story: project.story || { outline: [], events: [], threads: [], timeline: [], immutable_facts: [] } // Varmista että tarina tallennetaan
-    };
-    const result = await window.electronAPI.saveProject(projectWithAll);
-    if (result.success) {
-      alert('Projekti, hahmot, paikat ja tarina tallennettu!');
+    // Aseta tallennustila: saving
+    setSaveStatus('saving');
+    setShowSaveIndicator(true);
+    
+    try {
+      const projectWithAll = {
+        ...project,
+        targets,
+        characters: project.characters || [], // Varmista että hahmot tallennetaan
+        locations: project.locations || [], // Varmista että paikat tallennetaan
+        genre: project.genre || 'psychological_thriller', // Varmista että genre tallennetaan
+        story: project.story || { outline: [], events: [], threads: [], timeline: [], immutable_facts: [] } // Varmista että tarina tallennetaan
+      };
+      const result = await window.electronAPI.saveProject(projectWithAll);
+      
+      if (result.success) {
+        // Aseta tallennustila: saved
+        setSaveStatus('saved');
+        
+        // Piilota indikaattori 2 sekunnin kuluttua
+        setTimeout(() => {
+          setShowSaveIndicator(false);
+        }, 2000);
+        
+        console.log('✅ Projekti tallennettu onnistuneesti');
+      } else {
+        // Tallennus epäonnistui
+        setSaveStatus('error');
+        console.error('❌ Tallennusvirhe:', result.error);
+        
+        // Näytä virhe 3 sekuntia
+        setTimeout(() => {
+          setShowSaveIndicator(false);
+        }, 3000);
+      }
+    } catch (error) {
+      // Odottamaton virhe
+      setSaveStatus('error');
+      console.error('❌ Tallennusvirhe:', error);
+      
+      // Näytä virhe 3 sekuntia
+      setTimeout(() => {
+        setShowSaveIndicator(false);
+      }, 3000);
     }
   };
 
@@ -6026,6 +6060,39 @@ VASTAA SUOMEKSI.`;
           title: isDarkMode ? 'DEIS (Valomoodi)' : 'NOX (Pimeämoodi)'
         }, 
           isDarkMode ? '🌙 NOX' : '☀️ DEIS'
+        ),
+        
+        // Autosave indicator (fade in/out)
+        showSaveIndicator && e('div', {
+          className: 'px-3 py-1 rounded text-xs transition-all flex items-center gap-1',
+          style: {
+            background: saveStatus === 'error' 
+              ? 'rgba(239, 68, 68, 0.15)' 
+              : saveStatus === 'saving'
+              ? 'rgba(59, 130, 246, 0.15)'
+              : 'rgba(34, 197, 94, 0.15)',
+            color: saveStatus === 'error'
+              ? '#ef4444'
+              : saveStatus === 'saving'
+              ? '#3b82f6'
+              : '#22c55b',
+            border: `1px solid ${
+              saveStatus === 'error'
+              ? '#ef4444'
+              : saveStatus === 'saving'
+              ? '#3b82f6'
+              : '#22c55b'
+            }`,
+            fontFamily: 'var(--font-body)',
+            fontWeight: '500'
+          }
+        },
+          saveStatus === 'saving' && e(Icons.Loader, { className: 'w-3 h-3' }),
+          e('span', null, 
+            saveStatus === 'saving' ? 'Tallentaa...' :
+            saveStatus === 'error' ? '⚠ Virhe' :
+            '✓ Tallennettu'
+          )
         ),
         
         // Inspector toggle
