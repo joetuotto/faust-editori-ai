@@ -9540,15 +9540,191 @@ VASTAA SUOMEKSI.`;
         }`,
         onClick: (ev) => ev.stopPropagation()
       },
+        // Header
         e('div', { className: 'p-4 border-b flex items-center justify-between' },
-          e('h3', { className: 'text-lg font-bold' }, `Paikka: ${editingLocation.name}`),
+          e('h3', { className: 'text-lg font-bold' }, 'Paikka'),
           e('button', {
             onClick: () => setShowLocationSheet(false),
             className: 'p-2 rounded hover:bg-gray-700'
           }, e(Icons.X))
         ),
-        e('div', { className: 'p-4' },
-          e('p', null, 'Paikan muokkaus tulossa...')
+        
+        // Content
+        e('div', { className: 'p-4 space-y-4' },
+          
+          // PERUSTIEDOT
+          e('div', { className: 'border-b pb-4' },
+            e('h4', { className: 'font-bold mb-3 text-sm' }, 'PERUSTIEDOT'),
+            
+            // Nimi (pakollinen)
+            e('div', { className: 'mb-3' },
+              e('label', { className: 'text-xs block mb-1' }, 
+                'Nimi',
+                e('span', { className: 'text-red-500 ml-1' }, '*')
+              ),
+              e('input', {
+                type: 'text',
+                value: editingLocation?.name || '',
+                onChange: (ev) => setEditingLocation({
+                  ...editingLocation,
+                  name: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                } ${
+                  !editingLocation?.name?.trim() ? 'border-red-500' : ''
+                }`,
+                placeholder: 'Paikan nimi (pakollinen)'
+              }),
+              !editingLocation?.name?.trim() && e('p', {
+                className: 'text-xs text-red-500 mt-1'
+              }, 'Nimi on pakollinen tieto')
+            ),
+            
+            // Tyyppi
+            e('div', { className: 'mb-3' },
+              e('label', { className: 'text-xs block mb-1' }, 'Tyyppi'),
+              e('select', {
+                value: editingLocation?.type || 'Ei määritelty',
+                onChange: (ev) => setEditingLocation({
+                  ...editingLocation,
+                  type: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`
+              },
+                e('option', { value: 'Ei määritelty' }, 'Ei määritelty'),
+                e('option', { value: 'Koti' }, 'Koti'),
+                e('option', { value: 'Kaupunki' }, 'Kaupunki'),
+                e('option', { value: 'Luonto' }, 'Luonto'),
+                e('option', { value: 'Rakennus' }, 'Rakennus'),
+                e('option', { value: 'Julkinen tila' }, 'Julkinen tila'),
+                e('option', { value: 'Muu' }, 'Muu')
+              )
+            ),
+            
+            // Kuvaus
+            e('div', null,
+              e('label', { className: 'text-xs block mb-1' }, 'Kuvaus'),
+              e('textarea', {
+                rows: 3,
+                value: editingLocation?.description || '',
+                onChange: (ev) => setEditingLocation({
+                  ...editingLocation,
+                  description: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`,
+                placeholder: 'Paikan yleiskuvaus...'
+              })
+            )
+          ),
+          
+          // ATMOSFÄÄRI
+          e('div', { className: 'border-b pb-4' },
+            e('h4', { className: 'font-bold mb-3 text-sm' }, 'ATMOSFÄÄRI'),
+            
+            // Tunnelma
+            e('div', { className: 'mb-3' },
+              e('label', { className: 'text-xs block mb-1' }, 'Tunnelma'),
+              e('select', {
+                value: editingLocation?.mood || 'Neutraali',
+                onChange: (ev) => setEditingLocation({
+                  ...editingLocation,
+                  mood: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`
+              },
+                e('option', { value: 'Neutraali' }, 'Neutraali'),
+                e('option', { value: 'Rauhallinen' }, 'Rauhallinen'),
+                e('option', { value: 'Jännittävä' }, 'Jännittävä'),
+                e('option', { value: 'Ahdistava' }, 'Ahdistava'),
+                e('option', { value: 'Iloinen' }, 'Iloinen'),
+                e('option', { value: 'Surullinen' }, 'Surullinen'),
+                e('option', { value: 'Pelottava' }, 'Pelottava')
+              )
+            ),
+            
+            // Äänet ja tuoksut
+            e('div', null,
+              e('label', { className: 'text-xs block mb-1' }, 'Äänet ja tuoksut'),
+              e('textarea', {
+                rows: 2,
+                value: editingLocation?.sensory || '',
+                onChange: (ev) => setEditingLocation({
+                  ...editingLocation,
+                  sensory: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`,
+                placeholder: 'Mitä paikkaa kuvaavia ääniä tai tuoksuja?'
+              })
+            )
+          ),
+          
+          // KÄYTTÖ TARINASSA
+          e('div', null,
+            e('h4', { className: 'font-bold mb-3 text-sm' }, 'KÄYTTÖ TARINASSA'),
+            
+            // Tärkeys
+            e('div', null,
+              e('label', { className: 'text-xs block mb-1' }, 'Tärkeys'),
+              e('select', {
+                value: editingLocation?.importance || 'Sivupaikka',
+                onChange: (ev) => setEditingLocation({
+                  ...editingLocation,
+                  importance: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`
+              },
+                e('option', { value: 'Pääpaikka' }, 'Pääpaikka - Keskeinen tarinalle'),
+                e('option', { value: 'Sivupaikka' }, 'Sivupaikka - Esiintyy useasti'),
+                e('option', { value: 'Mainittu' }, 'Mainittu - Vain viittaus')
+              )
+            )
+          )
+        ),
+        
+        // Footer
+        e('div', { className: 'p-4 border-t flex gap-2 justify-end' },
+          e('button', {
+            onClick: () => setShowLocationSheet(false),
+            className: `px-4 py-2 rounded text-sm ${
+              isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
+            }`
+          }, 'Peruuta'),
+          e('button', {
+            onClick: () => {
+              // Validointi: Tarkista että nimi ei ole tyhjä
+              if (!editingLocation?.name?.trim()) {
+                console.warn('⚠️ Validointivirhe: Nimi on pakollinen');
+                return;
+              }
+              
+              setProject(prev => ({
+                ...prev,
+                locations: prev.locations.map(l =>
+                  l.id === editingLocation.id ? editingLocation : l
+                )
+              }));
+              setShowLocationSheet(false);
+              console.log('✅ Paikka tallennettu:', editingLocation.name);
+            },
+            disabled: !editingLocation?.name?.trim(),
+            className: `px-4 py-2 rounded text-sm transition-all ${
+              !editingLocation?.name?.trim()
+                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                : 'bg-blue-500 text-white hover:bg-blue-600'
+            }`,
+            title: !editingLocation?.name?.trim() ? 'Nimi on pakollinen' : 'Tallenna paikka'
+          }, 'Tallenna')
         )
       )
     ),
@@ -9636,15 +9812,238 @@ VASTAA SUOMEKSI.`;
         }`,
         onClick: (ev) => ev.stopPropagation()
       },
+        // Header
         e('div', { className: 'p-4 border-b flex items-center justify-between' },
-          e('h3', { className: 'text-lg font-bold' }, `Juonenlanka: ${editingThread?.name}`),
+          e('h3', { className: 'text-lg font-bold' }, 'Juonenlanka'),
           e('button', {
             onClick: () => setShowThreadSheet(false),
             className: 'p-2 rounded hover:bg-gray-700'
           }, e(Icons.X))
         ),
-        e('div', { className: 'p-4' },
-          e('p', null, 'Juonenlangan muokkaus tulossa...')
+        
+        // Content
+        e('div', { className: 'p-4 space-y-4' },
+          
+          // PERUSTIEDOT
+          e('div', { className: 'border-b pb-4' },
+            e('h4', { className: 'font-bold mb-3 text-sm' }, 'PERUSTIEDOT'),
+            
+            // Nimi (pakollinen)
+            e('div', { className: 'mb-3' },
+              e('label', { className: 'text-xs block mb-1' }, 
+                'Nimi',
+                e('span', { className: 'text-red-500 ml-1' }, '*')
+              ),
+              e('input', {
+                type: 'text',
+                value: editingThread?.name || '',
+                onChange: (ev) => setEditingThread({
+                  ...editingThread,
+                  name: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                } ${
+                  !editingThread?.name?.trim() ? 'border-red-500' : ''
+                }`,
+                placeholder: 'Juonenlangan nimi (pakollinen)'
+              }),
+              !editingThread?.name?.trim() && e('p', {
+                className: 'text-xs text-red-500 mt-1'
+              }, 'Nimi on pakollinen tieto')
+            ),
+            
+            // Tyyppi
+            e('div', { className: 'mb-3' },
+              e('label', { className: 'text-xs block mb-1' }, 'Tyyppi'),
+              e('select', {
+                value: editingThread?.type || 'Sivujuoni',
+                onChange: (ev) => setEditingThread({
+                  ...editingThread,
+                  type: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`
+              },
+                e('option', { value: 'Pääjuoni' }, 'Pääjuoni'),
+                e('option', { value: 'Sivujuoni' }, 'Sivujuoni'),
+                e('option', { value: 'Teema' }, 'Teema'),
+                e('option', { value: 'Hahmon kaari' }, 'Hahmon kaari')
+              )
+            ),
+            
+            // Kuvaus
+            e('div', null,
+              e('label', { className: 'text-xs block mb-1' }, 'Kuvaus'),
+              e('textarea', {
+                rows: 3,
+                value: editingThread?.description || '',
+                onChange: (ev) => setEditingThread({
+                  ...editingThread,
+                  description: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`,
+                placeholder: 'Mitä tämä juonenlanka käsittelee?'
+              })
+            )
+          ),
+          
+          // STATUS
+          e('div', { className: 'border-b pb-4' },
+            e('h4', { className: 'font-bold mb-3 text-sm' }, 'STATUS'),
+            
+            // Tila
+            e('div', { className: 'mb-3' },
+              e('label', { className: 'text-xs block mb-1' }, 'Tila'),
+              e('select', {
+                value: editingThread?.status || 'Kehittyy',
+                onChange: (ev) => setEditingThread({
+                  ...editingThread,
+                  status: ev.target.value
+                }),
+                className: `w-full p-2 rounded border text-sm ${
+                  isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                }`
+              },
+                e('option', { value: 'Avoin' }, 'Avoin - Ei vielä aloitettu'),
+                e('option', { value: 'Kehittyy' }, 'Kehittyy - Käynnissä'),
+                e('option', { value: 'Ratkaistu' }, 'Ratkaistu - Valmis')
+              )
+            ),
+            
+            // Progress
+            e('div', null,
+              e('label', { className: 'text-xs block mb-1' }, 
+                `Eteneminen: ${editingThread?.progress || 0}%`
+              ),
+              e('input', {
+                type: 'range',
+                min: 0,
+                max: 100,
+                step: 5,
+                value: editingThread?.progress || 0,
+                onChange: (ev) => setEditingThread({
+                  ...editingThread,
+                  progress: parseInt(ev.target.value, 10)
+                }),
+                className: 'w-full'
+              }),
+              e('div', { className: 'w-full bg-gray-700 h-2 rounded mt-2' },
+                e('div', {
+                  className: 'bg-blue-500 h-2 rounded transition-all',
+                  style: { width: `${editingThread?.progress || 0}%` }
+                })
+              )
+            )
+          ),
+          
+          // TIMELINE
+          e('div', null,
+            e('h4', { className: 'font-bold mb-3 text-sm' }, 'TIMELINE'),
+            
+            e('div', { className: 'grid grid-cols-3 gap-3' },
+              // Aloitusluku
+              e('div', null,
+                e('label', { className: 'text-xs block mb-1' }, 'Aloitusluku'),
+                e('input', {
+                  type: 'number',
+                  min: 0,
+                  value: editingThread?.timeline?.start || '',
+                  onChange: (ev) => setEditingThread({
+                    ...editingThread,
+                    timeline: {
+                      ...editingThread?.timeline,
+                      start: parseInt(ev.target.value, 10) || 0
+                    }
+                  }),
+                  className: `w-full p-2 rounded border text-sm ${
+                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  }`,
+                  placeholder: '1'
+                })
+              ),
+              
+              // Nykyinen vaihe
+              e('div', null,
+                e('label', { className: 'text-xs block mb-1' }, 'Nykyinen'),
+                e('input', {
+                  type: 'number',
+                  min: 0,
+                  value: editingThread?.timeline?.current || '',
+                  onChange: (ev) => setEditingThread({
+                    ...editingThread,
+                    timeline: {
+                      ...editingThread?.timeline,
+                      current: parseInt(ev.target.value, 10) || 0
+                    }
+                  }),
+                  className: `w-full p-2 rounded border text-sm ${
+                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  }`,
+                  placeholder: '5'
+                })
+              ),
+              
+              // Arvioitu ratkaisu
+              e('div', null,
+                e('label', { className: 'text-xs block mb-1' }, 'Ratkaisu'),
+                e('input', {
+                  type: 'number',
+                  min: 0,
+                  value: editingThread?.timeline?.end || '',
+                  onChange: (ev) => setEditingThread({
+                    ...editingThread,
+                    timeline: {
+                      ...editingThread?.timeline,
+                      end: parseInt(ev.target.value, 10) || 0
+                    }
+                  }),
+                  className: `w-full p-2 rounded border text-sm ${
+                    isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white border-gray-300'
+                  }`,
+                  placeholder: '10'
+                })
+              )
+            )
+          )
+        ),
+        
+        // Footer
+        e('div', { className: 'p-4 border-t flex gap-2 justify-end' },
+          e('button', {
+            onClick: () => setShowThreadSheet(false),
+            className: `px-4 py-2 rounded text-sm ${
+              isDarkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'
+            }`
+          }, 'Peruuta'),
+          e('button', {
+            onClick: () => {
+              // Validointi: Tarkista että nimi ei ole tyhjä
+              if (!editingThread?.name?.trim()) {
+                console.warn('⚠️ Validointivirhe: Nimi on pakollinen');
+                return;
+              }
+              
+              setProject(prev => ({
+                ...prev,
+                threads: prev.threads.map(t =>
+                  t.id === editingThread.id ? editingThread : t
+                )
+              }));
+              setShowThreadSheet(false);
+              console.log('✅ Juonenlanka tallennettu:', editingThread.name);
+            },
+            disabled: !editingThread?.name?.trim(),
+            className: `px-4 py-2 rounded text-sm transition-all ${
+              !editingThread?.name?.trim()
+                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                : 'bg-blue-500 text-white hover:bg-blue-600'
+            }`,
+            title: !editingThread?.name?.trim() ? 'Nimi on pakollinen' : 'Tallenna juonenlanka'
+          }, 'Tallenna')
         )
       )
     )
