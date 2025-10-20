@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+dist-installer/
+build/icon.iconset/
+
+# Environment variables (TÄRKEÄ: ÄLÄ tallenna API-avaimia Gitiin!)
+.env
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Cursor/VS Code
+.cursor/
+.vscode/
+*.code-workspace
+
+# Electron
+out/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Backup files
+*-backup.js
+*-full-backup.js
+*.bak

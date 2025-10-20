@@ -1,0 +1,52 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background with gradient -->
+  <defs>
+    <radialGradient id="bgGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#1A1815;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#100F0D;stop-opacity:1" />
+    </radialGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="180" fill="url(#bgGradient)"/>
+  
+  <!-- FAUST Sigil (simplified alchemical symbol) -->
+  <g transform="translate(512, 512)" filter="url(#glow)">
+    <!-- Vertical stem -->
+    <line x1="0" y1="-280" x2="0" y2="280" 
+          stroke="#C7A25A" stroke-width="12" stroke-linecap="round"/>
+    
+    <!-- Cross arm -->
+    <line x1="-180" y1="-80" x2="180" y2="-80" 
+          stroke="#C7A25A" stroke-width="12" stroke-linecap="round"/>
+    
+    <!-- Open triangle (invocation) -->
+    <path d="M -120 120 L 0 -40 L 120 120" 
+          stroke="#C7A25A" stroke-width="12" 
+          fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    
+    <!-- Dot at top (illumination) -->
+    <circle cx="0" cy="-280" r="16" fill="#C7A25A"/>
+    
+    <!-- Inner glow circle -->
+    <circle cx="0" cy="0" r="200" 
+            fill="none" stroke="#9C7B43" stroke-width="2" opacity="0.3"/>
+  </g>
+  
+  <!-- Text FAUST at bottom -->
+  <text x="512" y="900" 
+        font-family="'EB Garamond', serif" 
+        font-size="72" 
+        font-weight="600"
+        fill="#C7A25A" 
+        text-anchor="middle"
+        letter-spacing="8">FAUST</text>
+</svg>
+

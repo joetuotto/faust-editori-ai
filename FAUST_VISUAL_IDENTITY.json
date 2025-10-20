@@ -1,0 +1,46 @@
+{
+  "faust_visual_identity": {
+    "updated": "2025-10-20",
+    "purpose": "Define brand assets, themes, splash animation, and Electron Dock icon integration for FAUST.",
+    "assets": {
+      "paths": {
+        "logo_nox": "build/assets/faust_logo_NOX.svg",
+        "logo_deis": "build/assets/faust_logo_DEIS.svg",
+        "dock_nox": "build/assets/faust_dock_NOX.svg",
+        "dock_deis": "build/assets/faust_dock_DEIS.svg",
+        "favicon": "build/assets/faust_favicon.png"
+      },
+      "notes": [
+        "Logot ovat vektorimuotoisia (SVG).",
+        "Dock-ikoni viedään .icns-muotoon build-vaiheessa.",
+        "Favicon optimoidaan 16–32 px kokoon."
+      ]
+    },
+    "themes": {
+      "NOX": {
+        "bg_dark": "#100F0D",
+        "bg_shadow": "#1A1815",
+        "ink_light": "#E9E4DA",
+        "gold": "#C7A25A",
+        "bronze": "#9C7B43",
+        "paper": "#F0E8DC"
+      },
+      "DEIS": {
+        "bg_dark": "#F8F2E8",
+        "bg_shadow": "#EDE5DA",
+        "ink_light": "#2B241C",
+        "gold": "#9C7B43",
+        "bronze": "#7B633C",
+        "paper": "#F4EBDD"
+      }
+    },
+    "dock_icon": {
+      "shape": "rounded_square",
+      "radius_px": 180,
+      "centered_sigil": true,
+      "active_state_glow": "drop-shadow(0 0 10px rgba(200,160,90,0.8))",
+      "inactive_state_opacity": 0.85
+    }
+  }
+}
+

@@ -1,0 +1,230 @@
+{
+  "faust_editor": {
+    "version": "1.0",
+    "updated": "2025-10-20",
+    "modes": ["NOX", "DEIS"],
+    "overview": {
+      "structure": {
+        "layout": "Three-panel",
+        "panels": {
+          "left": "Navigation (Project Tree)",
+          "center": "Main Editor (Paper Surface)",
+          "right": "Inspector (Metadata, Characters, AI Tools)"
+        },
+        "principles": [
+          "No hard borders; all separations by value contrast and inset shadows.",
+          "Radial vignetting around center to create 'focus aura'.",
+          "Warm color philosophy (Goethe–Steiner)."
+        ]
+      },
+      "theme_tokens": {
+        "NOX": {
+          "bg_primary": "#141210",
+          "dark": "#100F0D",
+          "shadow": "#1A1815",
+          "paper": "#F0E8DC",
+          "ink": "#E9E4DA",
+          "text_secondary": "#AFA699",
+          "text_tertiary": "#8C806C",
+          "gold": "#9A7B4F",
+          "gold_hover": "#C89D5E",
+          "bronze": "#715C38",
+          "sigil": "#8F7A53"
+        },
+        "DEIS": {
+          "bg_primary": "#F8F2E8",
+          "paper": "#F2EADF",
+          "ink": "#2B241C",
+          "text_secondary": "#5E584D",
+          "text_tertiary": "#867C6B",
+          "gold": "#C89D5E",
+          "bronze": "#715C38",
+          "shadow": "#E6DED2",
+          "sigil": "#B68B5C"
+        }
+      },
+      "typography": {
+        "fonts": {
+          "heading": "EB Garamond",
+          "body": "IBM Plex Mono",
+          "sigil": "Faust Rune Sans"
+        },
+        "sizes": {
+          "heading": "18–24px",
+          "body": "15px",
+          "meta": "13px",
+          "tags": "13px"
+        },
+        "line_height": 1.65,
+        "spacing": {
+          "component_internal": "12–16px",
+          "section_spacing": "28–32px"
+        }
+      }
+    },
+    "components": {
+      "left_panel": {
+        "name": "Navigation",
+        "width": "200px",
+        "elements": [
+          "Workspace title",
+          "Project hierarchy (drag & drop)",
+          "Sections: Story, World, Files, AI Tools"
+        ]
+      },
+      "center_panel": {
+        "name": "Editor",
+        "surface": "Paper with inset shadow (candlelight effect)",
+        "features": [
+          "Titlebar with key controls",
+          "Tab bar (Notes, Metadata, Snapshot)",
+          "Textarea with autosave, undo/redo, focus/Typewriter mode"
+        ]
+      },
+      "right_panel": {
+        "name": "Inspector",
+        "width": "300px",
+        "tabs": [
+          "Notes",
+          "Metadata",
+          "Snapshots",
+          "CharacterKeeper",
+          "LocationKeeper",
+          "StoryKeeper",
+          "Grimoire (Project Memory)",
+          "Contextus (Hierarchical Context)",
+          "Techniques (AI-assisted writing)"
+        ]
+      },
+      "ai_panel": {
+        "type": "Slide-in overlay",
+        "sections": [
+          "AI Provider selection",
+          "Quick actions (Continue, Improve, Summarize)",
+          "Chat history",
+          "Diff viewer (Apply / Reject / Apply all)",
+          "Prompt input",
+          "Insertion mode selection"
+        ]
+      },
+      "status_bar": {
+        "elements": [
+          "Word count",
+          "Character count",
+          "Reading time",
+          "Cursor position",
+          "Typing speed",
+          "Goal progress bar"
+        ]
+      },
+      "sigils": {
+        "style": "Minimal, 1.5px stroke, symbolic of hermetic phases",
+        "examples": {
+          "🜍": "New Document",
+          "🜏": "Link / Merge",
+          "🜔": "Split",
+          "🜓": "Transform / Generate",
+          "🜖": "Notes / Comments",
+          "🜑": "Clean / Simplify",
+          "🜕": "Finalize / Lock",
+          "🜒": "Unlock",
+          "🜓🜔": "Toggle NOX/DEIS"
+        },
+        "hover_effect": "Soft golden aura (200ms)",
+        "active_effect": "Breathing pulse (400ms)"
+      }
+    },
+    "animations": {
+      "mode_transition": [
+        "Fade current view to 80% (150ms)",
+        "Golden gradient swipe left→right (800ms)",
+        "Return to 100% brightness (250ms)"
+      ],
+      "cursor_breathe": {
+        "opacity": "70→100%",
+        "duration": "1.2s",
+        "easing": "ease-in-out"
+      },
+      "panel_toggles": "300ms ease-in-out",
+      "modal": "250ms fade-in"
+    },
+    "accessibility": {
+      "contrast_guard": "Ensures text contrast ≥ 4.5:1 automatically",
+      "reduced_motion": "Respects prefers-reduced-motion setting"
+    },
+    "tech_stack": {
+      "frontend": "React + Electron",
+      "styling": "CSS variables (SCSS optional)",
+      "ai_integrations": ["Claude", "OpenAI", "Gemini", "Grok", "Cursor"],
+      "fonts": ["IBM Plex Mono", "EB Garamond", "Space Mono", "Faust Rune Sans"]
+    }
+  },
+  "usability_review": {
+    "summary": "The overall architecture is strong, but a few changes would greatly improve intuitiveness and flow.",
+    "priority_actions": [
+      "Simplify titlebar to only essential controls (Name, Wordcount, Search, Mode toggle, Inspector).",
+      "Add Command Palette (⌘K) for universal search.",
+      "Merge AI functions (Chat + Diff + Quick actions) into a single AI panel.",
+      "Increase sidebar contrast by 3–5% from app background for clarity.",
+      "Add one visible 'Add +' button to each Inspector tab.",
+      "Enforce contrast-guard to avoid washed-out DEIS paper text.",
+      "Unify terminology (Notes vs Memory, Snapshot → Tilannekuva)."
+    ],
+    "layout_feedback": {
+      "focus": "Center panel should dominate user attention.",
+      "hierarchy": "Use spacing (28–32px) and contrast instead of borders.",
+      "left_panel": "Ensure only one action per item (click to open, right-click for menu)."
+    },
+    "interaction_design": {
+      "affordance": "Show one key action per context.",
+      "ai_workflow": "Diff application only within Diff view; no Apply in chat.",
+      "mode_behavior": {
+        "focus_mode": "Hides sidebar automatically.",
+        "typewriter_mode": "Dims side panels by 20%."
+      }
+    },
+    "terminology": {
+      "notes": "Document-specific freeform area.",
+      "memory": "AI/Project-wide context store.",
+      "snapshot": "Always called 'Tilannekuva' in Finnish UI."
+    },
+    "ergonomics": {
+      "flow": "Minimize modal disruptions, preserve writing continuity.",
+      "cursor_animation": "Pause breathing when menus or panels are open."
+    },
+    "testing_plan": {
+      "scenarios": [
+        "Create a character, add traits, and reference in scene.",
+        "Use AI to improve a passage and apply diff.",
+        "Create and restore a snapshot.",
+        "Switch NOX ⇄ DEIS, adjust font and width, test readability."
+      ],
+      "metrics": {
+        "time_limit_sec": 90,
+        "max_errors": 1,
+        "mental_effort_scale": "≤3 / 7"
+      }
+    },
+    "contrast_and_readability": {
+      "text_contrast": "≥4.5:1",
+      "placeholder_opacity": "35–45% of ink",
+      "link_colors": {
+        "NOX": "Helmiäisharmaa",
+        "DEIS": "Pronssi"
+      }
+    },
+    "ia_consistency": {
+      "rule": "One truth per concept — each information type lives in one tab only.",
+      "ai_centralization": "All AI tools in one panel for predictability."
+    },
+    "terminology_consistency": {
+      "primary_tabs": ["Muistiinpanot", "Metatiedot", "Tilannekuva", "Hahmot", "Paikat", "Juoni", "Muisti", "Konteksti", "Tekniikat"]
+    },
+    "user_experience_goals": {
+      "effortless_focus": "The user should always see the next logical step without searching.",
+      "low_cognitive_load": "Panel structure and animation timing reduce decision fatigue.",
+      "ritual_flow": "Transitions evoke calm; interaction feels like invocation, not software."
+    }
+  }
+}
+

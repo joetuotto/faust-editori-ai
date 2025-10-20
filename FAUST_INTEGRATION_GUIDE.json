@@ -1,0 +1,195 @@
+{
+  "faust_editor_integration_guide": {
+    "updated": "2025-10-20",
+    "author": "Faust Core Design Team",
+    "context": "This document defines how to selectively integrate Obsidian and Notion features into the Faust writing environment. It prioritizes focus, beauty, and narrative intelligence over productivity.",
+    
+    "core_philosophy": {
+      "goal": "Faust is not a workspace — it is a ritual environment for deep writing and cognitive resonance.",
+      "design_axioms": [
+        "Everything serves immersion.",
+        "Every feature must enhance rhythm, not fragment it.",
+        "The UI must feel alchemical, not mechanical."
+      ]
+    },
+
+    "integration_strategy": {
+      "phase_1": {
+        "version": "0.9 → 1.0",
+        "priority": "Essential creative intelligence features",
+        "features": [
+          {
+            "name": "Bi-directional links",
+            "origin": "Obsidian",
+            "purpose": "Connect characters, places, and concepts across documents.",
+            "implementation": "When a name or keyword repeats, suggest 'Link to existing entity?'",
+            "ui_location": "Inline hover + Inspector > Contextus"
+          },
+          {
+            "name": "Backlink pane",
+            "origin": "Obsidian",
+            "purpose": "Show all references to a selected entity.",
+            "implementation": "Auto-generated list in the right Inspector when entity selected.",
+            "ai_extension": "AI suggests thematic connections based on embeddings."
+          },
+          {
+            "name": "Template system",
+            "origin": "Notion + Obsidian",
+            "purpose": "Fast creation of structured elements (chapter, character, scene).",
+            "implementation": "Template dropdown or AI-suggested template via /command.",
+            "ai_extension": "AI autogenerates template based on genre metadata."
+          },
+          {
+            "name": "Inline metadata and tags",
+            "origin": "Both",
+            "purpose": "Enable natural annotation within the text without breaking flow.",
+            "syntax": "#tag or @entity",
+            "rendering": "Faint color shift + hover tooltip linking to metadata card."
+          },
+          {
+            "name": "Graph view (Contextus)",
+            "origin": "Obsidian",
+            "purpose": "Visualize narrative relationships (characters ↔ themes ↔ events).",
+            "implementation": "Cytoscape.js / D3.js-based radial graph in Contextus tab.",
+            "design_rule": "Avoid clutter — node glow intensity reflects narrative weight."
+          },
+          {
+            "name": "Command Palette",
+            "origin": "Obsidian",
+            "purpose": "Universal keyboard interface for all commands.",
+            "shortcut": "Cmd+K",
+            "scope": "Includes AI commands, templates, exports, and mode toggles.",
+            "status": "✓ IMPLEMENTED"
+          },
+          {
+            "name": "Offline mode",
+            "origin": "Obsidian",
+            "purpose": "Ensure writing continuity without network dependency.",
+            "implementation": "Electron local storage + periodic cloud sync.",
+            "ai_behavior": "AI features gracefully degrade when offline.",
+            "status": "✓ IMPLEMENTED (Electron-based, local storage)"
+          },
+          {
+            "name": "Snapshot versioning",
+            "origin": "Notion",
+            "purpose": "Create and restore narrative milestones.",
+            "implementation": "Manual 'Tilannekuva' + auto milestone per 1000 edits.",
+            "status": "✓ IMPLEMENTED (Tilannekuvat tab)"
+          }
+        ]
+      },
+
+      "phase_2": {
+        "version": "1.1 → 1.5",
+        "priority": "Optional narrative enhancement modules",
+        "features": [
+          {
+            "name": "Timeline / Kanban view",
+            "origin": "Notion",
+            "purpose": "Optional structural overview of story progression.",
+            "ui": "Separate modal 'Structure View' — not default editor mode."
+          },
+          {
+            "name": "Natural language queries",
+            "origin": "Obsidian Dataview",
+            "purpose": "Allow intuitive searches ('show all scenes with Maj').",
+            "ai_extension": "AI parses user sentence into semantic query."
+          },
+          {
+            "name": "Mirror Blocks (synced passages)",
+            "origin": "Notion",
+            "purpose": "Allow scenes or dialogues to appear in multiple contexts.",
+            "implementation": "AI maintains content sync automatically.",
+            "ui_indicator": "🜏 sigil on mirrored section."
+          },
+          {
+            "name": "Collaboration (optional)",
+            "origin": "Notion",
+            "purpose": "Enable co-authoring in restricted projects.",
+            "implementation": "Invite-based access; 'Private Altar' mode default for solo use."
+          },
+          {
+            "name": "Motivation sigils / progress visualization",
+            "origin": "Custom (Faust aesthetic)",
+            "purpose": "Display progress using symbolic rather than numerical cues.",
+            "examples": ["🜕 = 80% completion", "🜖 = Reflection phase active"]
+          }
+        ]
+      },
+
+      "phase_3": {
+        "version": "2.0 → 2.5",
+        "priority": "Extended creative intelligence (experimental)",
+        "features": [
+          {
+            "name": "AI Concept Map (Semantic Resonance)",
+            "origin": "Faust-exclusive",
+            "purpose": "Automatically generate visual thematic constellations.",
+            "data_source": "Embeddings of all project texts.",
+            "ui": "Interactive constellation view inside Contextus tab."
+          },
+          {
+            "name": "Emotional Tone Maps",
+            "origin": "Custom",
+            "purpose": "Visualize emotional dynamics across the story.",
+            "data_source": "Sentiment + narrative tension model.",
+            "visualization": "Gradient curve overlay per chapter or character."
+          },
+          {
+            "name": "Adaptive Sound + Light Modulation",
+            "origin": "Faust aesthetic enhancement",
+            "purpose": "Ambient light/sound feedback matching narrative tone.",
+            "implementation": "Optional; integrates with NOX/DEIS themes."
+          }
+        ]
+      }
+    },
+
+    "exclusions": {
+      "reasoning": "These features conflict with Faust's core design: aesthetic focus, solitude, narrative immersion.",
+      "blacklist": [
+        "Real-time multiuser editing",
+        "Plugin marketplace or external extensions",
+        "To-do lists or checkboxes",
+        "Public publishing (web export)",
+        "Gamification (achievements, points)",
+        "Heavy database tables"
+      ]
+    },
+
+    "design_rules": {
+      "contrast": "Each new feature must maintain visual silence (Δ contrast ≤ 5%).",
+      "interaction_density": "No more than 5 active UI elements visible per panel.",
+      "state_coherence": "Focus Mode disables side panels; Typewriter dims 20%.",
+      "animation_policy": {
+        "fade_in": "150–250ms",
+        "hover_response": "100–200ms",
+        "avoid": ["bouncing", "rotations", "vibrations"]
+      }
+    },
+
+    "testing_criteria": {
+      "goal": "Ensure all added features preserve Faust's psychological flow and aesthetic identity.",
+      "user_test_tasks": [
+        "Link a character to a location and see the relationship in graph view.",
+        "Create a chapter template and fill it with inline tags.",
+        "Switch to NOX/DEIS mode and confirm readability.",
+        "Use Command Palette to call AI improvement on selected paragraph."
+      ],
+      "success_metrics": {
+        "completion_time": "< 90s per task",
+        "max_errors": "1",
+        "subjective_flow_score": "≥ 4.5 / 5",
+        "visual_intrusion_score": "≤ 2 / 5"
+      }
+    },
+
+    "business_note": {
+      "market_alignment": "By combining Obsidian's cognitive architecture with Notion's ease-of-use and Faust's aesthetic philosophy, the product occupies a unique high-end niche.",
+      "target_segment": "Writers, researchers, screenwriters, creative professionals seeking beauty and depth.",
+      "pricing_hint": "Freemium (0 €) → Pro (12 €) → Faust+ (25 €) → Studio (39 €)",
+      "revenue_projection": "50k paying users ≈ 2.5M €/year ARR (70% gross margin)"
+    }
+  }
+}
+
