@@ -3225,6 +3225,29 @@ function FaustEditor() {
     }
   }, [activeItemId]);
 
+  // ESC-näppäin sulkee modaalit ja paneelit
+  useEffect(() => {
+    const handleEscKey = (event) => {
+      if (event.key === 'Escape') {
+        // Sulje kaikki modaalit
+        setShowCharacterSheet(false);
+        setShowLocationSheet(false);
+        setShowChapterSheet(false);
+        setShowThreadSheet(false);
+        setShowCommandPalette(false);
+        
+        console.log('🔑 ESC pressed - Modals closed');
+      }
+    };
+
+    window.addEventListener('keydown', handleEscKey);
+    
+    // Cleanup: Poista event listener kun komponentti unmount
+    return () => {
+      window.removeEventListener('keydown', handleEscKey);
+    };
+  }, []); // Tyhjä deps array = suoritetaan vain kerran (mount/unmount)
+
   const insertAtCursor = useCallback((text) => {
     if (!text) return;
     const projectData = projectRef.current;
