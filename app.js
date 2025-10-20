@@ -2572,9 +2572,19 @@ function FaustEditor() {
   const [commandQuery, setCommandQuery] = useState('');
   const [aiResponse, setAiResponse] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [aiPanelTab, setAiPanelTab] = useState('chat'); // 'chat', 'quick', 'techniques'
+  const [aiPanelTab, setAiPanelTab] = useState('chat'); // 'chat', 'quick', 'techniques', 'hybrid'
   const [sidebarWidth, setSidebarWidth] = useState(240); // Resizable sidebar
   const [inspectorWidth, setInspectorWidth] = useState(320); // Resizable inspector
+  
+  // HybridWritingFlow UI
+  const [showHybridModal, setShowHybridModal] = useState(false);
+  const [hybridOptions, setHybridOptions] = useState({
+    checkFirst: true,
+    autoFix: true,
+    doubleCheck: false
+  });
+  const [hybridProgress, setHybridProgress] = useState(null);
+  const [hybridResult, setHybridResult] = useState(null);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const [isResizingInspector, setIsResizingInspector] = useState(false);
   const [viewMode, setViewMode] = useState('editor');
