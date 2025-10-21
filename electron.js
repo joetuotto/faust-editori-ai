@@ -117,6 +117,7 @@ function createWindow() {
     // v1.4.1: Removed backgroundColor to allow theme CSS to control background
   });
 
+  // Load production app
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
   
   // Luo valikko

@@ -9,8 +9,9 @@ const path = require('path');
 
 const CRITICAL_FILES = [
   { src: 'styles/faust-theme.css', dst: 'dist/styles/faust-theme.css' },
-  { src: 'styles/faust-layout.css', dst: 'dist/styles/faust-layout.css' },
-  { src: 'utils/dictionaries/fi-basic.json', dst: 'dist/utils/dictionaries/fi-basic.json' }
+  { src: 'styles/faust-simple-layout.css', dst: 'dist/styles/faust-simple-layout.css' },
+  { src: 'utils/dictionaries/fi-basic.json', dst: 'dist/utils/dictionaries/fi-basic.json' },
+  { src: 'utils/dictionaries/fi-expanded.txt', dst: 'dist/utils/dictionaries/fi-expanded.txt' }
 ];
 
 async function main() {

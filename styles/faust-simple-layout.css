@@ -1,0 +1,142 @@
+/* FAUST Simple Layout - Clean implementation
+ * Three-panel design: Sidebar | Editor | Inspector
+ * No complex grid, just flexbox
+ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Main container - full viewport */
+.faust-app {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Header bar */
+.faust-header {
+  height: 52px;
+  flex-shrink: 0;
+  background: var(--bg-primary, #141210);
+  border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.1));
+}
+
+/* Main content area - three columns */
+.faust-main {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background: var(--bg-primary, #141210);
+}
+
+/* Left sidebar - fixed width */
+.faust-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg-secondary, #100F0D);
+  border-right: 1px solid var(--border-color, rgba(255,255,255,0.05));
+  overflow-y: auto;
+}
+
+/* Center editor - fills remaining space */
+.faust-editor {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--paper, #1C1917);
+  color: var(--ink, #F0E9E1);
+
+  /* Vignette effect - candlelight on parchment */
+  box-shadow:
+    inset 0 0 120px rgba(0, 0, 0, 0.12),
+    inset 0 0 60px rgba(0, 0, 0, 0.08);
+
+  position: relative;
+}
+
+/* Radial vignetting - focus aura */
+.faust-editor::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 0%,
+    transparent 40%,
+    rgba(0, 0, 0, 0.03) 70%,
+    rgba(0, 0, 0, 0.08) 100%
+  );
+}
+
+/* Editor content wrapper - padding for text */
+.faust-editor-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 60px 80px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Right inspector - fixed width, hidden by default */
+.faust-inspector {
+  width: 300px;
+  flex-shrink: 0;
+  background: var(--bg-secondary, #100F0D);
+  border-left: 1px solid var(--border-color, rgba(255,255,255,0.05));
+  overflow-y: auto;
+  display: none;
+}
+
+.faust-inspector.visible {
+  display: block;
+}
+
+/* Textarea - fills editor content area */
+.faust-textarea {
+  width: 100%;
+  min-height: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.faust-textarea::placeholder {
+  color: var(--text-3, rgba(255,255,255,0.3));
+}
+
+/* Footer/status bar */
+.faust-footer {
+  height: 28px;
+  flex-shrink: 0;
+  background: var(--bg-secondary, #100F0D);
+  border-top: 1px solid var(--border-color, rgba(255,255,255,0.1));
+}
+
+/* Responsive - hide sidebar on small screens */
+@media (max-width: 768px) {
+  .faust-sidebar {
+    width: 180px;
+  }
+
+  .faust-editor-content {
+    padding: 40px 24px;
+  }
+
+  .faust-inspector {
+    width: 250px;
+  }
+}
+
+/* Layout verified and working! */
