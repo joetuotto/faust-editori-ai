@@ -1,0 +1,144 @@
+/* FAUST Theme System - CSS Variables & Base Styles
+ * Feature: PR1 - Teemat & Typografia
+ * Flag: None (always active, no breaking changes)
+ */
+
+/* ===== COLOR PALETTES ===== */
+
+:root[data-theme="NOX"] {
+  /* Backgrounds */
+  --bg-primary: #141210;
+  --bg-secondary: #100F0D;
+  --shadow: #1A1815;
+  
+  /* Paper & Ink */
+  --paper: #F0E8DC;
+  --ink: #2B241C;
+  
+  /* Text hierarchy */
+  --text: #E9E4DA;
+  --text-2: #AFA699;
+  --text-3: #8C806C;
+  
+  /* Accent colors */
+  --gold: #9A7B4F;
+  --gold-hover: #C89D5E;
+  --link: #D2CEC6;
+  
+  /* Semantic colors */
+  --error: #FF6B6B;
+  --warning: #FFB020;
+  --success: #4CAF6E;
+}
+
+:root[data-theme="DEIS"] {
+  /* Backgrounds */
+  --bg-primary: #F8F2E8;
+  --bg-secondary: #EDE4D8;
+  --shadow: #E6DED2;
+  
+  /* Paper & Ink */
+  --paper: #F2EADF;
+  --ink: #2B241C;
+  
+  /* Text hierarchy */
+  --text: #2B241C;
+  --text-2: #5E584D;
+  --text-3: #867C6B;
+  
+  /* Accent colors */
+  --gold: #C89D5E;
+  --gold-hover: #D9AB66;
+  --link: #715C38;
+  
+  /* Semantic colors */
+  --error: #B23A3A;
+  --warning: #B67B20;
+  --success: #2F7A58;
+}
+
+/* Default theme */
+:root {
+  --bg-primary: #141210;
+  --bg-secondary: #100F0D;
+  --shadow: #1A1815;
+  --paper: #F0E8DC;
+  --ink: #2B241C;
+  --text: #E9E4DA;
+  --text-2: #AFA699;
+  --text-3: #8C806C;
+  --gold: #9A7B4F;
+  --gold-hover: #C89D5E;
+  --link: #D2CEC6;
+  --error: #FF6B6B;
+  --warning: #FFB020;
+  --success: #4CAF6E;
+}
+
+/* ===== BASE STYLES ===== */
+
+html, body {
+  background: var(--bg-primary);
+  color: var(--text);
+  font-family: "IBM Plex Mono", "Iosevka Aile", monospace, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.65;
+  margin: 0;
+  padding: 0;
+}
+
+/* ===== TYPOGRAPHY ===== */
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "EB Garamond", "Canela", serif, Georgia, "Times New Roman", Times, serif;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+/* ===== ACCESSIBILITY ===== */
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root[data-theme="NOX"] {
+    --text: #FFFFFF;
+    --text-2: #E0E0E0;
+    --ink: #000000;
+  }
+  
+  :root[data-theme="DEIS"] {
+    --text: #000000;
+    --text-2: #333333;
+    --ink: #000000;
+  }
+}
+
+/* ===== UTILITY CLASSES ===== */
+
+.text-primary { color: var(--text); }
+.text-secondary { color: var(--text-2); }
+.text-tertiary { color: var(--text-3); }
+.text-gold { color: var(--gold); }
+.text-error { color: var(--error); }
+.text-warning { color: var(--warning); }
+.text-success { color: var(--success); }
+
+.bg-primary { background-color: var(--bg-primary); }
+.bg-secondary { background-color: var(--bg-secondary); }
+.bg-paper { background-color: var(--paper); }
+
+/* ===== CONTRAST GUARD ===== */
+/* Applied via JavaScript in utils/contrast.js */
+/* Ensures WCAG AA compliance (4.5:1 ratio) for all text on paper */
+
