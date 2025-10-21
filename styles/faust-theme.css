@@ -10,21 +10,23 @@
   --bg-primary: #141210;
   --bg-secondary: #100F0D;
   --shadow: #1A1815;
-  
+
   /* Paper & Ink */
   --paper: #F0E8DC;
-  --ink: #2B241C;
-  
+  --ink: #2B241C;  /* Dark text for writing on paper */
+
   /* Text hierarchy */
-  --text: #E9E4DA;
+  --text: #E9E4DA;  /* Light text for UI on dark background */
   --text-2: #AFA699;
   --text-3: #8C806C;
-  
+
   /* Accent colors */
   --gold: #9A7B4F;
   --gold-hover: #C89D5E;
+  --bronze: #715C38;  /* Spec addition: bronze accents */
+  --sigil: #8F7A53;   /* Spec addition: hermetic symbols */
   --link: #D2CEC6;
-  
+
   /* Semantic colors */
   --error: #FF6B6B;
   --warning: #FFB020;
@@ -36,28 +38,30 @@
   --bg-primary: #F8F2E8;
   --bg-secondary: #EDE4D8;
   --shadow: #E6DED2;
-  
+
   /* Paper & Ink */
   --paper: #F2EADF;
   --ink: #2B241C;
-  
+
   /* Text hierarchy */
   --text: #2B241C;
   --text-2: #5E584D;
   --text-3: #867C6B;
-  
+
   /* Accent colors */
   --gold: #C89D5E;
   --gold-hover: #D9AB66;
+  --bronze: #715C38;  /* Spec addition: bronze accents */
+  --sigil: #B68B5C;   /* Spec addition: hermetic symbols */
   --link: #715C38;
-  
+
   /* Semantic colors */
   --error: #B23A3A;
   --warning: #B67B20;
   --success: #2F7A58;
 }
 
-/* Default theme */
+/* Default theme (NOX) */
 :root {
   --bg-primary: #141210;
   --bg-secondary: #100F0D;
@@ -69,6 +73,8 @@
   --text-3: #8C806C;
   --gold: #9A7B4F;
   --gold-hover: #C89D5E;
+  --bronze: #715C38;
+  --sigil: #8F7A53;
   --link: #D2CEC6;
   --error: #FF6B6B;
   --warning: #FFB020;
@@ -130,6 +136,8 @@ h1, h2, h3, h4, h5, h6 {
 .text-secondary { color: var(--text-2); }
 .text-tertiary { color: var(--text-3); }
 .text-gold { color: var(--gold); }
+.text-bronze { color: var(--bronze); }
+.text-sigil { color: var(--sigil); }
 .text-error { color: var(--error); }
 .text-warning { color: var(--warning); }
 .text-success { color: var(--success); }
@@ -137,6 +145,93 @@ h1, h2, h3, h4, h5, h6 {
 .bg-primary { background-color: var(--bg-primary); }
 .bg-secondary { background-color: var(--bg-secondary); }
 .bg-paper { background-color: var(--paper); }
+
+/* ===== THEME TRANSITIONS ===== */
+
+/* Smooth theme switching */
+:root {
+  transition: background-color 800ms ease-in-out,
+              color 800ms ease-in-out;
+}
+
+/* Golden gradient overlay for theme transitions */
+@keyframes golden-swipe {
+  from {
+    left: -100%;
+  }
+  to {
+    left: 100%;
+  }
+}
+
+.theme-transition-overlay {
+  position: fixed;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(200, 157, 94, 0.3) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 9999;
+  animation: golden-swipe 800ms ease-in-out;
+}
+
+/* ===== CURSOR ANIMATIONS ===== */
+
+/* Breathing cursor effect (Spec: 1.2s, 70→100% opacity) */
+@keyframes cursor-breathe {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+.editor-breathing-cursor {
+  caret-color: var(--ink);
+  animation: cursor-breathe 1.2s ease-in-out infinite;
+}
+
+/* Pause breathing when menus/modals open */
+.editor-breathing-cursor.menu-open {
+  animation: none;
+}
+
+/* ===== SIGIL EFFECTS ===== */
+
+/* Spec: Soft golden aura on hover (200ms) */
+.sigil-icon {
+  color: var(--sigil);
+  transition: all 200ms ease-out;
+  cursor: pointer;
+}
+
+.sigil-icon:hover {
+  color: var(--gold-hover);
+  filter: drop-shadow(0 0 8px rgba(154, 123, 79, 0.5));
+}
+
+/* Spec: Breathing pulse on active (400ms) */
+@keyframes sigil-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.9;
+  }
+}
+
+.sigil-icon:active {
+  animation: sigil-pulse 400ms ease-in-out;
+}
 
 /* ===== CONTRAST GUARD ===== */
 /* Applied via JavaScript in utils/contrast.js */

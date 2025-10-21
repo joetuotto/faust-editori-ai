@@ -1,0 +1,525 @@
+{
+  "audit_date": "2025-10-21",
+  "project_name": "FAUST - Esoteerinen kirjoituseditori",
+  "version": "1.4.2",
+  "current_branch": "fix/renderer-structure-v1.4.2",
+  "audit_summary": {
+    "status": "TOIMIVA",
+    "critical_issues": 0,
+    "high_priority_issues": 8,
+    "medium_priority_issues": 5,
+    "low_priority_issues": 4,
+    "code_quality_score": "7/10"
+  },
+
+  "critical_findings": {
+    "description": "Ei kriittisiä ongelmia havaittu. Sovellus kääntyy ja perusominaisuudet toimivat.",
+    "notes": [
+      "Viimeisin build onnistui (webpack)",
+      "Ei syntax-virheitä",
+      "Git-repositorio toiminnassa"
+    ]
+  },
+
+  "high_priority_issues": [
+    {
+      "id": "HP-001",
+      "category": "Koodi hygienia",
+      "title": "15,224 macOS resource fork -tiedostoa (._*)",
+      "description": "Projekti sisältää 15,224 macOS metadata-tiedostoa (._*), jotka eivät kuulu versionhallintaan",
+      "location": "Koko projekti",
+      "impact": "Roskaantuneet git-commitit, tarpeeton levytila, vaikea löytää oikeita tiedostoja",
+      "recommendation": {
+        "action": "Poista kaikki ._* tiedostot ja varmista .gitignore toimii",
+        "commands": [
+          "find . -name '._*' -type f -delete",
+          "git rm --cached -r . && git add .",
+          "Varmista että .gitignore sisältää: ._*"
+        ],
+        "priority": "HIGH"
+      }
+    },
+    {
+      "id": "HP-002",
+      "category": "Koodi laatu",
+      "title": "app.js on massiivinen (12,187 riviä / 455KB)",
+      "description": "Pääsovelluskoodi on yksi jättimäinen tiedosto. Käyttää require() moduleita joita ei ole jaettu",
+      "location": "app.js",
+      "impact": "Vaikea ylläpidettävyys, hidas kehityskokemus, merge-konfliktit todennäköisiä",
+      "recommendation": {
+        "action": "Refaktoroi komponentteihin",
+        "suggestions": [
+          "Jaa React-komponentit erillisiin tiedostoihin (src/components/)",
+          "Siirrä AI-integraatiot modules/ kansioon",
+          "Erota UI-state management (contexts tai hooks)",
+          "Käytä ES6 modules (import/export) require():n sijaan"
+        ],
+        "priority": "HIGH",
+        "effort": "Large (3-5 päivää)"
+      }
+    },
+    {
+      "id": "HP-003",
+      "category": "Dokumentaatio",
+      "title": "182 markdown-dokumenttia projektin juuressa",
+      "description": "Projektin juuri täynnä status-raportteja, testidokumentaatiota ja suunnitelmia",
+      "location": "Root directory",
+      "impact": "Vaikea navigoida projektissa, epäselvä mikä dokumentti on ajankohtainen",
+      "recommendation": {
+        "action": "Organisoi dokumentaatio",
+        "structure": {
+          "docs/": "Pysyvä dokumentaatio",
+          "docs/archive/": "Vanhat status-raportit",
+          "docs/development/": "Kehitysmuistiinpanot",
+          "README.md": "Päädokumentti juuressa"
+        },
+        "files_to_keep_in_root": [
+          "README.md",
+          "CHANGELOG.md",
+          "CONTRIBUTING.md"
+        ],
+        "priority": "HIGH"
+      }
+    },
+    {
+      "id": "HP-004",
+      "category": "Build system",
+      "title": "Webpack käyttää vanhentunutta style-loader konfiguraatiota",
+      "description": "webpack.config.js määrittelee CSS-loaderit, mutta ne eivät ole asennettuina package.json:ssa",
+      "location": "webpack.config.js:24",
+      "impact": "CSS-tiedostot eivät todennäköisesti prosessoidu oikein buildissa",
+      "recommendation": {
+        "action": "Korjaa CSS build pipeline",
+        "steps": [
+          "Lisää puuttuvat loaderit: npm install --save-dev style-loader css-loader postcss-loader",
+          "TAI: Poista CSS-loader config jos CSS kopioidaan manuaalisesti",
+          "Dokumentoi build-prosessi README.md:hen"
+        ],
+        "priority": "HIGH"
+      }
+    },
+    {
+      "id": "HP-005",
+      "category": "Dependencies",
+      "title": "20GB node_modules -kansio",
+      "description": "Erittäin suuri riippuvuuskoko, todennäköisesti duplikaatteja tai tarpeettomuuksia",
+      "location": "node_modules/",
+      "impact": "Hidas npm install, suuri levytilan käyttö, turvallisuusriskit",
+      "recommendation": {
+        "action": "Auditoi riippuvuudet",
+        "commands": [
+          "npm dedupe - poista duplikaatit",
+          "npm audit - tarkista tietoturva-aukot",
+          "npx depcheck - löydä käyttämättömät paketit",
+          "Harkitse pnpm:ää npm:n tilalle (säästää tilaa)"
+        ],
+        "priority": "HIGH"
+      }
+    },
+    {
+      "id": "HP-006",
+      "category": "Git workflow",
+      "title": "8 committoimatonta muutosta",
+      "description": "Git working directory ei ole puhdas: 2 modified, 6 untracked",
+      "location": "Git status",
+      "files_affected": [
+        "M app.js",
+        "M styles/faust-layout.css",
+        "?? CSS_MAX_WIDTH_FIX.md",
+        "?? RENDERER_FIX_v1.4.2_FINAL.md",
+        "?? RENDERER_STRUCTURE_COMPLETE.md",
+        "?? RENDERER_STRUCTURE_FIX.md",
+        "?? RENDERER_STRUCTURE_v1.4.2_COMPLETE.md",
+        "?? v1.4.1_SUCCESS_FINAL.md"
+      ],
+      "recommendation": {
+        "action": "Commitoi muutokset tai palauta",
+        "steps": [
+          "Tarkista muutokset: git diff app.js",
+          "Jos korrekti: git add . && git commit -m 'fix(v1.4.2): renderer structure improvements'",
+          "Jos ei: git restore app.js styles/faust-layout.css",
+          "Lisää .md-tiedostot docs/-kansioon ennen committia"
+        ],
+        "priority": "MEDIUM"
+      }
+    },
+    {
+      "id": "HP-007",
+      "category": "Code completion",
+      "title": "9 TODO-kommenttia app.js:ssä",
+      "description": "Keskeneräisiä ominaisuuksia: uusi luku/kansio, HybridWritingFlow-integraatiot",
+      "location": "app.js:6152-11276",
+      "todos": [
+        "line 6152: Uusi luku action",
+        "line 6153: Uusi kansio action",
+        "lines 10313-11276: HybridWritingFlow integraatiot (8 kohtaa)"
+      ],
+      "recommendation": {
+        "action": "Priorisoi ja ratkaise TODO:t",
+        "steps": [
+          "Luo GitHub Issues TODO-kohdista",
+          "Toteuta kriittiset toiminnot (uusi luku/kansio)",
+          "Suunnittele HybridWritingFlow vaihe 2 roadmap",
+          "Merkitse tehtävät JIRA/Trello/GitHub Project boardiin"
+        ],
+        "priority": "MEDIUM"
+      }
+    },
+    {
+      "id": "HP-008",
+      "category": "Security",
+      "title": "API-avaimet config.json:ssa käyttäjän kotihakemistossa",
+      "description": "Arkaluonteiset API-avaimet tallennetaan electron userData -hakemistoon ilman salausta",
+      "location": "electron.js:18-28",
+      "impact": "API-avaimet ovat plain text -muodossa levyllä",
+      "recommendation": {
+        "action": "Paranna API-avainten turvaa",
+        "options": [
+          "Käytä Electron safeStorage API:a (encrypt/decrypt)",
+          "Käytä OS keychain:ia (keytar-kirjasto)",
+          "Lisää master password API-avainstoragelle",
+          "Dokumentoi tietoturvakäytännöt README:hen"
+        ],
+        "priority": "HIGH",
+        "security_risk": "MEDIUM"
+      }
+    }
+  ],
+
+  "medium_priority_issues": [
+    {
+      "id": "MP-001",
+      "category": "Code cleanup",
+      "title": "Backup-tiedostoja projektissa (app-backup.js, app-full-backup.js, jne.)",
+      "description": "Useita vanhentuneita backup-tiedostoja juuressa ja backups/-kansiossa (2.5MB)",
+      "recommendation": {
+        "action": "Poista vanhat backupit tai siirrä archive/-kansioon",
+        "note": "Git toimii varmuuskopiona, ei tarvetta manuaalisille backupeille"
+      }
+    },
+    {
+      "id": "MP-002",
+      "category": "Testing",
+      "title": "Testejä ei suoriteta aktiivisesti",
+      "description": "Jest-konfiguraatio on olemassa, mutta ei näyttöä testeistä CI/CD:ssä",
+      "recommendation": {
+        "action": "Aktivoi testaus",
+        "steps": [
+          "Kirjoita yksikkötestit kriittisille funktioille",
+          "Lisää npm test pre-commit hookiin",
+          "Konfiguroi GitHub Actions ajamaan testit"
+        ]
+      }
+    },
+    {
+      "id": "MP-003",
+      "category": "Performance",
+      "title": "Bundle.js on 238KB (ei minifioitu)",
+      "description": "Production build voisi olla pienempi",
+      "recommendation": {
+        "action": "Optimoi bundle",
+        "steps": [
+          "Varmista webpack production mode käyttää minifiointia",
+          "Harkitse code splittingiä (lazy loading komponeneteille)",
+          "Analysoi bundle: npx webpack-bundle-analyzer"
+        ]
+      }
+    },
+    {
+      "id": "MP-004",
+      "category": "Code style",
+      "title": "Sekaisin ES6 modules ja CommonJS",
+      "description": "app.js käyttää require(), mutta webpack konfiguroitu Babel ES6:lle",
+      "recommendation": {
+        "action": "Yhtenäistä module system",
+        "steps": [
+          "Konvertoi kaikki require() -> import",
+          "Päivitä package.json: \"type\": \"module\" jos mahdollista",
+          "Käytä ESLint sääntöä: no-require"
+        ]
+      }
+    },
+    {
+      "id": "MP-005",
+      "category": "Accessibility",
+      "title": "Ei ARIA-labeleja tai semantic HTML:ää",
+      "description": "UI rakentuu React.createElement():lla ilman accessibility-attribuutteja",
+      "recommendation": {
+        "action": "Paranna saavutettavuutta",
+        "steps": [
+          "Lisää role, aria-label, aria-describedby attribuutit",
+          "Testaa näppäimistönavigaatio",
+          "Auditoi axe-core:lla",
+          "Dokumentoi keyboard shortcuts"
+        ]
+      }
+    }
+  ],
+
+  "low_priority_issues": [
+    {
+      "id": "LP-001",
+      "category": "Code style",
+      "title": "Levenshtein-funktio app.js:ssä uudelleenkeksii pyörää",
+      "description": "Oma Levenshtein-implementaatio voisi olla npm-paketti",
+      "recommendation": "Harkitse fastest-levenshtein tai string-similarity pakettia"
+    },
+    {
+      "id": "LP-002",
+      "category": "UI/UX",
+      "title": "Font-face määrittelyt JavaScript-stringissä",
+      "description": "Fontit ladataan JS:llä (lines 63-81), pitäisi olla CSS:ssä",
+      "recommendation": "Siirrä @font-face säännöt faust-theme.css:ään"
+    },
+    {
+      "id": "LP-003",
+      "category": "Documentation",
+      "title": "Puuttuva CONTRIBUTING.md",
+      "description": "Ei ohjeita uusille kehittäjille",
+      "recommendation": "Luo CONTRIBUTING.md development setup -ohjeilla"
+    },
+    {
+      "id": "LP-004",
+      "category": "DevOps",
+      "title": "Ei CI/CD pipelinea",
+      "description": "Ei GitHub Actions / GitLab CI konfiguraatiota",
+      "recommendation": "Lisää .github/workflows/build.yml automaattisille buildeille"
+    }
+  ],
+
+  "positive_findings": [
+    {
+      "aspect": "Modularity",
+      "note": "Hyvä moduulijako: StoryContinuityTracker, HybridWritingFlow, BatchProcessor erillään"
+    },
+    {
+      "aspect": "UI Design",
+      "note": "Huolellinen visual identity (NOX/DEIS teemat) ja flow modes"
+    },
+    {
+      "aspect": "AI Integration",
+      "note": "Monipuolinen AI-tuki: Claude, OpenAI, Gemini, DeepSeek, Grok"
+    },
+    {
+      "aspect": "Error Handling",
+      "note": "AI API:ssa on timeout-suojaus (withTimeout wrapper)"
+    },
+    {
+      "aspect": "Documentation",
+      "note": "Erittäin perusteellinen dokumentaatio (ehkä liiankin...)"
+    },
+    {
+      "aspect": "Layout System",
+      "note": "v1.4.2 grid-korjaukset näyttävät teknisesti hyviltä (minmax, calc)"
+    }
+  ],
+
+  "recommended_actions": {
+    "immediate": [
+      {
+        "task": "Poista macOS resource fork -tiedostot",
+        "command": "find . -name '._*' -type f -delete",
+        "reason": "Siistii projektin, estää tulevat git-ongelmat"
+      },
+      {
+        "task": "Commitoi nykyiset muutokset",
+        "command": "git add app.js styles/faust-layout.css && git commit -m 'fix(v1.4.2): renderer grid improvements'",
+        "reason": "Tallenna v1.4.2 korjaukset"
+      },
+      {
+        "task": "Organisoi markdown-dokumentit",
+        "steps": [
+          "mkdir -p docs/archive docs/development",
+          "mv *_COMPLETE.md *_FIX.md *_SUCCESS.md docs/archive/",
+          "mv TESTAUS_OHJE.md TALLENNUS_OHJEET.md docs/development/",
+          "Päivitä README.md linkkaamaan docs/-kansioon"
+        ]
+      }
+    ],
+    "short_term": [
+      {
+        "task": "Auditoi ja päivitä npm dependencies",
+        "commands": [
+          "npm audit fix",
+          "npm dedupe",
+          "npx depcheck"
+        ]
+      },
+      {
+        "task": "Korjaa webpack CSS pipeline",
+        "decision": "Joko asenna loaderit TAI poista config ja käytä copy-pluginia"
+      },
+      {
+        "task": "Toteuta TODO:t - uusi luku/kansio toiminnot",
+        "location": "app.js:6152-6153"
+      },
+      {
+        "task": "Paranna API-avainten turvaa",
+        "suggestion": "Käytä Electron safeStorage"
+      }
+    ],
+    "long_term": [
+      {
+        "task": "Refaktoroi app.js (12k riviä) komponentteihin",
+        "structure": {
+          "src/components/": "React komponentit",
+          "src/contexts/": "State management",
+          "src/hooks/": "Custom React hooks",
+          "src/services/": "AI API wrapperit",
+          "src/utils/": "Utility funktiot"
+        },
+        "effort": "3-5 päivää"
+      },
+      {
+        "task": "Lisää comprehensive test suite",
+        "coverage_target": "70%",
+        "types": [
+          "Unit tests komponenteille",
+          "Integration tests AI-kutsuille",
+          "E2E tests Electron-appille"
+        ]
+      },
+      {
+        "task": "Suunnittele ja toteuta HybridWritingFlow vaihe 2",
+        "note": "8 TODO-kohtaa odottaa tätä integraatiota"
+      },
+      {
+        "task": "Setup CI/CD pipeline",
+        "deliverables": [
+          "Automaattiset testit PR:ssä",
+          "Automaattinen Electron build release-branchia varten",
+          "Code quality checks (ESLint, Prettier)"
+        ]
+      }
+    ]
+  },
+
+  "file_structure_recommendation": {
+    "current_state": "Kaikki samassa paikassa, 262 tiedostoa root-hakemistossa",
+    "recommended_structure": {
+      "/": [
+        "README.md",
+        "CHANGELOG.md",
+        "package.json",
+        "electron.js",
+        "preload.js",
+        "index.html",
+        "webpack.config.js",
+        ".gitignore",
+        ".env.example"
+      ],
+      "src/": {
+        "app.js": "Main entry point (refaktorisoitu)",
+        "components/": "React komponentit",
+        "contexts/": "State management",
+        "hooks/": "Custom hooks",
+        "services/": "AI services",
+        "utils/": "Utilities",
+        "styles/": "CSS files"
+      },
+      "modules/": "Existing modules (good!)",
+      "utils/": "Existing utilities (good!)",
+      "build/": "Build assets (fonts, icons)",
+      "dist/": "Build output (gitignored)",
+      "docs/": {
+        "README.md": "Documentation index",
+        "development/": "Dev guides",
+        "archive/": "Old status reports",
+        "api/": "API documentation"
+      },
+      "test/": "Test files",
+      "scripts/": "Build scripts"
+    }
+  },
+
+  "technical_debt_estimate": {
+    "total_hours": "80-120 tuntia",
+    "breakdown": {
+      "refactoring": "40-60h",
+      "documentation_cleanup": "8-12h",
+      "testing": "20-30h",
+      "security_improvements": "8-12h",
+      "dependency_audit": "4-6h"
+    }
+  },
+
+  "code_quality_metrics": {
+    "lines_of_code": {
+      "app.js": 12187,
+      "total_estimated": "~15000-20000 (including modules)"
+    },
+    "file_count": {
+      "js_files": "~50",
+      "md_files": 182,
+      "total_files_root": 262
+    },
+    "bundle_size": {
+      "development": "238 KiB",
+      "production_potential": "~120-150 KiB (minified)"
+    },
+    "dependencies": {
+      "node_modules_size": "20 GB (ERITTÄIN SUURI!)",
+      "production_deps": 5,
+      "dev_deps": 20
+    }
+  },
+
+  "risk_assessment": {
+    "security": {
+      "level": "MEDIUM",
+      "concerns": [
+        "API-avaimet plain textinä",
+        "Ei input sanitization dokumentoitu",
+        "20GB node_modules sisältää tuntemattomia riskejä"
+      ]
+    },
+    "maintainability": {
+      "level": "MEDIUM-LOW",
+      "concerns": [
+        "12k rivin app.js on ylläpidon painajainen",
+        "Liian monta dokumenttia ilman organisaatiota",
+        "TODO:t keskeneräiset ominaisuudet"
+      ]
+    },
+    "stability": {
+      "level": "MEDIUM-HIGH",
+      "notes": [
+        "Build toimii",
+        "Ei kriittisiä bugeja koodissa",
+        "v1.4.2 korjaukset näyttävät hyviltä"
+      ]
+    }
+  },
+
+  "next_steps_priority_order": [
+    "1. [CRITICAL] Commitoi v1.4.2 muutokset Gitiin",
+    "2. [HIGH] Poista 15k macOS ._* tiedostoa",
+    "3. [HIGH] Organisoi dokumentaatio docs/-kansioon",
+    "4. [HIGH] Auditoi npm dependencies (20GB!)",
+    "5. [MEDIUM] Korjaa webpack CSS-loaderi ongelma",
+    "6. [MEDIUM] Toteuta TODO:t (uusi luku/kansio)",
+    "7. [MEDIUM] Paranna API-avainten turvaa",
+    "8. [LONG-TERM] Refaktoroi app.js pienemmiksi osiksi",
+    "9. [LONG-TERM] Lisää comprehensive testit",
+    "10. [LONG-TERM] Setup CI/CD"
+  ],
+
+  "conclusion": {
+    "summary": "FAUST on toimiva sovellus hyvällä feature setillä, mutta tekninen velka ja organisaatio-ongelmat haittaavat kehitysnopeutta. Priorisoitu siivous ja refaktori parantaisivat ylläpidettävyyttä merkittävästi.",
+    "strengths": [
+      "Monipuolinen AI-integraatio",
+      "Harkittu UI/UX design (teemat, flow modes)",
+      "Modulaarinen arkkitehtuuri (modules/)",
+      "Perusteellinen dokumentaatio"
+    ],
+    "weaknesses": [
+      "Massiivinen app.js (12k riviä)",
+      "15k roskatiedostoa (._*)",
+      "182 .md tiedostoa juuressa",
+      "20GB node_modules",
+      "Puuttuva testaus",
+      "Sekava git working tree"
+    ],
+    "overall_rating": "7/10 - Hyvä idea ja toteutus, mutta kaipaa siivousta ja organisointia"
+  }
+}

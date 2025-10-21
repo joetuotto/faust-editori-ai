@@ -6149,8 +6149,26 @@ VASTAA SUOMEKSI.`;
 
   // Command Palette commands
   const commands = [
-    { id: 'new-chapter', name: 'Uusi luku', category: 'Tiedosto', action: () => { /* TODO */ } },
-    { id: 'new-folder', name: 'Uusi kansio', category: 'Tiedosto', action: () => { /* TODO */ } },
+    { id: 'new-chapter', name: 'Uusi luku', category: 'Tiedosto', action: () => {
+      const newChapter = {
+        id: Date.now().toString(),
+        type: 'chapter',
+        title: 'Uusi luku',
+        content: '',
+        children: []
+      };
+      setProject(prev => ({ ...prev, items: [...prev.items, newChapter] }));
+      setCurrentItemId(newChapter.id);
+    }},
+    { id: 'new-folder', name: 'Uusi kansio', category: 'Tiedosto', action: () => {
+      const newFolder = {
+        id: Date.now().toString(),
+        type: 'folder',
+        title: 'Uusi kansio',
+        children: []
+      };
+      setProject(prev => ({ ...prev, items: [...prev.items, newFolder] }));
+    }},
     { id: 'export-pdf', name: 'Vie PDF', category: 'Vie', action: () => exportDocument('pdf') },
     { id: 'export-docx', name: 'Vie DOCX', category: 'Vie', action: () => exportDocument('docx') },
     { id: 'toggle-sidebar', name: 'Näytä/Piilota sivupaneeli', category: 'Näkymä', action: () => setShowSidebar(!showSidebar) },
@@ -6430,24 +6448,47 @@ VASTAA SUOMEKSI.`;
       )
     ),
 
-    // v1.4.1: Wrapper for centered layout (always present, CSS controls centering)
+    // v1.4.1/1.4.2: Wrapper for centered layout (always present, CSS controls centering)
     e('div', { 
       className: 'faust-page',
       'data-layout-container': 'true'
     },
-      // Main content area (below titlebar)
-      // NATSUME + SAGMEISTER: Flow-transition + emotional arc background
-      e('div', { 
-        className: `flex flex-1 overflow-hidden flow-transition mode-${flowMode} tone-${emotionalTone}`, 
-        style: { 
+      // v1.4.2: Main content area - Grid (newLayout) or Flex (legacy)
+      // FIXED: Preserve flow-transition classes in both modes
+      e('div', {
+        className: newLayout 
+          ? `app-layout flow-transition mode-${flowMode} tone-${emotionalTone}`
+          : `flex flex-1 overflow-hidden flow-transition mode-${flowMode} tone-${emotionalTone}`,
+        style: newLayout ? {
+          display: 'grid',
+          gridTemplateColumns: showSidebar && !zenMode 
+            ? (showInspector && !zenMode ? '220px minmax(0, 1fr) 300px' : '220px minmax(0, 1fr)')
+            : (showInspector && !zenMode ? 'minmax(0, 1fr) 300px' : 'minmax(0, 1fr)'),
+          gridTemplateRows: 'auto 1fr auto',
+          width: '100%',                // FIXED: Grid spans full width
+          height: 'calc(100vh - 52px)', // FIXED: Prevent viewport overflow
+          gap: 0,
+          background: 'var(--faust-bg-primary)',
+          marginTop: '52px',
+          transition: 'background 2s ease-in-out' // FIXED: Keep transition in grid mode
+        } : {
           marginTop: '52px',
           background: 'var(--faust-bg-primary)',
           transition: 'background 2s ease-in-out'
-        } 
+        }
       },
-      // Sidebar - macOS Source List with NORMAN Writer-Centric Navigation
+      // v1.4.2: SIDEBAR - Conditionally positioned in grid
       showSidebar && !zenMode && e('div', {  // Faust: Zen Mode hides left panel
-        style: {
+        className: newLayout ? 'sidebar' : '',
+        style: newLayout ? {
+          gridColumn: '1',
+          gridRow: '1 / -1',
+          width: `${sidebarWidth}px`,
+          minWidth: '200px',
+          maxWidth: '600px',
+          position: 'relative',
+          display: 'flex'
+        } : {
           width: `${sidebarWidth}px`,
           minWidth: '200px',
           maxWidth: '600px',
@@ -6578,18 +6619,33 @@ VASTAA SUOMEKSI.`;
         )
       ),
 
-      // Editor - Vaihe 3: Compose Mode & Split View
-      e('main', {
-        className: `flex-1 overflow-hidden ${composeMode ? 'bg-gray-900' : ''}`,
-        style: composeMode ? {
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 9999
+      // v1.4.2: Editor wrapper - Conditionally styled for paper effect
+      e('div', {
+        className: newLayout ? 'paper' : '',
+        style: newLayout ? {
+          gridColumn: showSidebar && !zenMode ? '2' : '1',
+          gridRow: '2',
+          overflow: 'auto',
+          background: 'var(--paper)',
+          color: 'var(--ink)',
+          width: '100%',           // FIXED: Fill grid cell width
+          height: '100%',          // FIXED: Fill grid cell height
+          display: 'flex',         // FIXED: Allow main to fill
+          flexDirection: 'column'  // FIXED: Stack content vertically
         } : {}
       },
+        // Editor - Vaihe 3: Compose Mode & Split View
+        e('main', {
+          className: `flex-1 overflow-hidden ${composeMode ? 'bg-gray-900' : ''}`,
+          style: composeMode ? {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 9999
+          } : {}
+        },
         viewMode === 'editor' && (
           composeMode ? (
             // Compose Mode - Häiriötön kirjoitustila
@@ -7051,10 +7107,20 @@ VASTAA SUOMEKSI.`;
           )
         )
       ),
+      ), // v1.4.2: Close editor wrapper
 
-      // Inspector - macOS style
+      // v1.4.2: INSPECTOR - Conditionally positioned in grid
       showInspector && !zenMode && e('div', {  // Faust: Zen Mode hides right panel
-        style: {
+        className: newLayout ? 'inspector' : '',
+        style: newLayout ? {
+          gridColumn: showSidebar && !zenMode ? '3' : '2',
+          gridRow: '1 / -1',
+          width: `${inspectorWidth}px`,
+          minWidth: '280px',
+          maxWidth: '800px',
+          position: 'relative',
+          display: 'flex'
+        } : {
           width: `${inspectorWidth}px`,
           minWidth: '280px',
           maxWidth: '800px',
@@ -12059,12 +12125,15 @@ root.render(React.createElement(ErrorBoundary, null, e(FaustEditor)));
     }
   }, 1000);
 
-  // v1.4.1: Debug helper - accessible via window.debugLayout()
+  // v1.4.1/1.4.2: Debug helper - accessible via window.debugLayout()
   window.debugLayout = function() {
     const root = document.documentElement;
     const body = document.body;
     const page = document.querySelector('.faust-page');
+    const appLayout = document.querySelector('.app-layout');
     const paper = document.querySelector('.paper');
+    const sidebar = document.querySelector('.sidebar');
+    const inspector = document.querySelector('.inspector');
     
     const report = {
       html: {
@@ -12084,12 +12153,30 @@ root.render(React.createElement(ErrorBoundary, null, e(FaustEditor)));
           actualWidth: page.offsetWidth + 'px'
         } : null
       },
+      appLayout: {
+        exists: !!appLayout,
+        computed: appLayout ? {
+          display: getComputedStyle(appLayout).display,
+          gridTemplateColumns: getComputedStyle(appLayout).gridTemplateColumns,
+          width: appLayout.offsetWidth + 'px'
+        } : null
+      },
       paper: {
         exists: !!paper,
         computed: paper ? {
           maxWidth: getComputedStyle(paper).maxWidth,
-          width: paper.offsetWidth + 'px'
+          width: paper.offsetWidth + 'px',
+          background: getComputedStyle(paper).background,
+          boxShadow: getComputedStyle(paper).boxShadow ? 'Applied' : 'None'
         } : null
+      },
+      sidebar: {
+        exists: !!sidebar,
+        width: sidebar ? sidebar.offsetWidth + 'px' : 'N/A'
+      },
+      inspector: {
+        exists: !!inspector,
+        width: inspector ? inspector.offsetWidth + 'px' : 'N/A'
       },
       viewport: {
         width: window.innerWidth + 'px',

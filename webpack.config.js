@@ -18,11 +18,9 @@ module.exports = {
             presets: ['@babel/preset-react']
           }
         }
-      },
-      {
-        test: /\.css$/,
-        use: ['style-loader', 'css-loader', 'postcss-loader']
       }
+      // CSS files are copied by post-build script (scripts/post-build.js)
+      // No need for CSS loaders as styles are loaded via <link> tags
     ]
   },
   resolve: {
