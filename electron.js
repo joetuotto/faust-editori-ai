@@ -1,5 +1,5 @@
 const { convertToRTF, convertToHTML, convertToDocx } = require("./utils/documentConverters");
-const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -11,18 +11,33 @@ const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// Global config
+// Global config (now encrypted)
 let apiConfig = {};
 
 // Config path
 const configPath = path.join(app.getPath('userData'), 'config.json');
 
+// v1.4.3: Secure API key storage using Electron safeStorage
 async function loadApiConfig() {
   try {
     const data = await fs.readFile(configPath, 'utf-8');
     const config = JSON.parse(data);
-    apiConfig = config.apiKeys || {};
+
+    // If encrypted data exists, decrypt it
+    if (config.apiKeysEncrypted && safeStorage.isEncryptionAvailable()) {
+      const encryptedBuffer = Buffer.from(config.apiKeysEncrypted, 'base64');
+      const decrypted = safeStorage.decryptString(encryptedBuffer);
+      apiConfig = JSON.parse(decrypted);
+      console.log('[Security] API keys loaded from encrypted storage');
+    } else if (config.apiKeys) {
+      // Legacy plain text fallback
+      apiConfig = config.apiKeys;
+      console.warn('[Security] API keys loaded in plain text (consider re-saving)');
+    } else {
+      apiConfig = {};
+    }
   } catch (error) {
+    console.log('[Config] No saved API keys found');
     apiConfig = {};
   }
 }
@@ -733,14 +748,34 @@ ipcMain.handle('load-api-keys', async () => {
   return apiConfig;
 });
 
-// Save API Keys
+// Save API Keys (v1.4.3: now with encryption)
 ipcMain.handle('save-api-keys', async (event, keys) => {
   try {
-    const config = { apiKeys: keys };
+    let config = {};
+
+    // Use encryption if available
+    if (safeStorage.isEncryptionAvailable()) {
+      const keysJson = JSON.stringify(keys);
+      const encrypted = safeStorage.encryptString(keysJson);
+      const encryptedBase64 = encrypted.toString('base64');
+
+      config = {
+        apiKeysEncrypted: encryptedBase64,
+        version: '1.4.3',
+        encryptionMethod: 'electron-safeStorage'
+      };
+      console.log('[Security] API keys encrypted with safeStorage');
+    } else {
+      // Fallback to plain text if encryption unavailable
+      config = { apiKeys: keys };
+      console.warn('[Security] Encryption unavailable, storing in plain text');
+    }
+
     await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
     await loadApiConfig(); // Reload
-    return { success: true };
+    return { success: true, encrypted: safeStorage.isEncryptionAvailable() };
   } catch (error) {
+    console.error('[Security] Save API keys error:', error);
     return { success: false, error: error.message };
   }
 });
