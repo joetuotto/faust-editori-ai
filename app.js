@@ -2557,9 +2557,12 @@ function FaustEditor() {
       root.setAttribute('data-theme', theme);
       console.log(`[UI Prefs] Applied theme: ${theme}`);
 
-      // New Layout (centered paper)
-      root.classList.toggle('faust-new-layout', !!prefs.newLayout);
-      console.log(`[UI Prefs] New layout: ${prefs.newLayout ? 'ON' : 'OFF'}`);
+      // New Layout (centered paper) - v1.4.1: Sync to React state
+      const isNewLayout = !!prefs.newLayout;
+      root.setAttribute('data-layout', isNewLayout ? 'new' : 'legacy');
+      root.classList.toggle('faust-new-layout', isNewLayout);
+      setNewLayout(isNewLayout);  // ← SYNC to React state!
+      console.log(`[UI Prefs] New layout: ${isNewLayout ? 'ON' : 'OFF'}`);
 
       // Focus Mode
       body.classList.toggle('focus-mode', !!prefs.focusMode);
@@ -2671,14 +2674,14 @@ function FaustEditor() {
     }
   }, [isDarkMode]);
   
-  // PR2: Apply new-layout class to body when flag is enabled
+  // v1.4.1: Apply new-layout class when React state changes
   useEffect(() => {
     if (newLayout) {
       document.body.classList.add('new-layout');
-      console.log('[Layout] NEW_LAYOUT enabled');
+      console.log('[Layout] NEW_LAYOUT enabled → Centered paper active');
     } else {
       document.body.classList.remove('new-layout');
-      console.log('[Layout] NEW_LAYOUT disabled (using legacy layout)');
+      console.log('[Layout] NEW_LAYOUT disabled → Legacy full-width');
     }
   }, [newLayout]);
   const [aiGhostText, setAiGhostText] = useState('');  // Faust spec: ghost text preview
