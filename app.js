@@ -9769,11 +9769,20 @@ VASTAA SUOMEKSI.`;
     showQuickActions && selectedText && e('div', {
       className: 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[9999] rounded-lg shadow-2xl p-3',
       style: {
-        background: isDarkMode ? '#1F2937' : 'white',
-        border: `2px solid ${isDarkMode ? '#374151' : '#E5E7EB'}`
+        background: isDarkMode ? '#1A1815' : '#F8F2E8',
+        border: `2px solid ${isDarkMode ? '#715C38' : '#E6DED2'}`,
+        boxShadow: isDarkMode 
+          ? 'inset 0 1px 0 0 rgba(154,123,79,0.1), 0 8px 32px rgba(0,0,0,0.6)'
+          : 'inset 0 1px 0 0 rgba(200,157,94,0.2), 0 8px 32px rgba(0,0,0,0.15)'
       }
     },
-      e('div', { className: 'text-xs mb-2 opacity-60', style: { color: isDarkMode ? '#9CA3AF' : '#6B7280' } },
+      e('div', { 
+        className: 'text-xs mb-2 opacity-60', 
+        style: { 
+          color: isDarkMode ? '#AFA699' : '#5E584D',
+          fontFamily: 'IBM Plex Mono'
+        } 
+      },
         `"${selectedText.substring(0, 50)}${selectedText.length > 50 ? '...' : ''}"`
       ),
       e('div', { className: 'flex gap-2' },
@@ -9788,14 +9797,18 @@ VASTAA SUOMEKSI.`;
             onClick: () => handleQuickAction(action),
             className: 'px-4 py-2 rounded text-sm font-medium transition-all',
             style: {
-              background: isDarkMode ? '#374151' : '#F3F4F6',
-              color: isDarkMode ? '#F9FAFB' : '#111827'
+              background: isDarkMode ? 'rgba(154, 123, 79, 0.15)' : 'rgba(200, 157, 94, 0.15)',
+              color: isDarkMode ? '#E9E4DA' : '#2B241C',
+              border: `1px solid ${isDarkMode ? '#715C38' : '#E6DED2'}`,
+              fontFamily: 'IBM Plex Mono'
             },
             onMouseEnter: (ev) => {
-              ev.target.style.background = isDarkMode ? '#4B5563' : '#E5E7EB';
+              ev.target.style.background = isDarkMode ? 'rgba(154, 123, 79, 0.3)' : 'rgba(200, 157, 94, 0.3)';
+              ev.target.style.borderColor = isDarkMode ? '#9A7B4F' : '#C89D5E';
             },
             onMouseLeave: (ev) => {
-              ev.target.style.background = isDarkMode ? '#374151' : '#F3F4F6';
+              ev.target.style.background = isDarkMode ? 'rgba(154, 123, 79, 0.15)' : 'rgba(200, 157, 94, 0.15)';
+              ev.target.style.borderColor = isDarkMode ? '#715C38' : '#E6DED2';
             },
             title: label
           }, `${icon} ${label}`)
@@ -9804,14 +9817,15 @@ VASTAA SUOMEKSI.`;
           onClick: () => setShowQuickActions(false),
           className: 'px-3 py-2 rounded text-sm transition-all',
           style: {
-            background: isDarkMode ? '#1F2937' : '#F9FAFB',
-            color: isDarkMode ? '#9CA3AF' : '#6B7280'
+            background: isDarkMode ? 'rgba(113, 92, 56, 0.2)' : 'rgba(230, 222, 210, 0.5)',
+            color: isDarkMode ? '#AFA699' : '#5E584D',
+            fontFamily: 'IBM Plex Mono'
           },
           onMouseEnter: (ev) => {
-            ev.target.style.background = isDarkMode ? '#111827' : '#F3F4F6';
+            ev.target.style.background = isDarkMode ? 'rgba(113, 92, 56, 0.3)' : 'rgba(230, 222, 210, 0.8)';
           },
           onMouseLeave: (ev) => {
-            ev.target.style.background = isDarkMode ? '#1F2937' : '#F9FAFB';
+            ev.target.style.background = isDarkMode ? 'rgba(113, 92, 56, 0.2)' : 'rgba(230, 222, 210, 0.5)';
           }
         }, '✕')
       )
@@ -10691,8 +10705,19 @@ VASTAA SUOMEKSI.`;
               fontFamily: 'IBM Plex Mono',
               fontWeight: '500',
               boxShadow: !editingCharacter?.name?.trim() ? 'none' : (isDarkMode 
-                ? '0 0 0 3px rgba(154,123,79,0.2)' 
-                : '0 0 0 3px rgba(200,157,94,0.2)')
+                ? '0 0 20px rgba(200,157,94,0.3), 0 0 40px rgba(200,157,94,0.15)' 
+                : '0 0 20px rgba(200,157,94,0.4), 0 0 40px rgba(200,157,94,0.2)'),
+              transition: 'all 0.3s ease'
+            },
+            onMouseEnter: !editingCharacter?.name?.trim() ? undefined : (ev) => {
+              ev.target.style.boxShadow = isDarkMode 
+                ? '0 0 30px rgba(200,157,94,0.5), 0 0 60px rgba(200,157,94,0.25)' 
+                : '0 0 30px rgba(200,157,94,0.6), 0 0 60px rgba(200,157,94,0.3)';
+            },
+            onMouseLeave: !editingCharacter?.name?.trim() ? undefined : (ev) => {
+              ev.target.style.boxShadow = isDarkMode 
+                ? '0 0 20px rgba(200,157,94,0.3), 0 0 40px rgba(200,157,94,0.15)' 
+                : '0 0 20px rgba(200,157,94,0.4), 0 0 40px rgba(200,157,94,0.2)';
             },
             title: !editingCharacter?.name?.trim() ? 'Nimi on pakollinen' : 'Tallenna hahmo'
           }, 'Tallenna')
@@ -11082,8 +11107,19 @@ VASTAA SUOMEKSI.`;
               fontFamily: 'IBM Plex Mono',
               fontWeight: '500',
               boxShadow: !editingLocation?.name?.trim() ? 'none' : (isDarkMode 
-                ? '0 0 0 3px rgba(154,123,79,0.2)' 
-                : '0 0 0 3px rgba(200,157,94,0.2)')
+                ? '0 0 20px rgba(200,157,94,0.3), 0 0 40px rgba(200,157,94,0.15)' 
+                : '0 0 20px rgba(200,157,94,0.4), 0 0 40px rgba(200,157,94,0.2)'),
+              transition: 'all 0.3s ease'
+            },
+            onMouseEnter: !editingLocation?.name?.trim() ? undefined : (ev) => {
+              ev.target.style.boxShadow = isDarkMode 
+                ? '0 0 30px rgba(200,157,94,0.5), 0 0 60px rgba(200,157,94,0.25)' 
+                : '0 0 30px rgba(200,157,94,0.6), 0 0 60px rgba(200,157,94,0.3)';
+            },
+            onMouseLeave: !editingLocation?.name?.trim() ? undefined : (ev) => {
+              ev.target.style.boxShadow = isDarkMode 
+                ? '0 0 20px rgba(200,157,94,0.3), 0 0 40px rgba(200,157,94,0.15)' 
+                : '0 0 20px rgba(200,157,94,0.4), 0 0 40px rgba(200,157,94,0.2)';
             },
             title: !editingLocation?.name?.trim() ? 'Nimi on pakollinen' : 'Tallenna paikka'
           }, 'Tallenna')
@@ -11250,8 +11286,19 @@ VASTAA SUOMEKSI.`;
                 fontFamily: 'IBM Plex Mono',
                 fontWeight: '500',
                 boxShadow: !editingChapter?.title?.trim() ? 'none' : (isDarkMode 
-                  ? '0 0 0 3px rgba(154,123,79,0.2)' 
-                  : '0 0 0 3px rgba(200,157,94,0.2)')
+                  ? '0 0 20px rgba(200,157,94,0.3), 0 0 40px rgba(200,157,94,0.15)' 
+                  : '0 0 20px rgba(200,157,94,0.4), 0 0 40px rgba(200,157,94,0.2)'),
+                transition: 'all 0.3s ease'
+              },
+              onMouseEnter: !editingChapter?.title?.trim() ? undefined : (ev) => {
+                ev.target.style.boxShadow = isDarkMode 
+                  ? '0 0 30px rgba(200,157,94,0.5), 0 0 60px rgba(200,157,94,0.25)' 
+                  : '0 0 30px rgba(200,157,94,0.6), 0 0 60px rgba(200,157,94,0.3)';
+              },
+              onMouseLeave: !editingChapter?.title?.trim() ? undefined : (ev) => {
+                ev.target.style.boxShadow = isDarkMode 
+                  ? '0 0 20px rgba(200,157,94,0.3), 0 0 40px rgba(200,157,94,0.15)' 
+                  : '0 0 20px rgba(200,157,94,0.4), 0 0 40px rgba(200,157,94,0.2)';
               },
               title: !editingChapter?.title?.trim() ? 'Otsikko on pakollinen' : 'Tallenna luku'
             }, 'Tallenna')
@@ -11688,8 +11735,19 @@ VASTAA SUOMEKSI.`;
               fontFamily: 'IBM Plex Mono',
               fontWeight: '500',
               boxShadow: !editingThread?.name?.trim() ? 'none' : (isDarkMode 
-                ? '0 0 0 3px rgba(154,123,79,0.2)' 
-                : '0 0 0 3px rgba(200,157,94,0.2)')
+                ? '0 0 20px rgba(200,157,94,0.3), 0 0 40px rgba(200,157,94,0.15)' 
+                : '0 0 20px rgba(200,157,94,0.4), 0 0 40px rgba(200,157,94,0.2)'),
+              transition: 'all 0.3s ease'
+            },
+            onMouseEnter: !editingThread?.name?.trim() ? undefined : (ev) => {
+              ev.target.style.boxShadow = isDarkMode 
+                ? '0 0 30px rgba(200,157,94,0.5), 0 0 60px rgba(200,157,94,0.25)' 
+                : '0 0 30px rgba(200,157,94,0.6), 0 0 60px rgba(200,157,94,0.3)';
+            },
+            onMouseLeave: !editingThread?.name?.trim() ? undefined : (ev) => {
+              ev.target.style.boxShadow = isDarkMode 
+                ? '0 0 20px rgba(200,157,94,0.3), 0 0 40px rgba(200,157,94,0.15)' 
+                : '0 0 20px rgba(200,157,94,0.4), 0 0 40px rgba(200,157,94,0.2)';
             },
             title: !editingThread?.name?.trim() ? 'Nimi on pakollinen' : 'Tallenna juonenlanka'
           }, 'Tallenna')
