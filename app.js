@@ -3372,6 +3372,14 @@ function FaustEditor() {
         return;
       }
       
+      // PR3: Focus Mode (Cmd/Ctrl+Shift+F)
+      if (event.key === 'f' && event.shiftKey && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        setViewMode(prev => prev === 'focus' ? 'editor' : 'focus');
+        console.log('🔑 Cmd/Ctrl+Shift+F - Focus Mode toggled');
+        return;
+      }
+      
       if (event.key === 'Escape') {
         // Sulje Zen Mode jos päällä
         if (zenMode) {
