@@ -8,6 +8,7 @@
     "start": "electron .",
     "dev": "webpack --mode=development --watch",
     "build": "webpack --mode=production",
+    "postbuild": "mkdir -p dist/styles && cp -f styles/*.css dist/styles/ || true",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

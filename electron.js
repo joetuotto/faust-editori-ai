@@ -84,8 +84,8 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js')
     },
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 12, y: 16 },
-    backgroundColor: '#1f2937'
+    trafficLightPosition: { x: 12, y: 16 }
+    // v1.4.1: Removed backgroundColor to allow theme CSS to control background
   });
 
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
