@@ -6880,14 +6880,18 @@ VASTAA SUOMEKSI.`;
                     const context = newContent.slice(0, -4);  // Remove "/ai "
                     const prompt = `Continue this text naturally:\n\n${context}`;
                     
-                    callAI(selectedAIApi, prompt).then(result => {
-                      if (result?.success) {
-                        setAiGhostText(result.content || result.response || '');
+                    window.electronAPI.generateWithAI({ 
+                      prompt,
+                      model: selectedAIApi || 'claude-3-5-sonnet-20241022'
+                    }).then(result => {
+                      if (result && typeof result === 'string') {
+                        setAiGhostText(result);
                       } else {
                         setAiGhostText('');
                         setAiInlineActive(false);
                       }
-                    }).catch(() => {
+                    }).catch((error) => {
+                      console.error('AI inline error:', error);
                       setAiGhostText('');
                       setAiInlineActive(false);
                     });
