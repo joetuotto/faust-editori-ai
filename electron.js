@@ -1,5 +1,5 @@
-const { convertToRTF, convertToHTML, convertToDocx } = require("./utils/documentConverters");
 const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage } = require('electron');
+const { convertToRTF, convertToHTML, convertToDocx } = require("./utils/documentConverters");
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -14,13 +14,20 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 // Global config (now encrypted)
 let apiConfig = {};
 
-// Config path
-const configPath = path.join(app.getPath('userData'), 'config.json');
+// Config path (lazy initialization to avoid calling app.getPath() before ready)
+let configPath = null;
+
+function getConfigPath() {
+  if (!configPath) {
+    configPath = path.join(app.getPath('userData'), 'config.json');
+  }
+  return configPath;
+}
 
 // v1.4.3: Secure API key storage using Electron safeStorage
 async function loadApiConfig() {
   try {
-    const data = await fs.readFile(configPath, 'utf-8');
+    const data = await fs.readFile(getConfigPath(), 'utf-8');
     const config = JSON.parse(data);
 
     // If encrypted data exists, decrypt it
@@ -52,11 +59,18 @@ let uiPrefs = {
   aiPanelVisible: false
 };
 
-const uiPrefsPath = path.join(app.getPath('userData'), 'ui-prefs.json');
+let uiPrefsPath = null;
+
+function getUiPrefsPath() {
+  if (!uiPrefsPath) {
+    uiPrefsPath = path.join(app.getPath('userData'), 'ui-prefs.json');
+  }
+  return uiPrefsPath;
+}
 
 async function loadUiPrefs() {
   try {
-    const raw = await fs.readFile(uiPrefsPath, 'utf-8');
+    const raw = await fs.readFile(getUiPrefsPath(), 'utf-8');
     uiPrefs = { ...uiPrefs, ...JSON.parse(raw) };
     console.log('[UI Prefs] Loaded:', uiPrefs);
   } catch (error) {
@@ -66,7 +80,7 @@ async function loadUiPrefs() {
 
 async function saveUiPrefs(next) {
   uiPrefs = { ...uiPrefs, ...next };
-  await fs.writeFile(uiPrefsPath, JSON.stringify(uiPrefs, null, 2), 'utf-8');
+  await fs.writeFile(getUiPrefsPath(), JSON.stringify(uiPrefs, null, 2), 'utf-8');
   console.log('[UI Prefs] Saved:', uiPrefs);
 }
 
@@ -748,12 +762,12 @@ ipcMain.handle('load-api-keys', async () => {
   return apiConfig;
 });
 
-// Save API Keys (v1.4.3: now with encryption)
+// Save API Keys (v1.4.3: with encryption)
 ipcMain.handle('save-api-keys', async (event, keys) => {
   try {
-    let config = {};
+    let config;
 
-    // Use encryption if available
+    // Try to encrypt if available
     if (safeStorage.isEncryptionAvailable()) {
       const keysJson = JSON.stringify(keys);
       const encrypted = safeStorage.encryptString(keysJson);
@@ -771,7 +785,7 @@ ipcMain.handle('save-api-keys', async (event, keys) => {
       console.warn('[Security] Encryption unavailable, storing in plain text');
     }
 
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    await fs.writeFile(getConfigPath(), JSON.stringify(config, null, 2), 'utf-8');
     await loadApiConfig(); // Reload
     return { success: true, encrypted: safeStorage.isEncryptionAvailable() };
   } catch (error) {
