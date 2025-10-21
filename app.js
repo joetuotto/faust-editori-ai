@@ -2541,6 +2541,10 @@ function FaustEditor() {
     activeItemIdRef.current = activeItemId;
   }, [activeItemId]);
   
+  // Auto-check continuity (DEFINE STATE FIRST!)
+  const [autoCheckEnabled, setAutoCheckEnabled] = useState(false);
+  const [continuityWarnings, setContinuityWarnings] = useState([]);
+  
   // Auto-check continuity when user is typing
   useEffect(() => {
     if (!autoCheckEnabled) {
@@ -2630,9 +2634,10 @@ function FaustEditor() {
   const [showQuickActions, setShowQuickActions] = useState(false);
   const [showInsertMenu, setShowInsertMenu] = useState(false);
   
-  // Auto-check continuity
-  const [autoCheckEnabled, setAutoCheckEnabled] = useState(false);
-  const [continuityWarnings, setContinuityWarnings] = useState([]);
+  // REMOVED DUPLICATE - moved above (line ~2545)
+  // const [autoCheckEnabled, setAutoCheckEnabled] = useState(false);
+  // const [continuityWarnings, setContinuityWarnings] = useState([]);
+  
   const [activeCollection, setActiveCollection] = useState(null);
   const [selectedAIApi, setSelectedAIApi] = useState('claude'); // Valittu AI-palvelu
   const [showSaveIndicator, setShowSaveIndicator] = useState(false);
