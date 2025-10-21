@@ -2534,6 +2534,57 @@ function FaustEditor() {
     }
   }, []);
 
+  // v1.4.1: UI Prefs Bootstrap - Apply theme, layout, modes from electron store
+  useEffect(() => {
+    async function bootstrapUiPrefs() {
+      try {
+        const res = await window.electronAPI.getUiPrefs();
+        if (res?.success) {
+          console.log('[UI Prefs] Loaded from electron:', res.data);
+          applyUiPrefs(res.data);
+        }
+      } catch (error) {
+        console.error('[UI Prefs] Failed to load:', error);
+      }
+    }
+
+    function applyUiPrefs(prefs) {
+      const root = document.documentElement;
+      const body = document.body;
+
+      // Theme (NOX/DEIS)
+      const theme = prefs.theme === 'DEIS' ? 'DEIS' : 'NOX';
+      root.setAttribute('data-theme', theme);
+      console.log(`[UI Prefs] Applied theme: ${theme}`);
+
+      // New Layout (centered paper)
+      root.classList.toggle('faust-new-layout', !!prefs.newLayout);
+      console.log(`[UI Prefs] New layout: ${prefs.newLayout ? 'ON' : 'OFF'}`);
+
+      // Focus Mode
+      body.classList.toggle('focus-mode', !!prefs.focusMode);
+      console.log(`[UI Prefs] Focus mode: ${prefs.focusMode ? 'ON' : 'OFF'}`);
+
+      // Zen Mode
+      body.classList.toggle('zen-mode', !!prefs.zenMode);
+      console.log(`[UI Prefs] Zen mode: ${prefs.zenMode ? 'ON' : 'OFF'}`);
+
+      // Apply contrast guard after theme change
+      if (typeof applyContrastGuard === 'function') {
+        setTimeout(() => applyContrastGuard(), 100);
+      }
+    }
+
+    // Listen for menu changes
+    window.electronAPI.onUiPrefsChanged((prefs) => {
+      console.log('[UI Prefs] Changed from menu:', prefs);
+      applyUiPrefs(prefs);
+    });
+
+    // Initial load
+    bootstrapUiPrefs();
+  }, []);
+
   useEffect(() => {
     projectRef.current = project;
   }, [project]);
