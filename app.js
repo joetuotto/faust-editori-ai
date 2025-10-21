@@ -2605,6 +2605,9 @@ function FaustEditor() {
   const [zenMode, setZenMode] = useState(false);  // Faust spec: Zen Mode (Cmd/Ctrl+Enter)
   const [aiInlineActive, setAiInlineActive] = useState(false);  // Faust spec: /ai inline mode
   
+  // PR2: Feature flag for new layout (default: false)
+  const [newLayout, setNewLayout] = useState(false);  // NEW_LAYOUT flag
+  
   // PR1: Apply theme and contrast guard
   useEffect(() => {
     const theme = isDarkMode ? 'NOX' : 'DEIS';
@@ -2616,6 +2619,17 @@ function FaustEditor() {
       setTimeout(() => applyContrastGuard(), 50);
     }
   }, [isDarkMode]);
+  
+  // PR2: Apply new-layout class to body when flag is enabled
+  useEffect(() => {
+    if (newLayout) {
+      document.body.classList.add('new-layout');
+      console.log('[Layout] NEW_LAYOUT enabled');
+    } else {
+      document.body.classList.remove('new-layout');
+      console.log('[Layout] NEW_LAYOUT disabled (using legacy layout)');
+    }
+  }, [newLayout]);
   const [aiGhostText, setAiGhostText] = useState('');  // Faust spec: ghost text preview
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
