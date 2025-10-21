@@ -6,6 +6,9 @@ const HybridWritingFlow = require('./modules/HybridWritingFlow');
 const BatchProcessor = require('./modules/BatchProcessor');
 const CostOptimizer = require('./modules/CostOptimizer');
 
+// PR1: Import contrast guard (feature: teemat & typografia)
+const { applyContrastGuard } = require('./utils/contrast');
+
 const escapeRegExp = (value = '') => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const levenshtein = (a = '', b = '', maxDistance = 2) => {
@@ -2595,12 +2598,24 @@ function FaustEditor() {
     return () => clearTimeout(timer);
   }, [activeItemId, project.items, autoCheckEnabled]);
   
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);  // PR1: Default NOX (dark) theme
   const [isTransitioning, setIsTransitioning] = useState(false);  // Faust spec: mode transition
   const [showSidebar, setShowSidebar] = useState(true);
   const [showInspector, setShowInspector] = useState(false);  // Faust spec: default_hidden: true
   const [zenMode, setZenMode] = useState(false);  // Faust spec: Zen Mode (Cmd/Ctrl+Enter)
   const [aiInlineActive, setAiInlineActive] = useState(false);  // Faust spec: /ai inline mode
+  
+  // PR1: Apply theme and contrast guard
+  useEffect(() => {
+    const theme = isDarkMode ? 'NOX' : 'DEIS';
+    document.documentElement.setAttribute('data-theme', theme);
+    console.log(`[Theme] Switched to ${theme}`);
+    
+    // Apply contrast guard after theme change
+    if (typeof applyContrastGuard === 'function') {
+      setTimeout(() => applyContrastGuard(), 50);
+    }
+  }, [isDarkMode]);
   const [aiGhostText, setAiGhostText] = useState('');  // Faust spec: ghost text preview
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
