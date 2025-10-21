@@ -25,6 +25,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveApiKeys: (keys) => ipcRenderer.invoke('save-api-keys', keys),
   saveBackup: (project) => ipcRenderer.invoke('save-backup', project),
   loadBackup: () => ipcRenderer.invoke('load-backup'),
+
+  // v1.4.1: UI Preferences
+  getUiPrefs: () => ipcRenderer.invoke('ui:get-prefs'),
+  setUiPrefs: (prefs) => ipcRenderer.invoke('ui:set-prefs', prefs),
+  onUiPrefsChanged: (callback) => {
+    ipcRenderer.on('ui-prefs-changed', (_event, prefs) => callback(prefs));
+  },
+
+  // v1.4.1: Spec Runner (internal testing)
+  runSpec: (scenario) => ipcRenderer.invoke('spec:run', scenario),
+  sendSpecResult: (payload) => ipcRenderer.send('spec:done', payload),
+  onSpecStart: (callback) => {
+    ipcRenderer.on('spec:start', (_event, data) => callback(data));
+  },
   
   // Menu actions (listening)
   onMenuAction: (callback) => {
@@ -44,7 +58,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       // Tools menu
       'show-word-count', 'show-target-settings', 'spell-check', 'show-project-stats',
       // Help menu
-      'show-help', 'show-shortcuts', 'show-about', 'show-settings'
+      'show-help', 'show-shortcuts', 'show-about', 'show-settings',
+      // v1.4.1: UI prefs
+      'ui-prefs-changed'
     ];
     
     events.forEach(event => {

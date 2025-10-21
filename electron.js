@@ -27,6 +27,47 @@ async function loadApiConfig() {
   }
 }
 
+// --- v1.4.1: UI Prefs (persist theme/layout/modes) ---
+let uiPrefs = {
+  theme: 'NOX',            // 'NOX' | 'DEIS'
+  newLayout: false,        // v1.4.0 feature flag
+  focusMode: false,
+  zenMode: false,
+  inspectorVisible: false,  // default from Faust spec
+  aiPanelVisible: false
+};
+
+const uiPrefsPath = path.join(app.getPath('userData'), 'ui-prefs.json');
+
+async function loadUiPrefs() {
+  try {
+    const raw = await fs.readFile(uiPrefsPath, 'utf-8');
+    uiPrefs = { ...uiPrefs, ...JSON.parse(raw) };
+    console.log('[UI Prefs] Loaded:', uiPrefs);
+  } catch (error) {
+    console.log('[UI Prefs] First run, using defaults');
+  }
+}
+
+async function saveUiPrefs(next) {
+  uiPrefs = { ...uiPrefs, ...next };
+  await fs.writeFile(uiPrefsPath, JSON.stringify(uiPrefs, null, 2), 'utf-8');
+  console.log('[UI Prefs] Saved:', uiPrefs);
+}
+
+// --- v1.4.1: Timeout wrapper for AI calls ---
+async function withTimeout(promise, ms = 30000) {
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`Timeout (${ms}ms)`)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 let mainWindow;
 
 function createWindow() {
@@ -38,6 +79,8 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      sandbox: true,           // v1.4.1: Enhanced security
+      spellcheck: false,
       preload: path.join(__dirname, 'preload.js')
     },
     titleBarStyle: 'hiddenInset',
@@ -181,7 +224,7 @@ function createMenu() {
       ]
     },
     
-    // View Menu
+    // View Menu (v1.4.1: synced with uiPrefs)
     {
       label: 'Näytä',
       submenu: [
@@ -196,21 +239,61 @@ function createMenu() {
           label: 'Inspector',
           accelerator: 'CmdOrCtrl+Alt+I',
           type: 'checkbox',
-          checked: false,
+          checked: !!uiPrefs?.inspectorVisible,
           click: () => mainWindow.webContents.send('toggle-inspector')
         },
         {
           label: 'AI-Avustajat',
           accelerator: 'CmdOrCtrl+Alt+A',
           type: 'checkbox',
-          checked: false,
+          checked: !!uiPrefs?.aiPanelVisible,
           click: () => mainWindow.webContents.send('toggle-ai-panel')
+        },
+        { type: 'separator' },
+        {
+          label: 'Uusi layout (paperi keskellä)',
+          type: 'checkbox',
+          checked: uiPrefs.newLayout,
+          click: async (item) => {
+            await saveUiPrefs({ newLayout: item.checked });
+            mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
+          }
+        },
+        {
+          label: 'Teema: DEIS (valoisa)',
+          type: 'checkbox',
+          checked: uiPrefs.theme === 'DEIS',
+          click: async (item) => {
+            await saveUiPrefs({ theme: item.checked ? 'DEIS' : 'NOX' });
+            mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
+          }
         },
         { type: 'separator' },
         {
           label: 'Focus Mode',
           accelerator: 'CmdOrCtrl+Shift+F',
-          click: () => mainWindow.webContents.send('toggle-focus-mode')
+          type: 'checkbox',
+          checked: uiPrefs.focusMode,
+          click: async (item) => {
+            await saveUiPrefs({ 
+              focusMode: item.checked, 
+              zenMode: item.checked ? false : uiPrefs.zenMode 
+            });
+            mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
+          }
+        },
+        {
+          label: 'Zen Mode',
+          accelerator: 'CmdOrCtrl+Enter',
+          type: 'checkbox',
+          checked: uiPrefs.zenMode,
+          click: async (item) => {
+            await saveUiPrefs({ 
+              zenMode: item.checked, 
+              focusMode: item.checked ? false : uiPrefs.focusMode 
+            });
+            mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
+          }
         },
         { type: 'separator' },
         {
@@ -415,6 +498,7 @@ async function loadProject() {
 
 app.whenReady().then(async () => {
   await loadApiConfig();
+  await loadUiPrefs();  // v1.4.1: Load UI preferences
   createWindow();
 
   app.on('activate', () => {
@@ -561,8 +645,9 @@ ipcMain.handle('export-full-project', async (event, { project, format }) => {
   }
 });
 
-// Vie PDF
+// Vie PDF (v1.4.1: improved cleanup & pageRanges)
 ipcMain.handle('export-pdf', async (event, { html, title }) => {
+  let pdfWindow;
   try {
     const { filePath } = await dialog.showSaveDialog(mainWindow, {
       title: 'Vie PDF',
@@ -572,7 +657,7 @@ ipcMain.handle('export-pdf', async (event, { html, title }) => {
 
     if (!filePath) return { success: false };
 
-    const pdfWindow = new BrowserWindow({ show: false });
+    pdfWindow = new BrowserWindow({ show: false });
     await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 
     const pdfData = await pdfWindow.webContents.printToPDF({
@@ -583,15 +668,30 @@ ipcMain.handle('export-pdf', async (event, { html, title }) => {
         bottom: 2,
         left: 2,
         right: 2
-      }
+      },
+      pageRanges: '1-'  // v1.4.1: deterministic output
     });
 
     await fs.writeFile(filePath, pdfData);
-    pdfWindow.close();
+    
+    // v1.4.1: Safe cleanup
+    if (pdfWindow && !pdfWindow.isDestroyed()) {
+      pdfWindow.close();
+    }
 
     return { success: true, path: filePath };
   } catch (error) {
-    return { success: false, error: error.message };
+    console.error('[PDF Export] Error:', error);
+    // v1.4.1: Cleanup on error
+    if (pdfWindow && !pdfWindow.isDestroyed()) {
+      pdfWindow.close();
+    }
+    return { 
+      success: false, 
+      error: error.message,
+      errorTitle: 'PDF-vienti epäonnistui',
+      errorHint: 'Tarkista että tiedostopolku on kirjoitettavissa.'
+    };
   }
 });
 
@@ -643,6 +743,46 @@ ipcMain.handle('save-api-keys', async (event, keys) => {
   } catch (error) {
     return { success: false, error: error.message };
   }
+});
+
+// v1.4.1: UI Preferences IPC
+ipcMain.handle('ui:get-prefs', async () => {
+  return { success: true, data: uiPrefs };
+});
+
+ipcMain.handle('ui:set-prefs', async (_event, next) => {
+  try {
+    await saveUiPrefs(next);
+    // Notify renderer of changes
+    mainWindow?.webContents.send('ui-prefs-changed', uiPrefs);
+    return { success: true, data: uiPrefs };
+  } catch (error) {
+    console.error('[UI Prefs] Save error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// v1.4.1: Spec Runner (internal end-to-end test)
+ipcMain.handle('spec:run', async (_event, scenario = 'default') => {
+  console.log(`[Spec Runner] Starting scenario: ${scenario}`);
+  return new Promise((resolve) => {
+    const id = Date.now();
+    const timeout = setTimeout(() => {
+      console.error('[Spec Runner] Timeout after 45s');
+      resolve({ ok: false, error: 'spec-timeout', id, scenario });
+    }, 45000);
+
+    function onDone(_ev, payload) {
+      if (payload?.id !== id) return;
+      clearTimeout(timeout);
+      mainWindow.webContents.removeListener('spec:done', onDone);
+      console.log('[Spec Runner] Completed:', payload.result);
+      resolve(payload.result);
+    }
+
+    mainWindow.webContents.on('spec:done', onDone);
+    mainWindow.webContents.send('spec:start', { id, scenario });
+  });
 });
 
 // After save-api-keys
@@ -839,21 +979,25 @@ ipcMain.handle('deepseek-api', async (event, payload) => {
     const topP = typeof options.top_p === 'number' ? options.top_p : 0.9;
     const model = options.model || 'deepseek-chat';
 
-    const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: maxTokens,
-        temperature,
-        top_p: topP,
-        stream: false
-      })
-    });
+    // v1.4.1: Timeout protection
+    const response = await withTimeout(
+      fetch("https://api.deepseek.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: maxTokens,
+          temperature,
+          top_p: topP,
+          stream: false
+        })
+      }),
+      30000  // 30s timeout
+    );
 
     if (!response.ok) {
       throw new Error(`DeepSeek API error: ${response.status}`);
