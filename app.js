@@ -2565,7 +2565,8 @@ function FaustEditor() {
   
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showSidebar, setShowSidebar] = useState(true);
-  const [showInspector, setShowInspector] = useState(true);
+  const [showInspector, setShowInspector] = useState(false);  // Faust spec: default_hidden: true
+  const [zenMode, setZenMode] = useState(false);  // Faust spec: Zen Mode (Cmd/Ctrl+Enter)
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -3295,10 +3296,25 @@ function FaustEditor() {
     }
   }, [activeItemId]);
 
-  // ESC-näppäin sulkee modaalit ja paneelit
+  // ESC-näppäin sulkee modaalit ja paneelit + Zen Mode toggle
   useEffect(() => {
-    const handleEscKey = (event) => {
+    const handleKeyboard = (event) => {
+      // Faust Spec: Zen Mode (Cmd/Ctrl+Enter)
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        setZenMode(prev => !prev);
+        console.log('🔑 Cmd/Ctrl+Enter - Zen Mode toggled');
+        return;
+      }
+      
       if (event.key === 'Escape') {
+        // Sulje Zen Mode jos päällä
+        if (zenMode) {
+          setZenMode(false);
+          console.log('🔑 ESC pressed - Zen Mode closed');
+          return;
+        }
+        
         // Sulje kaikki modaalit
         setShowCharacterSheet(false);
         setShowLocationSheet(false);
@@ -3310,13 +3326,13 @@ function FaustEditor() {
       }
     };
 
-    window.addEventListener('keydown', handleEscKey);
+    window.addEventListener('keydown', handleKeyboard);
     
     // Cleanup: Poista event listener kun komponentti unmount
     return () => {
-      window.removeEventListener('keydown', handleEscKey);
+      window.removeEventListener('keydown', handleKeyboard);
     };
-  }, []); // Tyhjä deps array = suoritetaan vain kerran (mount/unmount)
+  }, [zenMode]); // zenMode dep lisätty
 
   const insertAtCursor = useCallback((text) => {
     if (!text) return;
@@ -6276,7 +6292,7 @@ VASTAA SUOMEKSI.`;
       } 
     },
       // Sidebar - macOS Source List with NORMAN Writer-Centric Navigation
-      showSidebar && e('div', {
+      showSidebar && !zenMode && e('div', {  // Faust: Zen Mode hides left panel
         style: {
           width: `${sidebarWidth}px`,
           minWidth: '200px',
@@ -6819,7 +6835,7 @@ VASTAA SUOMEKSI.`;
       ),
 
       // Inspector - macOS style
-      showInspector && e('div', {
+      showInspector && !zenMode && e('div', {  // Faust: Zen Mode hides right panel
         style: {
           width: `${inspectorWidth}px`,
           minWidth: '280px',
