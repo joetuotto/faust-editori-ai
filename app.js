@@ -2652,7 +2652,10 @@ function FaustEditor() {
     return () => clearTimeout(timer);
   }, [activeItemId, project.items, autoCheckEnabled]);
   
-  const [isDarkMode, setIsDarkMode] = useState(true);  // PR1: Default NOX (dark) theme
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('faust-theme');
+    return saved ? saved === 'NOX' : true; // Default NOX if not saved
+  });
   const [isTransitioning, setIsTransitioning] = useState(false);  // Faust spec: mode transition
   const [showSidebar, setShowSidebar] = useState(true);
   const [showInspector, setShowInspector] = useState(false);  // Faust spec: default_hidden: true
@@ -2666,8 +2669,9 @@ function FaustEditor() {
   useEffect(() => {
     const theme = isDarkMode ? 'NOX' : 'DEIS';
     document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('faust-theme', theme); // Save preference
     console.log(`[Theme] Switched to ${theme}`);
-    
+
     // Apply contrast guard after theme change
     if (typeof applyContrastGuard === 'function') {
       setTimeout(() => applyContrastGuard(), 50);
