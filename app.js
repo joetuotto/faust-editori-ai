@@ -6430,16 +6430,21 @@ VASTAA SUOMEKSI.`;
       )
     ),
 
-    // Main content area (below titlebar)
-    // NATSUME + SAGMEISTER: Flow-transition + emotional arc background
+    // v1.4.1: Wrapper for centered layout (always present, CSS controls centering)
     e('div', { 
-      className: `flex flex-1 overflow-hidden flow-transition mode-${flowMode} tone-${emotionalTone}`, 
-      style: { 
-        marginTop: '52px',
-        background: 'var(--faust-bg-primary)',
-        transition: 'background 2s ease-in-out'
-      } 
+      className: 'faust-page',
+      'data-layout-container': 'true'
     },
+      // Main content area (below titlebar)
+      // NATSUME + SAGMEISTER: Flow-transition + emotional arc background
+      e('div', { 
+        className: `flex flex-1 overflow-hidden flow-transition mode-${flowMode} tone-${emotionalTone}`, 
+        style: { 
+          marginTop: '52px',
+          background: 'var(--faust-bg-primary)',
+          transition: 'background 2s ease-in-out'
+        } 
+      },
       // Sidebar - macOS Source List with NORMAN Writer-Centric Navigation
       showSidebar && !zenMode && e('div', {  // Faust: Zen Mode hides left panel
         style: {
@@ -11983,6 +11988,7 @@ VASTAA SUOMEKSI.`;
         )
       )
     )
+    ) // v1.4.1: Close .faust-page wrapper
     
   ); // Close React.Fragment
   
