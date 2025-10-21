@@ -12052,6 +12052,56 @@ root.render(React.createElement(ErrorBoundary, null, e(FaustEditor)));
       console.log('  Full innerHTML:', rootEl?.innerHTML);
     }
   }, 1000);
+
+  // v1.4.1: Debug helper - accessible via window.debugLayout()
+  window.debugLayout = function() {
+    const root = document.documentElement;
+    const body = document.body;
+    const page = document.querySelector('.faust-page');
+    const paper = document.querySelector('.paper');
+    
+    const report = {
+      html: {
+        dataTheme: root.getAttribute('data-theme'),
+        dataLayout: root.getAttribute('data-layout'),
+        classes: [...root.classList]
+      },
+      body: {
+        classes: [...body.classList]
+      },
+      wrapper: {
+        exists: !!page,
+        computed: page ? {
+          maxWidth: getComputedStyle(page).maxWidth,
+          marginLeft: getComputedStyle(page).marginLeft,
+          marginRight: getComputedStyle(page).marginRight,
+          actualWidth: page.offsetWidth + 'px'
+        } : null
+      },
+      paper: {
+        exists: !!paper,
+        computed: paper ? {
+          maxWidth: getComputedStyle(paper).maxWidth,
+          width: paper.offsetWidth + 'px'
+        } : null
+      },
+      viewport: {
+        width: window.innerWidth + 'px',
+        height: window.innerHeight + 'px'
+      },
+      cssLinks: [...document.querySelectorAll('link[rel="stylesheet"]')].map(l => ({
+        href: l.getAttribute('href'),
+        loaded: l.sheet ? 'OK' : 'FAIL'
+      })),
+      uiPrefs: window.electronAPI ? 'Available' : 'Not available (dev mode?)'
+    };
+    
+    console.log('🔍 Layout Debug Report:', report);
+    return report;
+  };
+  
+  console.log('💡 Debug helper installed: window.debugLayout()');
+
 } catch (error) {
   console.error('❌ Fatal error:', error);
   document.body.innerHTML = `<div style="color: white; padding: 20px; font-family: monospace;">
