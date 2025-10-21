@@ -2596,6 +2596,8 @@ function FaustEditor() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [showInspector, setShowInspector] = useState(false);  // Faust spec: default_hidden: true
   const [zenMode, setZenMode] = useState(false);  // Faust spec: Zen Mode (Cmd/Ctrl+Enter)
+  const [aiInlineActive, setAiInlineActive] = useState(false);  // Faust spec: /ai inline mode
+  const [aiGhostText, setAiGhostText] = useState('');  // Faust spec: ghost text preview
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState('');
   const [showCommandPalette, setShowCommandPalette] = useState(false);
@@ -6865,9 +6867,53 @@ VASTAA SUOMEKSI.`;
               e('textarea', {
                 ref: editorRef,
                 defaultValue: getActiveItem()?.content || '',
-                onChange: (ev) => updateItem(activeItemId, { content: ev.target.value }),
+                onChange: (ev) => {
+                  const newContent = ev.target.value;
+                  updateItem(activeItemId, { content: newContent });
+                  
+                  // Faust spec: /ai inline mode trigger detection
+                  if (newContent.endsWith('/ai ')) {
+                    setAiInlineActive(true);
+                    setAiGhostText('Generating...');
+                    
+                    // Call AI to generate suggestion
+                    const context = newContent.slice(0, -4);  // Remove "/ai "
+                    const prompt = `Continue this text naturally:\n\n${context}`;
+                    
+                    callAI(selectedAIApi, prompt).then(result => {
+                      if (result?.success) {
+                        setAiGhostText(result.content || result.response || '');
+                      } else {
+                        setAiGhostText('');
+                        setAiInlineActive(false);
+                      }
+                    }).catch(() => {
+                      setAiGhostText('');
+                      setAiInlineActive(false);
+                    });
+                  }
+                },
                 onMouseUp: handleTextSelection,
                 onKeyUp: handleTextSelection,
+                onKeyDown: (ev) => {
+                  // Faust spec: Tab = accept, Esc = reject ghost text
+                  if (aiInlineActive && aiGhostText) {
+                    if (ev.key === 'Tab') {
+                      ev.preventDefault();
+                      const currentContent = editorRef.current.value.slice(0, -4);  // Remove "/ai "
+                      const newContent = currentContent + aiGhostText;
+                      updateItem(activeItemId, { content: newContent });
+                      setAiInlineActive(false);
+                      setAiGhostText('');
+                      console.log('✅ Tab - Ghost text accepted');
+                    } else if (ev.key === 'Escape') {
+                      ev.preventDefault();
+                      setAiInlineActive(false);
+                      setAiGhostText('');
+                      console.log('❌ Esc - Ghost text rejected');
+                    }
+                  }
+                },
                 placeholder: 'Aloita kirjoittaminen...',
                 className: `w-full min-h-[600px] p-6 rounded-lg border-2 resize-none outline-none ${
                   isDarkMode
@@ -6879,7 +6925,23 @@ VASTAA SUOMEKSI.`;
                   fontSize: `${fontSize}px`,
                   lineHeight: lineHeight
                 }
-              })
+              }),
+              
+              // Faust spec: Ghost text overlay
+              aiInlineActive && aiGhostText && aiGhostText !== 'Generating...' && e('div', {
+                className: 'absolute pointer-events-none',
+                style: {
+                  top: '150px',  // Approximate position after title
+                  left: '8px',
+                  right: '8px',
+                  color: isDarkMode ? 'rgba(200, 157, 94, 0.5)' : 'rgba(113, 92, 56, 0.5)',
+                  fontFamily: fontOptions.find(f => f.id === editorFont)?.family || 'serif',
+                  fontSize: `${fontSize}px`,
+                  lineHeight: lineHeight,
+                  whiteSpace: 'pre-wrap',
+                  paddingLeft: '6px'
+                }
+              }, aiGhostText)
             )
           )
         )
