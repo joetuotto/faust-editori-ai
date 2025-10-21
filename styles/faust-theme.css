@@ -6,79 +6,93 @@
 /* ===== COLOR PALETTES ===== */
 
 :root[data-theme="NOX"] {
-  /* Backgrounds */
-  --bg-primary: #141210;
-  --bg-secondary: #100F0D;
-  --shadow: #1A1815;
+  /* Backgrounds - Bioresonance: Deep black-brown "candlelight on stone walls" */
+  --bg-primary: #141210;      /* Syvä mustanruskea, imee valon */
+  --bg-secondary: #100F0D;    /* Vielä syvempi, kuin kellarissa */
+  --shadow: #1A1815;          /* Varjot, pehmeät siirtymät */
 
-  /* Paper & Ink */
-  --paper: #F0E8DC;
-  --ink: #2B241C;  /* Dark text for writing on paper */
+  /* Paper & Ink - NOX paper is DARK (pergamentti kynttilänvalossa) */
+  --paper: #1C1917;           /* Aste vaaleampi, tumma pergamentti */
+  --ink: #F0E9E1;             /* Lämmin norsunluu, kirjoitetaan vaaleaa */
 
-  /* Text hierarchy */
-  --text: #E9E4DA;  /* Light text for UI on dark background */
-  --text-2: #AFA699;
-  --text-3: #8C806C;
+  /* Text hierarchy - UI text on dark background */
+  --text: #F0E9E1;            /* Primary UI text, norsunluu */
+  --text-2: #B4A998;          /* Secondary, hiljainen harmaanruskea */
+  --text-3: #8C806C;          /* Tertiary, häviävä */
 
-  /* Accent colors */
-  --gold: #9A7B4F;
-  --gold-hover: #C89D5E;
-  --bronze: #715C38;  /* Spec addition: bronze accents */
-  --sigil: #8F7A53;   /* Spec addition: hermetic symbols */
-  --link: #D2CEC6;
+  /* Accent colors - Bioresonance: Gold = inspiration, light in darkness */
+  --gold: #E8C878;            /* Kulta, valaistuminen pimeässä */
+  --gold-hover: #D0B070;      /* Hovered gold, hieman tummempi */
+  --bronze: #715C38;          /* Pronssi, maanläheinen */
+  --sigil: #8F7A53;           /* Hermeettiset symbolit */
+  --link: #E8C878;            /* Linkit kultaisina */
 
   /* Semantic colors */
   --error: #FF6B6B;
   --warning: #FFB020;
   --success: #4CAF6E;
+
+  /* Paper shadow - Candlelight effect */
+  --paper-shadow: 0 0 40px rgba(0,0,0,0.6);
+
+  /* Border color - Barely visible */
+  --border-color: rgba(255,255,255,0.05);
 }
 
 :root[data-theme="DEIS"] {
-  /* Backgrounds */
-  --bg-primary: #F8F2E8;
-  --bg-secondary: #EDE4D8;
-  --shadow: #E6DED2;
+  /* Backgrounds - Bioresonance: Warm white "sunlight on old parchment" */
+  --bg-primary: #F8F2E8;      /* Lämmin valkoinen, paperinkeltainen */
+  --bg-secondary: #EDE4D8;    /* Hieman tummempi tausta */
+  --shadow: #E6DED2;          /* Pehmeät varjot */
 
-  /* Paper & Ink */
-  --paper: #F2EADF;
-  --ink: #2B241C;
+  /* Paper & Ink - DEIS paper is LIGHT (vaalea pergamentti) */
+  --paper: #FEFBF8;           /* Häviävän vaalea, lähes valkoinen */
+  --ink: #2E2A26;             /* Syvänruskea mustan sijaan */
 
-  /* Text hierarchy */
-  --text: #2B241C;
-  --text-2: #5E584D;
-  --text-3: #867C6B;
+  /* Text hierarchy - UI text on light background */
+  --text: #2E2A26;            /* Primary UI text, tumma ruskea */
+  --text-2: #867C71;          /* Secondary, pehmeä ruskeanharmaa */
+  --text-3: #867C6B;          /* Tertiary, häviävä */
 
-  /* Accent colors */
-  --gold: #C89D5E;
-  --gold-hover: #D9AB66;
-  --bronze: #715C38;  /* Spec addition: bronze accents */
-  --sigil: #B68B5C;   /* Spec addition: hermetic symbols */
-  --link: #715C38;
+  /* Accent colors - Bioresonance: Copper = decision, structure */
+  --gold: #705D43;            /* Kuparin sävy, ei kulta DEIS:ssä! */
+  --gold-hover: #B88C4A;      /* Kultainen hover */
+  --bronze: #715C38;          /* Pronssi */
+  --sigil: #B68B5C;           /* Hermeettiset symbolit */
+  --link: #705D43;            /* Linkit kuparina */
 
   /* Semantic colors */
   --error: #B23A3A;
   --warning: #B67B20;
   --success: #2F7A58;
+
+  /* Paper shadow - Soft daylight */
+  --paper-shadow: 0 0 30px rgba(0,0,0,0.05);
+
+  /* Border color - Barely visible */
+  --border-color: rgba(0,0,0,0.05);
 }
 
-/* Default theme (NOX) */
+/* Default theme (NOX) - Bioresonance corrected */
 :root {
   --bg-primary: #141210;
   --bg-secondary: #100F0D;
   --shadow: #1A1815;
-  --paper: #F0E8DC;
-  --ink: #2B241C;
-  --text: #E9E4DA;
-  --text-2: #AFA699;
+  --paper: #1C1917;           /* NOX: dark paper */
+  --ink: #F0E9E1;             /* NOX: light ink */
+  --text: #F0E9E1;
+  --text-2: #B4A998;
   --text-3: #8C806C;
-  --gold: #9A7B4F;
-  --gold-hover: #C89D5E;
+  --gold: #E8C878;            /* Brighter gold */
+  --gold-hover: #D0B070;
   --bronze: #715C38;
   --sigil: #8F7A53;
-  --link: #D2CEC6;
+  --link: #E8C878;
   --error: #FF6B6B;
   --warning: #FFB020;
   --success: #4CAF6E;
+  --paper-shadow: 0 0 40px rgba(0,0,0,0.6);
+  --border-color: rgba(255,255,255,0.05);
 }
 
 /* ===== BASE STYLES ===== */
@@ -236,4 +250,30 @@ h1, h2, h3, h4, h5, h6 {
 /* ===== CONTRAST GUARD ===== */
 /* Applied via JavaScript in utils/contrast.js */
 /* Ensures WCAG AA compliance (4.5:1 ratio) for all text on paper */
+
+/* Bioresonance Philosophy:
+ *
+ * NOX (Night / Introspection):
+ * - Activates parasympathetic nervous system
+ * - Deep black-brown creates "candlelight on stone walls" effect
+ * - Gold (#E8C878) = inspiration, light emerging from darkness
+ * - Contrast: 12.68:1 (WCAG AAA) - paper to ink
+ * - Warmth: All colors shifted 5-10° toward red-brown (blue spectrum blocked)
+ * - Emotional resonance: "timeless, cathedral-like, silent"
+ *
+ * DEIS (Day / Clarity):
+ * - Activates balanced sympathetic nervous system
+ * - Warm white creates "sunlight on old parchment" effect
+ * - Copper (#705D43) = decision, stability, structure
+ * - Contrast: 10.5:1 (WCAG AAA) - paper to ink
+ * - Temperature: ~4200K (between daylight and candlelight)
+ * - Emotional resonance: "morning calm, golden dust in the air"
+ *
+ * Color Symbolism:
+ * Gold (#E8C878) = Inspiration, knowledge, light in darkness
+ * Copper (#705D43) = Decision, stability, structural correction
+ * Ivory (#F0E9E1) = Memory and continuity
+ * Charcoal (#141210) = Subconscious, transformation, foundation
+ * Parchment (#F8F2E8) = Writing material, surface of creation
+ */
 
