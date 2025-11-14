@@ -522,7 +522,7 @@
                   type: 'text',
                   value: currentTrait,
                   onChange: (ev) => setCurrentTrait(ev.target.value),
-                  onKeyPress: (ev) => {
+                  onKeyDown: (ev) => {
                     if (ev.key === 'Enter') {
                       ev.preventDefault();
                       addTrait();

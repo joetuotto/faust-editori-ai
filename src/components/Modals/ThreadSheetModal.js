@@ -520,7 +520,7 @@
                 type: 'text',
                 value: characterInput,
                 onChange: (ev) => setCharacterInput(ev.target.value),
-                onKeyPress: (ev) => {
+                onKeyDown: (ev) => {
                   if (ev.key === 'Enter') {
                     ev.preventDefault();
                     addCharacter();
@@ -630,7 +630,7 @@
                 type: 'text',
                 value: locationInput,
                 onChange: (ev) => setLocationInput(ev.target.value),
-                onKeyPress: (ev) => {
+                onKeyDown: (ev) => {
                   if (ev.key === 'Enter') {
                     ev.preventDefault();
                     addLocation();
@@ -740,7 +740,7 @@
                 type: 'text',
                 value: eventInput,
                 onChange: (ev) => setEventInput(ev.target.value),
-                onKeyPress: (ev) => {
+                onKeyDown: (ev) => {
                   if (ev.key === 'Enter') {
                     ev.preventDefault();
                     addEvent();

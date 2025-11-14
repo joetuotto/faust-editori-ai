@@ -707,7 +707,7 @@
                 type: 'text',
                 value: sceneInput,
                 onChange: (ev) => setSceneInput(ev.target.value),
-                onKeyPress: (ev) => {
+                onKeyDown: (ev) => {
                   if (ev.key === 'Enter') {
                     ev.preventDefault();
                     addScene();

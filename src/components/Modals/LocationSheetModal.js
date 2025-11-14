@@ -525,7 +525,7 @@
                 type: 'text',
                 value: characterInput,
                 onChange: (ev) => setCharacterInput(ev.target.value),
-                onKeyPress: (ev) => {
+                onKeyDown: (ev) => {
                   if (ev.key === 'Enter') {
                     ev.preventDefault();
                     addCharacter();
