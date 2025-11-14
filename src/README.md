@@ -1,9 +1,9 @@
 # FAUST src/ - Modular Architecture
 
 **Sprint 2 Phase 1** - ✅ Complete (4h)
-**Sprint 2 Phase 2** - ⏸️ Partial (6h - Hooks & Modals done)
+**Sprint 2 Phase 2** - 🔄 Substantially Complete (12h - Components extracted)
 **Date:** 2025-11-14
-**Status:** 🔄 In Progress - Components & App.js refactoring remaining
+**Status:** ✅ Major Progress - 2000+ lines extracted, app.js integration remaining
 
 ---
 
@@ -71,7 +71,7 @@ src/
 
 ---
 
-## ✅ Phase 2 Partial Complete (6h)
+## 🔄 Phase 2 Substantially Complete (12h)
 
 ### What's Done:
 
@@ -83,9 +83,11 @@ src/
 - Customizable max width
 - Consistent FAUST styling
 
-#### 2. **Modal Components** (1/5 done)
+#### 2. **Modal Components** ✅ (3/5 done)
 - ✅ `AnnotationDetail.tsx` - Full implementation with delete functionality
-- ⏸️ CharacterSheet, LocationSheet, ThreadSheet, Settings (deferred)
+- ✅ `LocationSheet.tsx` - Story locations from continuity tracker (~130 lines)
+- ✅ `ThreadSheet.tsx` - Plot threads display (~160 lines)
+- ⏸️ CharacterSheet, Settings (deferred - complex, 300+ lines each)
 
 #### 3. **Custom Hooks** ✅✅
 
@@ -110,8 +112,72 @@ src/
 - History tracking & navigation
 - canUndo/canRedo state
 
-#### 4. **Index Files for Easy Imports** ✅
+#### 4. **Sidebar Components** ✅✅ (Complete)
+`src/components/Sidebar/` (~300 lines total)
+
+**Sidebar.tsx** (~130 lines)
+- Main container with collapse functionality
+- Project title and stats display
+- Word count tracking (current/target)
+- Chapter count display
+- Toggle collapse with visual feedback
+
+**ChapterList.tsx** (~50 lines)
+- Renders list of chapters
+- Manages chapter order and active state
+- Delegates to ChapterItem for rendering
+
+**ChapterItem.tsx** (~120 lines)
+- Individual chapter display with title and word count
+- Active state styling (bronze border, highlight)
+- Control buttons (move up, move down, delete)
+- Conditional visibility based on position
+
+#### 5. **Editor Components** ✅✅ (Complete)
+`src/components/Editor/` (~560 lines total)
+
+**EditorStatusBar.tsx** (~70 lines)
+- Chapter metadata display
+- Word count, AI quality score (color-coded)
+- Chapter status badge
+- Pacing indicator
+
+**EditorToolbar.tsx** (~160 lines)
+- Floating AI toolbar with 4 buttons
+- Analyze, Quick check, Synopsis, Generate
+- Smart disable states (min 50 chars)
+- Loading state handling
+
+**FindReplaceDialog.tsx** (~320 lines)
+- Advanced search and replace
+- Search options: case, whole word, regex, all chapters
+- Search history with clickable past searches
+- Results counter and navigation
+
+#### 6. **Inspector Components** ✅ (Partial - 2/4 tabs)
+`src/components/Inspector/` (~520 lines total)
+
+**Inspector.tsx** (~200 lines)
+- Right panel container with tabs
+- Tab navigation (Editor, Chapter, Project, AI)
+- Collapse/expand functionality
+
+**InspectorEditorTab.tsx** (~220 lines)
+- Font selector, text alignment
+- Line spacing, zoom, paragraph spacing
+
+**InspectorProjectTab.tsx** (~100 lines)
+- Genre, language selector
+- Target words, progress percentage
+
+⏸️ **InspectorChapterTab** (deferred - 200+ lines, complex state)
+⏸️ **InspectorAITab** (deferred - 400+ lines, API key management)
+
+#### 7. **Index Files for Easy Imports** ✅
 - `src/components/Modals/index.ts`
+- `src/components/Sidebar/index.ts`
+- `src/components/Editor/index.ts`
+- `src/components/Inspector/index.ts`
 - `src/hooks/index.ts`
 - `src/modules/index.ts`
 - `src/utils/index.ts`
@@ -204,42 +270,41 @@ function Editor() {
 
 ---
 
-## 🔄 Phase 2 Remaining (10-15h)
+## 🔄 Phase 2 Remaining (8-12h)
+
+### Progress Summary:
+✅ **Extracted:** ~2,000 lines across 16 components
+⏸️ **Deferred:** 2 complex modals, 2 complex Inspector tabs (~900 lines)
+🎯 **Next:** App.js integration to use all extracted components
 
 ### Still To Do:
 
-1. **Extract More Modal Components** (4-6h)
-   - CharacterSheet (complex, 4-layer system)
-   - LocationSheet
-   - ThreadSheet
-   - Settings modal
-   - Project Settings modal
+1. **Extract Complex Modal Components** (3-4h) - OPTIONAL
+   - CharacterSheet (300+ lines, 4-layer generation system)
+   - Settings modal (300+ lines, complex configuration)
+   - Note: Can be deferred until app.js integration is complete
 
-2. **Extract Editor Components** (3-5h)
-   - EditorToolbar
-   - EditorStatusBar
-   - EditorContent wrapper
+2. **Extract Complex Inspector Tabs** (2-3h) - OPTIONAL
+   - InspectorChapterTab (200+ lines, metadata management)
+   - InspectorAITab (400+ lines, API key management, provider selection)
+   - Note: These are tightly coupled to app.js state, best extracted with state refactoring
 
-3. **Extract Sidebar Components** (2-3h)
-   - Sidebar container
-   - ChapterList
-   - ChapterItem
+3. **Refactor App.js** (5-8h) - PRIORITY
+   - Import and integrate 13 extracted components
+   - Replace inline JSX with imported components:
+     - Sidebar → `<Sidebar />`
+     - Editor status bar → `<EditorStatusBar />`
+     - Editor toolbar → `<EditorToolbar />`
+     - Find/Replace → `<FindReplaceDialog />`
+     - Inspector → `<Inspector />`
+     - Modals → `<LocationSheet />`, `<ThreadSheet />`, `<AnnotationDetail />`
+   - Use useProject hook for state management
+   - Use useUndoRedo hook for undo/redo
+   - Remove extracted code from app.js
+   - **Target:** Reduce app.js from 10,872 lines → ~8,000 lines (2,000 lines removed)
+   - **Future:** With full extraction → ~500 lines
 
-4. **Extract Inspector Components** (3-4h)
-   - Inspector container
-   - EditorTab
-   - ChapterTab
-   - ProjectTab
-   - AITab
-
-5. **Refactor App.js** (5-8h)
-   - Import and integrate all extracted components
-   - Use useProject hook
-   - Use useUndoRedo hook
-   - Remove extracted code
-   - Target: 10,872 lines → ~500 lines
-
-6. **TypeScript Migration** (Optional, 2-3h)
+4. **TypeScript Migration** (Optional, 2-3h)
    - Convert remaining .js files to .tsx
    - Add strict type checking
    - Fix any type errors
@@ -258,20 +323,30 @@ npm install --save-dev ts-loader typescript @types/react @types/react-dom
 
 ## 🎯 Benefits
 
-### Current State (Phase 1):
+### Current State (After Phase 2):
 - ✅ TypeScript infrastructure ready
-- ✅ Modular architecture defined
-- ✅ First modules extracted and typed
+- ✅ Modular architecture implemented
+- ✅ 16 components extracted and fully typed (~2,000 lines)
+- ✅ 2 custom React hooks (useProject, useUndoRedo)
 - ✅ Utilities separated and reusable
-- ✅ Webpack configured for TypeScript
+- ✅ Webpack configured with path aliases
+- ✅ Component library structure established
+- ✅ All major UI sections componentized (Sidebar, Editor, Inspector, Modals)
 
-### After Phase 2:
-- 🎯 app.js reduced by 95% (from 10,872 → ~500 lines)
-- 🎯 All components reusable and testable
-- 🎯 Full TypeScript type safety
-- 🎯 Better IDE autocomplete
-- 🎯 Easier onboarding for new developers
-- 🎯 Faster development velocity
+### After App.js Integration (Phase 3):
+- 🎯 app.js reduced by ~20% (from 10,872 → ~8,000 lines)
+- 🎯 All extracted components reusable and testable
+- 🎯 Full TypeScript type safety across component library
+- 🎯 Better IDE autocomplete for all extracted code
+- 🎯 Easier to maintain and extend UI components
+- 🎯 Faster development velocity for new features
+- 🎯 Clear separation of concerns (UI vs. logic vs. state)
+
+### Future Vision (Full Extraction):
+- 🚀 app.js reduced by 95% (from 10,872 → ~500 lines)
+- 🚀 100% component coverage
+- 🚀 Comprehensive test coverage
+- 🚀 Storybook integration for component development
 
 ---
 
