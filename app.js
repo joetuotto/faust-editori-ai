@@ -5382,33 +5382,33 @@ ${contextPrompt}`;
                   r: '48',
                   fill: 'none',
                   stroke: 'currentColor',
-                  strokeWidth: '2.5'
+                  strokeWidth: '2'
                 }),
-                // Triangle
+                // Triangle (pointing up from center)
                 e('path', {
-                  d: 'M 50 12 L 85 75 L 15 75 Z',
+                  d: 'M 50 10 L 88 75 L 12 75 Z',
                   fill: 'none',
                   stroke: 'currentColor',
-                  strokeWidth: '2.5'
+                  strokeWidth: '2'
                 }),
-                // Square
+                // Square (inside triangle, centered)
                 e('rect', {
-                  x: '32',
-                  y: '42',
-                  width: '36',
-                  height: '36',
+                  x: '34',
+                  y: '38',
+                  width: '32',
+                  height: '32',
                   fill: 'none',
                   stroke: 'currentColor',
-                  strokeWidth: '2.5'
+                  strokeWidth: '2'
                 }),
-                // Inner circle
+                // Inner circle (centered in square)
                 e('circle', {
                   cx: '50',
-                  cy: '60',
-                  r: '12',
+                  cy: '54',
+                  r: '11',
                   fill: 'none',
                   stroke: 'currentColor',
-                  strokeWidth: '2.5'
+                  strokeWidth: '2'
                 })
               )
             )
