@@ -10417,148 +10417,19 @@ ${contextPrompt}`;
       )
     ),
 
-    // LocationSheet Modal
-    showLocationSheet && e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.85)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999
-      }
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg-1)',
-          border: '2px solid var(--bronze)',
-          borderRadius: '8px',
-          padding: '32px',
-          maxWidth: '800px',
-          width: '90%',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          position: 'relative'
-        }
-      },
-        e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '📍 Story Locations'),
-        e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '24px' } },
-          `${Object.keys(project.continuity?.locations || {}).length} locations tracked`),
-        e('button', {
-          onClick: () => setShowLocationSheet(false),
-          style: {
-            position: 'absolute',
-            top: '24px',
-            right: '24px',
-            background: 'transparent',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text-3)',
-            padding: '4px 12px',
-            cursor: 'pointer',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px'
-          }
-        }, 'Close'),
-        e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' } },
-          Object.values(project.continuity?.locations || {}).map(loc =>
-            e('div', {
-              key: loc.name,
-              style: {
-                padding: '12px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px'
-              }
-            },
-              e('h3', { style: { fontFamily: 'EB Garamond', fontSize: '16px', color: 'var(--text)', marginBottom: '6px' } }, loc.name),
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginBottom: '4px' } },
-                `First mentioned: Chapter ${loc.firstMentioned + 1}`),
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } },
-                `Appearances: ${(loc.appearances || []).length}`)
-            )
-          )
-        )
-      )
-    ),
+    // LocationSheet Modal - Extracted to src/components/Modals/
+    e(LocationSheet, {
+      isOpen: showLocationSheet,
+      onClose: () => setShowLocationSheet(false),
+      locations: project.continuity?.locations || {}
+    }),
 
-    // ThreadSheet Modal (Plot Threads)
-    showThreadSheet && e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.85)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999
-      }
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg-1)',
-          border: '2px solid var(--bronze)',
-          borderRadius: '8px',
-          padding: '32px',
-          maxWidth: '900px',
-          width: '95%',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          position: 'relative'
-        }
-      },
-        e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '🧵 Plot Threads'),
-        e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '24px' } },
-          `${(project.plotThreads || []).length} threads in your story`),
-        e('button', {
-          onClick: () => setShowThreadSheet(false),
-          style: {
-            position: 'absolute',
-            top: '24px',
-            right: '24px',
-            background: 'transparent',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text-3)',
-            padding: '4px 12px',
-            cursor: 'pointer',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px'
-          }
-        }, 'Close'),
-        e('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
-          (project.plotThreads || []).map((thread, idx) =>
-            e('div', {
-              key: idx,
-              style: {
-                padding: '16px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px'
-              }
-            },
-              e('h3', { style: { fontFamily: 'EB Garamond', fontSize: '18px', color: 'var(--text)', marginBottom: '8px' } },
-                thread.name || `Thread ${idx + 1}`),
-              thread.description && e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '8px' } },
-                thread.description),
-              e('div', { style: { display: 'flex', gap: '12px', marginTop: '8px' } },
-                thread.type && e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--sigil)' } },
-                  `Type: ${thread.type}`),
-                thread.status && e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: thread.status === 'resolved' ? '#4CAF50' : '#FFA726' } },
-                  `Status: ${thread.status}`)
-              )
-            )
-          )
-        )
-      )
-    ),
+    // ThreadSheet Modal - Extracted to src/components/Modals/
+    e(ThreadSheet, {
+      isOpen: showThreadSheet,
+      onClose: () => setShowThreadSheet(false),
+      threads: project.plotThreads || []
+    }),
 
     // ChapterSheet Modal (Edit Chapter Details)
     showChapterSheetModal && window.ChapterSheetModal && e(window.ChapterSheetModal, {
