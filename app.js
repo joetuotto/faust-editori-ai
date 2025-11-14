@@ -971,8 +971,11 @@ function FAUSTApp() {
 
   // CharacterSheet modal state (view/edit existing characters)
   const [showCharacterSheet, setShowCharacterSheet] = useState(false);
-  const [selectedCharacter, setSelectedCharacter] = useState(null);
-  const [characterSheetMode, setCharacterSheetMode] = useState('list'); // 'list', 'view', 'edit'
+  const [characterModalState, setCharacterModalState] = useState({
+    isOpen: false,
+    character: null,
+    mode: 'create'
+  });
 
   // LocationSheet modal state
   const [showLocationSheet, setShowLocationSheet] = useState(false);
@@ -992,6 +995,15 @@ function FAUSTApp() {
   // ExportModal state
   const [showExportModal, setShowExportModal] = useState(false);
 
+  // AI Toolbar state
+  const [showAIToolbar, setShowAIToolbar] = useState(false);
+  const [aiToolbarPosition, setAIToolbarPosition] = useState(() => {
+    const saved = localStorage.getItem('faust-ai-toolbar-position');
+    return saved ? JSON.parse(saved) : { x: window.innerWidth - 500, y: 80 };
+  });
+  const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
   // Handler to save chapter data from modal
   const handleChapterSheetSave = (chapterData) => {
     setProject(prev => ({
@@ -1003,6 +1015,77 @@ function FAUSTApp() {
     setUnsavedChanges(true);
     setShowChapterSheetModal(false);
     console.log('[ChapterSheet] Chapter updated:', activeChapterId);
+  };
+
+  // Character modal helpers
+  const openCharacterModal = (mode = 'create', character = null) => {
+    setCharacterModalState({
+      isOpen: true,
+      character,
+      mode
+    });
+  };
+
+  const closeCharacterModal = () => {
+    setCharacterModalState({
+      isOpen: false,
+      character: null,
+      mode: 'create'
+    });
+  };
+
+  const handleCharacterSave = async (characterData) => {
+    setProject(prev => {
+      const characters = [...(prev.characters || [])];
+      const index = characters.findIndex(c => {
+        if (c.id && characterData.id) {
+          return c.id === characterData.id;
+        }
+        return c === characterModalState.character;
+      });
+
+      if (index === -1) {
+        characters.push(characterData);
+      } else {
+        characters[index] = { ...characters[index], ...characterData };
+      }
+
+      return {
+        ...prev,
+        characters
+      };
+    });
+
+    setUnsavedChanges(true);
+  };
+
+  const handleCharacterDelete = (character) => {
+    if (!character) return;
+
+    const name = character.basicInfo?.name || character.name || 'hahmo';
+    if (!confirm(`Delete character "${name}"?`)) {
+      return;
+    }
+
+    setProject(prev => ({
+      ...prev,
+      characters: (prev.characters || []).filter(c => {
+        if (character.id && c.id) {
+          return c.id !== character.id;
+        }
+        return c !== character;
+      })
+    }));
+
+    if (
+      characterModalState.isOpen &&
+      characterModalState.character &&
+      ((character.id && characterModalState.character.id === character.id) || characterModalState.character === character)
+    ) {
+      closeCharacterModal();
+    }
+
+    setUnsavedChanges(true);
   };
 
   // Handler to save location data from modal
@@ -1273,10 +1356,11 @@ function FAUSTApp() {
           setShowRegenerateDialog(false);
           setRegenerateFeedback('');
           console.log('[ESC] Closed Regenerate dialog');
+        } else if (characterModalState.isOpen) {
+          closeCharacterModal();
+          console.log('[ESC] Closed Character Modal');
         } else if (showCharacterSheet) {
           setShowCharacterSheet(false);
-          setCharacterSheetMode('list');
-          setSelectedCharacter(null);
           console.log('[ESC] Closed Character Sheet');
         } else if (showLocationSheet) {
           setShowLocationSheet(false);
@@ -1343,6 +1427,7 @@ function FAUSTApp() {
     showFindDialog,
     showReplaceDialog,
     showRegenerateDialog,
+    characterModalState,
     showCharacterSheet,
     showLocationSheet,
     showThreadSheet,
@@ -4922,6 +5007,21 @@ ${contextPrompt}`;
               fontWeight: aiAssistantOpen ? 600 : 400
             }
           }, 'LIMINAL ENGINE'),
+          e('button', {
+            onClick: () => setShowAIToolbar(prev => !prev),
+            title: showAIToolbar ? 'Piilota AI työkalupalkki' : 'Näytä AI työkalupalkki',
+            style: {
+              background: showAIToolbar ? 'var(--bronze)' : 'transparent',
+              border: '1px solid var(--border-color)',
+              color: showAIToolbar ? '#000' : 'var(--text)',
+              padding: '4px 12px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px',
+              fontWeight: showAIToolbar ? 600 : 400
+            }
+          }, '🜔 AI Työkalut'),
           e('button', {
             onClick: () => setShowSettings(true),
             style: {

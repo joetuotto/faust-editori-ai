@@ -18,7 +18,7 @@ const CRITICAL_FILES = [
   { src: 'src/utils/voiceInput.js', dst: 'dist/src/utils/voiceInput.js' },
   { src: 'src/utils/CommandManager.js', dst: 'dist/src/utils/CommandManager.js' },
   { src: 'src/components/AnnotationMargin.js', dst: 'dist/src/components/AnnotationMargin.js' },
-  { src: 'src/components/Modals/index.js', dst: 'dist/src/components/Modals/index.js' },
+  // Note: Modals/index.js uses ES6 exports and is for webpack only, not direct browser loading
   { src: 'src/components/Modals/CharacterSheetModal.js', dst: 'dist/src/components/Modals/CharacterSheetModal.js' },
   { src: 'src/components/Modals/LocationSheetModal.js', dst: 'dist/src/components/Modals/LocationSheetModal.js' },
   { src: 'src/components/Modals/ThreadSheetModal.js', dst: 'dist/src/components/Modals/ThreadSheetModal.js' },
