@@ -2,12 +2,32 @@
  * FAUST - Simple Clean Implementation
  * Uses new faust-simple-layout.css
  * v2.0: Project structure for AI book generation
+ * v2.1: Modular component architecture with TypeScript
  */
 
 const { createElement: e, useState, useEffect, useRef } = React;
 
 // ============================================================================
+// MODULAR COMPONENTS - Extracted to src/components/
+// ============================================================================
+import { Sidebar } from '@components/Sidebar';
+import { EditorStatusBar, EditorToolbar, FindReplaceDialog } from '@components/Editor';
+import { Inspector } from '@components/Inspector';
+import { LocationSheet, ThreadSheet, AnnotationDetail } from '@components/Modals';
+
+// Custom Hooks
+// import { useProject } from '@hooks'; // TODO: Integrate in future phase
+// import { useUndoRedo } from '@hooks'; // TODO: Integrate in future phase
+
+// Modules & Utils
+import { CharacterGenerator } from '@modules/CharacterGenerator';
+// import { saveProject, loadProject, autosaveProject } from '@utils/fileIO'; // TODO: Replace inline functions
+// import { validateProject } from '@utils/validators'; // TODO: Replace inline validation
+
+// ============================================================================
 // CHARACTER GENERATOR - 4-Layer Deep Character System
+// Note: Now imported from @modules/CharacterGenerator (line 30)
+// Keeping inline class temporarily for compatibility until full integration
 // ============================================================================
 class CharacterGenerator {
   constructor() {
@@ -4722,147 +4742,18 @@ ${contextPrompt}`;
     // Main content - three columns
     e('div', { className: 'faust-main' },
       // Left sidebar - Chapter list
-      e('div', { className: sidebarCollapsed ? 'faust-sidebar collapsed' : 'faust-sidebar' },
-        // Collapse button (always visible)
-        e('button', {
-          onClick: () => setSidebarCollapsed(!sidebarCollapsed),
-          title: sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar',
-          style: {
-            position: 'absolute',
-            top: '12px',
-            right: sidebarCollapsed ? '4px' : '8px',
-            width: sidebarCollapsed ? '32px' : '24px',
-            height: '24px',
-            background: 'var(--bg-2)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text-2)',
-            cursor: 'pointer',
-            fontSize: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'all 0.2s',
-            zIndex: 10
-          }
-        }, sidebarCollapsed ? '→' : '←'),
-
-        !sidebarCollapsed && e('div', { style: { padding: '16px', color: 'var(--text)' } },
-          e('h3', { style: { fontFamily: 'EB Garamond', fontSize: '16px', marginBottom: '12px' } }, project.title),
-
-          // Project stats
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text-3)',
-              marginBottom: '16px',
-              paddingBottom: '12px',
-              borderBottom: '1px solid var(--border-color)'
-            }
-          },
-            e('div', null, `${project.targets.currentTotal} / ${project.targets.totalWords} sanaa`),
-            e('div', null, `${project.structure.length} lukua`)
-          ),
-
-          // Chapter list
-          e('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '16px' } },
-            project.structure.map((chapter, idx) =>
-              e('div', {
-                key: chapter.id,
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  padding: '8px 12px',
-                  borderRadius: '4px',
-                  background: chapter.id === activeChapterId ? 'var(--bg-tertiary, rgba(143,122,83,0.1))' : 'transparent',
-                  borderLeft: chapter.id === activeChapterId ? '2px solid var(--bronze)' : '2px solid transparent',
-                  transition: 'all 0.2s'
-                }
-              },
-                // Chapter info (clickable)
-                e('div', {
-                  onClick: () => setActiveChapterId(chapter.id),
-                  style: {
-                    flex: 1,
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '13px',
-                    color: chapter.id === activeChapterId ? 'var(--text)' : 'var(--text-2)'
-                  }
-                },
-                  e('div', { style: { marginBottom: '4px' } }, chapter.title),
-                  e('div', { style: { fontSize: '11px', color: 'var(--text-3)' } }, `${chapter.wordCount} sanaa`)
-                ),
-
-                // Chapter controls (only show for active chapter)
-                chapter.id === activeChapterId ? e('div', { style: { display: 'flex', gap: '2px' } },
-                  // Move up
-                  idx > 0 ? e('button', {
-                    onClick: () => moveChapterUp(chapter.id),
-                    title: 'Siirrä ylös',
-                    style: {
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-3)',
-                      cursor: 'pointer',
-                      padding: '2px 4px',
-                      fontSize: '14px'
-                    }
-                  }, '↑') : null,
-
-                  // Move down
-                  idx < project.structure.length - 1 ? e('button', {
-                    onClick: () => moveChapterDown(chapter.id),
-                    title: 'Siirrä alas',
-                    style: {
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-3)',
-                      cursor: 'pointer',
-                      padding: '2px 4px',
-                      fontSize: '14px'
-                    }
-                  }, '↓') : null,
-
-                  // Delete
-                  project.structure.length > 1 ? e('button', {
-                    onClick: () => deleteChapter(chapter.id),
-                    title: 'Poista luku',
-                    style: {
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--error)',
-                      cursor: 'pointer',
-                      padding: '2px 4px',
-                      fontSize: '14px',
-                      transition: 'all 0.2s'
-                    }
-                  }, '×') : null
-                ) : null
-              )
-            )
-          ),
-
-          // Add chapter button
-          e('button', {
-            onClick: addChapter,
-            style: {
-              width: '100%',
-              padding: '8px',
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text-2)',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              transition: 'all 0.2s'
-            }
-          }, '+ Uusi luku')
-        )
-      ),
+      // Sidebar - Extracted to src/components/Sidebar/
+      e(Sidebar, {
+        project: project,
+        activeChapterId: activeChapterId,
+        isCollapsed: sidebarCollapsed,
+        onToggleCollapse: () => setSidebarCollapsed(!sidebarCollapsed),
+        onChapterClick: setActiveChapterId,
+        onAddChapter: addChapter,
+        onMoveChapterUp: moveChapterUp,
+        onMoveChapterDown: moveChapterDown,
+        onDeleteChapter: deleteChapter
+      }),
 
       // Center editor
       e('div', { className: 'faust-editor' },
@@ -4934,180 +4825,18 @@ ${contextPrompt}`;
             }
           }),
 
-          // Word count and AI quality bar
-          e('div', {
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              gap: '16px',
-              marginBottom: '8px'
-            }
-          },
-            // Word count
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                color: 'var(--text-3)'
-              }
-            }, `${activeChapter.wordCount} sanaa`),
+          // EditorStatusBar - Extracted to src/components/Editor/
+          e(EditorStatusBar, { chapter: activeChapter }),
 
-            // AI Quality score
-            activeChapter.aiQuality && activeChapter.aiQuality.score > 0 ? e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: activeChapter.aiQuality.score >= 8 ? '#4CAF50' :
-                       activeChapter.aiQuality.score >= 6 ? '#FFA726' : '#EF5350',
-                padding: '2px 8px',
-                borderRadius: '4px',
-                background: 'var(--bg-2)',
-                border: '1px solid currentColor'
-              }
-            }, `AI: ${activeChapter.aiQuality.score.toFixed(1)}/10`) : null,
-
-            // Status badge
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                padding: '2px 8px',
-                borderRadius: '4px',
-                background: 'var(--bg-2)',
-                textTransform: 'uppercase'
-              }
-            }, activeChapter.status || 'draft'),
-
-            // Pacing indicator
-            activeChapter.pacing && activeChapter.pacing.speed ? e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)'
-              }
-            }, `Tempo: ${activeChapter.pacing.speed}`) : null
-          ),
-
-          // Floating AI Toolbar (absolute positioned, doesn't take document flow space)
-          e('div', {
-            style: {
-              position: 'absolute',
-              top: isGenerating ? '104px' : '80px', // Below title area and loading indicator
-              right: '20px', // Changed from left to right to avoid title
-              display: 'flex',
-              gap: '6px',
-              background: 'rgba(0, 0, 0, 0.85)',
-              backdropFilter: 'blur(8px)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '8px',
-              padding: '8px',
-              zIndex: 100,
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-              animation: 'fadeIn 0.3s ease'
-            }
-          },
-            // Analyze button
-            e('button', {
-              onClick: async () => {
-                console.log('[UI] Analysoi clicked');
-                const result = await analyzeChapterContent(activeChapterId);
-                if (result) {
-                  alert('Analyysi valmis! Tarkista luvun AI Quality -arvosana.');
-                } else {
-                  alert('Analyysi epäonnistui. Tarkista että:\n1. Claude API-avain on asetettu\n2. Luvussa on tekstiä (vähintään 50 merkkiä)');
-                }
-              },
-              disabled: !activeChapter.content || activeChapter.content.length < 50,
-              title: 'Analysoi luvun laatu ja sisältö AI:lla',
-              style: {
-                padding: '8px 12px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: !activeChapter.content || activeChapter.content.length < 50 ? 'var(--text-3)' : 'var(--text)',
-                cursor: !activeChapter.content || activeChapter.content.length < 50 ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                opacity: !activeChapter.content || activeChapter.content.length < 50 ? 0.5 : 1,
-                minWidth: '36px'
-              }
-            }, '🤖'),
-
-            // Quick quality check
-            e('button', {
-              onClick: async () => {
-                console.log('[UI] Pika-arvio clicked');
-                const result = await quickQualityCheck(activeChapterId);
-                if (result && result.score) {
-                  alert(`Pika-arvio valmis!\n\nPisteet: ${result.score}/10\n\nEhdotukset:\n${result.suggestions?.join('\n') || 'Ei ehdotuksia'}`);
-                } else {
-                  alert('Pika-arvio epäonnistui. Tarkista että:\n1. Claude API-avain on asetettu\n2. Luvussa on tekstiä');
-                }
-              },
-              disabled: !activeChapter.content || activeChapter.content.length < 50,
-              title: 'Pikainen laatutarkistus AI:lla',
-              style: {
-                padding: '8px 12px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: !activeChapter.content || activeChapter.content.length < 50 ? 'var(--text-3)' : 'var(--text)',
-                cursor: !activeChapter.content || activeChapter.content.length < 50 ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                opacity: !activeChapter.content || activeChapter.content.length < 50 ? 0.5 : 1,
-                minWidth: '36px'
-              }
-            }, '⚡'),
-
-            // Generate synopsis
-            e('button', {
-              onClick: async () => {
-                console.log('[UI] Synopsis clicked');
-                const result = await generateSynopsis(activeChapterId);
-                if (result) {
-                  alert(`Synopsis luotu:\n\n${result}`);
-                } else {
-                  alert('Synopsis-luonti epäonnistui. Tarkista että:\n1. Claude API-avain on asetettu\n2. Luvussa on tekstiä');
-                }
-              },
-              disabled: !activeChapter.content || activeChapter.content.length < 50,
-              title: 'Luo tiivistelmä luvusta AI:lla',
-              style: {
-                padding: '8px 12px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: !activeChapter.content || activeChapter.content.length < 50 ? 'var(--text-3)' : 'var(--text)',
-                cursor: !activeChapter.content || activeChapter.content.length < 50 ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                opacity: !activeChapter.content || activeChapter.content.length < 50 ? 0.5 : 1,
-                minWidth: '36px'
-              }
-            }, '📝'),
-
-            // Generate chapter
-            e('button', {
-              onClick: () => generateChapter(activeChapterId),
-              disabled: isGenerating,
-              title: isGenerating ? 'Generoidaan...' : 'Generoi luku AI:lla',
-              style: {
-                padding: '8px 12px',
-                background: isGenerating ? 'var(--bg-2)' : 'var(--bronze)',
-                border: '1px solid var(--bronze)',
-                borderRadius: '6px',
-                color: isGenerating ? 'var(--text-3)' : '#000',
-                cursor: isGenerating ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                fontWeight: 600,
-                opacity: isGenerating ? 0.5 : 1,
-                minWidth: '36px'
-              }
-            }, isGenerating ? '⏳' : '✨')
-          ),
+          // EditorToolbar - Extracted to src/components/Editor/
+          e(EditorToolbar, {
+            chapter: activeChapter,
+            isGenerating: isGenerating,
+            onAnalyze: () => analyzeChapterContent(activeChapterId),
+            onQuickCheck: () => quickQualityCheck(activeChapterId),
+            onGenerateSynopsis: () => generateSynopsis(activeChapterId),
+            onGenerateChapter: () => generateChapter(activeChapterId)
+          }),
 
           // Generation progress indicator
           generationProgress && e('div', {
@@ -5247,208 +4976,31 @@ ${contextPrompt}`;
             )
           ) : null,
 
-          // Find & Replace dialog
-          showFindDialog ? e('div', {
-            style: {
-              position: 'absolute',
-              top: '16px',
-              right: '16px',
-              background: 'var(--bg-1)',
-              border: '2px solid var(--border-color)',
-              borderRadius: '8px',
-              padding: '16px',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-              minWidth: '320px',
-              zIndex: 300
-            }
-          },
-            e('div', { style: { marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-              e('h3', { style: { fontFamily: 'IBM Plex Mono', fontSize: '14px', margin: 0 } }, showReplaceDialog ? 'Etsi ja korvaa' : 'Etsi'),
-              e('button', {
-                onClick: closeFindDialog,
-                style: {
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-2)',
-                  cursor: 'pointer',
-                  fontSize: '18px'
-                }
-              }, '×')
-            ),
-            e('input', {
-              type: 'text',
-              value: searchTerm,
-              onChange: (ev) => setSearchTerm(ev.target.value),
-              onKeyDown: (ev) => {
-                if (ev.key === 'Enter') performSearch();
-                if (ev.key === 'Escape') closeFindDialog();
-              },
-              placeholder: 'Hae...',
-              autoFocus: true,
-              style: {
-                width: '100%',
-                padding: '8px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                marginBottom: '8px'
-              }
-            }),
-            showReplaceDialog ? e('input', {
-              type: 'text',
-              value: replaceTerm,
-              onChange: (ev) => setReplaceTerm(ev.target.value),
-              placeholder: 'Korvaa...',
-              style: {
-                width: '100%',
-                padding: '8px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                marginBottom: '8px'
-              }
-            }) : null,
-            // Options row 1
-            e('div', { style: { display: 'flex', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' } },
-              e('label', { style: { fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } },
-                e('input', {
-                  type: 'checkbox',
-                  checked: caseSensitive,
-                  onChange: (ev) => setCaseSensitive(ev.target.checked)
-                }),
-                'Aa (case)'
-              ),
-              e('label', { style: { fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } },
-                e('input', {
-                  type: 'checkbox',
-                  checked: matchWholeWord,
-                  onChange: (ev) => setMatchWholeWord(ev.target.checked)
-                }),
-                'Koko sana'
-              ),
-              e('label', { style: { fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } },
-                e('input', {
-                  type: 'checkbox',
-                  checked: useRegex,
-                  onChange: (ev) => setUseRegex(ev.target.checked)
-                }),
-                'Regex'
-              ),
-              e('label', { style: { fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } },
-                e('input', {
-                  type: 'checkbox',
-                  checked: searchInAllChapters,
-                  onChange: (ev) => setSearchInAllChapters(ev.target.checked)
-                }),
-                'Kaikki luvut'
-              )
-            ),
-            // Search history dropdown
-            searchHistory.length > 0 ? e('details', { style: { marginBottom: '8px' } },
-              e('summary', {
-                style: {
-                  fontSize: '11px',
-                  color: 'var(--text-3)',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                  fontFamily: 'IBM Plex Mono'
-                }
-              }, `Historia (${searchHistory.length})`),
-              e('div', { style: { marginTop: '4px', maxHeight: '150px', overflowY: 'auto' } },
-                ...searchHistory.map((term, idx) =>
-                  e('div', {
-                    key: idx,
-                    onClick: () => {
-                      setSearchTerm(term);
-                      performSearch(term);
-                    },
-                    style: {
-                      padding: '4px 8px',
-                      fontSize: '12px',
-                      fontFamily: 'IBM Plex Mono',
-                      color: 'var(--text-2)',
-                      cursor: 'pointer',
-                      borderRadius: '3px',
-                      background: 'var(--bg-2)',
-                      marginBottom: '2px'
-                    },
-                    onMouseEnter: (ev) => ev.target.style.background = 'var(--bg-3)',
-                    onMouseLeave: (ev) => ev.target.style.background = 'var(--bg-2)'
-                  }, term.length > 40 ? term.substring(0, 40) + '...' : term)
-                )
-              )
-            ) : null,
-            searchResults.length > 0 ? e('div', {
-              style: {
-                fontSize: '11px',
-                color: 'var(--text-2)',
-                marginBottom: '8px'
-              }
-            }, `${currentSearchIndex + 1} / ${searchResults.length}`) : null,
-            e('div', { style: { display: 'flex', gap: '4px', flexWrap: 'wrap' } },
-              e('button', {
-                onClick: performSearch,
-                style: {
-                  padding: '6px 12px',
-                  background: 'var(--bronze)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#000',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px'
-                }
-              }, 'Etsi'),
-              e('button', {
-                onClick: findNext,
-                disabled: searchResults.length === 0,
-                style: {
-                  padding: '6px 12px',
-                  background: searchResults.length === 0 ? 'var(--bg-2)' : 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  cursor: searchResults.length === 0 ? 'not-allowed' : 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px'
-                }
-              }, 'Seuraava'),
-              showReplaceDialog ? e('button', {
-                onClick: replaceCurrent,
-                disabled: currentSearchIndex < 0,
-                style: {
-                  padding: '6px 12px',
-                  background: currentSearchIndex < 0 ? 'var(--bg-2)' : 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  cursor: currentSearchIndex < 0 ? 'not-allowed' : 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px'
-                }
-              }, 'Korvaa') : null,
-              showReplaceDialog ? e('button', {
-                onClick: replaceAll,
-                disabled: searchResults.length === 0,
-                style: {
-                  padding: '6px 12px',
-                  background: searchResults.length === 0 ? 'var(--bg-2)' : 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  cursor: searchResults.length === 0 ? 'not-allowed' : 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px'
-                }
-              }, 'Korvaa kaikki') : null
-            )
-          ) : null,
+          // FindReplaceDialog - Extracted to src/components/Editor/ (replaced ~200 lines)
+          e(FindReplaceDialog, {
+            isOpen: showFindDialog,
+            showReplace: showReplaceDialog,
+            searchTerm: searchTerm,
+            replaceTerm: replaceTerm,
+            caseSensitive: caseSensitive,
+            matchWholeWord: matchWholeWord,
+            useRegex: useRegex,
+            searchInAllChapters: searchInAllChapters,
+            searchHistory: searchHistory,
+            searchResults: searchResults,
+            currentSearchIndex: currentSearchIndex,
+            onSearchTermChange: setSearchTerm,
+            onReplaceTermChange: setReplaceTerm,
+            onCaseSensitiveChange: setCaseSensitive,
+            onMatchWholeWordChange: setMatchWholeWord,
+            onUseRegexChange: setUseRegex,
+            onSearchInAllChaptersChange: setSearchInAllChapters,
+            onClose: closeFindDialog,
+            onSearch: performSearch,
+            onFindNext: findNext,
+            onReplaceCurrent: replaceCurrent,
+            onReplaceAll: replaceAll
+          }),
 
           // Voice diff view (when AI has generated new version)
           voiceDiffView ? e('div', {
