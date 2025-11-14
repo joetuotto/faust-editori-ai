@@ -1,0 +1,77 @@
+╔════════════════════════════════════════════════════════════════╗
+║                                                                ║
+║                    FAUST 2.1.0 - AI Writing Editor            ║
+║                    Character Engine Edition                    ║
+║                                                                ║
+╚════════════════════════════════════════════════════════════════╝
+
+
+📦 ASENNUS / INSTALLATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Raahaa FAUST.app Applications-kansioon
+   Drag FAUST.app to the Applications folder
+
+2. Käynnistä FAUST Applications-kansiosta
+   Launch FAUST from Applications folder
+
+
+⚙️ VAATIMUKSET / REQUIREMENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+• macOS 10.12 tai uudempi / macOS 10.12 or newer
+• Apple Silicon (M1/M2/M3) tai Intel
+• 100 MB vapaa levytila / 100 MB free disk space
+
+
+🔑 API-AVAIMET / API KEYS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+AI-ominaisuuksien käyttöön tarvitset API-avaimen:
+To use AI features, you need an API key from:
+
+• Anthropic Claude: console.anthropic.com
+• OpenAI GPT: platform.openai.com
+• xAI Grok: x.ai
+• DeepSeek: deepseek.com
+
+
+✨ OMINAISUUDET / FEATURES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ AI-avusteinen kirjoittaminen (4 kirjoitustilaa)
+✓ Character Engine - 4-kerroksinen hahmojärjestelmä
+✓ Juonilanka- ja jatkuvuusseuranta
+✓ Vienti: PDF, EPUB, MOBI, DOCX
+✓ Versiohistoria ja Undo/Redo (Command Pattern)
+✓ Puheohjaus ja saneluominaisuudet
+✓ Bioresonanssi-teema (harmonia & tasapaino)
+
+
+📚 DOKUMENTAATIO / DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+README.md - Täydelliset ohjeet / Complete instructions
+ALOITA_TÄSTÄ.md - Pika-aloitus suomeksi / Quick start in Finnish
+API_KEYS.md - API-avainten asennus / API key setup
+
+
+⭐ VERSION 2.1.0
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+• Character Engine phrenology-logo
+• Kahdeksansakarainen tähti -ikoni
+• Command Pattern undo/redo-järjestelmä
+• Yksinkertaistettu asetuspaneeli
+• 40/40 ominaisuutta valmiina
+
+
+🌟 KIITOS / THANK YOU
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FAUST on rakennettu rakkaudella kirjoittamista kohtaan.
+FAUST is built with love for the craft of writing.
+
+Nauti luomisesta! / Enjoy creating!
+
+═══════════════════════════════════════════════════════════════

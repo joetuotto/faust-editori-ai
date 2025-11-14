@@ -82,3 +82,18 @@ echo "   3. Jos ei toimi, palauta: mv backups/faust*.js ."
 echo ""
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

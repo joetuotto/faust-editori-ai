@@ -31,6 +31,17 @@
   --error: #FF6B6B;
   --warning: #FFB020;
   --success: #4CAF6E;
+  --info: #4A9EFF;
+
+  /* Button hierarchy */
+  --btn-primary: #B68B5C;         /* Primary actions - bronze/sigil */
+  --btn-primary-hover: #C99B6C;   /* Lighter bronze */
+  --btn-secondary: transparent;    /* Secondary - borders only */
+  --btn-secondary-border: #8C806C; /* Border color */
+  --btn-danger: #FF6B6B;          /* Destructive actions */
+  --btn-danger-hover: #FF5252;    /* Darker red */
+  --btn-success: #4CAF6E;         /* Success/confirm */
+  --btn-success-hover: #3D9A5C;
 
   /* Paper shadow - Candlelight effect */
   --paper-shadow: 0 0 40px rgba(0,0,0,0.6);
@@ -65,6 +76,17 @@
   --error: #B23A3A;
   --warning: #B67B20;
   --success: #2F7A58;
+  --info: #3B7FCC;
+
+  /* Button hierarchy */
+  --btn-primary: #B68B5C;
+  --btn-primary-hover: #A07A4C;
+  --btn-secondary: transparent;
+  --btn-secondary-border: #867C71;
+  --btn-danger: #B23A3A;
+  --btn-danger-hover: #A03030;
+  --btn-success: #2F7A58;
+  --btn-success-hover: #276648;
 
   /* Paper shadow - Soft daylight */
   --paper-shadow: 0 0 30px rgba(0,0,0,0.05);
@@ -193,6 +215,20 @@ h1, h2, h3, h4, h5, h6 {
   pointer-events: none;
   z-index: 9999;
   animation: golden-swipe 800ms ease-in-out;
+}
+
+/* ===== AI ASSISTANT PANEL ANIMATIONS ===== */
+
+/* Slide in from right */
+@keyframes slideInFromRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 /* ===== CURSOR ANIMATIONS ===== */

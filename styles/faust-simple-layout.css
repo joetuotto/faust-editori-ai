@@ -24,6 +24,16 @@
   flex-shrink: 0;
   background: var(--bg-primary, #141210);
   border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.1));
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+}
+
+/* Allow clicking on interactive elements in header */
+.faust-header button,
+.faust-header input,
+.faust-header select,
+.faust-header a {
+  -webkit-app-region: no-drag;
 }
 
 /* Main content area - three columns */
@@ -41,6 +51,16 @@
   background: var(--bg-secondary, #100F0D);
   border-right: 1px solid var(--border-color, rgba(255,255,255,0.05));
   overflow-y: auto;
+  -webkit-app-region: no-drag;
+  -webkit-user-select: text;
+  user-select: text;
+  transition: width 0.3s ease;
+  position: relative;
+}
+
+.faust-sidebar.collapsed {
+  width: 40px;
+  overflow: hidden;
 }
 
 /* Center editor - fills remaining space */
@@ -51,6 +71,7 @@
   overflow: hidden;
   background: var(--paper, #1C1917);
   color: var(--ink, #F0E9E1);
+  position: relative;
 
   /* Vignette effect - candlelight on parchment */
   box-shadow:
@@ -58,6 +79,11 @@
     inset 0 0 60px rgba(0, 0, 0, 0.08);
 
   position: relative;
+
+  /* Allow text selection and interaction */
+  -webkit-app-region: no-drag;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 /* Radial vignetting - focus aura */
@@ -92,10 +118,20 @@
   border-left: 1px solid var(--border-color, rgba(255,255,255,0.05));
   overflow-y: auto;
   display: none;
+  -webkit-app-region: no-drag;
+  -webkit-user-select: text;
+  user-select: text;
+  transition: width 0.3s ease;
+  position: relative;
 }
 
 .faust-inspector.visible {
   display: block;
+}
+
+.faust-inspector.collapsed {
+  width: 40px;
+  overflow: hidden;
 }
 
 /* Textarea - fills editor content area */
@@ -110,6 +146,12 @@
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
+
+  /* Explicitly enable text selection and editing */
+  -webkit-app-region: no-drag;
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
 }
 
 .faust-textarea::placeholder {
@@ -137,6 +179,102 @@
   .faust-inspector {
     width: 250px;
   }
+}
+
+/* Voice AI Assistant Animations */
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.9;
+  }
+}
+
+/* AI Loading Spinner */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===== IMPROVED HOVER EFFECTS ===== */
+
+/* General button hover effects */
+button {
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+button:hover:not(:disabled) {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(0);
+  filter: brightness(0.95);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Input and select hover effects */
+input:not([type="checkbox"]):not([type="radio"]),
+select,
+textarea {
+  transition: all 0.2s ease;
+}
+
+input:hover:not(:disabled):not(:focus),
+select:hover:not(:disabled):not(:focus),
+textarea:hover:not(:disabled):not(:focus) {
+  border-color: var(--bronze, #B68B5C);
+  filter: brightness(1.05);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--sigil, #F5E6D3);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(245, 230, 211, 0.2);
+}
+
+/* Checkbox and radio hover */
+input[type="checkbox"]:hover,
+input[type="radio"]:hover {
+  cursor: pointer;
+  filter: brightness(1.2);
+}
+
+/* Link hover effects */
+a {
+  transition: all 0.2s ease;
+}
+
+a:hover {
+  filter: brightness(1.2);
+  text-decoration: underline;
 }
 
 /* Layout verified and working! */

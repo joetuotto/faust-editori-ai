@@ -26,6 +26,10 @@ export class AIManager {
   }
 
   async callAI(model: string, prompt: string): Promise<AIResponse> {
+    if (!window.electronAPI) {
+      return { success: false, error: 'Electron API not available' };
+    }
+
     let result;
     switch (model) {
       case 'claude':
@@ -60,9 +64,11 @@ export class AIManager {
   }
 
   gatherContext(): string {
-    const activeItem = this.getActiveItem(); // Assume helper
+    // Note: getActiveItem() should be implemented or passed from parent component
     return JSON.stringify({
       outline: this.project?.story?.outline || '',
+      title: this.project?.title || '',
+      genre: this.project?.genre || ''
       // ... other context
     });
   }
@@ -89,5 +95,20 @@ export class AIManager {
     return new AIManager();
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

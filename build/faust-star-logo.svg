@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="#f5f1e8"/>
+
+  <!-- Eight-pointed star (centered) -->
+  <g transform="translate(512, 512)">
+    <!-- Star paths - 8 pointed star with smooth curves -->
+    <path d="
+      M 0,-280
+      C 20,-200 40,-120 60,-80
+      L 200,-200
+      C 160,-140 120,-80 80,-60
+      L 280,0
+      C 200,20 120,40 80,60
+      L 200,200
+      C 140,160 80,120 60,80
+      L 0,280
+      C -20,200 -40,120 -60,80
+      L -200,200
+      C -160,140 -120,80 -80,60
+      L -280,0
+      C -200,-20 -120,-40 -80,-60
+      L -200,-200
+      C -140,-160 -80,-120 -60,-80
+      Z
+    " fill="#1a1a1a"/>
+  </g>
+
+  <!-- FAUST text with bronze/gold color -->
+  <g transform="translate(512, 850)">
+    <text x="0" y="0"
+          font-family="serif"
+          font-size="140"
+          font-weight="bold"
+          text-anchor="middle"
+          fill="#B68B5C"
+          stroke="#1a1a1a"
+          stroke-width="3">FAUST</text>
+  </g>
+</svg>

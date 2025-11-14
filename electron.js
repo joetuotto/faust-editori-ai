@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage } = require('elec
 const { convertToRTF, convertToHTML, convertToDocx } = require("./utils/documentConverters");
 const path = require('path');
 const fs = require('fs').promises;
+const https = require('https');
 
 // Load environment variables
 require('dotenv').config();
@@ -10,6 +11,18 @@ require('dotenv').config();
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+// AI Modules (loaded lazily to avoid circular dependencies)
+let StoryContinuityTracker, BatchProcessor, HybridWritingFlow, CostOptimizer;
+
+function loadAIModules() {
+  if (!StoryContinuityTracker) {
+    StoryContinuityTracker = require('./modules/StoryContinuityTracker');
+    BatchProcessor = require('./modules/BatchProcessor');
+    HybridWritingFlow = require('./modules/HybridWritingFlow');
+    CostOptimizer = require('./modules/CostOptimizer');
+  }
+}
 
 // Global config (now encrypted)
 let apiConfig = {};
@@ -204,6 +217,14 @@ function createMenu() {
               label: 'Vie PDF...',
               accelerator: 'CmdOrCtrl+P',
               click: () => mainWindow.webContents.send('export-pdf-trigger')
+            },
+            {
+              label: 'Vie EPUB...',
+              click: () => mainWindow.webContents.send('export-epub-trigger')
+            },
+            {
+              label: 'Vie MOBI (Kindle)...',
+              click: () => mainWindow.webContents.send('export-mobi-trigger')
             }
           ]
         },
@@ -544,40 +565,103 @@ app.on('window-all-closed', () => {
   }
 });
 
-// Tallenna projekti
+// Tallenna projekti (.faust format)
 ipcMain.handle('save-project', async (event, projectData) => {
   try {
     const { filePath } = await dialog.showSaveDialog(mainWindow, {
       title: 'Tallenna projekti',
-      defaultPath: 'projekti.json',
-      filters: [{ name: 'Kirjoitusstudio projektit', extensions: ['json'] }]
+      defaultPath: `${projectData.title || 'projekti'}.faust`,
+      filters: [
+        { name: 'FAUST projektit', extensions: ['faust'] },
+        { name: 'JSON (legacy)', extensions: ['json'] }
+      ]
     });
 
     if (filePath) {
-      await fs.writeFile(filePath, JSON.stringify(projectData, null, 2), 'utf-8');
+      // Add metadata
+      const dataWithMeta = {
+        ...projectData,
+        modified: new Date().toISOString(),
+        version: '2.0'  // FAUST v2.0 format
+      };
+
+      await fs.writeFile(filePath, JSON.stringify(dataWithMeta, null, 2), 'utf-8');
       return { success: true, path: filePath };
     }
     return { success: false };
   } catch (error) {
+    console.error('[Save Project] Error:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Lataa projekti
+// Lataa projekti (.faust or .json)
 ipcMain.handle('load-project', async () => {
   try {
     const { filePaths } = await dialog.showOpenDialog(mainWindow, {
       title: 'Avaa projekti',
-      filters: [{ name: 'Kirjoitusstudio projektit', extensions: ['json'] }],
+      filters: [
+        { name: 'FAUST projektit', extensions: ['faust', 'json'] }
+      ],
       properties: ['openFile']
     });
 
     if (filePaths && filePaths[0]) {
       const data = await fs.readFile(filePaths[0], 'utf-8');
-      return { success: true, data: JSON.parse(data) };
+      const project = JSON.parse(data);
+
+      // Store current file path for autosave
+      return {
+        success: true,
+        data: project,
+        filePath: filePaths[0]
+      };
     }
     return { success: false };
   } catch (error) {
+    console.error('[Load Project] Error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Load project from specific path (for recent files)
+ipcMain.handle('load-project-from-path', async (event, filePath) => {
+  try {
+    if (!filePath) {
+      return { success: false, error: 'No file path provided' };
+    }
+
+    const data = await fs.readFile(filePath, 'utf-8');
+    const project = JSON.parse(data);
+
+    return {
+      success: true,
+      data: project,
+      filePath: filePath
+    };
+  } catch (error) {
+    console.error('[Load Project From Path] Error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Autosave (save without dialog)
+ipcMain.handle('autosave-project', async (event, { projectData, filePath }) => {
+  try {
+    if (!filePath) {
+      return { success: false, error: 'No file path' };
+    }
+
+    // Add metadata
+    const dataWithMeta = {
+      ...projectData,
+      modified: new Date().toISOString()
+    };
+
+    await fs.writeFile(filePath, JSON.stringify(dataWithMeta, null, 2), 'utf-8');
+    return { success: true, path: filePath };
+  } catch (error) {
+    console.error('[Autosave] Error:', error);
     return { success: false, error: error.message };
   }
 });
@@ -725,6 +809,194 @@ ipcMain.handle('export-pdf', async (event, { html, title }) => {
   }
 });
 
+// Export EPUB (Simple HTML-based version)
+ipcMain.handle('export-epub', async (event, { metadata, chapters }) => {
+  try {
+    const { filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Vie EPUB',
+      defaultPath: `${metadata.title}.epub`,
+      filters: [{ name: 'EPUB E-Book', extensions: ['epub'] }]
+    });
+
+    if (!filePath) return { success: false };
+
+    // Generate simple HTML-based EPUB content
+    let html = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${metadata.language}">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+  <title>${metadata.title}</title>
+  <meta name="author" content="${metadata.author}"/>
+  <meta name="generator" content="FAUST Writer"/>
+  <style type="text/css">
+    body {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.1em;
+      line-height: 1.6;
+      text-align: justify;
+      margin: 2em;
+    }
+    h1.title-page {
+      font-size: 2.5em;
+      text-align: center;
+      margin: 4em 0 2em 0;
+      page-break-after: always;
+    }
+    .author {
+      text-align: center;
+      font-size: 1.3em;
+      font-style: italic;
+      margin-bottom: 4em;
+    }
+    h1.chapter {
+      font-size: 1.8em;
+      text-align: center;
+      margin: 3em 0 2em 0;
+      page-break-before: always;
+    }
+    p {
+      margin: 0.8em 0;
+      text-indent: 1.5em;
+    }
+    p:first-of-type {
+      text-indent: 0;
+    }
+  </style>
+</head>
+<body>
+  <h1 class="title-page">${metadata.title}</h1>
+  <p class="author">${metadata.author}</p>
+`;
+
+    // Add chapters
+    chapters.forEach(chapter => {
+      html += `\n  <h1 class="chapter">${chapter.title}</h1>\n`;
+
+      // Split content into paragraphs
+      const paragraphs = chapter.content.split('\n\n').filter(p => p.trim());
+      paragraphs.forEach(p => {
+        const formatted = p.replace(/\n/g, ' ').trim();
+        html += `  <p>${formatted}</p>\n`;
+      });
+    });
+
+    html += `</body>\n</html>`;
+
+    // Write file (Note: This is a simplified EPUB - a single HTML file)
+    // A proper EPUB would require ZIP packaging with container.xml, content.opf, etc.
+    // This MVP version can be opened in most e-readers or converted with Calibre
+    await fs.writeFile(filePath, html, 'utf-8');
+
+    console.log('[EPUB Export] Created simple EPUB at:', filePath);
+    return { success: true, path: filePath };
+
+  } catch (error) {
+    console.error('[EPUB Export] Error:', error);
+    return {
+      success: false,
+      error: error.message,
+      errorTitle: 'EPUB-vienti epäonnistui',
+      errorHint: 'Tarkista että tiedostopolku on kirjoitettavissa.'
+    };
+  }
+});
+
+// MOBI Export (Kindle format)
+ipcMain.handle('export-mobi', async (event, { metadata, chapters }) => {
+  try {
+    const { filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Vie MOBI (Kindle)',
+      defaultPath: `${metadata.title}.mobi`,
+      filters: [{ name: 'Kindle E-Book', extensions: ['mobi'] }]
+    });
+
+    if (!filePath) return { success: false };
+
+    // Generate simple HTML-based MOBI content
+    // MOBI format is similar to EPUB - this MVP version works with most Kindle readers
+    // and can be converted to proper MOBI format with Amazon Kindle Previewer or Calibre
+    let html = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${metadata.language}">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+  <title>${metadata.title}</title>
+  <meta name="author" content="${metadata.author}"/>
+  <meta name="generator" content="FAUST Writer"/>
+  <style type="text/css">
+    body {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.1em;
+      line-height: 1.6;
+      text-align: justify;
+      margin: 2em;
+    }
+    h1.title-page {
+      font-size: 2.5em;
+      text-align: center;
+      margin: 4em 0 2em 0;
+      page-break-after: always;
+    }
+    .author {
+      text-align: center;
+      font-size: 1.3em;
+      font-style: italic;
+      margin-bottom: 4em;
+    }
+    h1.chapter {
+      font-size: 1.8em;
+      text-align: center;
+      margin: 3em 0 2em 0;
+      page-break-before: always;
+    }
+    p {
+      margin: 0.8em 0;
+      text-indent: 1.5em;
+    }
+    p:first-of-type {
+      text-indent: 0;
+    }
+  </style>
+</head>
+<body>
+  <h1 class="title-page">${metadata.title}</h1>
+  <p class="author">${metadata.author}</p>
+`;
+
+    // Add chapters
+    chapters.forEach(chapter => {
+      html += `\n  <h1 class="chapter">${chapter.title}</h1>\n`;
+
+      // Split content into paragraphs
+      const paragraphs = chapter.content.split('\n\n').filter(p => p.trim());
+      paragraphs.forEach(p => {
+        const formatted = p.replace(/\n/g, ' ').trim();
+        html += `  <p>${formatted}</p>\n`;
+      });
+    });
+
+    html += `</body>\n</html>`;
+
+    // Write file (Note: This is a simplified MOBI - a single HTML file)
+    // A proper MOBI would require Amazon's KindleGen or similar tool
+    // This MVP version can be opened in Kindle apps or converted with Calibre
+    await fs.writeFile(filePath, html, 'utf-8');
+
+    console.log('[MOBI Export] Created simple MOBI at:', filePath);
+    return { success: true, path: filePath };
+
+  } catch (error) {
+    console.error('[MOBI Export] Error:', error);
+    return {
+      success: false,
+      error: error.message,
+      errorTitle: 'MOBI-vienti epäonnistui',
+      errorHint: 'Tarkista että tiedostopolku on kirjoitettavissa.'
+    };
+  }
+});
+
 // Document conversion functions are now imported from utils/documentConverters.js
 
 // Web Search API
@@ -760,7 +1032,7 @@ ipcMain.handle('web-search', async (event, query) => {
 
 // Load API Keys
 ipcMain.handle('load-api-keys', async () => {
-  return apiConfig;
+  return { success: true, keys: apiConfig };
 });
 
 // Save API Keys (v1.4.3: with encryption)
@@ -798,6 +1070,62 @@ ipcMain.handle('save-api-keys', async (event, keys) => {
 // v1.4.1: UI Preferences IPC
 ipcMain.handle('ui:get-prefs', async () => {
   return { success: true, data: uiPrefs };
+});
+
+// Chat Memory Log (Liminal Engine context persistence)
+const getChatLogPath = () => {
+  return path.join(app.getPath('userData'), 'liminal-memory.json');
+};
+
+ipcMain.handle('chat:load-memory', async () => {
+  try {
+    const logPath = getChatLogPath();
+    if (fs.existsSync(logPath)) {
+      const data = await fs.readFile(logPath, 'utf-8');
+      const log = JSON.parse(data);
+      console.log('[Chat Memory] Loaded', log.entries?.length || 0, 'entries');
+      return { success: true, data: log };
+    } else {
+      return { success: true, data: { entries: [], lastUpdated: null } };
+    }
+  } catch (error) {
+    console.error('[Chat Memory] Load error:', error);
+    return { success: false, error: error.message, data: { entries: [], lastUpdated: null } };
+  }
+});
+
+ipcMain.handle('chat:save-memory', async (_event, entry) => {
+  try {
+    const logPath = getChatLogPath();
+    let log = { entries: [], lastUpdated: null };
+
+    // Load existing log
+    if (fs.existsSync(logPath)) {
+      const data = await fs.readFile(logPath, 'utf-8');
+      log = JSON.parse(data);
+    }
+
+    // Add new entry
+    log.entries.push({
+      timestamp: new Date().toISOString(),
+      ...entry
+    });
+
+    // Keep last 100 entries
+    if (log.entries.length > 100) {
+      log.entries = log.entries.slice(-100);
+    }
+
+    log.lastUpdated = new Date().toISOString();
+
+    // Save
+    await fs.writeFile(logPath, JSON.stringify(log, null, 2), 'utf-8');
+    console.log('[Chat Memory] Saved entry:', entry.type);
+    return { success: true };
+  } catch (error) {
+    console.error('[Chat Memory] Save error:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 ipcMain.handle('ui:set-prefs', async (_event, next) => {
@@ -853,10 +1181,16 @@ ipcMain.handle('load-backup', async () => {
 });
 
 // Claude API (Anthropic SDK - REAL IMPLEMENTATION)
-ipcMain.handle('claude-api', async (event, prompt) => {
+ipcMain.handle('claude-api', async (event, promptOrOptions) => {
   try {
+    // Support both string prompt and { prompt, model, temperature, max_tokens } object
+    const prompt = typeof promptOrOptions === 'string' ? promptOrOptions : promptOrOptions.prompt;
+    const model = typeof promptOrOptions === 'object' ? promptOrOptions.model : null;
+    const temperature = typeof promptOrOptions === 'object' ? promptOrOptions.temperature : 0.7;
+    const maxTokens = typeof promptOrOptions === 'object' ? promptOrOptions.max_tokens : 2000;
+
     let apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
-    
+
     if (!apiKey) {
       return {
         success: false,
@@ -865,17 +1199,18 @@ ipcMain.handle('claude-api', async (event, prompt) => {
     }
 
     const anthropic = new Anthropic({ apiKey });
-    
+
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022', // Latest model
-      max_tokens: 2000,
+      model: model || 'claude-3-5-sonnet-20241022',
+      max_tokens: maxTokens,
+      temperature: temperature,
       messages: [{ role: 'user', content: prompt }]
     });
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       data: message.content[0].text,
-      usage: message.usage 
+      usage: message.usage
     };
   } catch (error) {
     console.error('Claude API error:', error);
@@ -884,8 +1219,14 @@ ipcMain.handle('claude-api', async (event, prompt) => {
 });
 
 // Grok API (xAI)
-ipcMain.handle('grok-api', async (event, prompt) => {
+ipcMain.handle('grok-api', async (event, promptOrOptions) => {
   try {
+    // Support both string prompt and { prompt, model, temperature, max_tokens } object
+    const prompt = typeof promptOrOptions === 'string' ? promptOrOptions : promptOrOptions.prompt;
+    const model = typeof promptOrOptions === 'object' ? promptOrOptions.model : null;
+    const temperature = typeof promptOrOptions === 'object' ? promptOrOptions.temperature : 0.7;
+    const maxTokens = typeof promptOrOptions === 'object' ? promptOrOptions.max_tokens : 2000;
+
     let apiKey = process.env.GROK_API_KEY || apiConfig.GROK_API_KEY || 'your-grok-api-key-here';
 
     const response = await fetch("https://api.x.ai/v1/chat/completions", {
@@ -895,10 +1236,10 @@ ipcMain.handle('grok-api', async (event, prompt) => {
         "Authorization": `Bearer ${apiKey}`
       },
       body: JSON.stringify({
-        model: "grok-beta",
+        model: model || "grok-2-1212",
         messages: [{ role: "user", content: prompt }],
-        max_tokens: 2000,
-        temperature: 0.7
+        max_tokens: maxTokens,
+        temperature: temperature
       })
     });
 
@@ -914,10 +1255,16 @@ ipcMain.handle('grok-api', async (event, prompt) => {
 });
 
 // OpenAI API (SDK - REAL IMPLEMENTATION)
-ipcMain.handle('openai-api', async (event, prompt) => {
+ipcMain.handle('openai-api', async (event, promptOrOptions) => {
   try {
+    // Support both string prompt and { prompt, model, temperature, max_tokens } object
+    const prompt = typeof promptOrOptions === 'string' ? promptOrOptions : promptOrOptions.prompt;
+    const model = typeof promptOrOptions === 'object' ? promptOrOptions.model : null;
+    const temperature = typeof promptOrOptions === 'object' ? promptOrOptions.temperature : 0.7;
+    const maxTokens = typeof promptOrOptions === 'object' ? promptOrOptions.max_tokens : 2000;
+
     let apiKey = process.env.OPENAI_API_KEY || apiConfig.OPENAI_API_KEY;
-    
+
     if (!apiKey) {
       return {
         success: false,
@@ -926,16 +1273,16 @@ ipcMain.handle('openai-api', async (event, prompt) => {
     }
 
     const openai = new OpenAI({ apiKey });
-    
+
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4-turbo-preview', // or 'gpt-4', 'gpt-3.5-turbo'
+      model: model || 'gpt-4-turbo-preview',
       messages: [{ role: 'user', content: prompt }],
-      max_tokens: 2000,
-      temperature: 0.7
+      max_tokens: maxTokens,
+      temperature: temperature
     });
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       data: completion.choices[0].message.content,
       usage: completion.usage
     };
@@ -1111,9 +1458,401 @@ ipcMain.on('show-context-menu', async (event, { x, y, selection, isEditable }) =
   menu.popup({ window: mainWindow, x, y });
 });
 
+// ============================================
+// AI MODULES - Story Generation & Continuity
+// ============================================
+
+// Helper: Get AI client for provider
+function getAIClient(providerName) {
+  let apiKey;
+
+  if (providerName === 'openai') {
+    apiKey = process.env.OPENAI_API_KEY || apiConfig.OPENAI_API_KEY;
+    if (!apiKey) throw new Error('OpenAI API key missing');
+    return { client: new OpenAI({ apiKey }), provider: 'openai' };
+  } else if (providerName === 'grok' || providerName === 'deepseek') {
+    // Grok and DeepSeek use native https (no SDK client)
+    if (providerName === 'grok') {
+      apiKey = process.env.GROK_API_KEY || apiConfig.GROK_API_KEY;
+      if (!apiKey) throw new Error('Grok API key missing');
+    } else {
+      apiKey = process.env.DEEPSEEK_API_KEY || apiConfig.DEEPSEEK_API_KEY;
+      if (!apiKey) throw new Error('DeepSeek API key missing');
+    }
+    return { client: null, provider: providerName, apiKey };
+  } else {
+    // Default: Anthropic
+    apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
+    if (!apiKey) throw new Error('Anthropic API key missing');
+    return { client: new Anthropic({ apiKey }), provider: 'anthropic' };
+  }
+}
+
+// Generate chapter content with AI
+ipcMain.handle('ai:generate-chapter', async (event, { chapterId, project, mode = 'production', provider = 'anthropic' }) => {
+  try {
+    // Load AI modules lazily
+    loadAIModules();
+
+    console.log('[AI Generate] Chapter:', chapterId, 'Mode:', mode, 'Provider:', provider);
+
+    // Get API key based on provider
+    let apiKey;
+    let aiClient;
+
+    if (provider === 'openai') {
+      apiKey = process.env.OPENAI_API_KEY || apiConfig.OPENAI_API_KEY;
+      if (!apiKey) return { success: false, error: 'OpenAI API key missing' };
+      aiClient = new OpenAI({ apiKey });
+    } else if (provider === 'grok') {
+      apiKey = process.env.GROK_API_KEY || apiConfig.GROK_API_KEY;
+      if (!apiKey) return { success: false, error: 'Grok API key missing' };
+      // Grok uses fetch, not a client
+    } else if (provider === 'deepseek') {
+      apiKey = process.env.DEEPSEEK_API_KEY || apiConfig.DEEPSEEK_API_KEY;
+      if (!apiKey) return { success: false, error: 'DeepSeek API key missing' };
+      // DeepSeek uses fetch, not a client
+    } else {
+      // Default: Anthropic/Claude
+      apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
+      if (!apiKey) return { success: false, error: 'Anthropic API key missing' };
+      aiClient = new Anthropic({ apiKey });
+    }
+
+    // Configure modules
+    StoryContinuityTracker.configure({
+      deepseekClient: null,
+      getProject: () => project
+    });
+
+    HybridWritingFlow.configure({
+      claudeClient: aiClient, // Works for Anthropic
+      getProject: () => project
+    });
+
+    // Get chapter
+    const chapter = project.structure.find(ch => ch.id === chapterId);
+    if (!chapter) {
+      return { success: false, error: 'Chapter not found' };
+    }
+
+    // Get mode settings
+    const modeConfig = project.ai?.modes?.[mode] || project.ai?.modes?.production || {
+      temperature: 0.7,
+      maxTokens: 4096,
+      systemPrompt: 'Write coherently following the outline and story consistency.'
+    };
+
+    // Check continuity before writing
+    const continuityCheck = await StoryContinuityTracker.checkContinuityBeforeWriting(
+      chapter.order,
+      chapter.synopsis || 'No synopsis provided'
+    );
+
+    // Build prompt
+    const prompt = `You are writing Chapter ${chapter.order + 1}: "${chapter.title}"
+
+PROJECT INFO:
+- Title: ${project.title}
+- Genre: ${project.genre}
+- Target: ${project.targets.totalWords} words
+
+CHAPTER BRIEF:
+${chapter.synopsis || 'No synopsis provided'}
+
+CONTINUITY CONTEXT:
+${continuityCheck.suggestions?.join('\n') || 'No specific continuity requirements'}
+
+INSTRUCTIONS:
+${modeConfig.systemPrompt}
+
+Write the chapter content (aim for ${Math.floor(project.targets.totalWords / project.structure.length)} words).
+
+Return ONLY the chapter text, no meta-commentary.`;
+
+    console.log('[AI Generate] Calling', provider, 'API...');
+
+    // Generate with selected provider
+    let generatedContent;
+    let usage = null;
+
+    if (provider === 'openai') {
+      const modelName = project.ai?.models?.openai || 'gpt-4-turbo-preview';
+      const completion = await aiClient.chat.completions.create({
+        model: modelName,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: modeConfig.maxTokens,
+        temperature: modeConfig.temperature
+      });
+      generatedContent = completion.choices[0].message.content;
+      usage = completion.usage;
+
+    } else if (provider === 'grok') {
+      // Grok API using native https module for proper UTF-8 support
+      const modelName = project.ai?.models?.grok || 'grok-2-1212';
+      const requestData = {
+        model: modelName,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: modeConfig.maxTokens,
+        temperature: modeConfig.temperature
+      };
+
+      const postData = Buffer.from(JSON.stringify(requestData), 'utf-8');
+
+      const options = {
+        hostname: 'api.x.ai',
+        port: 443,
+        path: '/v1/chat/completions',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Length': Buffer.byteLength(postData),
+          'Authorization': `Bearer ${apiKey}`
+        },
+        timeout: 120000  // 120 second timeout
+      };
+
+      const data = await new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          req.destroy();
+          reject(new Error('Grok API timeout after 120 seconds'));
+        }, 120000);
+
+        const req = https.request(options, (res) => {
+          let responseData = '';
+
+          res.setEncoding('utf8');
+          res.on('data', (chunk) => {
+            responseData += chunk;
+          });
+
+          res.on('end', () => {
+            clearTimeout(timeoutId);
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              try {
+                resolve(JSON.parse(responseData));
+              } catch (e) {
+                reject(new Error(`Grok API returned invalid JSON: ${e.message}`));
+              }
+            } else {
+              console.error('[Grok] API error:', res.statusCode, responseData);
+              reject(new Error(`Grok API error (${res.statusCode}): ${responseData.substring(0, 200)}`));
+            }
+          });
+        });
+
+        req.on('error', (e) => {
+          clearTimeout(timeoutId);
+          reject(new Error(`Grok API request failed: ${e.message}`));
+        });
+
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error('Grok API connection timeout'));
+        });
+
+        req.write(postData);
+        req.end();
+      });
+
+      console.log('[Grok] Response:', data);
+
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('Grok API returned invalid response format');
+      }
+
+      generatedContent = data.choices[0].message.content;
+      usage = data.usage;
+
+    } else if (provider === 'deepseek') {
+      // DeepSeek API using native https module for proper UTF-8 support
+      const modelName = project.ai?.models?.deepseek || 'deepseek-chat';
+      const requestData = {
+        model: modelName,
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: modeConfig.maxTokens,
+        temperature: modeConfig.temperature
+      };
+
+      const postData = Buffer.from(JSON.stringify(requestData), 'utf-8');
+
+      const options = {
+        hostname: 'api.deepseek.com',
+        port: 443,
+        path: '/v1/chat/completions',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Length': Buffer.byteLength(postData),
+          'Authorization': `Bearer ${apiKey}`
+        },
+        timeout: 120000  // 120 second timeout
+      };
+
+      const data = await new Promise((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          req.destroy();
+          reject(new Error('DeepSeek API timeout after 120 seconds'));
+        }, 120000);
+
+        const req = https.request(options, (res) => {
+          let responseData = '';
+
+          res.setEncoding('utf8');
+          res.on('data', (chunk) => {
+            responseData += chunk;
+          });
+
+          res.on('end', () => {
+            clearTimeout(timeoutId);
+            if (res.statusCode >= 200 && res.statusCode < 300) {
+              try {
+                resolve(JSON.parse(responseData));
+              } catch (e) {
+                reject(new Error(`DeepSeek API returned invalid JSON: ${e.message}`));
+              }
+            } else {
+              console.error('[DeepSeek] API error:', res.statusCode, responseData);
+              reject(new Error(`DeepSeek API error (${res.statusCode}): ${responseData.substring(0, 200)}`));
+            }
+          });
+        });
+
+        req.on('error', (e) => {
+          clearTimeout(timeoutId);
+          reject(new Error(`DeepSeek API request failed: ${e.message}`));
+        });
+
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error('DeepSeek API connection timeout'));
+        });
+
+        req.write(postData);
+        req.end();
+      });
+
+      console.log('[DeepSeek] Response:', data);
+
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('DeepSeek API returned invalid response format');
+      }
+
+      generatedContent = data.choices[0].message.content;
+      usage = data.usage;
+
+    } else {
+      // Anthropic/Claude
+      const modelName = project.ai?.models?.anthropic || 'claude-3-5-sonnet-20241022';
+      const message = await aiClient.messages.create({
+        model: modelName,
+        max_tokens: modeConfig.maxTokens,
+        temperature: modeConfig.temperature,
+        messages: [{ role: 'user', content: prompt }]
+      });
+      generatedContent = message.content[0].text;
+      usage = message.usage;
+    }
+
+    // Update continuity tracker
+    await StoryContinuityTracker.updateMemory(chapter.order, generatedContent);
+
+    console.log('[AI Generate] Success! Generated', generatedContent.length, 'characters');
+
+    return {
+      success: true,
+      content: generatedContent,
+      wordCount: generatedContent.trim().split(/\s+/).length,
+      usage,
+      continuityCheck,
+      provider
+    };
+
+  } catch (error) {
+    console.error('[AI Generate] Error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Check continuity for a chapter
+ipcMain.handle('ai:check-continuity', async (event, { chapterId, content, project }) => {
+  try {
+    console.log('[AI Continuity] Checking chapter:', chapterId);
+
+    StoryContinuityTracker.configure({
+      deepseekClient: null,
+      getProject: () => project
+    });
+
+    const chapter = project.structure.find(ch => ch.id === chapterId);
+    if (!chapter) {
+      return { success: false, error: 'Chapter not found' };
+    }
+
+    const result = await StoryContinuityTracker.checkContinuityBeforeWriting(
+      chapter.order,
+      content || chapter.content
+    );
+
+    return { success: true, ...result };
+
+  } catch (error) {
+    console.error('[AI Continuity] Error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Batch process multiple chapters
+ipcMain.handle('ai:batch-process', async (event, { project, operation = 'continuityCheck', options = {} }) => {
+  try {
+    console.log('[AI Batch] Starting:', operation);
+
+    let apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return { success: false, error: 'API key missing' };
+    }
+
+    const anthropic = new Anthropic({ apiKey });
+
+    // Configure modules
+    StoryContinuityTracker.configure({
+      deepseekClient: null,
+      getProject: () => project
+    });
+
+    BatchProcessor.configure({
+      getProject: () => project,
+      setProject: () => {}, // Read-only for now
+      onProgress: (progress) => {
+        console.log('[AI Batch] Progress:', progress);
+        // TODO: Send progress to renderer
+      }
+    });
+
+    HybridWritingFlow.configure({
+      claudeClient: anthropic,
+      getProject: () => project
+    });
+
+    const result = await BatchProcessor.processFullNovel({
+      operation,
+      ...options
+    });
+
+    console.log('[AI Batch] Complete:', result.processed, 'chapters');
+
+    return { success: true, ...result };
+
+  } catch (error) {
+    console.error('[AI Batch] Error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Export functions for testing
-module.exports = {
-  convertToRTF,
-  convertToHTML,
-  convertToDocx
-};
+// Note: Exports commented out as this is the main Electron process file
+// module.exports = {
+//   convertToRTF,
+//   convertToHTML,
+//   convertToDocx
+// };

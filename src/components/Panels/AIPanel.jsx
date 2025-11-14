@@ -20,3 +20,18 @@ export default function AIPanel({ project, activeItem, onContentUpdate }) {
 }
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

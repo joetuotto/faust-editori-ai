@@ -105,12 +105,42 @@ const CostOptimizer = (() => {
     return Number((deepseekChecks * deepseekUnitCost + creativeCalls * creativeUnitCost).toFixed(2));
   };
 
+  const trackRequest = (provider, model, inputText, outputText) => {
+    try {
+      // This is a simplified version for the modules context
+      // The actual cost tracking happens in src/services/ai/CostOptimizer.js
+      const inputTokens = Math.ceil((inputText || '').length / 4);
+      const outputTokens = Math.ceil((outputText || '').length / 4);
+      const totalTokens = inputTokens + outputTokens;
+      
+      console.log(`[CostOptimizer] Request tracked: ${provider}/${model}, ${totalTokens} tokens`);
+      
+      return {
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        cost: 0,
+        runningTotal: 0
+      };
+    } catch (error) {
+      console.error('[CostOptimizer] Tracking failed:', error);
+      return {
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        cost: 0,
+        runningTotal: 0
+      };
+    }
+  };
+
   return {
     shouldCheckContinuity,
     registerCheckpoint,
     getDiffContext,
     selectOptimalModel,
     estimateFullNovelCost,
+    trackRequest,
     getLastCheck: () => lastCheckChapter
   };
 })();

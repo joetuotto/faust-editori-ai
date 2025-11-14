@@ -14,6 +14,10 @@ interface FileResult {
 
 export class FileManager {
   async saveProject(project: Project): Promise<FileResult> {
+    if (!window.electronAPI) {
+      return { success: false, error: 'Electron API not available' };
+    }
+
     const projectWithAll = {
       ...project,
       // ... ensure all fields
@@ -26,6 +30,10 @@ export class FileManager {
   }
 
   async loadProject(): Promise<FileResult> {
+    if (!window.electronAPI) {
+      return { success: false, error: 'Electron API not available' };
+    }
+
     const result = await window.electronAPI.loadProject();
     if (result.success) {
       // Apply loaded project
@@ -35,6 +43,10 @@ export class FileManager {
   }
 
   async exportDocument(format: string, activeItem: any): Promise<FileResult> {
+    if (!window.electronAPI) {
+      return { success: false, error: 'Electron API not available' };
+    }
+
     if (format === 'pdf') {
       const html = `<!DOCTYPE html><html>...</html>`; // From app.js
       return await window.electronAPI.exportPDF({ html, title: activeItem.title });
@@ -47,6 +59,10 @@ export class FileManager {
   }
 
   async exportFullProject(project: Project, format: string): Promise<FileResult> {
+    if (!window.electronAPI) {
+      return { success: false, error: 'Electron API not available' };
+    }
+
     return await window.electronAPI.exportFullProject({ project, format });
   }
 
@@ -60,5 +76,20 @@ export class FileManager {
     return new FileManager();
   }
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

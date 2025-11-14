@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Suorakulmainen tausta -->
+  <rect width="1024" height="1024" fill="#f5f1e8"/>
+
+  <!-- Kahdeksansakarainen tähti (isompi, keskitetty) -->
+  <g transform="translate(512, 512)">
+    <path d="
+      M 0,-320
+      L 32,-88
+      L 226,-226
+      L 88,-32
+      L 320,0
+      L 88,32
+      L 226,226
+      L 32,88
+      L 0,320
+      L -32,88
+      L -226,226
+      L -88,32
+      L -320,0
+      L -88,-32
+      L -226,-226
+      L -32,-88
+      Z
+    " fill="#1a1a1a"/>
+  </g>
+</svg>

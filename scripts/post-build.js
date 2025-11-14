@@ -10,8 +10,26 @@ const path = require('path');
 const CRITICAL_FILES = [
   { src: 'styles/faust-theme.css', dst: 'dist/styles/faust-theme.css' },
   { src: 'styles/faust-simple-layout.css', dst: 'dist/styles/faust-simple-layout.css' },
+  { src: 'build/character-engine-logo.png', dst: 'dist/build/character-engine-logo.png' },
   { src: 'utils/dictionaries/fi-basic.json', dst: 'dist/utils/dictionaries/fi-basic.json' },
-  { src: 'utils/dictionaries/fi-expanded.txt', dst: 'dist/utils/dictionaries/fi-expanded.txt' }
+  { src: 'utils/dictionaries/fi-expanded.txt', dst: 'dist/utils/dictionaries/fi-expanded.txt' },
+  { src: 'src/utils/constants.js', dst: 'dist/src/utils/constants.js' },
+  { src: 'src/utils/annotationTypes.js', dst: 'dist/src/utils/annotationTypes.js' },
+  { src: 'src/utils/voiceInput.js', dst: 'dist/src/utils/voiceInput.js' },
+  { src: 'src/utils/CommandManager.js', dst: 'dist/src/utils/CommandManager.js' },
+  { src: 'src/components/AnnotationMargin.js', dst: 'dist/src/components/AnnotationMargin.js' },
+  { src: 'src/components/Modals/index.js', dst: 'dist/src/components/Modals/index.js' },
+  { src: 'src/components/Modals/CharacterSheetModal.js', dst: 'dist/src/components/Modals/CharacterSheetModal.js' },
+  { src: 'src/components/Modals/LocationSheetModal.js', dst: 'dist/src/components/Modals/LocationSheetModal.js' },
+  { src: 'src/components/Modals/ThreadSheetModal.js', dst: 'dist/src/components/Modals/ThreadSheetModal.js' },
+  { src: 'src/components/Modals/ChapterSheetModal.js', dst: 'dist/src/components/Modals/ChapterSheetModal.js' },
+  { src: 'src/services/ai/BatchProcessor.js', dst: 'dist/src/services/ai/BatchProcessor.js' },
+  { src: 'src/services/ai/CostOptimizer.js', dst: 'dist/src/services/ai/CostOptimizer.js' },
+  { src: 'src/services/ai/StoryContinuityTracker.js', dst: 'dist/src/services/ai/StoryContinuityTracker.js' },
+  { src: 'src/services/ai/HybridWritingFlow.js', dst: 'dist/src/services/ai/HybridWritingFlow.js' },
+  { src: 'src/services/ai/RefinementManager.js', dst: 'dist/src/services/ai/RefinementManager.js' },
+  { src: 'src/services/story/PlotThreadTracker.js', dst: 'dist/src/services/story/PlotThreadTracker.js' },
+  { src: 'src/services/validation/ConsistencyChecker.js', dst: 'dist/src/services/validation/ConsistencyChecker.js' }
 ];
 
 async function main() {
@@ -65,4 +83,3 @@ main().catch(error => {
   console.error('❌ Post-build failed:', error);
   process.exit(1);
 });
-

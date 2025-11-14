@@ -30,7 +30,7 @@
       "target": [
         "dmg"
       ],
-      "icon": "build/icon.icns",
+      "icon": "build/faust-star.icns",
       "darkModeSupport": true,
       "identity": null
     },
@@ -75,7 +75,7 @@
     "@types/react": "^18.3.26",
     "@types/react-dom": "^18.3.7",
     "babel-loader": "^10.0.0",
-    "electron": "^27.0.0",
+    "electron": "^30.5.1",
     "electron-builder": "^24.6.4",
     "electron-mocha": "^13.1.0",
     "eslint": "^9.38.0",
@@ -90,6 +90,7 @@
     "prettier": "^3.6.2",
     "typescript": "^5.9.3",
     "webpack": "^5.102.1",
+    "webpack-bundle-analyzer": "^4.10.2",
     "webpack-cli": "^6.0.1"
   },
   "jest": {

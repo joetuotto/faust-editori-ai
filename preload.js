@@ -5,12 +5,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Project operations
   saveProject: (data) => ipcRenderer.invoke('save-project', data),
   loadProject: () => ipcRenderer.invoke('load-project'),
+  loadProjectFromPath: (filePath) => ipcRenderer.invoke('load-project-from-path', filePath),
+  autosaveProject: (data) => ipcRenderer.invoke('autosave-project', data),
   
   // Export operations
   exportDocument: (data) => ipcRenderer.invoke('export-document', data),
   exportFullProject: (data) => ipcRenderer.invoke('export-full-project', data),
   exportPDF: (data) => ipcRenderer.invoke('export-pdf', data),
-  
+  exportEPUB: (data) => ipcRenderer.invoke('export-epub', data),
+  exportMOBI: (data) => ipcRenderer.invoke('export-mobi', data),
+
   // AI APIs
   claudeAPI: (prompt) => ipcRenderer.invoke('claude-api', prompt),
   openaiAPI: (prompt) => ipcRenderer.invoke('openai-api', prompt),
@@ -19,6 +23,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cursorAPI: (prompt) => ipcRenderer.invoke('cursor-api', prompt),
   deepseekAPI: (payload) => ipcRenderer.invoke('deepseek-api', payload),
   webSearch: (query) => ipcRenderer.invoke('web-search', query),
+
+  // AI Modules - Story Generation & Continuity
+  aiGenerateChapter: (params) => ipcRenderer.invoke('ai:generate-chapter', params),
+  aiCheckContinuity: (params) => ipcRenderer.invoke('ai:check-continuity', params),
+  aiBatchProcess: (params) => ipcRenderer.invoke('ai:batch-process', params),
 
   // API Key management
   loadApiKeys: () => ipcRenderer.invoke('load-api-keys'),
@@ -33,6 +42,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('ui-prefs-changed', (_event, prefs) => callback(prefs));
   },
 
+  // Chat Memory Log (Liminal Engine)
+  loadChatMemory: () => ipcRenderer.invoke('chat:load-memory'),
+  saveChatMemory: (entry) => ipcRenderer.invoke('chat:save-memory', entry),
+
   // v1.4.1: Spec Runner (internal testing)
   runSpec: (scenario) => ipcRenderer.invoke('spec:run', scenario),
   sendSpecResult: (payload) => ipcRenderer.send('spec:done', payload),
@@ -44,8 +57,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onMenuAction: (callback) => {
     const events = [
       // File menu
-      'new-project', 'save-project-trigger', 'save-project-as-trigger', 
-      'export-trigger', 'export-pdf-trigger', 'load-project-data',
+      'new-project', 'save-project-trigger', 'save-project-as-trigger',
+      'export-trigger', 'export-pdf-trigger', 'export-epub-trigger', 'export-mobi-trigger', 'load-project-data',
       // Edit menu
       'undo', 'redo', 'show-find', 'find-next', 'show-find-replace',
       // View menu

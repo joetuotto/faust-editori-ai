@@ -13,7 +13,8 @@ interface StoryContextType {
   // ... other states
 }
 
-const StoryContext = createContext<StoryContextType | undefined>(undefined);
+// Export StoryContext for use in other components
+export const StoryContext = createContext<StoryContextType | undefined>(undefined);
 
 export const StoryProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [project, setProject] = useState<Project>(() => createDefaultProject()); // Fixed arrow function
@@ -62,34 +63,26 @@ export const StoryProvider: React.FC<{ children: ReactNode }> = ({ children }) =
 
 export const useStory = () => {
   const context = useContext(StoryContext);
-  if (!context) throw new Error('useStory must be used within StoryProvider');
+  if (!context) {
+    throw new Error('useStory must be used within StoryProvider');
+  }
   return context;
 };
 
-// Types
-export interface Project {
-  items: any[];
-  story: {
-    chapters: any[];
-    outline: string[];
-    // ...
-  };
-  characters: any[];
-  // ...
-}
-
-export interface ActiveItem {
-  id: string;
-  title: string;
-  content: string;
-  type: string;
-  // ...
-}
+// Note: Project and ActiveItem types are imported from './types' at the top
+// No need to re-declare them here
 
 const createDefaultProject = (): Project => ({
   // Default from app.js
   items: [],
-  story: { chapters: [], outline: [] },
+  story: {
+    chapters: [],
+    outline: [],
+    events: [],
+    threads: []
+  },
   characters: [],
-  // ...
+  locations: [],
+  genre: 'fiction',
+  title: 'Nimetön projekti'
 });
