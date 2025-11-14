@@ -27,7 +27,9 @@
     "src",
     "modules/*.ts",
     "managers/*.ts",
-    "global.d.ts"
+    "global.d.ts",
+    "types.d.ts",
+    "*.js"
   ],
   "exclude": ["node_modules", "dist", "archive"]
 }

@@ -1067,6 +1067,138 @@ ipcMain.handle('save-api-keys', async (event, keys) => {
   }
 });
 
+// Test API Connection
+ipcMain.handle('test-api-connection', async (event, { provider, apiKey, model }) => {
+  try {
+    console.log(`[API Test] Testing ${provider} connection...`);
+
+    switch (provider) {
+      case 'anthropic': {
+        const anthropic = new Anthropic({ apiKey });
+        const response = await withTimeout(
+          anthropic.messages.create({
+            model: model || 'claude-3-5-sonnet-20241022',
+            max_tokens: 10,
+            messages: [{ role: 'user', content: 'Hi' }]
+          }),
+          10000
+        );
+        return {
+          success: true,
+          message: 'Connection successful!',
+          model: response.model,
+          usage: response.usage
+        };
+      }
+
+      case 'openai': {
+        const openai = new OpenAI({ apiKey });
+        const response = await withTimeout(
+          openai.chat.completions.create({
+            model: model || 'gpt-4-turbo-preview',
+            max_tokens: 10,
+            messages: [{ role: 'user', content: 'Hi' }]
+          }),
+          10000
+        );
+        return {
+          success: true,
+          message: 'Connection successful!',
+          model: response.model,
+          usage: response.usage
+        };
+      }
+
+      case 'deepseek': {
+        const openai = new OpenAI({
+          apiKey,
+          baseURL: 'https://api.deepseek.com'
+        });
+        const response = await withTimeout(
+          openai.chat.completions.create({
+            model: model || 'deepseek-chat',
+            max_tokens: 10,
+            messages: [{ role: 'user', content: 'Hi' }]
+          }),
+          10000
+        );
+        return {
+          success: true,
+          message: 'Connection successful!',
+          model: response.model,
+          usage: response.usage
+        };
+      }
+
+      case 'grok': {
+        const openai = new OpenAI({
+          apiKey,
+          baseURL: 'https://api.x.ai/v1'
+        });
+        const response = await withTimeout(
+          openai.chat.completions.create({
+            model: model || 'grok-beta',
+            max_tokens: 10,
+            messages: [{ role: 'user', content: 'Hi' }]
+          }),
+          10000
+        );
+        return {
+          success: true,
+          message: 'Connection successful!',
+          model: response.model,
+          usage: response.usage
+        };
+      }
+
+      case 'google': {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const geminiModel = genAI.getGenerativeModel({
+          model: model || 'gemini-2.0-flash-exp'
+        });
+        const result = await withTimeout(
+          geminiModel.generateContent('Hi'),
+          10000
+        );
+        return {
+          success: true,
+          message: 'Connection successful!',
+          model: model || 'gemini-2.0-flash-exp'
+        };
+      }
+
+      default:
+        return {
+          success: false,
+          error: `Unknown provider: ${provider}`
+        };
+    }
+  } catch (error) {
+    console.error(`[API Test] ${provider} test failed:`, error);
+
+    // Parse error messages for user-friendly output
+    let errorMessage = error.message;
+
+    if (error.status === 401 || error.message.includes('401')) {
+      errorMessage = 'Invalid API key. Please check your credentials.';
+    } else if (error.status === 403 || error.message.includes('403')) {
+      errorMessage = 'Access forbidden. Check your API key permissions.';
+    } else if (error.status === 429 || error.message.includes('429')) {
+      errorMessage = 'Rate limit exceeded. Please try again later.';
+    } else if (error.message.includes('Timeout')) {
+      errorMessage = 'Connection timeout. Please check your internet connection.';
+    } else if (error.message.includes('ENOTFOUND') || error.message.includes('ECONNREFUSED')) {
+      errorMessage = 'Cannot reach API server. Check your internet connection.';
+    }
+
+    return {
+      success: false,
+      error: errorMessage,
+      details: error.message
+    };
+  }
+});
+
 // v1.4.1: UI Preferences IPC
 ipcMain.handle('ui:get-prefs', async () => {
   return { success: true, data: uiPrefs };

@@ -929,6 +929,10 @@ function FAUSTApp() {
   // ChapterSheet modal state
   const [showChapterSheetModal, setShowChapterSheetModal] = useState(false);
 
+  // AnnotationDetail modal state
+  const [showAnnotationModal, setShowAnnotationModal] = useState(false);
+  const [selectedAnnotation, setSelectedAnnotation] = useState(null);
+
   // Handler to save chapter data from modal
   const handleChapterSheetSave = (chapterData) => {
     setProject(prev => ({
@@ -1123,6 +1127,10 @@ function FAUSTApp() {
           setCharacterSheetMode('list');
           setSelectedCharacter(null);
           console.log('[ESC] Closed Character Sheet');
+        } else if (showAnnotationModal) {
+          setShowAnnotationModal(false);
+          setSelectedAnnotation(null);
+          console.log('[ESC] Closed Annotation Detail');
         } else if (showLocationSheet) {
           setShowLocationSheet(false);
           console.log('[ESC] Closed Location Sheet');
@@ -1189,6 +1197,7 @@ function FAUSTApp() {
     showReplaceDialog,
     showRegenerateDialog,
     showCharacterSheet,
+    showAnnotationModal,
     showLocationSheet,
     showThreadSheet,
     showContinueDialog,
@@ -3342,9 +3351,17 @@ Return ONLY valid JSON:
 
   const testApiConnection = async () => {
     const provider = project.apiConfig.provider;
+    if (provider === 'local') {
+      setApiTestResult({
+        success: false,
+        message: 'Local endpoint testing not yet implemented'
+      });
+      return;
+    }
+
     const config = project.apiConfig[provider];
 
-    if (!config.apiKey || config.apiKey.trim().length === 0) {
+    if (!config?.apiKey || config.apiKey.trim().length === 0) {
       setApiTestResult({
         success: false,
         message: 'API-avain puuttuu. Syötä avain ensin.'
@@ -3355,10 +3372,7 @@ Return ONLY valid JSON:
     setApiTestResult({ success: null, message: 'Testataan yhteyttä...' });
 
     try {
-      // Test with a simple prompt
-      const testPrompt = 'Respond with exactly: "API connection successful"';
-
-      if (!window.electronAPI) {
+      if (!window.electronAPI?.testApiConnection) {
         setApiTestResult({
           success: false,
           message: 'Electron API ei saatavilla'
@@ -3366,7 +3380,11 @@ Return ONLY valid JSON:
         return;
       }
 
-      const result = await window.electronAPI.claudeAPI(testPrompt);
+      const result = await window.electronAPI.testApiConnection({
+        provider: provider,
+        apiKey: config.apiKey,
+        model: project.ai?.activeModel || config.model
+      });
 
       if (result.success) {
         setProject(prev => ({
@@ -3374,24 +3392,29 @@ Return ONLY valid JSON:
           apiConfig: {
             ...prev.apiConfig,
             lastTested: new Date().toISOString(),
-            isConfigured: true
+            isConfigured: true,
+            [provider]: {
+              ...prev.apiConfig[provider],
+              lastTested: new Date().toISOString(),
+              status: 'connected'
+            }
           }
         }));
 
         setApiTestResult({
           success: true,
-          message: `✓ Yhteys toimii! Model: ${config.model}`
+          message: `✅ Yhteys toimii! Model: ${result.model || 'N/A'}`
         });
       } else {
         setApiTestResult({
           success: false,
-          message: `Virhe: ${result.error || 'Tuntematon virhe'}`
+          message: `❌ ${result.error || 'Tuntematon virhe'}`
         });
       }
     } catch (error) {
       setApiTestResult({
         success: false,
-        message: `Yhteysvirhe: ${error.message}`
+        message: `❌ Yhteysvirhe: ${error.message}`
       });
     }
   };
@@ -3728,7 +3751,8 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
   // Annotation handlers
   const handleAnnotationClick = (annotation) => {
     console.log('[Annotation] Clicked:', annotation);
-    // TODO: Show annotation details in a tooltip or modal
+    setSelectedAnnotation(annotation);
+    setShowAnnotationModal(true);
   };
 
   const handleCreateAnnotation = (position, length, content) => {
@@ -10569,6 +10593,274 @@ ${contextPrompt}`;
               }
             }, '🗑️ Delete Character')
           )
+        )
+      )
+    ),
+
+    // AnnotationDetail Modal
+    showAnnotationModal && selectedAnnotation && e('div', {
+      style: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.85)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999
+      },
+      onClick: (e) => {
+        if (e.target === e.currentTarget) {
+          setShowAnnotationModal(false);
+          setSelectedAnnotation(null);
+        }
+      }
+    },
+      e('div', {
+        style: {
+          background: 'var(--bg-1)',
+          border: '2px solid var(--bronze)',
+          borderRadius: '8px',
+          padding: '32px',
+          maxWidth: '600px',
+          width: '90%',
+          maxHeight: '80vh',
+          overflow: 'auto'
+        }
+      },
+        // Header
+        e('div', {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '24px'
+          }
+        },
+          e('h2', {
+            style: {
+              fontFamily: 'EB Garamond',
+              fontSize: '24px',
+              color: 'var(--text)',
+              margin: 0
+            }
+          }, '📝 Annotation Details'),
+
+          e('button', {
+            onClick: () => {
+              setShowAnnotationModal(false);
+              setSelectedAnnotation(null);
+            },
+            style: {
+              background: 'transparent',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text-3)',
+              padding: '4px 12px',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px'
+            }
+          }, 'Sulje')
+        ),
+
+        // Annotation Type
+        e('div', {
+          style: {
+            marginBottom: '16px'
+          }
+        },
+          e('div', {
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '11px',
+              color: 'var(--text-3)',
+              marginBottom: '4px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }
+          }, 'Type'),
+          e('div', {
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '14px',
+              color: 'var(--text)',
+              padding: '8px 12px',
+              background: 'var(--bg-2)',
+              borderRadius: '4px',
+              border: '1px solid var(--border-color)'
+            }
+          }, selectedAnnotation.type || 'N/A')
+        ),
+
+        // Content
+        selectedAnnotation.content && e('div', {
+          style: {
+            marginBottom: '16px'
+          }
+        },
+          e('div', {
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '11px',
+              color: 'var(--text-3)',
+              marginBottom: '4px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }
+          }, 'Content'),
+          e('div', {
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '14px',
+              color: 'var(--text)',
+              padding: '12px',
+              background: 'var(--bg-2)',
+              borderRadius: '4px',
+              border: '1px solid var(--border-color)',
+              whiteSpace: 'pre-wrap',
+              lineHeight: '1.6'
+            }
+          }, selectedAnnotation.content)
+        ),
+
+        // Priority
+        selectedAnnotation.priority && e('div', {
+          style: {
+            marginBottom: '16px'
+          }
+        },
+          e('div', {
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '11px',
+              color: 'var(--text-3)',
+              marginBottom: '4px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }
+          }, 'Priority'),
+          e('div', {
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '14px',
+              color: 'var(--text)',
+              padding: '8px 12px',
+              background: 'var(--bg-2)',
+              borderRadius: '4px',
+              border: '1px solid var(--border-color)'
+            }
+          }, selectedAnnotation.priority.toUpperCase())
+        ),
+
+        // Position Info
+        e('div', {
+          style: {
+            marginBottom: '16px'
+          }
+        },
+          e('div', {
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '11px',
+              color: 'var(--text-3)',
+              marginBottom: '4px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }
+          }, 'Position'),
+          e('div', {
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '13px',
+              color: 'var(--text-2)',
+              padding: '8px 12px',
+              background: 'var(--bg-2)',
+              borderRadius: '4px',
+              border: '1px solid var(--border-color)'
+            }
+          }, `Start: ${selectedAnnotation.position || 0}, Length: ${selectedAnnotation.length || 0}`)
+        ),
+
+        // Timestamp
+        selectedAnnotation.timestamp && e('div', {
+          style: {
+            marginBottom: '24px'
+          }
+        },
+          e('div', {
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '11px',
+              color: 'var(--text-3)',
+              marginBottom: '4px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.5px'
+            }
+          }, 'Created'),
+          e('div', {
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '13px',
+              color: 'var(--text-2)',
+              padding: '8px 12px',
+              background: 'var(--bg-2)',
+              borderRadius: '4px',
+              border: '1px solid var(--border-color)'
+            }
+          }, new Date(selectedAnnotation.timestamp).toLocaleString('fi-FI'))
+        ),
+
+        // Action Buttons
+        e('div', {
+          style: {
+            display: 'flex',
+            gap: '8px',
+            justifyContent: 'flex-end',
+            borderTop: '1px solid var(--border-color)',
+            paddingTop: '16px'
+          }
+        },
+          e('button', {
+            onClick: () => {
+              if (confirm('Delete this annotation?')) {
+                handleDeleteAnnotation(selectedAnnotation.id);
+                setShowAnnotationModal(false);
+                setSelectedAnnotation(null);
+              }
+            },
+            style: {
+              padding: '10px 20px',
+              background: 'transparent',
+              border: '1px solid var(--bronze)',
+              borderRadius: '4px',
+              color: 'var(--bronze)',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '13px',
+              fontWeight: 500
+            }
+          }, '🗑️ Delete'),
+
+          e('button', {
+            onClick: () => {
+              setShowAnnotationModal(false);
+              setSelectedAnnotation(null);
+            },
+            style: {
+              padding: '10px 20px',
+              background: 'var(--bronze)',
+              border: 'none',
+              borderRadius: '4px',
+              color: '#000',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '13px',
+              fontWeight: 600
+            }
+          }, 'Close')
         )
       )
     ),

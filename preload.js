@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // API Key management
   loadApiKeys: () => ipcRenderer.invoke('load-api-keys'),
   saveApiKeys: (keys) => ipcRenderer.invoke('save-api-keys', keys),
+  testApiConnection: (params) => ipcRenderer.invoke('test-api-connection', params),
   saveBackup: (project) => ipcRenderer.invoke('save-backup', project),
   loadBackup: () => ipcRenderer.invoke('load-backup'),
 
