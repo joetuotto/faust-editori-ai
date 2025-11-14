@@ -1,8 +1,9 @@
 # FAUST src/ - Modular Architecture
 
-**Sprint 2 Phase 1** - Foundation Complete
+**Sprint 2 Phase 1** - ✅ Complete (4h)
+**Sprint 2 Phase 2** - ⏸️ Partial (6h - Hooks & Modals done)
 **Date:** 2025-11-14
-**Status:** ✅ Ready for Phase 2
+**Status:** 🔄 In Progress - Components & App.js refactoring remaining
 
 ---
 
@@ -70,37 +71,178 @@ src/
 
 ---
 
-## 🔄 Phase 2 (Pending - 15-25h)
+## ✅ Phase 2 Partial Complete (6h)
 
-### Next Steps:
+### What's Done:
 
-1. **Extract React Components** (10-15h)
-   - Create base component structure
-   - Extract modals (CharacterSheet, LocationSheet, Settings, etc.)
-   - Extract Inspector tabs
-   - Extract Editor components
-   - Extract Sidebar components
+#### 1. **Base Modal Component** ✅
+`src/components/Modals/Modal.tsx`
+- Reusable modal with overlay
+- ESC key handling (via parent)
+- Click-outside-to-close
+- Customizable max width
+- Consistent FAUST styling
 
-2. **Create Custom Hooks** (3-5h)
-   - `useProject.ts` - Project state management
-   - `useChapters.ts` - Chapter CRUD operations
-   - `useCharacters.ts` - Character management
-   - `useUndoRedo.ts` - Command pattern for undo/redo
-   - `useKeyboardShortcuts.ts` - Keyboard handling
-   - `useAutosave.ts` - Debounced autosave
+#### 2. **Modal Components** (1/5 done)
+- ✅ `AnnotationDetail.tsx` - Full implementation with delete functionality
+- ⏸️ CharacterSheet, LocationSheet, ThreadSheet, Settings (deferred)
 
-3. **Refactor App.js** (5-8h)
-   - Import and use extracted components
-   - Import and use hooks
+#### 3. **Custom Hooks** ✅✅
+
+**useProject.ts** (200+ lines)
+- Complete project state management
+- Chapter CRUD: add, update, delete, reorder
+- Character CRUD operations
+- Location CRUD operations
+- Plot thread CRUD operations
+- Save/autosave/load with validation
+- Active chapter tracking
+- Total word count calculation
+- Full TypeScript types
+
+**useUndoRedo.ts** (150+ lines)
+- Command pattern implementation
+- Configurable history size (default 50)
+- execute(), undo(), redo() operations
+- Helper functions:
+  - `createStateUpdateCommand()`
+  - `createTextEditCommand()`
+- History tracking & navigation
+- canUndo/canRedo state
+
+#### 4. **Index Files for Easy Imports** ✅
+- `src/components/Modals/index.ts`
+- `src/hooks/index.ts`
+- `src/modules/index.ts`
+- `src/utils/index.ts`
+
+### Usage Examples:
+
+**Using useProject:**
+```typescript
+import { useProject } from '@hooks';
+
+function App() {
+  const {
+    project,
+    activeChapter,
+    addChapter,
+    updateChapter,
+    saveProject,
+    totalWordCount
+  } = useProject();
+
+  // Add a chapter
+  const chapterId = addChapter('Chapter 1');
+
+  // Update chapter content
+  updateChapter(chapterId, {
+    content: 'New content',
+    wordCount: 150
+  });
+
+  // Save project
+  await saveProject();
+}
+```
+
+**Using useUndoRedo:**
+```typescript
+import { useUndoRedo, createTextEditCommand } from '@hooks';
+
+function Editor() {
+  const { execute, undo, redo, canUndo, canRedo } = useUndoRedo({ maxHistorySize: 100 });
+
+  const handleEdit = (oldText: string, newText: string) => {
+    const command = createTextEditCommand(
+      oldText,
+      newText,
+      (text) => setContent(text),
+      'Edit chapter content'
+    );
+    execute(command);
+  };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyboard = (e: KeyboardEvent) => {
+      if (e.metaKey && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (e.metaKey && e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyboard);
+    return () => window.removeEventListener('keydown', handleKeyboard);
+  }, [undo, redo]);
+}
+```
+
+**Using Modal Components:**
+```typescript
+import { AnnotationDetail } from '@components/Modals';
+
+function Editor() {
+  const [showModal, setShowModal] = useState(false);
+  const [selectedAnnotation, setSelectedAnnotation] = useState(null);
+
+  return (
+    <AnnotationDetail
+      isOpen={showModal}
+      annotation={selectedAnnotation}
+      onClose={() => setShowModal(false)}
+      onDelete={(id) => {
+        handleDeleteAnnotation(id);
+        setShowModal(false);
+      }}
+    />
+  );
+}
+```
+
+---
+
+## 🔄 Phase 2 Remaining (10-15h)
+
+### Still To Do:
+
+1. **Extract More Modal Components** (4-6h)
+   - CharacterSheet (complex, 4-layer system)
+   - LocationSheet
+   - ThreadSheet
+   - Settings modal
+   - Project Settings modal
+
+2. **Extract Editor Components** (3-5h)
+   - EditorToolbar
+   - EditorStatusBar
+   - EditorContent wrapper
+
+3. **Extract Sidebar Components** (2-3h)
+   - Sidebar container
+   - ChapterList
+   - ChapterItem
+
+4. **Extract Inspector Components** (3-4h)
+   - Inspector container
+   - EditorTab
+   - ChapterTab
+   - ProjectTab
+   - AITab
+
+5. **Refactor App.js** (5-8h)
+   - Import and integrate all extracted components
+   - Use useProject hook
+   - Use useUndoRedo hook
    - Remove extracted code
-   - Simplify main App component
-   - Target: Reduce app.js from 10,872 → ~500 lines
+   - Target: 10,872 lines → ~500 lines
 
-4. **TypeScript Migration** (3-5h)
-   - Convert components to .tsx
-   - Add proper type annotations
-   - Enable strict mode
-   - Fix type errors
+6. **TypeScript Migration** (Optional, 2-3h)
+   - Convert remaining .js files to .tsx
+   - Add strict type checking
+   - Fix any type errors
 
 ---
 
