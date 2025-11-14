@@ -7,6 +7,12 @@ const https = require('https');
 // Load environment variables
 require('dotenv').config();
 
+// Load i18n translations
+const { loadTranslations, getSystemLocale } = require('./src/i18n');
+const currentLocale = getSystemLocale();
+const t = loadTranslations(currentLocale);
+console.log(`[i18n] Loaded locale: ${currentLocale}`);
+
 // AI API Clients
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
@@ -146,33 +152,33 @@ function createMenu() {
     ...(isMac ? [{
       label: app.name,
       submenu: [
-        { label: `Tietoja - ${app.name}`, role: 'about' },
+        { label: t.app.about, role: 'about' },
         { type: 'separator' },
-        { 
-          label: 'Asetukset...',
+        {
+          label: t.app.settings,
           accelerator: 'CmdOrCtrl+,',
           click: () => mainWindow.webContents.send('show-settings')
         },
         { type: 'separator' },
-        { label: 'Piilota', role: 'hide' },
-        { label: 'Piilota muut', role: 'hideOthers' },
-        { label: 'Näytä kaikki', role: 'unhide' },
+        { label: t.app.hide, role: 'hide' },
+        { label: t.app.hideOthers, role: 'hideOthers' },
+        { label: t.app.showAll, role: 'unhide' },
         { type: 'separator' },
-        { label: 'Lopeta', role: 'quit' }
+        { label: t.app.quit, role: 'quit' }
       ]
     }] : []),
     
     // File Menu
     {
-      label: 'Tiedosto',
+      label: t.file.menu,
       submenu: [
         {
-          label: 'Uusi projekti',
+          label: t.file.newProject,
           accelerator: 'CmdOrCtrl+N',
           click: () => mainWindow.webContents.send('new-project')
         },
         {
-          label: 'Avaa projekti...',
+          label: t.file.openProject,
           accelerator: 'CmdOrCtrl+O',
           click: async () => {
             const result = await loadProject();
@@ -183,54 +189,54 @@ function createMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Tallenna',
+          label: t.file.save,
           accelerator: 'CmdOrCtrl+S',
           click: () => mainWindow.webContents.send('save-project-trigger')
         },
         {
-          label: 'Tallenna nimellä...',
+          label: t.file.saveAs,
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => mainWindow.webContents.send('save-project-as-trigger')
         },
         { type: 'separator' },
         {
-          label: 'Vie',
+          label: t.file.export,
           submenu: [
             {
-              label: 'Vie tekstitiedostona (.txt)',
+              label: t.file.exportText,
               click: () => mainWindow.webContents.send('export-trigger', 'txt')
             },
             {
-              label: 'Vie Markdown (.md)',
+              label: t.file.exportMarkdown,
               click: () => mainWindow.webContents.send('export-trigger', 'md')
             },
             {
-              label: 'Vie HTML',
+              label: t.file.exportHtml,
               click: () => mainWindow.webContents.send('export-trigger', 'html')
             },
             {
-              label: 'Vie RTF',
+              label: t.file.exportRtf,
               click: () => mainWindow.webContents.send('export-trigger', 'rtf')
             },
             { type: 'separator' },
             {
-              label: 'Vie PDF...',
+              label: t.file.exportPdf,
               accelerator: 'CmdOrCtrl+P',
               click: () => mainWindow.webContents.send('export-pdf-trigger')
             },
             {
-              label: 'Vie EPUB...',
+              label: t.file.exportEpub,
               click: () => mainWindow.webContents.send('export-epub-trigger')
             },
             {
-              label: 'Vie MOBI (Kindle)...',
+              label: t.file.exportMobi,
               click: () => mainWindow.webContents.send('export-mobi-trigger')
             }
           ]
         },
         { type: 'separator' },
         {
-          label: 'Sulje ikkuna',
+          label: t.file.closeWindow,
           accelerator: 'CmdOrCtrl+W',
           role: 'close'
         }
@@ -239,36 +245,36 @@ function createMenu() {
     
     // Edit Menu
     {
-      label: 'Muokkaa',
+      label: t.edit.menu,
       submenu: [
         {
-          label: 'Kumoa',
+          label: t.edit.undo,
           accelerator: 'CmdOrCtrl+Z',
           click: () => mainWindow.webContents.send('undo')
         },
         {
-          label: 'Tee uudelleen',
+          label: t.edit.redo,
           accelerator: 'CmdOrCtrl+Shift+Z',
           click: () => mainWindow.webContents.send('redo')
         },
         { type: 'separator' },
-        { label: 'Leikkaa', role: 'cut' },
-        { label: 'Kopioi', role: 'copy' },
-        { label: 'Liitä', role: 'paste' },
-        { label: 'Valitse kaikki', role: 'selectAll' },
+        { label: 'Cut', role: 'cut' },
+        { label: 'Copy', role: 'copy' },
+        { label: 'Paste', role: 'paste' },
+        { label: 'Select All', role: 'selectAll' },
         { type: 'separator' },
         {
-          label: 'Etsi...',
+          label: t.edit.find,
           accelerator: 'CmdOrCtrl+F',
           click: () => mainWindow.webContents.send('show-find')
         },
         {
-          label: 'Etsi seuraava',
+          label: t.edit.findNext,
           accelerator: 'CmdOrCtrl+G',
           click: () => mainWindow.webContents.send('find-next')
         },
         {
-          label: 'Etsi ja korvaa...',
+          label: t.edit.findReplace,
           accelerator: 'CmdOrCtrl+Alt+F',
           click: () => mainWindow.webContents.send('show-find-replace')
         }
@@ -277,7 +283,7 @@ function createMenu() {
     
     // View Menu (v1.4.1: synced with uiPrefs)
     {
-      label: 'Näytä',
+      label: t.view.menu,
       submenu: [
         {
           label: 'Sivupalkki',
@@ -348,7 +354,7 @@ function createMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Koko näyttö',
+          label: t.view.fullscreen,
           accelerator: isMac ? 'Ctrl+Command+F' : 'F11',
           role: 'togglefullscreen'
         },
@@ -363,15 +369,15 @@ function createMenu() {
     
     // Insert Menu
     {
-      label: 'Lisää',
+      label: t.insert.menu,
       submenu: [
         {
-          label: 'Uusi luku',
+          label: t.insert.newChapter,
           accelerator: 'CmdOrCtrl+Alt+N',
           click: () => mainWindow.webContents.send('new-chapter')
         },
         {
-          label: 'Uusi kohtaus',
+          label: t.insert.newScene,
           accelerator: 'CmdOrCtrl+Alt+S',
           click: () => mainWindow.webContents.send('new-scene')
         },
@@ -401,7 +407,7 @@ function createMenu() {
     
     // Format Menu
     {
-      label: 'Muotoilu',
+      label: t.format.menu,
       submenu: [
         {
           label: 'Lihavointi',
@@ -420,23 +426,23 @@ function createMenu() {
         },
         { type: 'separator' },
         {
-          label: 'Otsikko 1',
+          label: t.format.heading1,
           accelerator: 'CmdOrCtrl+Alt+1',
           click: () => mainWindow.webContents.send('format-heading', 1)
         },
         {
-          label: 'Otsikko 2',
+          label: t.format.heading2,
           accelerator: 'CmdOrCtrl+Alt+2',
           click: () => mainWindow.webContents.send('format-heading', 2)
         },
         {
-          label: 'Otsikko 3',
+          label: t.format.heading3,
           accelerator: 'CmdOrCtrl+Alt+3',
           click: () => mainWindow.webContents.send('format-heading', 3)
         },
         { type: 'separator' },
         {
-          label: 'Lainaus',
+          label: t.format.quote,
           accelerator: 'CmdOrCtrl+Shift+Q',
           click: () => mainWindow.webContents.send('format-quote')
         },
@@ -450,10 +456,10 @@ function createMenu() {
     
     // Tools Menu
     {
-      label: 'Työkalut',
+      label: t.tools.menu,
       submenu: [
         {
-          label: 'Sanamäärä',
+          label: t.tools.wordCount,
           accelerator: 'CmdOrCtrl+Shift+W',
           click: () => mainWindow.webContents.send('show-word-count')
         },
@@ -498,7 +504,7 @@ function createMenu() {
       label: 'Apua',
       submenu: [
         {
-          label: 'Dokumentaatio',
+          label: t.help.documentation,
           click: () => mainWindow.webContents.send('show-help')
         },
         {
@@ -1447,13 +1453,13 @@ ipcMain.on('show-context-menu', async (event, { x, y, selection, isEditable }) =
     },
     { type: 'separator' },
     {
-      label: 'Lisää kommentti',
+      label: t.insert.comment,
       click: () => {
         mainWindow.webContents.send('insert-comment');
       }
     },
     {
-      label: 'Lisää muistiinpano',
+      label: t.insert.note,
       click: () => {
         mainWindow.webContents.send('insert-note');
       }
