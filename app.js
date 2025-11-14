@@ -10,14 +10,21 @@ const { createElement: e, useState, useEffect, useRef } = React;
 // CHARACTER GENERATOR - 4-Layer Deep Character System
 // ============================================================================
 class CharacterGenerator {
-  constructor() {
+  constructor(provider = 'anthropic', model = null) {
     this.genre = 'fiction';
     this.storyTheme = '';
+    this.provider = provider;
+    this.model = model;
   }
 
   setStoryContext(genre, theme) {
     this.genre = genre;
     this.storyTheme = theme;
+  }
+
+  setProvider(provider, model) {
+    this.provider = provider;
+    this.model = model;
   }
 
   async generateCharacter(params = {}) {
@@ -36,7 +43,11 @@ class CharacterGenerator {
 
     try {
       const prompt = this._buildCharacterPrompt(name, role, characterType, realPeople, answers, archetypeInfo);
-      const response = await window.electronAPI.claudeAPI(prompt);
+      const response = await callAIProvider({
+        provider: this.provider,
+        prompt,
+        model: this.model
+      });
 
       if (!response.success) {
         throw new Error(response.error || 'Failed to generate character');
@@ -333,6 +344,49 @@ Return ONLY valid JSON matching this EXACT structure:
       },
       symbols: []
     };
+  }
+}
+
+// ============================================================================
+// GLOBAL AI PROVIDER ROUTER
+// ============================================================================
+/**
+ * Call AI API based on provider
+ * @param {Object} params - { provider, prompt, model, temperature, max_tokens }
+ * @returns {Promise<Object>} - API response
+ */
+async function callAIProvider(params) {
+  const { provider = 'anthropic', prompt, model, temperature = 0.7, max_tokens = 2000 } = params;
+
+  if (!window.electronAPI) {
+    throw new Error('Electron API not available');
+  }
+
+  const apiParams = {
+    prompt,
+    model,
+    temperature,
+    max_tokens
+  };
+
+  console.log(`[AI Provider] Calling ${provider} API with model: ${model || 'default'}`);
+
+  switch (provider) {
+    case 'anthropic':
+      return await window.electronAPI.claudeAPI(apiParams);
+    case 'openai':
+      return await window.electronAPI.openaiAPI(apiParams);
+    case 'grok':
+      return await window.electronAPI.grokAPI(apiParams);
+    case 'deepseek':
+      return await window.electronAPI.deepseekAPI(apiParams);
+    case 'gemini':
+      return await window.electronAPI.geminiAPI(apiParams);
+    case 'cursor':
+      return await window.electronAPI.cursorAPI(apiParams);
+    default:
+      console.warn(`[AI Provider] Unknown provider: ${provider}, falling back to Anthropic`);
+      return await window.electronAPI.claudeAPI(apiParams);
   }
 }
 
@@ -2552,8 +2606,33 @@ function FAUSTApp() {
 
     console.log(`[AI Mode] Using ${project.ai.currentMode} mode (temp: ${apiParams.temperature})`);
 
-    // Call AI API
-    const response = await window.electronAPI.claudeAPI(apiParams);
+    // Call AI API based on provider
+    const provider = project.ai.provider || 'anthropic';
+    let response;
+
+    switch (provider) {
+      case 'anthropic':
+        response = await window.electronAPI.claudeAPI(apiParams);
+        break;
+      case 'openai':
+        response = await window.electronAPI.openaiAPI(apiParams);
+        break;
+      case 'grok':
+        response = await window.electronAPI.grokAPI(apiParams);
+        break;
+      case 'deepseek':
+        response = await window.electronAPI.deepseekAPI(apiParams);
+        break;
+      case 'gemini':
+        response = await window.electronAPI.geminiAPI(apiParams);
+        break;
+      case 'cursor':
+        response = await window.electronAPI.cursorAPI(apiParams);
+        break;
+      default:
+        console.warn(`[AI] Unknown provider: ${provider}, falling back to Anthropic`);
+        response = await window.electronAPI.claudeAPI(apiParams);
+    }
 
     // Track cost with CostOptimizer
     if (costOptimizerRef.current) {
@@ -2788,7 +2867,7 @@ ${chapter.content}
 Return ONLY the summary, no extra text.`;
 
     try {
-      const result = await window.electronAPI.claudeAPI(prompt);
+      const result = await callAIWithMode(prompt);
       if (result.success) {
         const synopsis = result.data.trim();
 
@@ -2830,7 +2909,7 @@ ${chapter.content.substring(0, 2000)}...
 Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
 
     try {
-      const result = await window.electronAPI.claudeAPI(prompt);
+      const result = await callAIWithMode(prompt);
       if (result.success) {
         let data = result.data.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
         const quality = JSON.parse(data);
@@ -3338,7 +3417,7 @@ Return ONLY valid JSON:
 
     try {
       console.log('[Character Builder] Generating questions...');
-      const result = await window.electronAPI.claudeAPI(prompt);
+      const result = await callAIWithMode(prompt);
 
       if (result.success) {
         try {
@@ -3367,8 +3446,11 @@ Return ONLY valid JSON:
     console.log('[Character Builder] Generating profile with 4-layer model...');
 
     try {
-      // Create CharacterGenerator instance
-      const generator = new CharacterGenerator();
+      // Create CharacterGenerator instance with current provider
+      const generator = new CharacterGenerator(
+        project.ai?.provider || 'anthropic',
+        project.ai?.model || null
+      );
       generator.setStoryContext(project.genre || 'fiction', project.title || '');
 
       // Generate character using the new 4-layer system
@@ -3458,7 +3540,7 @@ Return ONLY valid JSON:
         return;
       }
 
-      const result = await window.electronAPI.claudeAPI(testPrompt);
+      const result = await callAIWithMode(testPrompt);
 
       if (result.success) {
         setProject(prev => ({
@@ -3614,7 +3696,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
       console.log('[Voice] Sending to AI...');
       setVoiceState('processing');
 
-      const result = await window.electronAPI.claudeAPI(prompt);
+      const result = await callAIWithMode(prompt);
 
       if (result.success) {
         console.log('[Voice] AI response received');
@@ -3932,7 +4014,7 @@ Respond helpfully and concisely. If the question is about the current chapter, y
       console.log('[AI Chat] Sending message...');
       setAiChatVoiceState('processing');
 
-      const result = await window.electronAPI.claudeAPI(prompt);
+      const result = await callAIWithMode(prompt);
 
       if (result.success) {
         console.log('[AI Chat] Response received');
@@ -3981,7 +4063,7 @@ Return ONLY the rewritten text, no explanations.`;
       console.log('[AI Chat Edit] Processing...');
       setAiChatVoiceState('processing');
 
-      const result = await window.electronAPI.claudeAPI(prompt);
+      const result = await callAIWithMode(prompt);
 
       if (result.success) {
         console.log('[AI Chat Edit] AI response received');
