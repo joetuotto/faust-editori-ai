@@ -30,7 +30,7 @@
       "target": [
         "dmg"
       ],
-      "icon": "build/faust-star.icns",
+      "icon": "build/faust-dock-icon.icns",
       "darkModeSupport": true,
       "identity": null
     },
