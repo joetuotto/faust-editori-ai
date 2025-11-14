@@ -86,6 +86,16 @@
         newErrors.number = 'Luvun numeron on oltava numero';
       }
 
+      // Status enum validation
+      if (formData.status && !CHAPTER_STATUS.includes(formData.status)) {
+        newErrors.status = 'Valitse kelvollinen tila';
+      }
+
+      // POV Type enum validation
+      if (formData.povType && !POV_TYPES.includes(formData.povType)) {
+        newErrors.povType = 'Valitse kelvollinen POV-tyyppi';
+      }
+
       // POV validation
       if (formData.pov.length > 100) {
         newErrors.pov = 'POV on liian pitkä (max 100 merkkiä)';
@@ -364,7 +374,7 @@
                   }
                 }, 'Numero'),
                 e('input', {
-                  type: 'text',
+                  type: 'number',
                   value: formData.number,
                   onChange: (ev) => handleInputChange('number', ev.target.value),
                   disabled: isViewMode,
@@ -561,7 +571,7 @@
                   }
                 }, 'Sanamäärätavoite'),
                 e('input', {
-                  type: 'text',
+                  type: 'number',
                   value: formData.wordCountTarget,
                   onChange: (ev) => handleInputChange('wordCountTarget', ev.target.value),
                   disabled: isViewMode,

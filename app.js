@@ -1104,6 +1104,39 @@ function FAUSTApp() {
     console.log('[Complexity] Score:', analysis.score, 'Phase:', analysis.phase);
   }, [project.structure, project.characters]);
 
+  // Context menu for editor
+  useEffect(() => {
+    const handleContextMenu = (e) => {
+      e.preventDefault();
+
+      if (!window.electronAPI) return;
+
+      const textarea = editorRef.current;
+      if (!textarea) return;
+
+      const selection = window.getSelection()?.toString() || textarea.value.substring(textarea.selectionStart, textarea.selectionEnd);
+      const isEditable = true;
+
+      window.electronAPI.send('show-context-menu', {
+        x: e.clientX,
+        y: e.clientY,
+        selection: selection,
+        isEditable: isEditable
+      });
+    };
+
+    const editor = editorRef.current;
+    if (editor) {
+      editor.addEventListener('contextmenu', handleContextMenu);
+    }
+
+    return () => {
+      if (editor) {
+        editor.removeEventListener('contextmenu', handleContextMenu);
+      }
+    };
+  }, []);
+
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyboardShortcuts = (event) => {
@@ -1175,6 +1208,48 @@ function FAUSTApp() {
         }
         return;
       }
+
+      // Cmd+S / Ctrl+S = Save
+      if ((event.metaKey || event.ctrlKey) && event.key === 's') {
+        event.preventDefault();
+        saveProject();
+        return;
+      }
+
+      // Cmd+O / Ctrl+O = Open
+      if ((event.metaKey || event.ctrlKey) && event.key === 'o') {
+        event.preventDefault();
+        loadProject();
+        return;
+      }
+
+      // Cmd+N / Ctrl+N = New Project
+      if ((event.metaKey || event.ctrlKey) && event.key === 'n') {
+        event.preventDefault();
+        newProject();
+        return;
+      }
+
+      // Cmd+I / Ctrl+I = Toggle Inspector
+      if ((event.metaKey || event.ctrlKey) && event.key === 'i') {
+        event.preventDefault();
+        setShowInspector(prev => !prev);
+        return;
+      }
+
+      // Cmd+Shift+D / Ctrl+Shift+D = Toggle Theme
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === 'd') {
+        event.preventDefault();
+        setIsDarkMode(prev => !prev);
+        return;
+      }
+
+      // Cmd+K / Ctrl+K = Toggle AI Assistant
+      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        setAiAssistantOpen(prev => !prev);
+        return;
+      }
     };
 
     // Add event listener
@@ -1201,7 +1276,11 @@ function FAUSTApp() {
     showRecentFilesMenu,
     voiceInputAvailable,
     textSelection,
-    voiceState
+    voiceState,
+    project,
+    unsavedChanges,
+    currentFilePath,
+    aiAssistantOpen
   ]);
 
   // Listen to menu events
@@ -1303,6 +1382,51 @@ function FAUSTApp() {
         case 'new-chapter':
           addNewChapter();
           break;
+        case 'new-scene':
+          // Add scene marker at cursor
+          if (editorRef.current) {
+            const textarea = editorRef.current;
+            const start = textarea.selectionStart;
+            const content = textarea.value;
+            const newContent = content.substring(0, start) + '\n\n---\n\n' + content.substring(start);
+            updateChapterContent(newContent);
+            textarea.focus();
+            textarea.setSelectionRange(start + 6, start + 6);
+            console.log('[Menu] Inserted scene break');
+          }
+          break;
+        case 'save-project-as-trigger':
+          saveProjectAs();
+          break;
+        case 'show-word-count':
+          setShowWordCount(true);
+          console.log('[Menu] Show word count');
+          break;
+        case 'show-target-settings':
+          setShowTargetSettings(true);
+          console.log('[Menu] Show target settings');
+          break;
+        case 'spell-check':
+          // Toggle spell check
+          console.log('[Menu] Spell check triggered');
+          // Implement spell check functionality here
+          break;
+        case 'show-project-stats':
+          setShowProjectStats(true);
+          console.log('[Menu] Show project statistics');
+          break;
+        case 'show-help':
+          setShowHelp(true);
+          console.log('[Menu] Show help');
+          break;
+        case 'show-shortcuts':
+          setShowShortcuts(true);
+          console.log('[Menu] Show keyboard shortcuts');
+          break;
+        case 'show-about':
+          setShowAbout(true);
+          console.log('[Menu] Show about dialog');
+          break;
         case 'insert-text':
           if (arg && editorRef.current) {
             const textarea = editorRef.current;
@@ -1328,6 +1452,41 @@ function FAUSTApp() {
               setAiPanelOpen(arg.aiPanelVisible);
             }
             // Add more UI prefs as needed
+          }
+          break;
+
+        // Context menu handlers
+        case 'ai-suggest':
+          if (arg) {
+            setAiInput(arg);
+            setAiPanelOpen(true);
+            console.log('[Context Menu] AI suggest for:', arg);
+          }
+          break;
+        case 'insert-comment':
+          if (editorRef.current) {
+            const textarea = editorRef.current;
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const content = textarea.value;
+            const newContent = content.slice(0, start) + '<!-- Comment -->' + content.slice(end);
+            updateChapterContent(newContent);
+            textarea.focus();
+            textarea.setSelectionRange(start + 5, start + 15);
+            console.log('[Context Menu] Inserted comment');
+          }
+          break;
+        case 'insert-note':
+          if (editorRef.current) {
+            const textarea = editorRef.current;
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const content = textarea.value;
+            const newContent = content.slice(0, start) + '[Note: ]' + content.slice(end);
+            updateChapterContent(newContent);
+            textarea.focus();
+            textarea.setSelectionRange(start + 7, start + 7);
+            console.log('[Context Menu] Inserted note');
           }
           break;
 
@@ -4400,44 +4559,6 @@ ${contextPrompt}`;
       }
     };
   }, [currentFilePath, project]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Cmd+S = Save
-      if (e.metaKey && e.key === 's') {
-        e.preventDefault();
-        saveProject();
-      }
-      // Cmd+O = Open
-      if (e.metaKey && e.key === 'o') {
-        e.preventDefault();
-        loadProject();
-      }
-      // Cmd+N = New Project
-      if (e.metaKey && e.key === 'n') {
-        e.preventDefault();
-        newProject();
-      }
-      // Cmd+I = Toggle Inspector
-      if (e.metaKey && e.key === 'i') {
-        e.preventDefault();
-        setShowInspector(prev => !prev);
-      }
-      // Cmd+Shift+D = Toggle Theme
-      if (e.metaKey && e.shiftKey && e.key === 'd') {
-        e.preventDefault();
-        setIsDarkMode(prev => !prev);
-      }
-      // Cmd+K = Toggle AI Assistant
-      if (e.metaKey && e.key === 'k') {
-        e.preventDefault();
-        setAiAssistantOpen(prev => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [project, unsavedChanges, currentFilePath, aiAssistantOpen]);
 
   return e('div', { className: 'faust-app' },
     // Header

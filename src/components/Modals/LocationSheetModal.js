@@ -83,6 +83,21 @@
         newErrors.name = `Nimi on liian pitkä (max ${VALIDATION_RULES.LOCATION_NAME_MAX_LENGTH} merkkiä)`;
       }
 
+      // Type enum validation
+      if (formData.type && !LOCATION_TYPES.includes(formData.type)) {
+        newErrors.type = 'Valitse kelvollinen tyyppi';
+      }
+
+      // Atmosphere enum validation
+      if (formData.atmosphere && !LOCATION_ATMOSPHERES.includes(formData.atmosphere)) {
+        newErrors.atmosphere = 'Valitse kelvollinen tunnelma';
+      }
+
+      // Importance enum validation
+      if (formData.importance && !LOCATION_IMPORTANCE.includes(formData.importance)) {
+        newErrors.importance = 'Valitse kelvollinen tärkeys';
+      }
+
       // Description validation
       if (formData.description.length > VALIDATION_RULES.DESCRIPTION_MAX_LENGTH) {
         newErrors.description = `Kuvaus on liian pitkä (max ${VALIDATION_RULES.DESCRIPTION_MAX_LENGTH} merkkiä)`;

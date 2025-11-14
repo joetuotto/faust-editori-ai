@@ -74,6 +74,21 @@
         newErrors.name = 'Nimi on liian pitkä (max 200 merkkiä)';
       }
 
+      // Type enum validation
+      if (formData.type && !THREAD_TYPES.includes(formData.type)) {
+        newErrors.type = 'Valitse kelvollinen tyyppi';
+      }
+
+      // Status enum validation
+      if (formData.status && !THREAD_STATUS.includes(formData.status)) {
+        newErrors.status = 'Valitse kelvollinen tila';
+      }
+
+      // Priority enum validation
+      if (formData.priority && !THREAD_PRIORITY.includes(formData.priority)) {
+        newErrors.priority = 'Valitse kelvollinen prioriteetti';
+      }
+
       // Description validation
       if (formData.description.length > VALIDATION_RULES.DESCRIPTION_MAX_LENGTH) {
         newErrors.description = `Kuvaus on liian pitkä (max ${VALIDATION_RULES.DESCRIPTION_MAX_LENGTH} merkkiä)`;

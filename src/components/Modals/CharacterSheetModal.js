@@ -10,6 +10,9 @@
 
   const { createElement: e, useState, useEffect } = React;
 
+  // Enum validation constants
+  const VALID_GENDERS = ['male', 'female', 'non-binary', 'other'];
+
   function CharacterSheetModal({ 
     isOpen, 
     onClose, 
@@ -78,6 +81,11 @@
       // Age validation (if provided)
       if (formData.age && (isNaN(formData.age) || formData.age < 0 || formData.age > 200)) {
         newErrors.age = 'Anna kelvollinen ikä (0-200)';
+      }
+
+      // Gender enum validation
+      if (formData.gender && !VALID_GENDERS.includes(formData.gender)) {
+        newErrors.gender = 'Valitse kelvollinen sukupuoli';
       }
 
       // Appearance max length

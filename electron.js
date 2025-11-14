@@ -1415,15 +1415,20 @@ ipcMain.on('show-context-menu', async (event, { x, y, selection, isEditable }) =
     {
       label: 'Kopioi',
       accelerator: 'CmdOrCtrl+C',
+      enabled: !!selection,
       click: () => {
-        // Renderer handles copy
+        const { clipboard } = require('electron');
+        if (selection) {
+          clipboard.writeText(selection);
+        }
       }
     },
     {
       label: 'Liitä',
       accelerator: 'CmdOrCtrl+V',
+      enabled: isEditable,
       click: () => {
-        // Renderer handles paste
+        mainWindow.webContents.paste();
       }
     },
     { type: 'separator' },
