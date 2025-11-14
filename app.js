@@ -1141,7 +1141,7 @@ function FAUSTApp() {
   useEffect(() => {
     const handleKeyboardShortcuts = (event) => {
       // ESC key for modals
-      if (event.key === 'Escape' || event.keyCode === 27) {
+      if (event.key === 'Escape') {
         // Close modals in priority order (last opened first)
         if (showFindDialog || showReplaceDialog) {
           setShowFindDialog(false);
@@ -2558,6 +2558,25 @@ function FAUSTApp() {
       return;
     }
 
+    // Validate API key format
+    const trimmedKey = apiKey.trim();
+    if (!trimmedKey) {
+      alert('API-avain ei voi olla tyhjä');
+      return;
+    }
+    if (trimmedKey.length < 20) {
+      alert('API-avain on liian lyhyt (min 20 merkkiä)');
+      return;
+    }
+    if (trimmedKey.length > 500) {
+      alert('API-avain on liian pitkä (max 500 merkkiä)');
+      return;
+    }
+    if (/\s/.test(trimmedKey)) {
+      alert('API-avain ei voi sisältää välilyöntejä');
+      return;
+    }
+
     const keyMap = {
       anthropic: 'ANTHROPIC_API_KEY',
       openai: 'OPENAI_API_KEY',
@@ -2567,7 +2586,7 @@ function FAUSTApp() {
 
     try {
       const result = await window.electronAPI.saveApiKeys({
-        [keyMap[providerName]]: apiKey
+        [keyMap[providerName]]: trimmedKey
       });
 
       if (result.success) {
