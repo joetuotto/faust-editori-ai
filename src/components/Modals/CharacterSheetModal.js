@@ -93,6 +93,17 @@
         newErrors.appearance = 'Ulkonäkökuvaus on liian pitkä (max 5000 merkkiä)';
       }
 
+      // Arc fields validation (nested object)
+      if (formData.arc.beginning && formData.arc.beginning.length > 1000) {
+        newErrors['arc.beginning'] = 'Aloitus on liian pitkä (max 1000 merkkiä)';
+      }
+      if (formData.arc.development && formData.arc.development.length > 1000) {
+        newErrors['arc.development'] = 'Kehitys on liian pitkä (max 1000 merkkiä)';
+      }
+      if (formData.arc.end && formData.arc.end.length > 1000) {
+        newErrors['arc.end'] = 'Lopputulos on liian pitkä (max 1000 merkkiä)';
+      }
+
       setErrors(newErrors);
       return Object.keys(newErrors).length === 0;
     };
@@ -125,6 +136,33 @@
       } finally {
         setIsSaving(false);
       }
+    };
+
+    // Central input change handler with auto-clear errors
+    const handleInputChange = (field, value) => {
+      setFormData(prev => ({
+        ...prev,
+        [field]: value
+      }));
+      // Auto-clear error for this field
+      if (errors[field]) {
+        setErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors[field];
+          return newErrors;
+        });
+      }
+    };
+
+    // Handle nested arc field changes
+    const handleArcChange = (field, value) => {
+      setFormData(prev => ({
+        ...prev,
+        arc: {
+          ...prev.arc,
+          [field]: value
+        }
+      }));
     };
 
     // Handle adding trait
@@ -301,7 +339,7 @@
               e('input', {
                 type: 'text',
                 value: formData.name,
-                onChange: (ev) => setFormData({ ...formData, name: ev.target.value }),
+                onChange: (ev) => handleInputChange('name', ev.target.value),
                 disabled: isViewMode,
                 placeholder: 'Esim. Maria Virtanen',
                 style: {
@@ -348,7 +386,7 @@
                 e('input', {
                   type: 'number',
                   value: formData.age,
-                  onChange: (ev) => setFormData({ ...formData, age: ev.target.value }),
+                  onChange: (ev) => handleInputChange('age', ev.target.value),
                   disabled: isViewMode,
                   placeholder: 'Esim. 35',
                   min: 0,
@@ -387,7 +425,7 @@
                 }, 'Sukupuoli'),
                 e('select', {
                   value: formData.gender,
-                  onChange: (ev) => setFormData({ ...formData, gender: ev.target.value }),
+                  onChange: (ev) => handleInputChange('gender', ev.target.value),
                   disabled: isViewMode,
                   style: {
                     width: '100%',
@@ -422,7 +460,7 @@
               }, 'Ulkonäkö'),
               e('textarea', {
                 value: formData.appearance,
-                onChange: (ev) => setFormData({ ...formData, appearance: ev.target.value }),
+                onChange: (ev) => handleInputChange('appearance', ev.target.value),
                 disabled: isViewMode,
                 placeholder: 'Kuvaa hahmon ulkonäköä...',
                 rows: 4,
@@ -775,10 +813,7 @@
               }, 'Aloitus'),
               e('textarea', {
                 value: formData.arc.beginning,
-                onChange: (ev) => setFormData({
-                  ...formData,
-                  arc: { ...formData.arc, beginning: ev.target.value }
-                }),
+                onChange: (ev) => handleArcChange('beginning', ev.target.value),
                 disabled: isViewMode,
                 placeholder: 'Miten hahmo aloittaa tarinassa?',
                 rows: 3,
@@ -809,10 +844,7 @@
               }, 'Kehitys'),
               e('textarea', {
                 value: formData.arc.development,
-                onChange: (ev) => setFormData({
-                  ...formData,
-                  arc: { ...formData.arc, development: ev.target.value }
-                }),
+                onChange: (ev) => handleArcChange('development', ev.target.value),
                 disabled: isViewMode,
                 placeholder: 'Miten hahmo muuttuu tarinan aikana?',
                 rows: 3,
@@ -843,10 +875,7 @@
               }, 'Lopputulos'),
               e('textarea', {
                 value: formData.arc.end,
-                onChange: (ev) => setFormData({
-                  ...formData,
-                  arc: { ...formData.arc, end: ev.target.value }
-                }),
+                onChange: (ev) => handleArcChange('end', ev.target.value),
                 disabled: isViewMode,
                 placeholder: 'Mihin hahmo päätyy?',
                 rows: 3,
