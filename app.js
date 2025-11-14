@@ -922,12 +922,21 @@ function FAUSTApp() {
 
   // LocationSheet modal state
   const [showLocationSheet, setShowLocationSheet] = useState(false);
+  const [showLocationFormModal, setShowLocationFormModal] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState(null);
+  const [locationFormMode, setLocationFormMode] = useState('create'); // 'create', 'edit', 'view'
 
   // ThreadSheet modal state (plot threads)
   const [showThreadSheet, setShowThreadSheet] = useState(false);
+  const [showThreadFormModal, setShowThreadFormModal] = useState(false);
+  const [selectedThread, setSelectedThread] = useState(null);
+  const [threadFormMode, setThreadFormMode] = useState('create'); // 'create', 'edit', 'view'
 
   // ChapterSheet modal state
   const [showChapterSheetModal, setShowChapterSheetModal] = useState(false);
+
+  // ExportModal state
+  const [showExportModal, setShowExportModal] = useState(false);
 
   // Handler to save chapter data from modal
   const handleChapterSheetSave = (chapterData) => {
@@ -940,6 +949,95 @@ function FAUSTApp() {
     setUnsavedChanges(true);
     setShowChapterSheetModal(false);
     console.log('[ChapterSheet] Chapter updated:', activeChapterId);
+  };
+
+  // Handler to save location data from modal
+  const handleLocationSave = (locationData) => {
+    if (!project.continuity) {
+      project.continuity = { locations: {}, characters: {}, threads: {} };
+    }
+    if (!project.continuity.locations) {
+      project.continuity.locations = {};
+    }
+
+    // Create or update location
+    project.continuity.locations[locationData.name] = locationData;
+
+    setProject({ ...project });
+    setUnsavedChanges(true);
+    setShowLocationFormModal(false);
+    setSelectedLocation(null);
+    console.log('[LocationSheet] Location saved:', locationData.name);
+  };
+
+  // Handler to save thread data from modal
+  const handleThreadSave = (threadData) => {
+    if (!project.plotThreads) {
+      project.plotThreads = [];
+    }
+
+    if (threadFormMode === 'edit' && selectedThread) {
+      // Update existing thread
+      const threadIndex = project.plotThreads.findIndex(t => t.id === selectedThread.id);
+      if (threadIndex > -1) {
+        project.plotThreads[threadIndex] = threadData;
+      }
+    } else {
+      // Create new thread
+      project.plotThreads.push(threadData);
+    }
+
+    setProject({ ...project });
+    setUnsavedChanges(true);
+    setShowThreadFormModal(false);
+    setSelectedThread(null);
+    console.log('[ThreadSheet] Thread saved:', threadData.name);
+  };
+
+  // Handler to export from modal
+  const handleExportFromModal = async (exportData) => {
+    if (!window.electronAPI) {
+      throw new Error('Electron API ei ole käytettävissä');
+    }
+
+    console.log('[Export] Processing export:', exportData);
+
+    // Handle different formats
+    if (exportData.format === 'epub') {
+      const result = await window.electronAPI.exportEPUB({
+        metadata: exportData.metadata,
+        chapters: exportData.chapters
+      });
+      if (!result.success) {
+        throw new Error(result.error || 'EPUB-vienti epäonnistui');
+      }
+      return result;
+    } else if (exportData.format === 'mobi') {
+      const result = await window.electronAPI.exportMOBI({
+        metadata: exportData.metadata,
+        chapters: exportData.chapters
+      });
+      if (!result.success) {
+        throw new Error(result.error || 'MOBI-vienti epäonnistui');
+      }
+      return result;
+    } else {
+      // TXT, DOCX, PDF
+      const result = await window.electronAPI.exportFullProject({
+        project: {
+          ...project,
+          structure: exportData.chapters.map(ch => ({
+            title: ch.title,
+            content: ch.content
+          }))
+        },
+        format: exportData.format
+      });
+      if (!result.success) {
+        throw new Error(result.error || `${exportData.format.toUpperCase()}-vienti epäonnistui`);
+      }
+      return result;
+    }
   };
 
   // Refinement state
@@ -1040,6 +1138,9 @@ function FAUSTApp() {
 
   const editorRef = useRef(null);
   const autosaveTimerRef = useRef(null);
+  const [autosaveRetryCount, setAutosaveRetryCount] = useState(0);
+  const [isOffline, setIsOffline] = useState(false);
+  const [autosaveError, setAutosaveError] = useState(null);
   const backupTimerRef = useRef(null);
   const voiceInputRef = useRef(null);
   const historyTimerRef = useRef(null); // Debounce timer for history
@@ -1266,21 +1367,12 @@ function FAUSTApp() {
           }
           break;
 
-        // Export menu
+        // Export menu - Open Export Modal
         case 'export-trigger':
-          if (arg) {
-            exportDocument(arg); // arg = 'txt', 'md', 'html', 'rtf'
-          }
-          break;
         case 'export-pdf-trigger':
-          exportPDF();
-          break;
         case 'export-epub-trigger':
-          exportEPUB();
-          break;
-
         case 'export-mobi-trigger':
-          exportMOBI();
+          setShowExportModal(true);
           break;
 
         // View menu
@@ -4316,7 +4408,37 @@ ${contextPrompt}`;
     }
   }, [project]);
 
-  // Autosave
+  // Online/Offline detection
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOffline(false);
+      console.log('[Network] Back online');
+      // If there were unsaved changes while offline, try to save now
+      if (unsavedChanges && autosaveRetryCount > 0) {
+        setAutosaveRetryCount(0);
+        console.log('[Autosave] Retrying save after coming back online');
+      }
+    };
+
+    const handleOffline = () => {
+      setIsOffline(true);
+      console.log('[Network] Offline detected');
+      setAutosaveError('Offline - tallennus odotetaan yhteyttä');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Initial check
+    setIsOffline(!navigator.onLine);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [unsavedChanges, autosaveRetryCount]);
+
+  // Enhanced autosave with retry logic and offline detection
   useEffect(() => {
     if (!unsavedChanges || !currentFilePath || !window.electronAPI) {
       return;
@@ -4327,10 +4449,20 @@ ${contextPrompt}`;
       clearTimeout(autosaveTimerRef.current);
     }
 
-    // Set new timer (30 seconds)
-    autosaveTimerRef.current = setTimeout(async () => {
+    // Function to attempt save with retry
+    const attemptSave = async (retryCount = 0) => {
+      // Check if offline
+      if (!navigator.onLine || isOffline) {
+        console.log('[Autosave] Skipping - offline');
+        setAutosaveError('Offline - tallennus odotetaan yhteyttä');
+        setSavingState('error');
+        return;
+      }
+
       try {
         setSavingState('saving');
+        setAutosaveError(null);
+
         const result = await window.electronAPI.autosaveProject({
           projectData: project,
           filePath: currentFilePath
@@ -4339,6 +4471,8 @@ ${contextPrompt}`;
         if (result.success) {
           setUnsavedChanges(false);
           setSavingState('saved');
+          setAutosaveRetryCount(0);
+          setAutosaveError(null);
           console.log('[Autosave] Project autosaved');
 
           // Clear 'saved' state after 2 seconds
@@ -4346,18 +4480,41 @@ ${contextPrompt}`;
             setSavingState('idle');
           }, 2000);
         } else {
-          setSavingState('error');
-          setTimeout(() => {
-            setSavingState('idle');
-          }, 3000);
+          throw new Error(result.error || 'Autosave failed');
         }
       } catch (error) {
-        console.error('[Autosave] Error:', error);
-        setSavingState('error');
-        setTimeout(() => {
-          setSavingState('idle');
-        }, 3000);
+        console.error('[Autosave] Error (attempt ' + (retryCount + 1) + '):', error);
+
+        // Retry logic with exponential backoff
+        const maxRetries = 3;
+        if (retryCount < maxRetries) {
+          const backoffDelay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+          console.log(`[Autosave] Retrying in ${backoffDelay}ms...`);
+
+          setAutosaveRetryCount(retryCount + 1);
+          setAutosaveError(`Tallennus epäonnistui - yritetään uudelleen (${retryCount + 1}/${maxRetries})`);
+
+          setTimeout(() => {
+            attemptSave(retryCount + 1);
+          }, backoffDelay);
+        } else {
+          // Max retries reached
+          console.error('[Autosave] Max retries reached');
+          setAutosaveError('Automaattitallennus epäonnistui - tallenna manuaalisesti');
+          setSavingState('error');
+          setAutosaveRetryCount(0);
+
+          // Keep error visible longer
+          setTimeout(() => {
+            setSavingState('idle');
+          }, 5000);
+        }
       }
+    };
+
+    // Set autosave timer (30 seconds)
+    autosaveTimerRef.current = setTimeout(() => {
+      attemptSave(0);
     }, 30000);
 
     return () => {
@@ -4365,7 +4522,7 @@ ${contextPrompt}`;
         clearTimeout(autosaveTimerRef.current);
       }
     };
-  }, [unsavedChanges, currentFilePath, project]);
+  }, [unsavedChanges, currentFilePath, project, isOffline]);
 
   // Auto-backup (every 5 minutes)
   useEffect(() => {
@@ -4465,30 +4622,36 @@ ${contextPrompt}`;
             e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)' } },
               project.title + (unsavedChanges ? ' •' : '')),
 
-            // Autosave indicator
-            savingState !== 'idle' && e('span', {
+            // Autosave indicator with error details
+            (savingState !== 'idle' || isOffline) && e('span', {
               style: {
                 fontFamily: 'IBM Plex Mono',
                 fontSize: '10px',
                 padding: '2px 8px',
                 borderRadius: '3px',
-                background: savingState === 'saving' ? 'rgba(255, 193, 7, 0.2)' :
+                background: isOffline ? 'rgba(158, 158, 158, 0.2)' :
+                           savingState === 'saving' ? 'rgba(255, 193, 7, 0.2)' :
                            savingState === 'saved' ? 'rgba(76, 175, 80, 0.2)' :
                            'rgba(244, 67, 54, 0.2)',
-                color: savingState === 'saving' ? '#FFA726' :
+                color: isOffline ? '#999' :
+                       savingState === 'saving' ? '#FFA726' :
                        savingState === 'saved' ? '#66BB6A' :
                        '#EF5350',
-                border: `1px solid ${savingState === 'saving' ? '#FFA726' :
+                border: `1px solid ${isOffline ? '#999' :
+                                      savingState === 'saving' ? '#FFA726' :
                                       savingState === 'saved' ? '#66BB6A' :
                                       '#EF5350'}`,
                 display: 'flex',
                 alignItems: 'center',
-                gap: '4px'
+                gap: '4px',
+                cursor: autosaveError ? 'help' : 'default',
+                title: autosaveError || ''
               }
             },
+              isOffline ? '📡 Offline' :
               savingState === 'saving' ? '💾 Tallennetaan...' :
               savingState === 'saved' ? '✓ Tallennettu' :
-              '✗ Virhe'
+              autosaveError ? `✗ ${autosaveError}` : '✗ Virhe'
             )
           )
         ),
@@ -4983,7 +5146,7 @@ ${contextPrompt}`;
               animation: 'fadeIn 0.3s ease'
             }
           },
-            // Analyze button
+            // Analyze button - Alchemical Mercury symbol (☿ - transformation, analysis)
             e('button', {
               onClick: async () => {
                 console.log('[UI] Analysoi clicked');
@@ -4995,24 +5158,55 @@ ${contextPrompt}`;
                 }
               },
               disabled: !activeChapter.content || activeChapter.content.length < 50,
-              title: 'Analysoi luvun laatu ja sisältö AI:lla',
+              title: '☿ SCRUTINIUM PROFUNDUM\n\nMitä: Analysoi luvun laadun ja sisällön AI:lla\nTulos: Antaa arvosanan 1-10 ja yksityiskohtaiset ehdotukset\nVaatimus: Vähintään 50 merkkiä tekstiä\nKesto: ~15-30 sekuntia\n\n💡 Vinkki: Käytä kun luku on lähes valmis',
+              className: 'ai-toolbar-btn',
               style: {
-                padding: '8px 12px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: !activeChapter.content || activeChapter.content.length < 50 ? 'var(--text-3)' : 'var(--text)',
-                cursor: !activeChapter.content || activeChapter.content.length < 50 ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                opacity: !activeChapter.content || activeChapter.content.length < 50 ? 0.5 : 1,
-                minWidth: '36px'
+                padding: '8px 14px',
+                background: (!activeChapter.content || activeChapter.content.length < 50)
+                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
+                  : 'linear-gradient(135deg, rgba(25, 20, 15, 0.9), rgba(35, 28, 20, 0.9))',
+                border: '1px solid',
+                borderImage: 'linear-gradient(135deg, #8b6914, #c7b386, #8b6914) 1',
+                borderRadius: '4px',
+                color: (!activeChapter.content || activeChapter.content.length < 50) ? 'rgba(199, 179, 134, 0.4)' : '#c7b386',
+                cursor: (!activeChapter.content || activeChapter.content.length < 50) ? 'not-allowed' : 'pointer',
+                fontFamily: '"EB Garamond", serif',
+                fontSize: '18px',
+                fontWeight: 500,
+                letterSpacing: '0.5px',
+                opacity: (!activeChapter.content || activeChapter.content.length < 50) ? 0.5 : 1,
+                minWidth: '40px',
+                boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.4)',
+                transition: 'all 0.3s ease',
+                transform: 'scale(1)'
+              },
+              onMouseEnter: (e) => {
+                if (!e.currentTarget.disabled) {
+                  e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
+                  e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139, 105, 20, 0.3), rgba(199, 179, 134, 0.3))';
+                  e.currentTarget.style.color = '#d4af37';
+                  e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.4), 0 0 16px rgba(212, 175, 55, 0.4)';
+                  e.currentTarget.style.textShadow = '0 0 10px rgba(212, 175, 55, 0.8)';
+                }
+              },
+              onMouseLeave: (e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.background = (!activeChapter.content || activeChapter.content.length < 50)
+                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
+                  : 'linear-gradient(135deg, rgba(25, 20, 15, 0.9), rgba(35, 28, 20, 0.9))';
+                e.currentTarget.style.color = (!activeChapter.content || activeChapter.content.length < 50) ? 'rgba(199, 179, 134, 0.4)' : '#c7b386';
+                e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.4)';
+                e.currentTarget.style.textShadow = 'none';
               }
-            }, '🤖'),
+            }, '☿'),
 
-            // Quick quality check
+            // Quick quality check - Alchemical Alembic (⚗ - distillation, purification)
             e('button', {
               onClick: async () => {
+                if (!activeChapter.content || activeChapter.content.trim().length === 0) {
+                  alert('Luku on tyhjä. Kirjoita ensin jotain sisältöä.');
+                  return;
+                }
                 console.log('[UI] Pika-arvio clicked');
                 const result = await quickQualityCheck(activeChapterId);
                 if (result && result.score) {
@@ -5021,25 +5215,56 @@ ${contextPrompt}`;
                   alert('Pika-arvio epäonnistui. Tarkista että:\n1. Claude API-avain on asetettu\n2. Luvussa on tekstiä');
                 }
               },
-              disabled: !activeChapter.content || activeChapter.content.length < 50,
-              title: 'Pikainen laatutarkistus AI:lla',
+              disabled: !activeChapter.content || activeChapter.content.trim().length === 0,
+              title: '⚗ EXAMEN CELERITER\n\nMitä: Nopea laatutarkistus AI:lla\nTulos: Pisteet 1-10 ja lyhyet ehdotukset\nVaatimus: Mitä tahansa tekstiä (ei minimiä)\nKesto: ~5-10 sekuntia\n\n💡 Vinkki: Käytä kirjoittaessa säännöllisesti',
+              className: 'ai-toolbar-btn',
               style: {
-                padding: '8px 12px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: !activeChapter.content || activeChapter.content.length < 50 ? 'var(--text-3)' : 'var(--text)',
-                cursor: !activeChapter.content || activeChapter.content.length < 50 ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                opacity: !activeChapter.content || activeChapter.content.length < 50 ? 0.5 : 1,
-                minWidth: '36px'
+                padding: '8px 14px',
+                background: (!activeChapter.content || activeChapter.content.trim().length === 0)
+                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
+                  : 'linear-gradient(135deg, rgba(25, 20, 15, 0.9), rgba(35, 28, 20, 0.9))',
+                border: '1px solid',
+                borderImage: 'linear-gradient(135deg, #8b6914, #c7b386, #8b6914) 1',
+                borderRadius: '4px',
+                color: (!activeChapter.content || activeChapter.content.trim().length === 0) ? 'rgba(199, 179, 134, 0.4)' : '#c7b386',
+                cursor: (!activeChapter.content || activeChapter.content.trim().length === 0) ? 'not-allowed' : 'pointer',
+                fontFamily: '"EB Garamond", serif',
+                fontSize: '18px',
+                fontWeight: 500,
+                letterSpacing: '0.5px',
+                opacity: (!activeChapter.content || activeChapter.content.trim().length === 0) ? 0.5 : 1,
+                minWidth: '40px',
+                boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.4)',
+                transition: 'all 0.3s ease',
+                transform: 'scale(1)'
+              },
+              onMouseEnter: (e) => {
+                if (!e.currentTarget.disabled) {
+                  e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
+                  e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139, 105, 20, 0.3), rgba(199, 179, 134, 0.3))';
+                  e.currentTarget.style.color = '#d4af37';
+                  e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.4), 0 0 16px rgba(212, 175, 55, 0.4)';
+                  e.currentTarget.style.textShadow = '0 0 10px rgba(212, 175, 55, 0.8)';
+                }
+              },
+              onMouseLeave: (e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.background = (!activeChapter.content || activeChapter.content.trim().length === 0)
+                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
+                  : 'linear-gradient(135deg, rgba(25, 20, 15, 0.9), rgba(35, 28, 20, 0.9))';
+                e.currentTarget.style.color = (!activeChapter.content || activeChapter.content.trim().length === 0) ? 'rgba(199, 179, 134, 0.4)' : '#c7b386';
+                e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.4)';
+                e.currentTarget.style.textShadow = 'none';
               }
-            }, '⚡'),
+            }, '⚗'),
 
-            // Generate synopsis
+            // Generate synopsis - Alchemical Sulfur (🜍 - essence, spirit, summary)
             e('button', {
               onClick: async () => {
+                if (!activeChapter.content || activeChapter.content.trim().length === 0) {
+                  alert('Luku on tyhjä. Kirjoita ensin jotain sisältöä.');
+                  return;
+                }
                 console.log('[UI] Synopsis clicked');
                 const result = await generateSynopsis(activeChapterId);
                 if (result) {
@@ -5048,41 +5273,100 @@ ${contextPrompt}`;
                   alert('Synopsis-luonti epäonnistui. Tarkista että:\n1. Claude API-avain on asetettu\n2. Luvussa on tekstiä');
                 }
               },
-              disabled: !activeChapter.content || activeChapter.content.length < 50,
-              title: 'Luo tiivistelmä luvusta AI:lla',
+              disabled: !activeChapter.content || activeChapter.content.trim().length === 0,
+              title: '🜍 EPITOME BREVIS\n\nMitä: Luo lyhyt synopsis/yhteenveto luvusta\nTulos: 2-4 lauseen tiivistelmä luvun tapahtumista\nVaatimus: Mitä tahansa tekstiä (ei minimiä)\nKesto: ~10-15 sekuntia\n\n💡 Vinkki: Hyödyllinen luvun tallennukseen ja muistiinpanoihin',
+              className: 'ai-toolbar-btn',
               style: {
-                padding: '8px 12px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                color: !activeChapter.content || activeChapter.content.length < 50 ? 'var(--text-3)' : 'var(--text)',
-                cursor: !activeChapter.content || activeChapter.content.length < 50 ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                opacity: !activeChapter.content || activeChapter.content.length < 50 ? 0.5 : 1,
-                minWidth: '36px'
+                padding: '8px 14px',
+                background: (!activeChapter.content || activeChapter.content.trim().length === 0)
+                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
+                  : 'linear-gradient(135deg, rgba(25, 20, 15, 0.9), rgba(35, 28, 20, 0.9))',
+                border: '1px solid',
+                borderImage: 'linear-gradient(135deg, #8b6914, #c7b386, #8b6914) 1',
+                borderRadius: '4px',
+                color: (!activeChapter.content || activeChapter.content.trim().length === 0) ? 'rgba(199, 179, 134, 0.4)' : '#c7b386',
+                cursor: (!activeChapter.content || activeChapter.content.trim().length === 0) ? 'not-allowed' : 'pointer',
+                fontFamily: '"EB Garamond", serif',
+                fontSize: '18px',
+                fontWeight: 500,
+                letterSpacing: '0.5px',
+                opacity: (!activeChapter.content || activeChapter.content.trim().length === 0) ? 0.5 : 1,
+                minWidth: '40px',
+                boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.4)',
+                transition: 'all 0.3s ease',
+                transform: 'scale(1)'
+              },
+              onMouseEnter: (e) => {
+                if (!e.currentTarget.disabled) {
+                  e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
+                  e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139, 105, 20, 0.3), rgba(199, 179, 134, 0.3))';
+                  e.currentTarget.style.color = '#d4af37';
+                  e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.4), 0 0 16px rgba(212, 175, 55, 0.4)';
+                  e.currentTarget.style.textShadow = '0 0 10px rgba(212, 175, 55, 0.8)';
+                }
+              },
+              onMouseLeave: (e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.background = (!activeChapter.content || activeChapter.content.trim().length === 0)
+                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
+                  : 'linear-gradient(135deg, rgba(25, 20, 15, 0.9), rgba(35, 28, 20, 0.9))';
+                e.currentTarget.style.color = (!activeChapter.content || activeChapter.content.trim().length === 0) ? 'rgba(199, 179, 134, 0.4)' : '#c7b386';
+                e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.4)';
+                e.currentTarget.style.textShadow = 'none';
               }
-            }, '📝'),
+            }, '🜍'),
 
-            // Generate chapter
+            // Generate chapter - Alchemical Philosopher's Stone (🜚 - magnum opus, creation)
             e('button', {
               onClick: () => generateChapter(activeChapterId),
               disabled: isGenerating,
-              title: isGenerating ? 'Generoidaan...' : 'Generoi luku AI:lla',
+              title: isGenerating ? '⧖ OPUS IN PROGRESSU...\n\nOdota, AI kirjoittaa lukua...' : '🜚 MAGNUM OPUS\n\nMitä: AI kirjoittaa kokonaisen luvun puolestasi\nTulos: 1000-3000 sanan luku projektisi tyyliin\nVaatimus: Ei vaatimuksia (voi olla tyhjä)\nKesto: ~30-90 sekuntia\n\n💡 Vinkki: AI käyttää aiempia lukuja kontekstina',
+              className: 'ai-toolbar-btn-primary',
               style: {
-                padding: '8px 12px',
-                background: isGenerating ? 'var(--bg-2)' : 'var(--bronze)',
-                border: '1px solid var(--bronze)',
-                borderRadius: '6px',
-                color: isGenerating ? 'var(--text-3)' : '#000',
+                padding: '8px 16px',
+                background: isGenerating
+                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
+                  : 'linear-gradient(135deg, rgba(139, 105, 20, 0.9), rgba(199, 179, 134, 0.8))',
+                border: '2px solid',
+                borderImage: isGenerating
+                  ? 'linear-gradient(135deg, #5a4a0f, #7a6a2f, #5a4a0f) 1'
+                  : 'linear-gradient(135deg, #c7b386, #d4af37, #c7b386) 1',
+                borderRadius: '4px',
+                color: isGenerating ? 'rgba(199, 179, 134, 0.4)' : '#1a1510',
                 cursor: isGenerating ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
+                fontFamily: '"EB Garamond", serif',
+                fontSize: '20px',
                 fontWeight: 600,
+                letterSpacing: '1px',
                 opacity: isGenerating ? 0.5 : 1,
-                minWidth: '36px'
+                minWidth: '44px',
+                boxShadow: isGenerating
+                  ? 'inset 0 2px 4px rgba(0, 0, 0, 0.4)'
+                  : 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(199, 179, 134, 0.3)',
+                transition: 'all 0.3s ease',
+                transform: 'scale(1)'
+              },
+              onMouseEnter: (e) => {
+                if (!isGenerating) {
+                  e.currentTarget.style.transform = 'scale(1.08) translateY(-3px)';
+                  e.currentTarget.style.background = 'linear-gradient(135deg, rgba(212, 175, 55, 0.95), rgba(255, 215, 0, 0.9))';
+                  e.currentTarget.style.color = '#000';
+                  e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 20px rgba(212, 175, 55, 0.6)';
+                  e.currentTarget.style.textShadow = '0 0 12px rgba(255, 215, 0, 0.9)';
+                }
+              },
+              onMouseLeave: (e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.background = isGenerating
+                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
+                  : 'linear-gradient(135deg, rgba(139, 105, 20, 0.9), rgba(199, 179, 134, 0.8))';
+                e.currentTarget.style.color = isGenerating ? 'rgba(199, 179, 134, 0.4)' : '#1a1510';
+                e.currentTarget.style.boxShadow = isGenerating
+                  ? 'inset 0 2px 4px rgba(0, 0, 0, 0.4)'
+                  : 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(199, 179, 134, 0.3)';
+                e.currentTarget.style.textShadow = 'none';
               }
-            }, isGenerating ? '⏳' : '✨')
+            }, isGenerating ? '⧖' : '🜚')
           ),
 
           // Generation progress indicator
@@ -5364,9 +5648,22 @@ ${contextPrompt}`;
               style: {
                 fontSize: '11px',
                 color: 'var(--text-2)',
-                marginBottom: '8px'
+                fontFamily: 'IBM Plex Mono',
+                marginBottom: '8px',
+                padding: '4px 8px',
+                background: 'var(--bg-2)',
+                borderRadius: '4px'
               }
-            }, `${currentSearchIndex + 1} / ${searchResults.length}`) : null,
+            },
+              `${currentSearchIndex + 1} / ${searchResults.length} tulosta`,
+              searchInAllChapters && searchResults[currentSearchIndex] ?
+                e('div', { style: { fontSize: '10px', color: 'var(--text-3)', marginTop: '2px' } },
+                  `📖 ${searchResults[currentSearchIndex].chapterTitle}`,
+                  e('div', { style: { fontStyle: 'italic', marginTop: '2px', opacity: 0.7 } },
+                    `"...${searchResults[currentSearchIndex].context}..."`
+                  )
+                ) : null
+            ) : null,
             e('div', { style: { display: 'flex', gap: '4px', flexWrap: 'wrap' } },
               e('button', {
                 onClick: performSearch,
@@ -10573,7 +10870,7 @@ ${contextPrompt}`;
       )
     ),
 
-    // LocationSheet Modal
+    // LocationSheet Modal (List View)
     showLocationSheet && e('div', {
       style: {
         position: 'fixed',
@@ -10602,8 +10899,10 @@ ${contextPrompt}`;
         }
       },
         e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '📍 Story Locations'),
-        e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '24px' } },
+        e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '16px' } },
           `${Object.keys(project.continuity?.locations || {}).length} locations tracked`),
+
+        // Close button
         e('button', {
           onClick: () => setShowLocationSheet(false),
           style: {
@@ -10620,15 +10919,46 @@ ${contextPrompt}`;
             fontSize: '12px'
           }
         }, 'Close'),
+
+        // Create Location button
+        e('button', {
+          onClick: () => {
+            setSelectedLocation(null);
+            setLocationFormMode('create');
+            setShowLocationFormModal(true);
+          },
+          style: {
+            width: '100%',
+            padding: '12px',
+            marginBottom: '16px',
+            background: 'var(--bronze)',
+            border: 'none',
+            borderRadius: '4px',
+            color: '#000',
+            cursor: 'pointer',
+            fontFamily: 'IBM Plex Mono',
+            fontSize: '13px',
+            fontWeight: 600
+          }
+        }, '+ Create New Location'),
+
+        // Locations grid
         e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' } },
           Object.values(project.continuity?.locations || {}).map(loc =>
             e('div', {
               key: loc.name,
+              onClick: () => {
+                setSelectedLocation(loc);
+                setLocationFormMode('view');
+                setShowLocationFormModal(true);
+              },
               style: {
                 padding: '12px',
                 background: 'var(--bg-2)',
                 border: '1px solid var(--border-color)',
-                borderRadius: '4px'
+                borderRadius: '4px',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
               }
             },
               e('h3', { style: { fontFamily: 'EB Garamond', fontSize: '16px', color: 'var(--text)', marginBottom: '6px' } }, loc.name),
@@ -10642,7 +10972,20 @@ ${contextPrompt}`;
       )
     ),
 
-    // ThreadSheet Modal (Plot Threads)
+    // LocationSheet Form Modal (Create/Edit/View) - External Component
+    showLocationFormModal && window.LocationSheetModal && e(window.LocationSheetModal, {
+      isOpen: showLocationFormModal,
+      onClose: () => {
+        setShowLocationFormModal(false);
+        setSelectedLocation(null);
+      },
+      location: selectedLocation,
+      locations: Object.values(project.continuity?.locations || {}),
+      onSave: handleLocationSave,
+      mode: locationFormMode
+    }),
+
+    // ThreadSheet Modal (Plot Threads List View)
     showThreadSheet && e('div', {
       style: {
         position: 'fixed',
@@ -10671,8 +11014,10 @@ ${contextPrompt}`;
         }
       },
         e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '🧵 Plot Threads'),
-        e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '24px' } },
+        e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '16px' } },
           `${(project.plotThreads || []).length} threads in your story`),
+
+        // Close button
         e('button', {
           onClick: () => setShowThreadSheet(false),
           style: {
@@ -10689,15 +11034,46 @@ ${contextPrompt}`;
             fontSize: '12px'
           }
         }, 'Close'),
+
+        // Create Thread button
+        e('button', {
+          onClick: () => {
+            setSelectedThread(null);
+            setThreadFormMode('create');
+            setShowThreadFormModal(true);
+          },
+          style: {
+            width: '100%',
+            padding: '12px',
+            marginBottom: '16px',
+            background: 'var(--bronze)',
+            border: 'none',
+            borderRadius: '4px',
+            color: '#000',
+            cursor: 'pointer',
+            fontFamily: 'IBM Plex Mono',
+            fontSize: '13px',
+            fontWeight: 600
+          }
+        }, '+ Create New Thread'),
+
+        // Threads list
         e('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
           (project.plotThreads || []).map((thread, idx) =>
             e('div', {
               key: idx,
+              onClick: () => {
+                setSelectedThread(thread);
+                setThreadFormMode('view');
+                setShowThreadFormModal(true);
+              },
               style: {
                 padding: '16px',
                 background: 'var(--bg-2)',
                 border: '1px solid var(--border-color)',
-                borderRadius: '6px'
+                borderRadius: '6px',
+                cursor: 'pointer',
+                transition: 'all 0.2s'
               }
             },
               e('h3', { style: { fontFamily: 'EB Garamond', fontSize: '18px', color: 'var(--text)', marginBottom: '8px' } },
@@ -10716,12 +11092,34 @@ ${contextPrompt}`;
       )
     ),
 
+    // ThreadSheet Form Modal (Create/Edit/View) - External Component
+    showThreadFormModal && window.ThreadSheetModal && e(window.ThreadSheetModal, {
+      isOpen: showThreadFormModal,
+      onClose: () => {
+        setShowThreadFormModal(false);
+        setSelectedThread(null);
+      },
+      thread: selectedThread,
+      threads: project.plotThreads || [],
+      onSave: handleThreadSave,
+      mode: threadFormMode
+    }),
+
     // ChapterSheet Modal (Edit Chapter Details)
     showChapterSheetModal && window.ChapterSheetModal && e(window.ChapterSheetModal, {
       chapter: activeChapter,
       mode: 'edit',
       onSave: handleChapterSheetSave,
       onClose: () => setShowChapterSheetModal(false)
+    }),
+
+    // Export Modal (Interactive Export Dialog)
+    showExportModal && window.ExportModal && e(window.ExportModal, {
+      isOpen: showExportModal,
+      onClose: () => setShowExportModal(false),
+      project: project,
+      activeChapter: activeChapter,
+      onExport: handleExportFromModal
     }),
 
     // Continue Writing Dialog (HybridWritingFlow)

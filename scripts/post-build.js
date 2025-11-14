@@ -23,6 +23,7 @@ const CRITICAL_FILES = [
   { src: 'src/components/Modals/LocationSheetModal.js', dst: 'dist/src/components/Modals/LocationSheetModal.js' },
   { src: 'src/components/Modals/ThreadSheetModal.js', dst: 'dist/src/components/Modals/ThreadSheetModal.js' },
   { src: 'src/components/Modals/ChapterSheetModal.js', dst: 'dist/src/components/Modals/ChapterSheetModal.js' },
+  { src: 'src/components/Modals/ExportModal.js', dst: 'dist/src/components/Modals/ExportModal.js' },
   { src: 'src/services/ai/BatchProcessor.js', dst: 'dist/src/services/ai/BatchProcessor.js' },
   { src: 'src/services/ai/CostOptimizer.js', dst: 'dist/src/services/ai/CostOptimizer.js' },
   { src: 'src/services/ai/StoryContinuityTracker.js', dst: 'dist/src/services/ai/StoryContinuityTracker.js' },
