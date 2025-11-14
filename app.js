@@ -5316,11 +5316,11 @@ ${contextPrompt}`;
               }
             }, '🜍'),
 
-            // Generate chapter - Alchemical Philosopher's Stone (🜔 - magnum opus, creation)
+            // Generate chapter - Alchemical Philosopher's Stone (Circle-Triangle-Square-Circle - magnum opus, creation)
             e('button', {
               onClick: () => generateChapter(activeChapterId),
               disabled: isGenerating,
-              title: isGenerating ? '⧖ OPUS IN PROGRESSU...\n\nOdota, AI kirjoittaa lukua...' : '🜔 MAGNUM OPUS\n\nMitä: AI kirjoittaa kokonaisen luvun puolestasi\nTulos: 1000-3000 sanan luku projektisi tyyliin\nVaatimus: Ei vaatimuksia (voi olla tyhjä)\nKesto: ~30-90 sekuntia\n\n💡 Vinkki: AI käyttää aiempia lukuja kontekstina',
+              title: isGenerating ? '⧖ OPUS IN PROGRESSU...\n\nOdota, AI kirjoittaa lukua...' : '◉ MAGNUM OPUS\n\nMitä: AI kirjoittaa kokonaisen luvun puolestasi\nTulos: 1000-3000 sanan luku projektisi tyyliin\nVaatimus: Ei vaatimuksia (voi olla tyhjä)\nKesto: ~30-90 sekuntia\n\n💡 Vinkki: AI käyttää aiempia lukuja kontekstina',
               className: 'ai-toolbar-btn-primary',
               style: {
                 padding: '8px 16px',
@@ -5366,7 +5366,52 @@ ${contextPrompt}`;
                   : 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(199, 179, 134, 0.3)';
                 e.currentTarget.style.textShadow = 'none';
               }
-            }, isGenerating ? '⧖' : '🜔')
+            },
+              isGenerating ? '⧖' :
+              // Custom Philosopher's Stone SVG - Circle, Triangle, Square, Circle
+              e('svg', {
+                width: '24',
+                height: '24',
+                viewBox: '0 0 100 100',
+                style: { display: 'inline-block', verticalAlign: 'middle' }
+              },
+                // Outer circle
+                e('circle', {
+                  cx: '50',
+                  cy: '50',
+                  r: '48',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: '2.5'
+                }),
+                // Triangle
+                e('path', {
+                  d: 'M 50 12 L 85 75 L 15 75 Z',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: '2.5'
+                }),
+                // Square
+                e('rect', {
+                  x: '32',
+                  y: '42',
+                  width: '36',
+                  height: '36',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: '2.5'
+                }),
+                // Inner circle
+                e('circle', {
+                  cx: '50',
+                  cy: '60',
+                  r: '12',
+                  fill: 'none',
+                  stroke: 'currentColor',
+                  strokeWidth: '2.5'
+                })
+              )
+            )
           ),
 
           // Generation progress indicator
