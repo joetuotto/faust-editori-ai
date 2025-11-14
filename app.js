@@ -5316,11 +5316,11 @@ ${contextPrompt}`;
               }
             }, '🜍'),
 
-            // Generate chapter - Alchemical Philosopher's Stone (🜚 - magnum opus, creation)
+            // Generate chapter - Alchemical Philosopher's Stone (🜔 - magnum opus, creation)
             e('button', {
               onClick: () => generateChapter(activeChapterId),
               disabled: isGenerating,
-              title: isGenerating ? '⧖ OPUS IN PROGRESSU...\n\nOdota, AI kirjoittaa lukua...' : '🜚 MAGNUM OPUS\n\nMitä: AI kirjoittaa kokonaisen luvun puolestasi\nTulos: 1000-3000 sanan luku projektisi tyyliin\nVaatimus: Ei vaatimuksia (voi olla tyhjä)\nKesto: ~30-90 sekuntia\n\n💡 Vinkki: AI käyttää aiempia lukuja kontekstina',
+              title: isGenerating ? '⧖ OPUS IN PROGRESSU...\n\nOdota, AI kirjoittaa lukua...' : '🜔 MAGNUM OPUS\n\nMitä: AI kirjoittaa kokonaisen luvun puolestasi\nTulos: 1000-3000 sanan luku projektisi tyyliin\nVaatimus: Ei vaatimuksia (voi olla tyhjä)\nKesto: ~30-90 sekuntia\n\n💡 Vinkki: AI käyttää aiempia lukuja kontekstina',
               className: 'ai-toolbar-btn-primary',
               style: {
                 padding: '8px 16px',
@@ -5366,7 +5366,7 @@ ${contextPrompt}`;
                   : 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(199, 179, 134, 0.3)';
                 e.currentTarget.style.textShadow = 'none';
               }
-            }, isGenerating ? '⧖' : '🜚')
+            }, isGenerating ? '⧖' : '🜔')
           ),
 
           // Generation progress indicator
