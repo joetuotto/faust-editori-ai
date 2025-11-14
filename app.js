@@ -726,20 +726,36 @@ const createDefaultProject = () => ({
 
   // API Configuration
   apiConfig: {
-    provider: 'anthropic', // anthropic, openai, local
+    provider: 'anthropic', // anthropic, openai, grok, deepseek, gemini, local
     anthropic: {
       apiKey: '',
-      model: 'claude-sonnet-4-5',
+      model: 'claude-3-5-sonnet-20241022',
       maxTokens: 4096
     },
     openai: {
       apiKey: '',
-      model: 'gpt-4',
+      model: 'gpt-4-turbo-preview',
+      maxTokens: 4096
+    },
+    grok: {
+      apiKey: '',
+      model: 'grok-2-1212',
+      maxTokens: 4096
+    },
+    deepseek: {
+      apiKey: '',
+      model: 'deepseek-chat',
+      maxTokens: 4096
+    },
+    gemini: {
+      apiKey: '',
+      model: 'gemini-pro',
       maxTokens: 4096
     },
     local: {
       endpoint: 'http://localhost:1234',
-      model: 'local-model'
+      model: 'local-model',
+      apiKey: '' // Local endpoints might not need API key, but keeping structure consistent
     },
     lastTested: null,
     isConfigured: false
@@ -3436,12 +3452,24 @@ Return ONLY valid JSON:
     const provider = project.apiConfig.provider;
     const config = project.apiConfig[provider];
 
-    if (!config.apiKey || config.apiKey.trim().length === 0) {
-      setApiTestResult({
-        success: false,
-        message: 'API-avain puuttuu. Syötä avain ensin.'
-      });
-      return;
+    // For local endpoints, check endpoint instead of API key
+    if (provider === 'local') {
+      if (!config.endpoint || config.endpoint.trim().length === 0) {
+        setApiTestResult({
+          success: false,
+          message: 'Endpoint URL puuttuu. Syötä endpoint ensin.'
+        });
+        return;
+      }
+    } else {
+      // For cloud providers, check API key
+      if (!config.apiKey || config.apiKey.trim().length === 0) {
+        setApiTestResult({
+          success: false,
+          message: 'API-avain puuttuu. Syötä avain ensin.'
+        });
+        return;
+      }
     }
 
     setApiTestResult({ success: null, message: 'Testataan yhteyttä...' });
@@ -3458,7 +3486,24 @@ Return ONLY valid JSON:
         return;
       }
 
-      const result = await window.electronAPI.claudeAPI(testPrompt);
+      // Call the correct API based on provider
+      let result;
+      if (provider === 'anthropic') {
+        result = await window.electronAPI.claudeAPI(testPrompt);
+      } else if (provider === 'openai') {
+        result = await window.electronAPI.openaiAPI(testPrompt);
+      } else if (provider === 'grok') {
+        result = await window.electronAPI.grokAPI(testPrompt);
+      } else if (provider === 'deepseek') {
+        result = await window.electronAPI.deepseekAPI(testPrompt);
+      } else if (provider === 'gemini') {
+        result = await window.electronAPI.geminiAPI(testPrompt);
+      } else if (provider === 'local') {
+        // For local, default to anthropic-compatible endpoint
+        result = await window.electronAPI.claudeAPI(testPrompt);
+      } else {
+        result = await window.electronAPI.claudeAPI(testPrompt);
+      }
 
       if (result.success) {
         setProject(prev => ({
@@ -9085,7 +9130,7 @@ ${contextPrompt}`;
 
         // API Settings Tab
         settingsTab === 'api' ? e('div', null,
-          // API Type Selection
+          // Provider Selection
           e('div', {
             style: {
               marginBottom: '24px'
@@ -9099,42 +9144,30 @@ ${contextPrompt}`;
                 marginBottom: '8px',
                 textTransform: 'uppercase'
               }
-            }, 'API Type'),
+            }, 'API Provider'),
 
-            e('div', {
+            e('select', {
+              value: project.apiConfig.provider,
+              onChange: (ev) => setActiveApiProvider(ev.target.value),
               style: {
-                display: 'flex',
-                gap: '8px'
+                width: '100%',
+                padding: '12px',
+                background: 'var(--bg-2)',
+                border: '2px solid var(--bronze)',
+                borderRadius: '4px',
+                color: 'var(--text)',
+                cursor: 'pointer',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '13px',
+                outline: 'none'
               }
             },
-              ['cloud', 'local'].map(type =>
-                e('button', {
-                  key: type,
-                  onClick: () => {
-                    const newProvider = type === 'cloud' ? 'anthropic' : 'local';
-                    setActiveApiProvider(newProvider);
-                  },
-                  style: {
-                    flex: 1,
-                    padding: '12px',
-                    background: project.apiConfig.provider !== 'local' ?
-                      (type === 'cloud' ? 'var(--bg-2)' : 'transparent') :
-                      (type === 'local' ? 'var(--bg-2)' : 'transparent'),
-                    border: `2px solid ${
-                      project.apiConfig.provider !== 'local' ?
-                        (type === 'cloud' ? 'var(--bronze)' : 'var(--border-color)') :
-                        (type === 'local' ? 'var(--bronze)' : 'var(--border-color)')
-                    }`,
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '13px'
-                  }
-                },
-                  type === 'cloud' ? '☁️ Cloud API' : '🖥️ Local Server'
-                )
-              )
+              e('option', { value: 'anthropic' }, '☁️ Anthropic Claude'),
+              e('option', { value: 'openai' }, '☁️ OpenAI GPT'),
+              e('option', { value: 'grok' }, '☁️ Grok (xAI)'),
+              e('option', { value: 'deepseek' }, '☁️ DeepSeek'),
+              e('option', { value: 'gemini' }, '☁️ Google Gemini'),
+              e('option', { value: 'local' }, '🖥️ Local Server (Ollama/LM Studio)')
             )
           ),
 
@@ -9158,9 +9191,13 @@ ${contextPrompt}`;
 
               e('input', {
                 type: 'password',
-                value: project.apiConfig[project.apiConfig.provider]?.apiKey || project.apiConfig.anthropic.apiKey,
-                onChange: (ev) => updateApiKey(project.apiConfig.provider === 'local' ? 'anthropic' : project.apiConfig.provider, ev.target.value),
-                placeholder: 'sk-ant-... tai sk-... tai xai-...',
+                value: project.apiConfig[project.apiConfig.provider]?.apiKey || '',
+                onChange: (ev) => updateApiKey(project.apiConfig.provider, ev.target.value),
+                placeholder: project.apiConfig.provider === 'anthropic' ? 'sk-ant-...' :
+                             project.apiConfig.provider === 'openai' ? 'sk-...' :
+                             project.apiConfig.provider === 'grok' ? 'xai-...' :
+                             project.apiConfig.provider === 'gemini' ? 'AIza...' :
+                             project.apiConfig.provider === 'deepseek' ? 'sk-...' : 'API Key',
                 style: {
                   width: '100%',
                   padding: '12px',
@@ -9182,7 +9219,12 @@ ${contextPrompt}`;
                   marginTop: '8px',
                   fontStyle: 'italic'
                 }
-              }, '🔑 Hanki API-avain: console.anthropic.com, platform.openai.com, x.ai, deepseek.com')
+              }, '🔑 Hanki API-avain: ' +
+                 (project.apiConfig.provider === 'anthropic' ? 'console.anthropic.com' :
+                  project.apiConfig.provider === 'openai' ? 'platform.openai.com' :
+                  project.apiConfig.provider === 'grok' ? 'x.ai' :
+                  project.apiConfig.provider === 'gemini' ? 'aistudio.google.com' :
+                  project.apiConfig.provider === 'deepseek' ? 'platform.deepseek.com' : ''))
             ),
 
             // Model Name
@@ -9203,18 +9245,25 @@ ${contextPrompt}`;
 
               e('input', {
                 type: 'text',
-                value: project.ai?.activeModel || 'claude-3-5-sonnet-20241022',
+                value: project.apiConfig[project.apiConfig.provider]?.model || '',
                 onChange: (ev) => {
                   setProject(prev => ({
                     ...prev,
-                    ai: {
-                      ...prev.ai,
-                      activeModel: ev.target.value
+                    apiConfig: {
+                      ...prev.apiConfig,
+                      [project.apiConfig.provider]: {
+                        ...prev.apiConfig[project.apiConfig.provider],
+                        model: ev.target.value
+                      }
                     }
                   }));
                   setUnsavedChanges(true);
                 },
-                placeholder: 'claude-3-5-sonnet-20241022',
+                placeholder: project.apiConfig.provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
+                             project.apiConfig.provider === 'openai' ? 'gpt-4-turbo-preview' :
+                             project.apiConfig.provider === 'grok' ? 'grok-2-1212' :
+                             project.apiConfig.provider === 'gemini' ? 'gemini-pro' :
+                             project.apiConfig.provider === 'deepseek' ? 'deepseek-chat' : 'model-name',
                 style: {
                   width: '100%',
                   padding: '12px',
@@ -9239,7 +9288,7 @@ ${contextPrompt}`;
               }, '📝 Syötä täsmällinen mallin nimi (esim. claude-3-5-sonnet-20241022, gpt-4-turbo, grok-2-1212)')
             ),
 
-            // Quick Select buttons
+            // Quick Select buttons (provider-specific)
             e('div', {
               style: {
                 marginBottom: '24px'
@@ -9261,37 +9310,65 @@ ${contextPrompt}`;
                   gap: '8px'
                 }
               },
-                [
-                  { name: 'Claude 3.5 Sonnet', model: 'claude-3-5-sonnet-20241022' },
-                  { name: 'GPT-4 Turbo', model: 'gpt-4-turbo-preview' },
-                  { name: 'Grok 2', model: 'grok-2-1212' },
-                  { name: 'DeepSeek V3', model: 'deepseek-chat' }
-                ].map(preset =>
-                  e('button', {
-                    key: preset.model,
-                    onClick: () => {
-                      setProject(prev => ({
-                        ...prev,
-                        ai: {
-                          ...prev.ai,
-                          activeModel: preset.model
-                        }
-                      }));
-                      setUnsavedChanges(true);
-                    },
-                    style: {
-                      padding: '8px',
-                      background: project.ai?.activeModel === preset.model ? 'var(--bronze)' : 'var(--bg-2)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      color: project.ai?.activeModel === preset.model ? '#000' : 'var(--text-2)',
-                      cursor: 'pointer',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      fontWeight: project.ai?.activeModel === preset.model ? 600 : 400
-                    }
-                  }, preset.name)
-                )
+                (function() {
+                  const presets = {
+                    anthropic: [
+                      { name: 'Claude 3.5 Sonnet', model: 'claude-3-5-sonnet-20241022' },
+                      { name: 'Claude 3 Opus', model: 'claude-3-opus-20240229' },
+                      { name: 'Claude 3 Haiku', model: 'claude-3-haiku-20240307' }
+                    ],
+                    openai: [
+                      { name: 'GPT-4 Turbo', model: 'gpt-4-turbo-preview' },
+                      { name: 'GPT-4', model: 'gpt-4' },
+                      { name: 'GPT-3.5 Turbo', model: 'gpt-3.5-turbo' }
+                    ],
+                    grok: [
+                      { name: 'Grok 2', model: 'grok-2-1212' },
+                      { name: 'Grok Beta', model: 'grok-beta' }
+                    ],
+                    deepseek: [
+                      { name: 'DeepSeek Chat', model: 'deepseek-chat' },
+                      { name: 'DeepSeek Coder', model: 'deepseek-coder' }
+                    ],
+                    gemini: [
+                      { name: 'Gemini Pro', model: 'gemini-pro' },
+                      { name: 'Gemini 1.5 Pro', model: 'gemini-1.5-pro' }
+                    ]
+                  };
+
+                  const currentPresets = presets[project.apiConfig.provider] || [];
+                  const currentModel = project.apiConfig[project.apiConfig.provider]?.model || '';
+
+                  return currentPresets.map(preset =>
+                    e('button', {
+                      key: preset.model,
+                      onClick: () => {
+                        setProject(prev => ({
+                          ...prev,
+                          apiConfig: {
+                            ...prev.apiConfig,
+                            [project.apiConfig.provider]: {
+                              ...prev.apiConfig[project.apiConfig.provider],
+                              model: preset.model
+                            }
+                          }
+                        }));
+                        setUnsavedChanges(true);
+                      },
+                      style: {
+                        padding: '8px',
+                        background: currentModel === preset.model ? 'var(--bronze)' : 'var(--bg-2)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        color: currentModel === preset.model ? '#000' : 'var(--text-2)',
+                        cursor: 'pointer',
+                        fontFamily: 'IBM Plex Mono',
+                        fontSize: '11px',
+                        fontWeight: currentModel === preset.model ? 600 : 400
+                      }
+                    }, preset.name)
+                  );
+                })()
               )
             )
           ) : null,
