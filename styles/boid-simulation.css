@@ -1,0 +1,235 @@
+/**
+ * The Secret Life of Boids - Otto Juote Edition
+ * Styling for the boid simulation panel
+ */
+
+.boid-simulation-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 500px;
+  background: #1a1a2e;
+  border-radius: 12px;
+  overflow: hidden;
+  font-family: 'IBM Plex Mono', monospace;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.boid-simulation-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+}
+
+.boid-simulation-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #D4AF37;
+  letter-spacing: 0.5px;
+}
+
+.boid-subtitle {
+  margin-left: 12px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  font-style: italic;
+}
+
+.boid-close-btn {
+  margin-left: auto;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  transition: all 0.2s ease;
+}
+
+.boid-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.boid-canvas {
+  flex: 1;
+  width: 100%;
+  display: block;
+}
+
+.boid-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.boid-btn {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  background: rgba(212, 175, 55, 0.1);
+  color: #D4AF37;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.boid-btn:hover {
+  background: rgba(212, 175, 55, 0.2);
+  border-color: rgba(212, 175, 55, 0.5);
+}
+
+.boid-btn.active {
+  background: rgba(212, 175, 55, 0.3);
+  border-color: #D4AF37;
+}
+
+.boid-toggles {
+  display: flex;
+  gap: 16px;
+  margin-left: auto;
+}
+
+.boid-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  transition: color 0.2s ease;
+}
+
+.boid-toggle:hover {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.boid-toggle input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.boid-toggle input[type="checkbox"]:checked {
+  background: #D4AF37;
+  border-color: #D4AF37;
+}
+
+.boid-toggle input[type="checkbox"]:checked::after {
+  content: '✓';
+  display: block;
+  text-align: center;
+  color: #1a1a2e;
+  font-size: 10px;
+  line-height: 12px;
+}
+
+.boid-rules-info {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  padding: 10px 16px;
+  background: rgba(0, 0, 0, 0.4);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.boid-rule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+}
+
+.rule-icon {
+  font-family: monospace;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.rule-icon.separation {
+  color: #ff6b6b;
+}
+
+.rule-icon.alignment {
+  color: #4ecdc4;
+}
+
+.rule-icon.cohesion {
+  color: #45b7d1;
+}
+
+.rule-text {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .boid-simulation-panel {
+    min-height: 400px;
+  }
+
+  .boid-rules-info {
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .boid-toggles {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+/* Animation for the panel appearing */
+@keyframes boidPanelFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.boid-simulation-panel {
+  animation: boidPanelFadeIn 0.3s ease-out;
+}
+
+/* Standalone demo page styles */
+.boid-demo-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: #0f0f1a;
+  padding: 20px;
+}
+
+.boid-demo-container .boid-simulation-panel {
+  width: 800px;
+  height: 600px;
+  max-width: 100%;
+}
