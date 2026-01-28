@@ -41,3 +41,10 @@ npm-debug.log*
 *-backup.js
 *-full-backup.js
 *.bak
+*.backup*
+*.with-changes
+*.liminal-backup
+
+# Ad-hoc test files (may contain API keys)
+test-*.js
+FAUST-TEST-REPORT.md
