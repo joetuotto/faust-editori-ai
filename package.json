@@ -28,14 +28,23 @@
     "mac": {
       "category": "public.app-category.productivity",
       "target": [
-        "dmg"
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
       ],
       "icon": "build/faust-dock-icon.icns",
       "darkModeSupport": true,
       "identity": null
     },
     "dmg": {
-      "title": "FAUST ${version}",
+      "title": "FAUST Installer",
+      "artifactName": "FAUST-DMG-INSTALLER-${arch}.dmg",
+      "background": null,
+      "window": {
+        "width": 540,
+        "height": 380
+      },
       "contents": [
         {
           "x": 130,
@@ -57,6 +66,7 @@
       "package.json",
       ".env",
       "utils/**/*",
+      "src/**/*",
       "dist/**/*",
       "build/fonts/**/*",
       "build/icon.*"

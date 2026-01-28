@@ -1294,6 +1294,7 @@ function FAUSTApp() {
 
   // Get active chapter
   const activeChapter = project.structure.find(ch => ch.id === activeChapterId) || project.structure[0];
+  const activeChapterIndex = project.structure.findIndex(ch => ch.id === activeChapterId);
 
   // Apply theme
   useEffect(() => {
@@ -2634,13 +2635,24 @@ function FAUSTApp() {
       anthropic: 'ANTHROPIC_API_KEY',
       openai: 'OPENAI_API_KEY',
       deepseek: 'DEEPSEEK_API_KEY',
-      grok: 'GROK_API_KEY'
+      grok: 'GROK_API_KEY',
+      gemini: 'GEMINI_API_KEY',
+      cursor: 'CURSOR_API_KEY'
     };
 
     try {
-      const result = await window.electronAPI.saveApiKeys({
+      // Load existing keys first to preserve them
+      const existingResult = await window.electronAPI.loadApiKeys();
+      const existingKeys = existingResult.keys || {};
+
+      // Merge new key with existing keys
+      const updatedKeys = {
+        ...existingKeys,
         [keyMap[providerName]]: apiKey
-      });
+      };
+
+      // Save all keys
+      const result = await window.electronAPI.saveApiKeys(updatedKeys);
 
       if (result.success) {
         console.log('[API Key] Saved for:', providerName);
@@ -5763,6 +5775,8 @@ ${contextPrompt}`;
               }, '×')
             ),
             e('input', {
+              id: 'search-term',
+              name: 'searchTerm',
               type: 'text',
               value: searchTerm,
               onChange: (ev) => setSearchTerm(ev.target.value),
@@ -5785,6 +5799,8 @@ ${contextPrompt}`;
               }
             }),
             showReplaceDialog ? e('input', {
+              id: 'replace-term',
+              name: 'replaceTerm',
               type: 'text',
               value: replaceTerm,
               onChange: (ev) => setReplaceTerm(ev.target.value),
@@ -5805,6 +5821,8 @@ ${contextPrompt}`;
             e('div', { style: { display: 'flex', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' } },
               e('label', { style: { fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } },
                 e('input', {
+                  id: 'search-case-sensitive',
+                  name: 'caseSensitive',
                   type: 'checkbox',
                   checked: caseSensitive,
                   onChange: (ev) => setCaseSensitive(ev.target.checked)
@@ -5813,6 +5831,8 @@ ${contextPrompt}`;
               ),
               e('label', { style: { fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } },
                 e('input', {
+                  id: 'search-whole-word',
+                  name: 'matchWholeWord',
                   type: 'checkbox',
                   checked: matchWholeWord,
                   onChange: (ev) => setMatchWholeWord(ev.target.checked)
@@ -5821,6 +5841,8 @@ ${contextPrompt}`;
               ),
               e('label', { style: { fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } },
                 e('input', {
+                  id: 'search-regex',
+                  name: 'useRegex',
                   type: 'checkbox',
                   checked: useRegex,
                   onChange: (ev) => setUseRegex(ev.target.checked)
@@ -5829,6 +5851,8 @@ ${contextPrompt}`;
               ),
               e('label', { style: { fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } },
                 e('input', {
+                  id: 'search-all-chapters',
+                  name: 'searchInAllChapters',
                   type: 'checkbox',
                   checked: searchInAllChapters,
                   onChange: (ev) => setSearchInAllChapters(ev.target.checked)
@@ -10494,6 +10518,7 @@ ${contextPrompt}`;
           // Title
           e('div', { style: { marginBottom: '20px' } },
             e('label', {
+              htmlFor: 'project-title',
               style: {
                 fontFamily: 'IBM Plex Mono',
                 fontSize: '11px',
@@ -10504,6 +10529,8 @@ ${contextPrompt}`;
               }
             }, 'Projektin nimi'),
             e('input', {
+              id: 'project-title',
+              name: 'projectTitle',
               type: 'text',
               value: project.title,
               onChange: (ev) => {
@@ -10526,6 +10553,7 @@ ${contextPrompt}`;
           // Author
           e('div', { style: { marginBottom: '20px' } },
             e('label', {
+              htmlFor: 'project-author',
               style: {
                 fontFamily: 'IBM Plex Mono',
                 fontSize: '11px',
@@ -10536,6 +10564,8 @@ ${contextPrompt}`;
               }
             }, 'Kirjoittaja'),
             e('input', {
+              id: 'project-author',
+              name: 'projectAuthor',
               type: 'text',
               value: project.author || '',
               onChange: (ev) => {
@@ -10558,6 +10588,7 @@ ${contextPrompt}`;
           // Genre
           e('div', { style: { marginBottom: '20px' } },
             e('label', {
+              htmlFor: 'project-genre',
               style: {
                 fontFamily: 'IBM Plex Mono',
                 fontSize: '11px',
@@ -10568,6 +10599,8 @@ ${contextPrompt}`;
               }
             }, 'Genre'),
             e('select', {
+              id: 'project-genre',
+              name: 'projectGenre',
               value: project.genre || 'fiction',
               onChange: (ev) => {
                 setProject(prev => ({ ...prev, genre: ev.target.value }));
@@ -10599,6 +10632,7 @@ ${contextPrompt}`;
           // Target word count
           e('div', { style: { marginBottom: '20px' } },
             e('label', {
+              htmlFor: 'project-target-wordcount',
               style: {
                 fontFamily: 'IBM Plex Mono',
                 fontSize: '11px',
@@ -10609,6 +10643,8 @@ ${contextPrompt}`;
               }
             }, 'Tavoitesanamäärä'),
             e('input', {
+              id: 'project-target-wordcount',
+              name: 'projectTargetWordCount',
               type: 'number',
               value: project.targetWordCount || 50000,
               onChange: (ev) => {
