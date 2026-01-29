@@ -110,6 +110,25 @@
   z-index: 1;
 }
 
+/* Split View - editor area wrapper */
+.faust-editor-area {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+/* Split view secondary pane */
+.faust-editor-split {
+  flex: 1;
+  max-width: 50%;
+  overflow: hidden;
+}
+
+.faust-editor-split .faust-editor-content {
+  padding: 24px;
+}
+
 /* Right inspector - fixed width, hidden by default */
 .faust-inspector {
   width: 300px;

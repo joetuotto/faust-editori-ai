@@ -92,6 +92,23 @@ const createDefaultProject = () => ({
   locations: [],
   timeline: [],
 
+  // Bookmarks - quick navigation points
+  bookmarks: [],  // [{id, chapterId, position, name, color, created}]
+
+  // Named snapshots - manual project-level saves
+  snapshots: [],  // [{id, name, created, description, structure (deep copy of chapters)}]
+
+  // Collections - dynamic chapter groupings
+  collections: [],  // [{id, name, type, filter, chapterIds, color}]
+
+  // Export presets - saved export configurations
+  exportPresets: [
+    { id: 'preset-kindle', name: 'Kindle (MOBI)', format: 'mobi', includeMetadata: true, includeSynopsis: false, includeToc: true },
+    { id: 'preset-epub', name: 'eBook (EPUB)', format: 'epub', includeMetadata: true, includeSynopsis: false, includeToc: true },
+    { id: 'preset-pdf', name: 'PDF (tulostus)', format: 'pdf', includeMetadata: true, includeSynopsis: false, includeToc: true },
+    { id: 'preset-sample', name: 'Lukunäyte (3 lukua)', format: 'pdf', includeMetadata: true, includeSynopsis: true, includeToc: false, chapterLimit: 3 }
+  ],
+
   // Cast planning (Phase 1 of Character Archetype Builder)
   castPlan: {
     defined: false,
@@ -522,6 +539,25 @@ function FAUSTApp() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
 
+  // Split View state
+  const [splitViewEnabled, setSplitViewEnabled] = useState(false);
+  const [splitViewChapterId, setSplitViewChapterId] = useState(null);
+  const [splitViewType, setSplitViewType] = useState('chapter'); // 'chapter', 'character', 'location', 'outline'
+
+  // Corkboard state
+  const [corkboardEnabled, setCorkboardEnabled] = useState(false);
+  const [draggedChapterId, setDraggedChapterId] = useState(null);
+
+  // Bookmarks state
+  const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
+
+  // Snapshots state
+  const [showSnapshotsPanel, setShowSnapshotsPanel] = useState(false);
+
+  // Collections state
+  const [showCollectionsPanel, setShowCollectionsPanel] = useState(false);
+  const [activeCollectionId, setActiveCollectionId] = useState(null);
+
   // Claude Chat state
   const [claudeChatOpen, setClaudeChatOpen] = useState(false);
 
@@ -538,7 +574,8 @@ function FAUSTApp() {
   const [matchWholeWord, setMatchWholeWord] = useState(false);
   const [useRegex, setUseRegex] = useState(false);
   const [searchInAllChapters, setSearchInAllChapters] = useState(false);
-  const [searchResults, setSearchResults] = useState([]); // Array of {start, end, text, chapterId, chapterTitle}
+  const [searchGlobally, setSearchGlobally] = useState(false); // Search in chapters, characters, locations, threads
+  const [searchResults, setSearchResults] = useState([]); // Array of {type, start, end, text, chapterId, chapterTitle, itemId, itemName}
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
   const [searchHistory, setSearchHistory] = useState(() => {
     const saved = localStorage.getItem('faust-search-history');
@@ -567,6 +604,11 @@ function FAUSTApp() {
   // Get active chapter
   const activeChapter = project.structure.find(ch => ch.id === activeChapterId) || project.structure[0];
   const activeChapterIndex = project.structure.findIndex(ch => ch.id === activeChapterId);
+
+  // Get split view chapter (if enabled)
+  const splitViewChapter = splitViewEnabled && splitViewChapterId
+    ? project.structure.find(ch => ch.id === splitViewChapterId)
+    : null;
 
   // Apply theme
   useEffect(() => {
@@ -1093,11 +1135,93 @@ function FAUSTApp() {
         }
       });
 
+      // If global search enabled, also search in characters, locations, and plot threads
+      if (searchGlobally) {
+        // Search in characters
+        (project.characters || []).forEach(char => {
+          const searchableText = [
+            char.name,
+            char.description,
+            char.background,
+            char.occupation,
+            char.notes
+          ].filter(Boolean).join(' ');
+
+          let match;
+          const regex = new RegExp(pattern, flags);
+          while ((match = regex.exec(searchableText)) !== null) {
+            results.push({
+              type: 'character',
+              start: match.index,
+              end: match.index + match[0].length,
+              text: match[0],
+              context: searchableText.substring(Math.max(0, match.index - 30), match.index + match[0].length + 30),
+              itemId: char.id,
+              itemName: char.name,
+              chapterId: null,
+              chapterTitle: null
+            });
+          }
+        });
+
+        // Search in locations
+        (project.locations || []).forEach(loc => {
+          const searchableText = [
+            loc.name,
+            loc.description,
+            loc.historicalContext,
+            loc.notes
+          ].filter(Boolean).join(' ');
+
+          let match;
+          const regex = new RegExp(pattern, flags);
+          while ((match = regex.exec(searchableText)) !== null) {
+            results.push({
+              type: 'location',
+              start: match.index,
+              end: match.index + match[0].length,
+              text: match[0],
+              context: searchableText.substring(Math.max(0, match.index - 30), match.index + match[0].length + 30),
+              itemId: loc.id,
+              itemName: loc.name,
+              chapterId: null,
+              chapterTitle: null
+            });
+          }
+        });
+
+        // Search in plot threads
+        (project.plotThreads || []).forEach(thread => {
+          const searchableText = [
+            thread.name,
+            thread.description,
+            thread.resolution,
+            thread.notes
+          ].filter(Boolean).join(' ');
+
+          let match;
+          const regex = new RegExp(pattern, flags);
+          while ((match = regex.exec(searchableText)) !== null) {
+            results.push({
+              type: 'thread',
+              start: match.index,
+              end: match.index + match[0].length,
+              text: match[0],
+              context: searchableText.substring(Math.max(0, match.index - 30), match.index + match[0].length + 30),
+              itemId: thread.id,
+              itemName: thread.name,
+              chapterId: null,
+              chapterTitle: null
+            });
+          }
+        });
+      }
+
       setSearchResults(results);
       setCurrentSearchIndex(results.length > 0 ? 0 : -1);
 
       console.log('[Find] Found', results.length, 'matches for:', term,
-        searchInAllChapters ? '(all chapters)' : '(current chapter)');
+        searchGlobally ? '(global)' : searchInAllChapters ? '(all chapters)' : '(current chapter)');
 
       // Highlight first result
       if (results.length > 0) {
@@ -1137,6 +1261,241 @@ function FAUSTApp() {
     } else {
       highlightResult(result);
     }
+  };
+
+  // Bookmark functions
+  const addBookmark = (name = '') => {
+    if (!editorRef.current || !activeChapterId) return;
+
+    const position = editorRef.current.selectionStart;
+    const content = activeChapter.content || '';
+    const contextStart = Math.max(0, position - 20);
+    const contextEnd = Math.min(content.length, position + 30);
+    const context = content.substring(contextStart, contextEnd);
+
+    const bookmark = {
+      id: `bookmark-${Date.now()}`,
+      chapterId: activeChapterId,
+      chapterTitle: activeChapter.title,
+      position: position,
+      name: name || `Kirjanmerkki ${(project.bookmarks || []).length + 1}`,
+      context: context,
+      color: '#d4af37', // Default gold color
+      created: new Date().toISOString()
+    };
+
+    setProject(prev => ({
+      ...prev,
+      bookmarks: [...(prev.bookmarks || []), bookmark]
+    }));
+    setUnsavedChanges(true);
+    console.log('[Bookmarks] Added:', bookmark.name, 'at position', position);
+  };
+
+  const deleteBookmark = (bookmarkId) => {
+    setProject(prev => ({
+      ...prev,
+      bookmarks: (prev.bookmarks || []).filter(b => b.id !== bookmarkId)
+    }));
+    setUnsavedChanges(true);
+  };
+
+  const jumpToBookmark = (bookmark) => {
+    // Switch to chapter if needed
+    if (bookmark.chapterId !== activeChapterId) {
+      setActiveChapterId(bookmark.chapterId);
+      setTimeout(() => {
+        if (editorRef.current) {
+          editorRef.current.focus();
+          editorRef.current.setSelectionRange(bookmark.position, bookmark.position);
+          // Scroll to position
+          const lineHeight = 24;
+          const linesBeforeBookmark = (activeChapter.content || '').substring(0, bookmark.position).split('\n').length;
+          editorRef.current.scrollTop = linesBeforeBookmark * lineHeight - 200;
+        }
+      }, 100);
+    } else {
+      if (editorRef.current) {
+        editorRef.current.focus();
+        editorRef.current.setSelectionRange(bookmark.position, bookmark.position);
+        const lineHeight = 24;
+        const linesBeforeBookmark = (activeChapter.content || '').substring(0, bookmark.position).split('\n').length;
+        editorRef.current.scrollTop = linesBeforeBookmark * lineHeight - 200;
+      }
+    }
+    setShowBookmarksPanel(false);
+  };
+
+  const renameBookmark = (bookmarkId, newName) => {
+    setProject(prev => ({
+      ...prev,
+      bookmarks: (prev.bookmarks || []).map(b =>
+        b.id === bookmarkId ? { ...b, name: newName } : b
+      )
+    }));
+    setUnsavedChanges(true);
+  };
+
+  // Snapshot functions (project-level named versions)
+  const createSnapshot = (name, description = '') => {
+    // Deep copy of current project structure
+    const snapshotData = {
+      id: `snapshot-${Date.now()}`,
+      name: name || `Snapshot ${new Date().toLocaleString('fi-FI')}`,
+      description: description,
+      created: new Date().toISOString(),
+      totalWords: project.targets.currentTotal,
+      chapterCount: project.structure.length,
+      // Deep copy of structure with content
+      structure: JSON.parse(JSON.stringify(project.structure))
+    };
+
+    setProject(prev => ({
+      ...prev,
+      snapshots: [...(prev.snapshots || []), snapshotData]
+    }));
+    setUnsavedChanges(true);
+    console.log('[Snapshots] Created:', snapshotData.name);
+    return snapshotData;
+  };
+
+  const deleteSnapshot = (snapshotId) => {
+    setProject(prev => ({
+      ...prev,
+      snapshots: (prev.snapshots || []).filter(s => s.id !== snapshotId)
+    }));
+    setUnsavedChanges(true);
+  };
+
+  const restoreSnapshot = (snapshotId) => {
+    const snapshot = (project.snapshots || []).find(s => s.id === snapshotId);
+    if (!snapshot) return;
+
+    // Confirm restoration
+    if (!confirm(`Palauta snapshot "${snapshot.name}"?\n\nTämä korvaa nykyisen tekstin. Suosittelemme luomaan uuden snapshotin ennen palautusta.`)) {
+      return;
+    }
+
+    // Restore structure from snapshot
+    setProject(prev => ({
+      ...prev,
+      structure: JSON.parse(JSON.stringify(snapshot.structure)),
+      modified: new Date().toISOString()
+    }));
+    setUnsavedChanges(true);
+    setShowSnapshotsPanel(false);
+    console.log('[Snapshots] Restored:', snapshot.name);
+  };
+
+  const compareWithSnapshot = (snapshotId) => {
+    const snapshot = (project.snapshots || []).find(s => s.id === snapshotId);
+    if (!snapshot) return;
+
+    // Find the same chapter in snapshot
+    const snapshotChapter = snapshot.structure.find(ch => ch.id === activeChapterId);
+    if (!snapshotChapter) {
+      alert('Tämä luku ei löydy valitusta snapshotista.');
+      return;
+    }
+
+    // Show comparison in a simple alert (could be improved with a modal)
+    const currentWords = (activeChapter.content || '').split(/\s+/).filter(Boolean).length;
+    const snapshotWords = (snapshotChapter.content || '').split(/\s+/).filter(Boolean).length;
+    const diff = currentWords - snapshotWords;
+
+    alert(`Vertailu: "${snapshot.name}"\n\n` +
+          `Luku: ${activeChapter.title}\n\n` +
+          `Nykyinen: ${currentWords} sanaa\n` +
+          `Snapshot: ${snapshotWords} sanaa\n` +
+          `Ero: ${diff > 0 ? '+' : ''}${diff} sanaa`);
+  };
+
+  // Collection functions (dynamic chapter groupings)
+  const createCollection = (name, type = 'manual', filter = null) => {
+    const collection = {
+      id: `collection-${Date.now()}`,
+      name: name || 'Uusi kokoelma',
+      type: type, // 'manual', 'status', 'character', 'search'
+      filter: filter, // Filter criteria for dynamic collections
+      chapterIds: [], // For manual collections
+      color: '#d4af37',
+      created: new Date().toISOString()
+    };
+
+    setProject(prev => ({
+      ...prev,
+      collections: [...(prev.collections || []), collection]
+    }));
+    setUnsavedChanges(true);
+    return collection;
+  };
+
+  const deleteCollection = (collectionId) => {
+    setProject(prev => ({
+      ...prev,
+      collections: (prev.collections || []).filter(c => c.id !== collectionId)
+    }));
+    if (activeCollectionId === collectionId) {
+      setActiveCollectionId(null);
+    }
+    setUnsavedChanges(true);
+  };
+
+  const addChapterToCollection = (collectionId, chapterId) => {
+    setProject(prev => ({
+      ...prev,
+      collections: (prev.collections || []).map(c =>
+        c.id === collectionId && c.type === 'manual'
+          ? { ...c, chapterIds: [...new Set([...c.chapterIds, chapterId])] }
+          : c
+      )
+    }));
+    setUnsavedChanges(true);
+  };
+
+  const removeChapterFromCollection = (collectionId, chapterId) => {
+    setProject(prev => ({
+      ...prev,
+      collections: (prev.collections || []).map(c =>
+        c.id === collectionId && c.type === 'manual'
+          ? { ...c, chapterIds: c.chapterIds.filter(id => id !== chapterId) }
+          : c
+      )
+    }));
+    setUnsavedChanges(true);
+  };
+
+  // Get chapters that belong to a collection (supports both manual and dynamic)
+  const getCollectionChapters = (collection) => {
+    if (!collection) return [];
+
+    if (collection.type === 'manual') {
+      return project.structure.filter(ch => collection.chapterIds.includes(ch.id));
+    }
+
+    // Dynamic collections based on filter
+    if (collection.type === 'status' && collection.filter) {
+      return project.structure.filter(ch => ch.status === collection.filter);
+    }
+
+    if (collection.type === 'character' && collection.filter) {
+      // Find chapters mentioning this character
+      const charName = collection.filter.toLowerCase();
+      return project.structure.filter(ch =>
+        (ch.content || '').toLowerCase().includes(charName) ||
+        (ch.notesAI?.characterMentions || []).some(m => m.toLowerCase().includes(charName))
+      );
+    }
+
+    if (collection.type === 'search' && collection.filter) {
+      const searchTerm = collection.filter.toLowerCase();
+      return project.structure.filter(ch =>
+        (ch.content || '').toLowerCase().includes(searchTerm) ||
+        (ch.title || '').toLowerCase().includes(searchTerm)
+      );
+    }
+
+    return [];
   };
 
   // Highlight a search result in editor
@@ -4249,6 +4608,229 @@ ${contextPrompt}`;
               fontSize: '12px'
             }
           }, 'Tallenna'),
+
+          // Snapshots button with dropdown
+          e('div', {
+            style: { position: 'relative' }
+          },
+            e('button', {
+              onClick: () => setShowSnapshotsPanel(prev => !prev),
+              title: `Snapshotit (${(project.snapshots || []).length}) - Tallenna ja palauta versioita`,
+              style: {
+                background: showSnapshotsPanel ? 'var(--bronze)' : 'transparent',
+                border: '1px solid var(--border-color)',
+                color: showSnapshotsPanel ? '#000' : 'var(--text)',
+                padding: '4px 12px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '12px',
+                fontWeight: showSnapshotsPanel ? 600 : 400
+              }
+            }, `📸 ${(project.snapshots || []).length}`),
+
+            // Snapshots dropdown panel
+            showSnapshotsPanel && e('div', {
+              style: {
+                position: 'absolute',
+                top: '100%',
+                right: 0,
+                marginTop: '4px',
+                background: 'var(--bg-1)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '8px',
+                padding: '12px',
+                minWidth: '320px',
+                maxHeight: '500px',
+                overflow: 'auto',
+                zIndex: 1000,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
+              },
+              onClick: (ev) => ev.stopPropagation()
+            },
+              // Header
+              e('div', {
+                style: {
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '12px',
+                  paddingBottom: '8px',
+                  borderBottom: '1px solid var(--border-color)'
+                }
+              },
+                e('h4', {
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '13px',
+                    color: 'var(--text)',
+                    margin: 0
+                  }
+                }, 'Snapshotit'),
+                e('button', {
+                  onClick: () => setShowSnapshotsPanel(false),
+                  style: {
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--text-2)',
+                    cursor: 'pointer',
+                    fontSize: '16px'
+                  }
+                }, '×')
+              ),
+
+              // Create new snapshot button
+              e('button', {
+                onClick: () => {
+                  const name = prompt('Snapshotin nimi:', `Ennen muokkausta ${new Date().toLocaleDateString('fi-FI')}`);
+                  if (name !== null) {
+                    const desc = prompt('Kuvaus (valinnainen):', '');
+                    createSnapshot(name, desc || '');
+                  }
+                },
+                style: {
+                  width: '100%',
+                  padding: '10px',
+                  marginBottom: '12px',
+                  background: 'var(--bronze)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: '#000',
+                  cursor: 'pointer',
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '12px',
+                  fontWeight: 600
+                }
+              }, '+ Luo uusi snapshot'),
+
+              // Snapshots list
+              (project.snapshots || []).length === 0
+                ? e('p', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '11px',
+                      color: 'var(--text-3)',
+                      textAlign: 'center',
+                      padding: '16px'
+                    }
+                  }, 'Ei snapshoteja. Luo snapshot tallentaaksesi projektin nykyisen tilan.')
+                : [...(project.snapshots || [])].reverse().map(snapshot =>
+                    e('div', {
+                      key: snapshot.id,
+                      style: {
+                        padding: '10px',
+                        borderRadius: '4px',
+                        marginBottom: '8px',
+                        background: 'var(--bg-2)',
+                        border: '1px solid var(--border-color)'
+                      }
+                    },
+                      // Snapshot info
+                      e('div', {
+                        style: {
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'flex-start',
+                          marginBottom: '6px'
+                        }
+                      },
+                        e('div', null,
+                          e('div', {
+                            style: {
+                              fontFamily: 'IBM Plex Mono',
+                              fontSize: '12px',
+                              color: 'var(--text)',
+                              fontWeight: 500
+                            }
+                          }, snapshot.name),
+                          e('div', {
+                            style: {
+                              fontFamily: 'IBM Plex Mono',
+                              fontSize: '10px',
+                              color: 'var(--text-3)',
+                              marginTop: '2px'
+                            }
+                          }, new Date(snapshot.created).toLocaleString('fi-FI'))
+                        ),
+                        e('button', {
+                          onClick: () => {
+                            if (confirm(`Poista snapshot "${snapshot.name}"?`)) {
+                              deleteSnapshot(snapshot.id);
+                            }
+                          },
+                          style: {
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--error)',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            padding: '2px 6px'
+                          }
+                        }, '×')
+                      ),
+
+                      // Stats
+                      e('div', {
+                        style: {
+                          fontFamily: 'IBM Plex Mono',
+                          fontSize: '10px',
+                          color: 'var(--text-3)',
+                          marginBottom: '8px'
+                        }
+                      }, `${snapshot.chapterCount || 0} lukua • ${snapshot.totalWords || 0} sanaa`),
+
+                      // Description
+                      snapshot.description && e('div', {
+                        style: {
+                          fontFamily: 'IBM Plex Mono',
+                          fontSize: '11px',
+                          color: 'var(--text-2)',
+                          fontStyle: 'italic',
+                          marginBottom: '8px'
+                        }
+                      }, snapshot.description),
+
+                      // Action buttons
+                      e('div', {
+                        style: {
+                          display: 'flex',
+                          gap: '4px'
+                        }
+                      },
+                        e('button', {
+                          onClick: () => restoreSnapshot(snapshot.id),
+                          style: {
+                            flex: 1,
+                            padding: '6px',
+                            background: 'transparent',
+                            border: '1px solid var(--bronze)',
+                            borderRadius: '4px',
+                            color: 'var(--bronze)',
+                            cursor: 'pointer',
+                            fontFamily: 'IBM Plex Mono',
+                            fontSize: '10px'
+                          }
+                        }, '↩ Palauta'),
+                        e('button', {
+                          onClick: () => compareWithSnapshot(snapshot.id),
+                          style: {
+                            flex: 1,
+                            padding: '6px',
+                            background: 'transparent',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '4px',
+                            color: 'var(--text-2)',
+                            cursor: 'pointer',
+                            fontFamily: 'IBM Plex Mono',
+                            fontSize: '10px'
+                          }
+                        }, '⊏ Vertaa')
+                      )
+                    )
+                  )
+            )
+          ),
+
           e('button', {
             onClick: () => setIsDarkMode(prev => !prev),
             style: {
@@ -4275,6 +4857,50 @@ ${contextPrompt}`;
               fontSize: '12px'
             }
           }, showInspector ? 'Piilota' : 'Inspector'),
+          // Split View toggle button
+          e('button', {
+            onClick: () => {
+              if (!splitViewEnabled) {
+                // Enable split view - default to next chapter or first different chapter
+                const otherChapter = project.structure.find(ch => ch.id !== activeChapterId);
+                if (otherChapter) {
+                  setSplitViewChapterId(otherChapter.id);
+                  setSplitViewType('chapter');
+                  setSplitViewEnabled(true);
+                }
+              } else {
+                setSplitViewEnabled(false);
+              }
+            },
+            title: splitViewEnabled ? 'Sulje jaettu näkymä' : 'Avaa jaettu näkymä (näytä kaksi lukua rinnakkain)',
+            style: {
+              background: splitViewEnabled ? 'var(--bronze)' : 'transparent',
+              border: '1px solid var(--border-color)',
+              color: splitViewEnabled ? '#000' : 'var(--text)',
+              padding: '4px 12px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px',
+              fontWeight: splitViewEnabled ? 600 : 400
+            }
+          }, splitViewEnabled ? '◧ Split' : '▢ Split'),
+          // Corkboard toggle button
+          e('button', {
+            onClick: () => setCorkboardEnabled(prev => !prev),
+            title: corkboardEnabled ? 'Palaa editoriin' : 'Avaa korttinäkymä (visuaalinen lukujen järjestely)',
+            style: {
+              background: corkboardEnabled ? 'var(--bronze)' : 'transparent',
+              border: '1px solid var(--border-color)',
+              color: corkboardEnabled ? '#000' : 'var(--text)',
+              padding: '4px 12px',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px',
+              fontWeight: corkboardEnabled ? 600 : 400
+            }
+          }, corkboardEnabled ? '▦ Kortit' : '▤ Kortit'),
           e('button', {
             onClick: () => setAiAssistantOpen(prev => !prev),
             style: {
@@ -4449,12 +5075,425 @@ ${contextPrompt}`;
               fontSize: '12px',
               transition: 'all 0.2s'
             }
-          }, '+ Uusi luku')
+          }, '+ Uusi luku'),
+
+          // Collections section
+          e('div', {
+            style: {
+              marginTop: '16px',
+              paddingTop: '16px',
+              borderTop: '1px solid var(--border-color)'
+            }
+          },
+            e('div', {
+              style: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '8px'
+              }
+            },
+              e('span', {
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '11px',
+                  color: 'var(--text-3)',
+                  textTransform: 'uppercase'
+                }
+              }, 'Kokoelmat'),
+              e('button', {
+                onClick: () => {
+                  const name = prompt('Kokoelman nimi:');
+                  if (name) {
+                    const typeChoice = prompt('Tyyppi:\n1 = Manuaalinen\n2 = Status (draft/revised/final)\n3 = Hahmo (nimen mukaan)\n4 = Haku (tekstin mukaan)', '1');
+                    let type = 'manual';
+                    let filter = null;
+
+                    if (typeChoice === '2') {
+                      type = 'status';
+                      filter = prompt('Status (draft, revised, final):', 'draft');
+                    } else if (typeChoice === '3') {
+                      type = 'character';
+                      filter = prompt('Hahmon nimi:');
+                    } else if (typeChoice === '4') {
+                      type = 'search';
+                      filter = prompt('Hakusana:');
+                    }
+
+                    createCollection(name, type, filter);
+                  }
+                },
+                style: {
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-3)',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  padding: '2px 4px'
+                }
+              }, '+')
+            ),
+
+            // Collections list
+            (project.collections || []).length === 0
+              ? e('div', {
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '10px',
+                    color: 'var(--text-3)',
+                    textAlign: 'center',
+                    padding: '8px'
+                  }
+                }, 'Ei kokoelmia')
+              : (project.collections || []).map(collection => {
+                  const chapters = getCollectionChapters(collection);
+                  const isActive = activeCollectionId === collection.id;
+                  return e('div', {
+                    key: collection.id,
+                    style: {
+                      marginBottom: '4px'
+                    }
+                  },
+                    e('div', {
+                      onClick: () => setActiveCollectionId(isActive ? null : collection.id),
+                      style: {
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '6px 8px',
+                        borderRadius: '4px',
+                        background: isActive ? 'rgba(143,122,83,0.15)' : 'transparent',
+                        borderLeft: isActive ? '2px solid var(--bronze)' : '2px solid transparent',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }
+                    },
+                      e('div', {
+                        style: {
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }
+                      },
+                        e('span', {
+                          style: { fontSize: '12px' }
+                        }, collection.type === 'manual' ? '📁' :
+                           collection.type === 'status' ? '📋' :
+                           collection.type === 'character' ? '👤' : '🔍'),
+                        e('span', {
+                          style: {
+                            fontFamily: 'IBM Plex Mono',
+                            fontSize: '11px',
+                            color: isActive ? 'var(--text)' : 'var(--text-2)'
+                          }
+                        }, collection.name)
+                      ),
+                      e('div', {
+                        style: {
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }
+                      },
+                        e('span', {
+                          style: {
+                            fontFamily: 'IBM Plex Mono',
+                            fontSize: '10px',
+                            color: 'var(--text-3)'
+                          }
+                        }, `${chapters.length}`),
+                        e('button', {
+                          onClick: (ev) => {
+                            ev.stopPropagation();
+                            if (confirm(`Poista kokoelma "${collection.name}"?`)) {
+                              deleteCollection(collection.id);
+                            }
+                          },
+                          style: {
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--error)',
+                            cursor: 'pointer',
+                            fontSize: '10px',
+                            padding: '0 2px',
+                            opacity: 0.6
+                          }
+                        }, '×')
+                      )
+                    ),
+                    // Expanded collection chapters
+                    isActive && chapters.length > 0 && e('div', {
+                      style: {
+                        marginLeft: '12px',
+                        marginTop: '4px'
+                      }
+                    },
+                      chapters.map(ch =>
+                        e('div', {
+                          key: ch.id,
+                          onClick: () => setActiveChapterId(ch.id),
+                          style: {
+                            padding: '4px 8px',
+                            fontFamily: 'IBM Plex Mono',
+                            fontSize: '10px',
+                            color: ch.id === activeChapterId ? 'var(--bronze)' : 'var(--text-3)',
+                            cursor: 'pointer',
+                            borderRadius: '2px',
+                            background: ch.id === activeChapterId ? 'rgba(143,122,83,0.1)' : 'transparent'
+                          }
+                        }, ch.title || 'Nimetön')
+                      )
+                    )
+                  );
+                })
+          )
         )
       ),
 
-      // Center editor
-      e('div', { className: 'faust-editor' },
+      // Center editor area (supports split view)
+      e('div', {
+        className: 'faust-editor-area',
+        style: {
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'row',
+          overflow: 'hidden'
+        }
+      },
+        // Corkboard view (when enabled)
+        corkboardEnabled ? e('div', {
+          className: 'faust-corkboard',
+          style: {
+            flex: 1,
+            padding: '24px',
+            background: 'var(--bg-secondary)',
+            overflow: 'auto',
+            display: 'flex',
+            flexDirection: 'column'
+          }
+        },
+          // Corkboard header
+          e('div', {
+            style: {
+              marginBottom: '20px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }
+          },
+            e('h2', {
+              style: {
+                fontFamily: 'EB Garamond',
+                fontSize: '24px',
+                color: 'var(--text)'
+              }
+            }, 'Korttinäkymä'),
+            e('div', {
+              style: {
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '12px',
+                color: 'var(--text-3)'
+              }
+            }, `${project.structure.length} lukua • Vedä ja pudota järjestääksesi`)
+          ),
+
+          // Cards grid
+          e('div', {
+            style: {
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
+              gap: '16px',
+              flex: 1
+            }
+          },
+            project.structure.map((chapter, idx) =>
+              e('div', {
+                key: chapter.id,
+                draggable: true,
+                onDragStart: (ev) => {
+                  setDraggedChapterId(chapter.id);
+                  ev.dataTransfer.effectAllowed = 'move';
+                },
+                onDragEnd: () => setDraggedChapterId(null),
+                onDragOver: (ev) => {
+                  ev.preventDefault();
+                  ev.dataTransfer.dropEffect = 'move';
+                },
+                onDrop: (ev) => {
+                  ev.preventDefault();
+                  if (draggedChapterId && draggedChapterId !== chapter.id) {
+                    // Reorder chapters
+                    const fromIdx = project.structure.findIndex(ch => ch.id === draggedChapterId);
+                    const toIdx = project.structure.findIndex(ch => ch.id === chapter.id);
+                    if (fromIdx !== -1 && toIdx !== -1) {
+                      setProject(prev => {
+                        const newStructure = [...prev.structure];
+                        const [moved] = newStructure.splice(fromIdx, 1);
+                        newStructure.splice(toIdx, 0, moved);
+                        return { ...prev, structure: newStructure };
+                      });
+                      setUnsavedChanges(true);
+                    }
+                  }
+                  setDraggedChapterId(null);
+                },
+                onClick: () => {
+                  setActiveChapterId(chapter.id);
+                  setCorkboardEnabled(false);
+                },
+                style: {
+                  background: chapter.id === activeChapterId ? 'rgba(143,122,83,0.15)' : 'var(--bg-1)',
+                  border: draggedChapterId === chapter.id
+                    ? '2px dashed var(--bronze)'
+                    : chapter.id === activeChapterId
+                      ? '2px solid var(--bronze)'
+                      : '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '16px',
+                  cursor: 'grab',
+                  transition: 'all 0.2s',
+                  minHeight: '160px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  opacity: draggedChapterId === chapter.id ? 0.5 : 1,
+                  transform: draggedChapterId === chapter.id ? 'scale(0.95)' : 'scale(1)'
+                }
+              },
+                // Card header
+                e('div', {
+                  style: {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: '8px'
+                  }
+                },
+                  e('span', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '11px',
+                      color: 'var(--bronze)',
+                      background: 'var(--bg-2)',
+                      padding: '2px 6px',
+                      borderRadius: '4px'
+                    }
+                  }, `${idx + 1}`),
+                  e('span', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '10px',
+                      color: chapter.status === 'final' ? '#4CAF50' : chapter.status === 'revised' ? '#FFA726' : 'var(--text-3)',
+                      textTransform: 'uppercase'
+                    }
+                  }, chapter.status || 'draft')
+                ),
+
+                // Card title
+                e('h3', {
+                  style: {
+                    fontFamily: 'EB Garamond',
+                    fontSize: '16px',
+                    color: 'var(--text)',
+                    marginBottom: '8px',
+                    lineHeight: '1.3'
+                  }
+                }, chapter.title || 'Nimetön luku'),
+
+                // Synopsis preview
+                e('p', {
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px',
+                    color: 'var(--text-3)',
+                    lineHeight: '1.4',
+                    flex: 1,
+                    overflow: 'hidden',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: 'vertical'
+                  }
+                }, chapter.synopsis || chapter.synopsisAI || (chapter.content ? chapter.content.substring(0, 100) + '...' : 'Ei sisältöä')),
+
+                // Card footer
+                e('div', {
+                  style: {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginTop: '12px',
+                    paddingTop: '8px',
+                    borderTop: '1px solid var(--border-color)'
+                  }
+                },
+                  e('span', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '10px',
+                      color: 'var(--text-3)'
+                    }
+                  }, `${chapter.wordCount || 0} sanaa`),
+                  chapter.aiQuality && chapter.aiQuality.score > 0 && e('span', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '10px',
+                      color: chapter.aiQuality.score >= 8 ? '#4CAF50' :
+                             chapter.aiQuality.score >= 6 ? '#FFA726' : '#EF5350'
+                    }
+                  }, `AI: ${chapter.aiQuality.score.toFixed(1)}`)
+                )
+              )
+            ),
+
+            // Add chapter card
+            e('div', {
+              onClick: () => {
+                addChapter();
+              },
+              style: {
+                background: 'transparent',
+                border: '2px dashed var(--border-color)',
+                borderRadius: '8px',
+                padding: '16px',
+                cursor: 'pointer',
+                minHeight: '160px',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'all 0.2s'
+              },
+              onMouseEnter: (ev) => {
+                ev.currentTarget.style.borderColor = 'var(--bronze)';
+                ev.currentTarget.style.background = 'rgba(143,122,83,0.05)';
+              },
+              onMouseLeave: (ev) => {
+                ev.currentTarget.style.borderColor = 'var(--border-color)';
+                ev.currentTarget.style.background = 'transparent';
+              }
+            },
+              e('span', {
+                style: {
+                  fontSize: '32px',
+                  color: 'var(--text-3)',
+                  marginBottom: '8px'
+                }
+              }, '+'),
+              e('span', {
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '12px',
+                  color: 'var(--text-3)'
+                }
+              }, 'Uusi luku')
+            )
+          )
+        ) :
+
+        // Primary editor pane (normal view)
+        e('div', {
+          className: 'faust-editor',
+          style: splitViewEnabled ? { flex: 1, borderRight: '2px solid var(--border-color)' } : {}
+        },
         // AI Loading Indicator - floating overlay
         isGenerating ? e('div', {
           style: {
@@ -4930,24 +5969,465 @@ ${contextPrompt}`;
               editorDimensions: editorDimensions
             }),
 
-            // Textarea
-            e('textarea', {
-              ref: editorRef,
-              className: 'faust-textarea',
-              value: activeChapter.content,
-              onChange: (ev) => updateChapterContent(ev.target.value),
-              onMouseUp: handleTextSelection,
-              onKeyUp: handleTextSelection,
-              placeholder: 'Aloita kirjoittaminen...',
+            // Editor container with formatting toolbar
+            e('div', {
               style: {
-                fontFamily: editorFont,
-                fontSize: `${18 * (parseInt(editorZoom) / 100)}px`,
-                lineHeight: lineSpacing,
-                textAlign: textAlign,
-                paddingBottom: `${parseFloat(paragraphSpacing) * 16}px`,
-                paddingLeft: '60px' // Add left padding for annotation margin
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                height: '100%'
               }
-            })
+            },
+              // Formatting toolbar
+              e('div', {
+                className: 'formatting-toolbar',
+                style: {
+                  display: 'flex',
+                  gap: '4px',
+                  padding: '8px 12px',
+                  background: 'var(--bg-2)',
+                  borderBottom: '1px solid var(--border-color)',
+                  borderRadius: '4px 4px 0 0',
+                  marginBottom: '8px'
+                }
+              },
+                // Bold button
+                e('button', {
+                  onClick: () => {
+                    if (!editorRef.current) return;
+                    const textarea = editorRef.current;
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const text = textarea.value;
+                    const selectedText = text.substring(start, end);
+                    if (selectedText) {
+                      const newText = text.substring(0, start) + '**' + selectedText + '**' + text.substring(end);
+                      updateChapterContent(newText);
+                      setTimeout(() => {
+                        textarea.focus();
+                        textarea.setSelectionRange(start + 2, end + 2);
+                      }, 0);
+                    }
+                  },
+                  title: 'Lihavointi (Cmd+B) - Lisää **teksti**',
+                  style: {
+                    background: 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                    fontFamily: 'EB Garamond',
+                    fontSize: '14px',
+                    fontWeight: 'bold'
+                  }
+                }, 'B'),
+
+                // Italic button
+                e('button', {
+                  onClick: () => {
+                    if (!editorRef.current) return;
+                    const textarea = editorRef.current;
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const text = textarea.value;
+                    const selectedText = text.substring(start, end);
+                    if (selectedText) {
+                      const newText = text.substring(0, start) + '_' + selectedText + '_' + text.substring(end);
+                      updateChapterContent(newText);
+                      setTimeout(() => {
+                        textarea.focus();
+                        textarea.setSelectionRange(start + 1, end + 1);
+                      }, 0);
+                    }
+                  },
+                  title: 'Kursiivi (Cmd+I) - Lisää _teksti_',
+                  style: {
+                    background: 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                    fontFamily: 'EB Garamond',
+                    fontSize: '14px',
+                    fontStyle: 'italic'
+                  }
+                }, 'I'),
+
+                // Strikethrough button
+                e('button', {
+                  onClick: () => {
+                    if (!editorRef.current) return;
+                    const textarea = editorRef.current;
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const text = textarea.value;
+                    const selectedText = text.substring(start, end);
+                    if (selectedText) {
+                      const newText = text.substring(0, start) + '~~' + selectedText + '~~' + text.substring(end);
+                      updateChapterContent(newText);
+                      setTimeout(() => {
+                        textarea.focus();
+                        textarea.setSelectionRange(start + 2, end + 2);
+                      }, 0);
+                    }
+                  },
+                  title: 'Yliviivaus - Lisää ~~teksti~~',
+                  style: {
+                    background: 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                    fontFamily: 'EB Garamond',
+                    fontSize: '14px',
+                    textDecoration: 'line-through'
+                  }
+                }, 'S'),
+
+                // Separator
+                e('div', { style: { width: '1px', background: 'var(--border-color)', margin: '0 4px' } }),
+
+                // Heading 1
+                e('button', {
+                  onClick: () => {
+                    if (!editorRef.current) return;
+                    const textarea = editorRef.current;
+                    const start = textarea.selectionStart;
+                    const text = textarea.value;
+                    // Find start of line
+                    let lineStart = start;
+                    while (lineStart > 0 && text[lineStart - 1] !== '\n') lineStart--;
+                    const newText = text.substring(0, lineStart) + '# ' + text.substring(lineStart);
+                    updateChapterContent(newText);
+                    setTimeout(() => {
+                      textarea.focus();
+                      textarea.setSelectionRange(start + 2, start + 2);
+                    }, 0);
+                  },
+                  title: 'Otsikko 1 - Lisää # rivin alkuun',
+                  style: {
+                    background: 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px'
+                  }
+                }, 'H1'),
+
+                // Heading 2
+                e('button', {
+                  onClick: () => {
+                    if (!editorRef.current) return;
+                    const textarea = editorRef.current;
+                    const start = textarea.selectionStart;
+                    const text = textarea.value;
+                    let lineStart = start;
+                    while (lineStart > 0 && text[lineStart - 1] !== '\n') lineStart--;
+                    const newText = text.substring(0, lineStart) + '## ' + text.substring(lineStart);
+                    updateChapterContent(newText);
+                    setTimeout(() => {
+                      textarea.focus();
+                      textarea.setSelectionRange(start + 3, start + 3);
+                    }, 0);
+                  },
+                  title: 'Otsikko 2 - Lisää ## rivin alkuun',
+                  style: {
+                    background: 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px'
+                  }
+                }, 'H2'),
+
+                // Separator
+                e('div', { style: { width: '1px', background: 'var(--border-color)', margin: '0 4px' } }),
+
+                // Quote
+                e('button', {
+                  onClick: () => {
+                    if (!editorRef.current) return;
+                    const textarea = editorRef.current;
+                    const start = textarea.selectionStart;
+                    const text = textarea.value;
+                    let lineStart = start;
+                    while (lineStart > 0 && text[lineStart - 1] !== '\n') lineStart--;
+                    const newText = text.substring(0, lineStart) + '> ' + text.substring(lineStart);
+                    updateChapterContent(newText);
+                    setTimeout(() => {
+                      textarea.focus();
+                      textarea.setSelectionRange(start + 2, start + 2);
+                    }, 0);
+                  },
+                  title: 'Lainaus - Lisää > rivin alkuun',
+                  style: {
+                    background: 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                    fontFamily: 'EB Garamond',
+                    fontSize: '14px'
+                  }
+                }, '❝'),
+
+                // Scene break
+                e('button', {
+                  onClick: () => {
+                    if (!editorRef.current) return;
+                    const textarea = editorRef.current;
+                    const start = textarea.selectionStart;
+                    const text = textarea.value;
+                    const sceneBreak = '\n\n* * *\n\n';
+                    const newText = text.substring(0, start) + sceneBreak + text.substring(start);
+                    updateChapterContent(newText);
+                    setTimeout(() => {
+                      textarea.focus();
+                      textarea.setSelectionRange(start + sceneBreak.length, start + sceneBreak.length);
+                    }, 0);
+                  },
+                  title: 'Kohtauksen vaihto - Lisää * * *',
+                  style: {
+                    background: 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px'
+                  }
+                }, '***'),
+
+                // Separator
+                e('div', { style: { width: '1px', background: 'var(--border-color)', margin: '0 4px' } }),
+
+                // Comment/Note marker
+                e('button', {
+                  onClick: () => {
+                    if (!editorRef.current) return;
+                    const textarea = editorRef.current;
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const text = textarea.value;
+                    const selectedText = text.substring(start, end);
+                    const comment = selectedText ? `[TODO: ${selectedText}]` : '[TODO: ]';
+                    const newText = text.substring(0, start) + comment + text.substring(end);
+                    updateChapterContent(newText);
+                    setTimeout(() => {
+                      textarea.focus();
+                      const cursorPos = selectedText ? start + comment.length : start + 7;
+                      textarea.setSelectionRange(cursorPos, cursorPos);
+                    }, 0);
+                  },
+                  title: 'Lisää TODO-merkintä',
+                  style: {
+                    background: 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--bronze)',
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px'
+                  }
+                }, 'TODO'),
+
+                // Separator
+                e('div', { style: { width: '1px', background: 'var(--border-color)', margin: '0 4px' } }),
+
+                // Add bookmark button
+                e('button', {
+                  onClick: () => {
+                    const name = prompt('Kirjanmerkin nimi:', `Kirjanmerkki ${(project.bookmarks || []).length + 1}`);
+                    if (name !== null) {
+                      addBookmark(name);
+                    }
+                  },
+                  title: 'Lisää kirjanmerkki nykyiseen kohtaan',
+                  style: {
+                    background: 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--gold)',
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '12px'
+                  }
+                }, '🔖+'),
+
+                // Show bookmarks panel button
+                e('button', {
+                  onClick: () => setShowBookmarksPanel(prev => !prev),
+                  title: `Näytä kirjanmerkit (${(project.bookmarks || []).length})`,
+                  style: {
+                    background: showBookmarksPanel ? 'var(--bronze)' : 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: showBookmarksPanel ? '#000' : 'var(--text)',
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px',
+                    fontWeight: showBookmarksPanel ? 600 : 400
+                  }
+                }, `🔖 ${(project.bookmarks || []).length}`)
+              ),
+
+              // Bookmarks panel (floating)
+              showBookmarksPanel && e('div', {
+                style: {
+                  position: 'absolute',
+                  top: '48px',
+                  right: '12px',
+                  background: 'var(--bg-1)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  minWidth: '280px',
+                  maxHeight: '400px',
+                  overflowY: 'auto',
+                  zIndex: 200,
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
+                }
+              },
+                e('div', {
+                  style: {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '12px'
+                  }
+                },
+                  e('h4', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '12px',
+                      color: 'var(--text)',
+                      margin: 0
+                    }
+                  }, `Kirjanmerkit (${(project.bookmarks || []).length})`),
+                  e('button', {
+                    onClick: () => setShowBookmarksPanel(false),
+                    style: {
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--text-2)',
+                      cursor: 'pointer',
+                      fontSize: '16px'
+                    }
+                  }, '×')
+                ),
+                (project.bookmarks || []).length === 0
+                  ? e('p', {
+                      style: {
+                        fontFamily: 'IBM Plex Mono',
+                        fontSize: '11px',
+                        color: 'var(--text-3)',
+                        textAlign: 'center',
+                        padding: '16px'
+                      }
+                    }, 'Ei kirjanmerkkejä. Käytä 🔖+ lisätäksesi.')
+                  : (project.bookmarks || []).map(bookmark =>
+                      e('div', {
+                        key: bookmark.id,
+                        style: {
+                          padding: '8px',
+                          borderRadius: '4px',
+                          marginBottom: '4px',
+                          background: 'var(--bg-2)',
+                          cursor: 'pointer',
+                          borderLeft: `3px solid ${bookmark.color || 'var(--gold)'}`
+                        },
+                        onClick: () => jumpToBookmark(bookmark)
+                      },
+                        e('div', {
+                          style: {
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                          }
+                        },
+                          e('span', {
+                            style: {
+                              fontFamily: 'IBM Plex Mono',
+                              fontSize: '12px',
+                              color: 'var(--text)',
+                              fontWeight: 500
+                            }
+                          }, bookmark.name),
+                          e('button', {
+                            onClick: (ev) => {
+                              ev.stopPropagation();
+                              if (confirm(`Poista kirjanmerkki "${bookmark.name}"?`)) {
+                                deleteBookmark(bookmark.id);
+                              }
+                            },
+                            style: {
+                              background: 'transparent',
+                              border: 'none',
+                              color: 'var(--error)',
+                              cursor: 'pointer',
+                              fontSize: '12px',
+                              padding: '2px 4px'
+                            }
+                          }, '×')
+                        ),
+                        e('div', {
+                          style: {
+                            fontFamily: 'IBM Plex Mono',
+                            fontSize: '10px',
+                            color: 'var(--text-3)',
+                            marginTop: '4px'
+                          }
+                        }, `📖 ${bookmark.chapterTitle || 'Nimetön luku'}`),
+                        bookmark.context && e('div', {
+                          style: {
+                            fontFamily: 'EB Garamond',
+                            fontSize: '11px',
+                            color: 'var(--text-2)',
+                            fontStyle: 'italic',
+                            marginTop: '4px',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }
+                        }, `"...${bookmark.context}..."`)
+                      )
+                    )
+              ),
+
+              // Textarea
+              e('textarea', {
+                ref: editorRef,
+                className: 'faust-textarea',
+                value: activeChapter.content,
+                onChange: (ev) => updateChapterContent(ev.target.value),
+                onMouseUp: handleTextSelection,
+                onKeyUp: handleTextSelection,
+                placeholder: 'Aloita kirjoittaminen...',
+                style: {
+                  flex: 1,
+                  fontFamily: editorFont,
+                  fontSize: `${18 * (parseInt(editorZoom) / 100)}px`,
+                  lineHeight: lineSpacing,
+                  textAlign: textAlign,
+                  paddingBottom: `${parseFloat(paragraphSpacing) * 16}px`,
+                  paddingLeft: '60px' // Add left padding for annotation margin
+                }
+              })
+            ) // Close editor container with formatting toolbar
           ),
 
           // Voice edit button (appears when text is selected)
@@ -5114,8 +6594,40 @@ ${contextPrompt}`;
                   onChange: (ev) => setSearchInAllChapters(ev.target.checked)
                 }),
                 'Kaikki luvut'
+              ),
+              e('label', {
+                style: {
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  color: searchGlobally ? 'var(--bronze)' : 'inherit'
+                }
+              },
+                e('input', {
+                  id: 'search-globally',
+                  name: 'searchGlobally',
+                  type: 'checkbox',
+                  checked: searchGlobally,
+                  onChange: (ev) => {
+                    setSearchGlobally(ev.target.checked);
+                    if (ev.target.checked) {
+                      setSearchInAllChapters(true); // Global implies all chapters
+                    }
+                  }
+                }),
+                '🌐 Globaali'
               )
             ),
+            // Global search info
+            searchGlobally && e('div', {
+              style: {
+                fontSize: '10px',
+                color: 'var(--text-3)',
+                marginBottom: '8px',
+                fontFamily: 'IBM Plex Mono'
+              }
+            }, 'Hakee luvuista, hahmoista, paikoista ja juonista'),
             // Search history dropdown
             searchHistory.length > 0 ? e('details', { style: { marginBottom: '8px' } },
               e('summary', {
@@ -5165,7 +6677,17 @@ ${contextPrompt}`;
               `${currentSearchIndex + 1} / ${searchResults.length} tulosta`,
               searchInAllChapters && searchResults[currentSearchIndex] ?
                 e('div', { style: { fontSize: '10px', color: 'var(--text-3)', marginTop: '2px' } },
-                  `📖 ${searchResults[currentSearchIndex].chapterTitle}`,
+                  (() => {
+                    const result = searchResults[currentSearchIndex];
+                    const typeIcon = result.type === 'character' ? '👤' :
+                                     result.type === 'location' ? '📍' :
+                                     result.type === 'thread' ? '🧵' : '📖';
+                    const typeName = result.type === 'character' ? result.itemName :
+                                     result.type === 'location' ? result.itemName :
+                                     result.type === 'thread' ? result.itemName :
+                                     result.chapterTitle;
+                    return `${typeIcon} ${typeName}`;
+                  })(),
                   e('div', { style: { fontStyle: 'italic', marginTop: '2px', opacity: 0.7 } },
                     `"...${searchResults[currentSearchIndex].context}..."`
                   )
@@ -5350,6 +6872,290 @@ ${contextPrompt}`;
               }, 'Hyväksy')
             )
           ) : null
+        )
+      ),
+
+        // Split View Secondary Pane (shown when split view is enabled, only in editor mode not corkboard)
+        !corkboardEnabled && splitViewEnabled && splitViewChapter && e('div', {
+          className: 'faust-editor faust-editor-split',
+          style: {
+            flex: 1,
+            position: 'relative',
+            background: 'var(--paper)',
+            borderLeft: '1px solid var(--border-color)'
+          }
+        },
+          // Split view header with selector
+          e('div', {
+            style: {
+              padding: '12px 16px',
+              borderBottom: '1px solid var(--border-color)',
+              background: 'var(--bg-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            }
+          },
+            // View type selector
+            e('select', {
+              value: splitViewType,
+              onChange: (ev) => setSplitViewType(ev.target.value),
+              style: {
+                background: 'var(--bg-2)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text)',
+                padding: '4px 8px',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px',
+                cursor: 'pointer'
+              }
+            },
+              e('option', { value: 'chapter' }, 'Luku'),
+              e('option', { value: 'character' }, 'Hahmo'),
+              e('option', { value: 'location' }, 'Paikka'),
+              e('option', { value: 'outline' }, 'Synopsis')
+            ),
+
+            // Chapter/item selector (depends on type)
+            splitViewType === 'chapter' && e('select', {
+              value: splitViewChapterId || '',
+              onChange: (ev) => setSplitViewChapterId(ev.target.value),
+              style: {
+                flex: 1,
+                background: 'var(--bg-2)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text)',
+                padding: '4px 8px',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px',
+                cursor: 'pointer'
+              }
+            },
+              project.structure.map(ch =>
+                e('option', { key: ch.id, value: ch.id }, ch.title || `Luku ${project.structure.indexOf(ch) + 1}`)
+              )
+            ),
+
+            splitViewType === 'character' && e('select', {
+              value: splitViewChapterId || '',
+              onChange: (ev) => setSplitViewChapterId(ev.target.value),
+              style: {
+                flex: 1,
+                background: 'var(--bg-2)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text)',
+                padding: '4px 8px',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px',
+                cursor: 'pointer'
+              }
+            },
+              (project.characters || []).length === 0
+                ? e('option', { value: '' }, 'Ei hahmoja')
+                : (project.characters || []).map(char =>
+                    e('option', { key: char.id, value: char.id }, char.name)
+                  )
+            ),
+
+            splitViewType === 'location' && e('select', {
+              value: splitViewChapterId || '',
+              onChange: (ev) => setSplitViewChapterId(ev.target.value),
+              style: {
+                flex: 1,
+                background: 'var(--bg-2)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text)',
+                padding: '4px 8px',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px',
+                cursor: 'pointer'
+              }
+            },
+              (project.locations || []).length === 0
+                ? e('option', { value: '' }, 'Ei paikkoja')
+                : (project.locations || []).map(loc =>
+                    e('option', { key: loc.id, value: loc.id }, loc.name)
+                  )
+            ),
+
+            // Close button
+            e('button', {
+              onClick: () => setSplitViewEnabled(false),
+              title: 'Sulje jaettu näkymä',
+              style: {
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-2)',
+                cursor: 'pointer',
+                fontSize: '18px',
+                padding: '4px'
+              }
+            }, '×')
+          ),
+
+          // Split view content area
+          e('div', {
+            className: 'faust-editor-content',
+            style: {
+              padding: '24px',
+              overflow: 'auto',
+              height: 'calc(100% - 50px)'
+            }
+          },
+            // Chapter view
+            splitViewType === 'chapter' && splitViewChapter && e('div', null,
+              e('h2', {
+                style: {
+                  fontFamily: 'EB Garamond',
+                  fontSize: '24px',
+                  color: 'var(--ink)',
+                  marginBottom: '8px'
+                }
+              }, splitViewChapter.title || 'Nimetön luku'),
+              e('div', {
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '11px',
+                  color: 'var(--text-3)',
+                  marginBottom: '16px'
+                }
+              }, `${splitViewChapter.wordCount || 0} sanaa • ${splitViewChapter.status || 'draft'}`),
+              e('div', {
+                style: {
+                  fontFamily: 'EB Garamond',
+                  fontSize: '16px',
+                  lineHeight: '1.8',
+                  color: 'var(--ink)',
+                  whiteSpace: 'pre-wrap'
+                }
+              }, splitViewChapter.content || 'Ei sisältöä')
+            ),
+
+            // Character view
+            splitViewType === 'character' && (() => {
+              const char = (project.characters || []).find(c => c.id === splitViewChapterId);
+              if (!char) return e('div', { style: { color: 'var(--text-3)' } }, 'Valitse hahmo');
+              return e('div', null,
+                e('h2', {
+                  style: {
+                    fontFamily: 'EB Garamond',
+                    fontSize: '24px',
+                    color: 'var(--ink)',
+                    marginBottom: '16px'
+                  }
+                }, char.name),
+                char.age && e('div', { style: { marginBottom: '8px', color: 'var(--text-2)', fontFamily: 'IBM Plex Mono', fontSize: '12px' } }, `Ikä: ${char.age}`),
+                char.occupation && e('div', { style: { marginBottom: '8px', color: 'var(--text-2)', fontFamily: 'IBM Plex Mono', fontSize: '12px' } }, `Ammatti: ${char.occupation}`),
+                char.description && e('div', {
+                  style: { marginTop: '16px', marginBottom: '16px' }
+                },
+                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', marginBottom: '8px' } }, 'Kuvaus'),
+                  e('p', { style: { fontFamily: 'EB Garamond', fontSize: '14px', lineHeight: '1.6', color: 'var(--ink)' } }, char.description)
+                ),
+                char.background && e('div', {
+                  style: { marginBottom: '16px' }
+                },
+                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', marginBottom: '8px' } }, 'Tausta'),
+                  e('p', { style: { fontFamily: 'EB Garamond', fontSize: '14px', lineHeight: '1.6', color: 'var(--ink)' } }, char.background)
+                ),
+                char.archetypal && char.archetypal.primaryArchetype && e('div', {
+                  style: { marginBottom: '16px' }
+                },
+                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', marginBottom: '8px' } }, 'Arkkityyppi'),
+                  e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text)' } }, char.archetypal.primaryArchetype)
+                ),
+                char.notes && e('div', {
+                  style: { marginTop: '16px', padding: '12px', background: 'var(--bg-2)', borderRadius: '4px' }
+                },
+                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'Muistiinpanot'),
+                  e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', whiteSpace: 'pre-wrap' } }, char.notes)
+                )
+              );
+            })(),
+
+            // Location view
+            splitViewType === 'location' && (() => {
+              const loc = (project.locations || []).find(l => l.id === splitViewChapterId);
+              if (!loc) return e('div', { style: { color: 'var(--text-3)' } }, 'Valitse paikka');
+              return e('div', null,
+                e('h2', {
+                  style: {
+                    fontFamily: 'EB Garamond',
+                    fontSize: '24px',
+                    color: 'var(--ink)',
+                    marginBottom: '16px'
+                  }
+                }, loc.name),
+                loc.type && e('div', { style: { marginBottom: '8px', color: 'var(--text-2)', fontFamily: 'IBM Plex Mono', fontSize: '12px' } }, `Tyyppi: ${loc.type}`),
+                loc.atmosphere && e('div', { style: { marginBottom: '8px', color: 'var(--text-2)', fontFamily: 'IBM Plex Mono', fontSize: '12px' } }, `Tunnelma: ${loc.atmosphere}`),
+                loc.description && e('div', {
+                  style: { marginTop: '16px', marginBottom: '16px' }
+                },
+                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', marginBottom: '8px' } }, 'Kuvaus'),
+                  e('p', { style: { fontFamily: 'EB Garamond', fontSize: '14px', lineHeight: '1.6', color: 'var(--ink)' } }, loc.description)
+                ),
+                loc.sensoryDetails && e('div', {
+                  style: { marginBottom: '16px' }
+                },
+                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', marginBottom: '8px' } }, 'Aistihavainnot'),
+                  loc.sensoryDetails.visual && e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' } }, `👁 ${loc.sensoryDetails.visual}`),
+                  loc.sensoryDetails.auditory && e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' } }, `👂 ${loc.sensoryDetails.auditory}`),
+                  loc.sensoryDetails.olfactory && e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' } }, `👃 ${loc.sensoryDetails.olfactory}`)
+                ),
+                loc.notes && e('div', {
+                  style: { marginTop: '16px', padding: '12px', background: 'var(--bg-2)', borderRadius: '4px' }
+                },
+                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'Muistiinpanot'),
+                  e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', whiteSpace: 'pre-wrap' } }, loc.notes)
+                )
+              );
+            })(),
+
+            // Outline/Synopsis view
+            splitViewType === 'outline' && e('div', null,
+              e('h2', {
+                style: {
+                  fontFamily: 'EB Garamond',
+                  fontSize: '24px',
+                  color: 'var(--ink)',
+                  marginBottom: '16px'
+                }
+              }, 'Lukujen synopsikset'),
+              project.structure.map((ch, idx) =>
+                e('div', {
+                  key: ch.id,
+                  style: {
+                    marginBottom: '16px',
+                    padding: '12px',
+                    background: ch.id === activeChapterId ? 'rgba(143,122,83,0.1)' : 'transparent',
+                    borderLeft: ch.id === activeChapterId ? '3px solid var(--bronze)' : '3px solid transparent',
+                    borderRadius: '4px'
+                  }
+                },
+                  e('h4', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '12px',
+                      color: 'var(--bronze)',
+                      marginBottom: '4px'
+                    }
+                  }, `${idx + 1}. ${ch.title || 'Nimetön'}`),
+                  e('p', {
+                    style: {
+                      fontFamily: 'EB Garamond',
+                      fontSize: '13px',
+                      color: 'var(--text-2)',
+                      lineHeight: '1.5'
+                    }
+                  }, ch.synopsis || ch.synopsisAI || '(Ei synopsista)')
+                )
+              )
+            )
+          )
         )
       ),
 
@@ -10638,7 +12444,22 @@ ${contextPrompt}`;
       onClose: () => setShowExportModal(false),
       project: project,
       activeChapter: activeChapter,
-      onExport: handleExportFromModal
+      onExport: handleExportFromModal,
+      exportPresets: project.exportPresets || [],
+      onSavePreset: (preset) => {
+        setProject(prev => ({
+          ...prev,
+          exportPresets: [...(prev.exportPresets || []), { ...preset, id: `preset-${Date.now()}` }]
+        }));
+        setUnsavedChanges(true);
+      },
+      onDeletePreset: (presetId) => {
+        setProject(prev => ({
+          ...prev,
+          exportPresets: (prev.exportPresets || []).filter(p => p.id !== presetId)
+        }));
+        setUnsavedChanges(true);
+      }
     }),
 
     // Continue Writing Dialog (HybridWritingFlow)

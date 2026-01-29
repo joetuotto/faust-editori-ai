@@ -15,7 +15,10 @@
     onClose,
     project,
     activeChapter,
-    onExport
+    onExport,
+    exportPresets = [],
+    onSavePreset,
+    onDeletePreset
   }) {
     if (!isOpen) return null;
 
@@ -26,6 +29,39 @@
     const [includeMetadata, setIncludeMetadata] = useState(true);
     const [includeSynopsis, setIncludeSynopsis] = useState(true);
     const [includeTableOfContents, setIncludeTableOfContents] = useState(true);
+    const [chapterLimit, setChapterLimit] = useState(0); // 0 = no limit
+
+    // Apply preset
+    const applyPreset = (preset) => {
+      setExportFormat(preset.format || 'docx');
+      setIncludeMetadata(preset.includeMetadata !== false);
+      setIncludeSynopsis(preset.includeSynopsis || false);
+      setIncludeTableOfContents(preset.includeToc !== false);
+      setChapterLimit(preset.chapterLimit || 0);
+      if (preset.chapterLimit > 0) {
+        setExportScope('selection');
+        // Select first N chapters
+        const firstNChapters = project.structure.slice(0, preset.chapterLimit).map(ch => ch.id);
+        setSelectedChapters(firstNChapters);
+      } else {
+        setExportScope('full');
+      }
+    };
+
+    // Save current settings as preset
+    const saveAsPreset = () => {
+      const name = prompt('Presetin nimi:');
+      if (name && onSavePreset) {
+        onSavePreset({
+          name,
+          format: exportFormat,
+          includeMetadata,
+          includeSynopsis,
+          includeToc: includeTableOfContents,
+          chapterLimit: chapterLimit
+        });
+      }
+    };
 
     // Metadata
     const [metadata, setMetadata] = useState({
@@ -199,6 +235,114 @@
               justifyContent: 'center'
             }
           }, '×')
+        ),
+
+        // Export presets (quick actions)
+        exportPresets && exportPresets.length > 0 && e('div', {
+          style: {
+            marginBottom: '24px',
+            padding: '16px',
+            background: 'rgba(143,122,83,0.1)',
+            border: '1px solid var(--bronze)',
+            borderRadius: '6px'
+          }
+        },
+          e('div', {
+            style: {
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '12px'
+            }
+          },
+            e('h3', {
+              style: {
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '12px',
+                color: 'var(--bronze)',
+                textTransform: 'uppercase',
+                margin: 0
+              }
+            }, '⚡ Pikavienti'),
+            onSavePreset && e('button', {
+              onClick: saveAsPreset,
+              disabled: isExporting,
+              style: {
+                background: 'transparent',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text-2)',
+                cursor: isExporting ? 'not-allowed' : 'pointer',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '10px',
+                padding: '4px 8px'
+              }
+            }, '+ Tallenna preset')
+          ),
+          e('div', {
+            style: {
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }
+          },
+            exportPresets.map(preset =>
+              e('div', {
+                key: preset.id,
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }
+              },
+                e('button', {
+                  onClick: () => applyPreset(preset),
+                  disabled: isExporting,
+                  style: {
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    cursor: isExporting ? 'not-allowed' : 'pointer',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px',
+                    padding: '6px 12px',
+                    transition: 'all 0.2s'
+                  },
+                  onMouseEnter: (ev) => {
+                    if (!isExporting) {
+                      ev.target.style.background = 'var(--bronze)';
+                      ev.target.style.color = '#000';
+                    }
+                  },
+                  onMouseLeave: (ev) => {
+                    ev.target.style.background = 'var(--bg-secondary)';
+                    ev.target.style.color = 'var(--text)';
+                  }
+                }, preset.name),
+                // Delete custom presets (not default ones)
+                onDeletePreset && !preset.id.startsWith('preset-kindle') &&
+                !preset.id.startsWith('preset-epub') &&
+                !preset.id.startsWith('preset-pdf') &&
+                !preset.id.startsWith('preset-sample') &&
+                e('button', {
+                  onClick: () => {
+                    if (confirm(`Poista preset "${preset.name}"?`)) {
+                      onDeletePreset(preset.id);
+                    }
+                  },
+                  style: {
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--error)',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    padding: '2px'
+                  }
+                }, '×')
+              )
+            )
+          )
         ),
 
         // Export scope
