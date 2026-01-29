@@ -23,6 +23,8 @@ module.exports = [
       '*.backup*',
       '*.with-changes',
       'coverage/**',
+      // Files with ES module syntax that can't be linted as scripts
+      'utils/contrast.js',
     ],
   },
 
@@ -37,6 +39,9 @@ module.exports = [
         window: 'readonly',
         document: 'readonly',
         console: 'readonly',
+        alert: 'readonly',
+        confirm: 'readonly',
+        prompt: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
         setInterval: 'readonly',
@@ -55,6 +60,19 @@ module.exports = [
         IntersectionObserver: 'readonly',
         requestAnimationFrame: 'readonly',
         cancelAnimationFrame: 'readonly',
+        navigator: 'readonly',
+        location: 'readonly',
+        history: 'readonly',
+        Event: 'readonly',
+        CustomEvent: 'readonly',
+        KeyboardEvent: 'readonly',
+        MouseEvent: 'readonly',
+        DOMParser: 'readonly',
+        XMLSerializer: 'readonly',
+        atob: 'readonly',
+        btoa: 'readonly',
+        TextEncoder: 'readonly',
+        TextDecoder: 'readonly',
 
         // Node.js globals (for Electron main process)
         process: 'readonly',
