@@ -265,7 +265,7 @@ function FAUSTApp() {
   const [showExportModal, setShowExportModal] = useState(false);
 
   // AI Toolbar state
-  const [showAIToolbar, setShowAIToolbar] = useState(false);
+  // showAIToolbar removed - unused state with no associated panel
   const [aiToolbarPosition, setAIToolbarPosition] = useState(() => {
     const saved = localStorage.getItem('faust-ai-toolbar-position');
     return saved ? JSON.parse(saved) : { x: window.innerWidth - 500, y: 80 };
@@ -789,13 +789,13 @@ function FAUSTApp() {
 
         // View menu
         case 'toggle-sidebar':
-          setSidebarVisible(prev => !prev);
+          setSidebarCollapsed(prev => !prev);
           break;
         case 'toggle-inspector':
-          setInspectorVisible(prev => !prev);
+          setInspectorCollapsed(prev => !prev);
           break;
         case 'toggle-ai-panel':
-          setAiPanelOpen(prev => !prev);
+          setAiAssistantOpen(prev => !prev);
           break;
 
         // Settings menu
@@ -822,14 +822,12 @@ function FAUSTApp() {
         case 'ui-prefs-changed':
           if (arg) {
             console.log('[UI Prefs] Updated from menu:', arg);
-            if (arg.theme) {
-              setTheme(arg.theme);
-            }
+            // Note: theme is handled by electron menu directly via window.setTheme
             if (typeof arg.inspectorVisible === 'boolean') {
-              setInspectorVisible(arg.inspectorVisible);
+              setInspectorCollapsed(!arg.inspectorVisible);
             }
             if (typeof arg.aiPanelVisible === 'boolean') {
-              setAiPanelOpen(arg.aiPanelVisible);
+              setAiAssistantOpen(arg.aiPanelVisible);
             }
             // Add more UI prefs as needed
           }
@@ -4291,21 +4289,7 @@ ${contextPrompt}`;
               fontWeight: aiAssistantOpen ? 600 : 400
             }
           }, 'LIMINAL ENGINE'),
-          e('button', {
-            onClick: () => setShowAIToolbar(prev => !prev),
-            title: showAIToolbar ? 'Piilota AI työkalupalkki' : 'Näytä AI työkalupalkki',
-            style: {
-              background: showAIToolbar ? 'var(--bronze)' : 'transparent',
-              border: '1px solid var(--border-color)',
-              color: showAIToolbar ? '#000' : 'var(--text)',
-              padding: '4px 12px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              fontWeight: showAIToolbar ? 600 : 400
-            }
-          }, '🜔 AI Työkalut'),
+          // AI Työkalut button removed - had no associated panel
           e('button', {
             onClick: () => setShowSettings(true),
             style: {
