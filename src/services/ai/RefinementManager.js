@@ -1,280 +1,234 @@
 /**
- * RefinementManager
- *
- * Manages iterative refinement of chapters with user feedback
- * - Regenerate chapters with specific feedback
- * - Version comparison
- * - Rating and feedback tracking
+ * FAUST - Refinement Manager
+ * Manages iterative chapter refinement with version history,
+ * user feedback, and AI-powered regeneration.
  */
+(function(window) {
+  'use strict';
 
-class RefinementManager {
-  constructor(electronAPI, project, continuityTracker = null) {
-    this.electronAPI = electronAPI;
-    this.project = project;
-    this.continuityTracker = continuityTracker;
-  }
-
-  /**
-   * Regenerate chapter with user feedback
-   */
-  async regenerateChapter(chapter, userFeedback, mode = 'production', options = {}) {
-    if (!this.electronAPI) {
-      throw new Error('Electron API not available');
+  class RefinementManager {
+    constructor(project, setProject, callAIWithMode) {
+      this.project = project;
+      this.setProject = setProject;
+      this.callAIWithMode = callAIWithMode;
     }
 
-    // Get current content (from latest version)
-    const currentVersion = chapter.versions?.find(v => v.id === chapter.currentVersion);
-    const currentContent = currentVersion?.content || chapter.content;
+    /**
+     * Initialize a chapter's version history with its current content
+     */
+    initializeVersionHistory(chapter) {
+      if (!chapter.versions || chapter.versions.length === 0) {
+        const initialVersion = {
+          id: 'v1',
+          content: chapter.content || '',
+          timestamp: chapter.created || new Date().toISOString(),
+          generatedFrom: {
+            mode: 'manual',
+            prompt: null,
+            model: null,
+            basedOn: null,
+            userFeedback: 'Original draft'
+          },
+          userRating: null,
+          userFeedback: null
+        };
 
-    // Build refinement prompt
-    const prompt = this.buildRefinementPrompt(chapter, currentContent, userFeedback, options);
-
-    // Get mode configuration
-    const modeConfig = this.project.ai.modes[mode];
-    if (!modeConfig) {
-      throw new Error(`Unknown mode: ${mode}`);
+        chapter.versions = [initialVersion];
+        chapter.currentVersion = 'v1';
+      }
     }
 
-    // Get provider and model
-    const provider = this.project.ai.provider || 'anthropic';
-    const modelName = this.project.ai.models[provider];
+    /**
+     * Regenerate a chapter based on user feedback
+     */
+    async regenerateChapter(chapterId, userFeedback, mode = 'production') {
+      const chapter = this.findChapter(chapterId);
+      if (!chapter) throw new Error(`Chapter ${chapterId} not found`);
 
-    try {
-      // Call AI API
-      let result;
-      if (provider === 'anthropic') {
-        result = await this.electronAPI.claudeAPI({
-          prompt,
-          model: modelName,
-          temperature: modeConfig.temperature,
-          maxTokens: modeConfig.maxTokens
-        });
-      } else if (provider === 'openai') {
-        result = await this.electronAPI.openaiAPI({
-          prompt,
-          model: modelName,
-          temperature: modeConfig.temperature,
-          maxTokens: modeConfig.maxTokens
-        });
-      } else if (provider === 'grok') {
-        result = await this.electronAPI.grokAPI({
-          prompt,
-          model: modelName,
-          temperature: modeConfig.temperature,
-          maxTokens: modeConfig.maxTokens
-        });
-      } else if (provider === 'deepseek') {
-        result = await this.electronAPI.deepseekAPI({
-          prompt,
-          model: modelName,
-          temperature: modeConfig.temperature,
-          maxTokens: modeConfig.maxTokens
-        });
-      }
+      // Initialize version history if needed
+      this.initializeVersionHistory(chapter);
 
-      if (!result.success) {
-        throw new Error(result.error || 'Generation failed');
-      }
+      const currentContent = chapter.content;
 
-      const newContent = result.data;
-      const wordCount = newContent.split(/\s+/).filter(w => w.length > 0).length;
+      // Build refinement prompt
+      const prompt = this.buildRefinementPrompt(chapter, currentContent, userFeedback);
 
-      // Create new version
+      console.log(`[Refinement] Regenerating chapter "${chapter.title}" in ${mode} mode`);
+
+      // Generate new version using AI with specified mode
+      const result = await this.callAIWithMode(prompt, {
+        temperature: mode === 'exploration' ? 0.9 : mode === 'polish' ? 0.3 : 0.7,
+        max_tokens: 4096
+      });
+
+      const newContent = typeof result === 'string' ? result : result.content || result.text || '';
+
+      // Create new version entry
+      const versionNumber = chapter.versions.length + 1;
       const newVersion = {
-        id: `v${(chapter.versions?.length || 0) + 1}`,
+        id: `v${versionNumber}`,
         content: newContent,
         timestamp: new Date().toISOString(),
         generatedFrom: {
           mode,
-          model: modelName,
-          provider,
           prompt,
+          model: this.project.ai.model,
           basedOn: chapter.currentVersion,
-          userFeedback,
-          isRefinement: true
+          userFeedback
         },
         userRating: null,
-        userFeedback: null,
-        wordCount,
-        cost: 0 // Will be calculated by CostOptimizer
+        userFeedback: null
       };
 
-      return {
-        success: true,
-        version: newVersion,
-        content: newContent,
-        wordCount
-      };
+      // Add to version history
+      chapter.versions.push(newVersion);
+      chapter.currentVersion = newVersion.id;
+      chapter.content = newContent;
+      chapter.wordCount = newContent.split(/\s+/).filter(w => w.length > 0).length;
+      chapter.modified = new Date().toISOString();
 
-    } catch (error) {
-      console.error('[RefinementManager] Generation error:', error);
-      return {
-        success: false,
-        error: error.message
-      };
-    }
-  }
+      // Update project
+      this.updateChapter(chapter);
 
-  /**
-   * Build refinement prompt with feedback
-   */
-  buildRefinementPrompt(chapter, currentContent, userFeedback, options = {}) {
-    const { includeContext = true } = options;
+      console.log(`[Refinement] Created ${newVersion.id} (${chapter.wordCount} words)`);
 
-    let prompt = `${this.project.ai.modes[this.project.ai.currentMode]?.systemPrompt || ''}\n\n`;
-
-    prompt += `You are refining a chapter of a book based on the author's feedback.\n\n`;
-
-    // Project context
-    if (includeContext) {
-      prompt += `BOOK CONTEXT:\n`;
-      prompt += `Title: ${this.project.title}\n`;
-      prompt += `Genre: ${this.project.genre}\n`;
-      if (this.project.synopsis) {
-        prompt += `Synopsis: ${this.project.synopsis}\n`;
-      }
-      prompt += `\n`;
+      return newVersion;
     }
 
-    // Chapter info
-    prompt += `CHAPTER:\n`;
-    prompt += `${chapter.title}\n\n`;
+    /**
+     * Build the refinement prompt with context
+     */
+    buildRefinementPrompt(chapter, currentContent, userFeedback) {
+      // Gather context
+      const characterContext = this.project.characters
+        .map(c => `- ${c.name}: ${c.description}`)
+        .join('\n');
 
-    // Current version
-    prompt += `CURRENT VERSION:\n`;
-    prompt += `${currentContent}\n\n`;
+      const locationContext = this.project.locations
+        .map(l => `- ${l.name}: ${l.description}`)
+        .join('\n');
 
-    // User feedback
-    prompt += `AUTHOR'S FEEDBACK:\n`;
-    prompt += `${userFeedback}\n\n`;
+      return `Olet uudelleenkirjoittamassa lukua kirjailijan palautteen perusteella.
 
-    // Continuity context
-    if (this.continuityTracker && includeContext) {
-      const chapterIndex = this.project.structure.findIndex(ch => ch.id === chapter.id);
-      if (chapterIndex !== -1) {
-        const context = this.continuityTracker.getContextForChapter(chapterIndex);
-        const contextText = this.continuityTracker.formatContextAsText(context);
-        if (contextText) {
-          prompt += `STORY CONTINUITY:\n`;
-          prompt += `${contextText}\n\n`;
+NYKYINEN VERSIO:
+${currentContent}
+
+KIRJAILIJAN PALAUTE:
+${userFeedback}
+
+TARINAN KONTEKSTI:
+- Teos: ${this.project.title}
+- Kirjailija: ${this.project.author || 'Ei määritelty'}
+- Genre: ${this.project.genre}
+- Luku: ${chapter.title}
+
+${characterContext ? `HAHMOT:\n${characterContext}\n` : ''}
+${locationContext ? `PAIKAT:\n${locationContext}\n` : ''}
+
+TEHTÄVÄ:
+Kirjoita luku uudelleen ottaen huomioon kirjailijan palaute. Säilytä tarinan johdonmukaisuus ja tyyli. Palauta vain uudelleenkirjoitettu luku ilman metatietoja tai selityksiä.`;
+    }
+
+    /**
+     * Restore a previous version
+     */
+    restoreVersion(chapterId, versionId) {
+      const chapter = this.findChapter(chapterId);
+      if (!chapter) throw new Error(`Chapter ${chapterId} not found`);
+
+      const version = chapter.versions.find(v => v.id === versionId);
+      if (!version) throw new Error(`Version ${versionId} not found`);
+
+      chapter.currentVersion = versionId;
+      chapter.content = version.content;
+      chapter.wordCount = version.content.split(/\s+/).filter(w => w.length > 0).length;
+      chapter.modified = new Date().toISOString();
+
+      this.updateChapter(chapter);
+
+      console.log(`[Refinement] Restored to ${versionId} (${chapter.wordCount} words)`);
+    }
+
+    /**
+     * Rate and provide feedback for a version
+     */
+    rateVersion(chapterId, versionId, rating, feedback) {
+      const chapter = this.findChapter(chapterId);
+      if (!chapter) throw new Error(`Chapter ${chapterId} not found`);
+
+      const version = chapter.versions.find(v => v.id === versionId);
+      if (!version) throw new Error(`Version ${versionId} not found`);
+
+      version.userRating = rating;
+      version.userFeedback = feedback;
+
+      this.updateChapter(chapter);
+
+      console.log(`[Refinement] Rated ${versionId}: ${rating}/5 stars`);
+    }
+
+    /**
+     * Get version comparison data
+     */
+    compareVersions(chapterId, versionId1, versionId2) {
+      const chapter = this.findChapter(chapterId);
+      if (!chapter) throw new Error(`Chapter ${chapterId} not found`);
+
+      const v1 = chapter.versions.find(v => v.id === versionId1);
+      const v2 = chapter.versions.find(v => v.id === versionId2);
+
+      if (!v1 || !v2) throw new Error('One or both versions not found');
+
+      return {
+        version1: { id: v1.id, content: v1.content, timestamp: v1.timestamp },
+        version2: { id: v2.id, content: v2.content, timestamp: v2.timestamp },
+        wordCountDiff: v2.content.split(/\s+/).length - v1.content.split(/\s+/).length
+      };
+    }
+
+    /**
+     * Find a chapter by ID
+     */
+    findChapter(chapterId) {
+      const findInStructure = (items) => {
+        for (const item of items) {
+          if (item.id === chapterId) return item;
+          if (item.children && item.children.length > 0) {
+            const found = findInStructure(item.children);
+            if (found) return found;
+          }
         }
-      }
+        return null;
+      };
+
+      return findInStructure(this.project.structure);
     }
 
-    // Task
-    prompt += `TASK:\n`;
-    prompt += `Rewrite the chapter addressing the author's feedback while maintaining:\n`;
-    prompt += `- Story consistency and continuity\n`;
-    prompt += `- Character voices and traits\n`;
-    prompt += `- The overall narrative flow\n`;
-    prompt += `- The chapter's role in the larger story\n\n`;
+    /**
+     * Update chapter in project state
+     */
+    updateChapter(updatedChapter) {
+      this.setProject(prevProject => {
+        const updateInStructure = (items) => {
+          return items.map(item => {
+            if (item.id === updatedChapter.id) {
+              return { ...updatedChapter };
+            }
+            if (item.children && item.children.length > 0) {
+              return { ...item, children: updateInStructure(item.children) };
+            }
+            return item;
+          });
+        };
 
-    prompt += `Return ONLY the rewritten chapter content, no additional commentary.\n`;
-
-    return prompt;
-  }
-
-  /**
-   * Restore a previous version
-   */
-  restoreVersion(chapter, versionId) {
-    const version = chapter.versions?.find(v => v.id === versionId);
-    if (!version) {
-      throw new Error(`Version ${versionId} not found`);
+        return {
+          ...prevProject,
+          structure: updateInStructure(prevProject.structure),
+          modified: new Date().toISOString()
+        };
+      });
     }
-
-    return {
-      success: true,
-      content: version.content,
-      wordCount: version.wordCount,
-      versionId: version.id
-    };
   }
 
-  /**
-   * Rate a version
-   */
-  rateVersion(chapter, versionId, rating, feedback = null) {
-    const version = chapter.versions?.find(v => v.id === versionId);
-    if (!version) {
-      throw new Error(`Version ${versionId} not found`);
-    }
-
-    if (rating < 1 || rating > 5) {
-      throw new Error('Rating must be between 1 and 5');
-    }
-
-    return {
-      success: true,
-      versionId,
-      rating,
-      feedback
-    };
-  }
-
-  /**
-   * Compare two versions (returns diff data)
-   */
-  compareVersions(version1, version2) {
-    // Simple word-based diff
-    const words1 = version1.content.split(/\s+/);
-    const words2 = version2.content.split(/\s+/);
-
-    return {
-      version1: {
-        id: version1.id,
-        wordCount: version1.wordCount,
-        timestamp: version1.timestamp
-      },
-      version2: {
-        id: version2.id,
-        wordCount: version2.wordCount,
-        timestamp: version2.timestamp
-      },
-      changes: {
-        wordsAdded: Math.max(0, words2.length - words1.length),
-        wordsRemoved: Math.max(0, words1.length - words2.length),
-        totalWords1: words1.length,
-        totalWords2: words2.length
-      }
-    };
-  }
-
-  /**
-   * Get version statistics
-   */
-  getVersionStats(chapter) {
-    if (!chapter.versions || chapter.versions.length === 0) {
-      return null;
-    }
-
-    const versions = chapter.versions;
-    const rated = versions.filter(v => v.userRating !== null);
-    const totalCost = versions.reduce((sum, v) => sum + (v.cost || 0), 0);
-
-    return {
-      totalVersions: versions.length,
-      ratedVersions: rated.length,
-      averageRating: rated.length > 0
-        ? rated.reduce((sum, v) => sum + v.userRating, 0) / rated.length
-        : null,
-      totalCost,
-      refinements: versions.filter(v => v.generatedFrom?.isRefinement).length,
-      modes: {
-        exploration: versions.filter(v => v.generatedFrom?.mode === 'exploration').length,
-        production: versions.filter(v => v.generatedFrom?.mode === 'production').length,
-        polish: versions.filter(v => v.generatedFrom?.mode === 'polish').length
-      }
-    };
-  }
-}
-
-// Export for use in app.js (Node.js environment)
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = RefinementManager;
-}
-
-// Make available globally for browser
-if (typeof window !== 'undefined') {
   window.RefinementManager = RefinementManager;
-}
+})(window);

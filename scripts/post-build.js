@@ -17,8 +17,10 @@ const CRITICAL_FILES = [
   { src: 'src/utils/annotationTypes.js', dst: 'dist/src/utils/annotationTypes.js' },
   { src: 'src/utils/voiceInput.js', dst: 'dist/src/utils/voiceInput.js' },
   { src: 'src/utils/CommandManager.js', dst: 'dist/src/utils/CommandManager.js' },
+  { src: 'src/services/ai/AIProviderRouter.js', dst: 'dist/src/services/ai/AIProviderRouter.js' },
+  { src: 'src/services/ai/CharacterGenerator.js', dst: 'dist/src/services/ai/CharacterGenerator.js' },
+  { src: 'src/services/story/ComplexityAnalyzer.js', dst: 'dist/src/services/story/ComplexityAnalyzer.js' },
   { src: 'src/components/AnnotationMargin.js', dst: 'dist/src/components/AnnotationMargin.js' },
-  // Note: Modals/index.js uses ES6 exports and is for webpack only, not direct browser loading
   { src: 'src/components/Modals/CharacterSheetModal.js', dst: 'dist/src/components/Modals/CharacterSheetModal.js' },
   { src: 'src/components/Modals/LocationSheetModal.js', dst: 'dist/src/components/Modals/LocationSheetModal.js' },
   { src: 'src/components/Modals/ThreadSheetModal.js', dst: 'dist/src/components/Modals/ThreadSheetModal.js' },
