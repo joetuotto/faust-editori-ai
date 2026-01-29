@@ -522,6 +522,9 @@ function FAUSTApp() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
 
+  // Claude Chat state
+  const [claudeChatOpen, setClaudeChatOpen] = useState(false);
+
   // Inspector tabs state
   const [inspectorTab, setInspectorTab] = useState('editor'); // editor, chapter, project, ai
   const [apiKeysStatus, setApiKeysStatus] = useState({}); // {anthropic: true, openai: false, ...}
@@ -10790,7 +10793,53 @@ ${contextPrompt}`;
           )
         )
       )
-    )
+    ),
+
+    // Claude Chat Component
+    window.ClaudeChat && e(window.ClaudeChat, {
+      project: project,
+      activeChapter: activeChapter,
+      isOpen: claudeChatOpen,
+      onClose: () => setClaudeChatOpen(false),
+      onInsertText: (text) => {
+        if (activeChapter) {
+          const newContent = (activeChapter.content || '') + '\n\n' + text;
+          handleTextChange(newContent);
+        }
+      }
+    }),
+
+    // Claude Chat Toggle Button (floating)
+    !claudeChatOpen && e('button', {
+      onClick: () => setClaudeChatOpen(true),
+      title: 'Avaa Claude Assistentti',
+      style: {
+        position: 'fixed',
+        right: '20px',
+        bottom: '20px',
+        width: '56px',
+        height: '56px',
+        borderRadius: '50%',
+        background: 'var(--accent, #8b7355)',
+        border: 'none',
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '24px',
+        zIndex: 999,
+        transition: 'transform 0.2s, box-shadow 0.2s'
+      },
+      onMouseEnter: (ev) => {
+        ev.target.style.transform = 'scale(1.1)';
+        ev.target.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.3)';
+      },
+      onMouseLeave: (ev) => {
+        ev.target.style.transform = 'scale(1)';
+        ev.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.2)';
+      }
+    }, '✨')
   );
 }
 

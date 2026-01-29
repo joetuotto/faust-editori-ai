@@ -1218,6 +1218,172 @@ ipcMain.handle('claude-api', async (event, promptOrOptions) => {
   }
 });
 
+// Claude API Streaming - Real-time token-by-token response
+ipcMain.handle('claude-api-stream', async (event, options) => {
+  try {
+    const {
+      prompt,
+      messages = [],
+      model,
+      temperature = 0.7,
+      maxTokens = 4096,
+      system = null
+    } = options;
+
+    let apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
+
+    if (!apiKey) {
+      return {
+        success: false,
+        error: 'ANTHROPIC_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain.'
+      };
+    }
+
+    const anthropic = new Anthropic({ apiKey });
+
+    // Build messages array
+    const apiMessages = messages.length > 0
+      ? messages
+      : [{ role: 'user', content: prompt }];
+
+    // Create streaming request
+    const streamParams = {
+      model: model || 'claude-sonnet-4-20250514',
+      max_tokens: maxTokens,
+      temperature: temperature,
+      messages: apiMessages
+    };
+
+    // Add system prompt if provided
+    if (system) {
+      streamParams.system = system;
+    }
+
+    const stream = anthropic.messages.stream(streamParams);
+
+    // Send chunks as they arrive
+    stream.on('text', (text) => {
+      event.sender.send('claude-stream-chunk', {
+        text,
+        type: 'text'
+      });
+    });
+
+    // Wait for completion
+    const finalMessage = await stream.finalMessage();
+
+    return {
+      success: true,
+      usage: finalMessage.usage,
+      stopReason: finalMessage.stop_reason,
+      model: finalMessage.model
+    };
+  } catch (error) {
+    console.error('Claude Stream API error:', error);
+    event.sender.send('claude-stream-chunk', {
+      error: error.message,
+      type: 'error'
+    });
+    return { success: false, error: error.message };
+  }
+});
+
+// Claude API with Extended Thinking - Deep analysis mode
+ipcMain.handle('claude-api-thinking', async (event, options) => {
+  try {
+    const {
+      prompt,
+      messages = [],
+      budgetTokens = 10000,
+      maxTokens = 16000,
+      stream = false
+    } = options;
+
+    let apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
+
+    if (!apiKey) {
+      return {
+        success: false,
+        error: 'ANTHROPIC_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain.'
+      };
+    }
+
+    const anthropic = new Anthropic({ apiKey });
+
+    // Build messages array
+    const apiMessages = messages.length > 0
+      ? messages
+      : [{ role: 'user', content: prompt }];
+
+    // Extended thinking requires specific model and settings
+    const thinkingParams = {
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: maxTokens,
+      thinking: {
+        type: 'enabled',
+        budget_tokens: budgetTokens
+      },
+      messages: apiMessages
+    };
+
+    if (stream) {
+      // Streaming with extended thinking
+      const streamResponse = anthropic.messages.stream(thinkingParams);
+
+      streamResponse.on('contentBlockStart', (block) => {
+        if (block.content_block?.type === 'thinking') {
+          event.sender.send('claude-stream-chunk', {
+            type: 'thinking_start'
+          });
+        }
+      });
+
+      streamResponse.on('text', (text, snapshot) => {
+        // Check if this is thinking or text content
+        const currentBlock = snapshot.content?.[snapshot.content.length - 1];
+        const chunkType = currentBlock?.type === 'thinking' ? 'thinking' : 'text';
+
+        event.sender.send('claude-stream-chunk', {
+          text,
+          type: chunkType
+        });
+      });
+
+      const finalMessage = await streamResponse.finalMessage();
+
+      // Extract thinking and text content
+      const thinkingBlocks = finalMessage.content.filter(b => b.type === 'thinking');
+      const textBlocks = finalMessage.content.filter(b => b.type === 'text');
+
+      return {
+        success: true,
+        thinking: thinkingBlocks.map(b => b.thinking).join('\n'),
+        response: textBlocks.map(b => b.text).join('\n'),
+        usage: finalMessage.usage,
+        stopReason: finalMessage.stop_reason
+      };
+    } else {
+      // Non-streaming extended thinking
+      const response = await anthropic.messages.create(thinkingParams);
+
+      // Extract thinking and text content
+      const thinkingBlocks = response.content.filter(b => b.type === 'thinking');
+      const textBlocks = response.content.filter(b => b.type === 'text');
+
+      return {
+        success: true,
+        thinking: thinkingBlocks.map(b => b.thinking).join('\n'),
+        response: textBlocks.map(b => b.text).join('\n'),
+        usage: response.usage,
+        stopReason: response.stop_reason
+      };
+    }
+  } catch (error) {
+    console.error('Claude Thinking API error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Grok API (xAI)
 ipcMain.handle('grok-api', async (event, promptOrOptions) => {
   try {

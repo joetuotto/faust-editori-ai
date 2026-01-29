@@ -24,6 +24,74 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deepseekAPI: (payload) => ipcRenderer.invoke('deepseek-api', payload),
   webSearch: (query) => ipcRenderer.invoke('web-search', query),
 
+  // Claude Streaming API - Real-time responses
+  claudeAPIStream: (options) => {
+    return new Promise((resolve, reject) => {
+      const chunkHandler = (_event, chunk) => {
+        if (options.onChunk && chunk.type !== 'error') {
+          options.onChunk(chunk);
+        }
+        if (chunk.type === 'error') {
+          reject(new Error(chunk.error));
+        }
+      };
+
+      ipcRenderer.on('claude-stream-chunk', chunkHandler);
+
+      ipcRenderer.invoke('claude-api-stream', {
+        prompt: options.prompt,
+        messages: options.messages,
+        model: options.model,
+        temperature: options.temperature,
+        maxTokens: options.maxTokens,
+        system: options.system
+      })
+        .then(result => {
+          ipcRenderer.removeListener('claude-stream-chunk', chunkHandler);
+          resolve(result);
+        })
+        .catch(error => {
+          ipcRenderer.removeListener('claude-stream-chunk', chunkHandler);
+          reject(error);
+        });
+    });
+  },
+
+  // Claude Extended Thinking API - Deep analysis mode
+  claudeAPIThinking: (options) => {
+    return new Promise((resolve, reject) => {
+      const chunkHandler = (_event, chunk) => {
+        if (options.onChunk) {
+          options.onChunk(chunk);
+        }
+      };
+
+      if (options.stream) {
+        ipcRenderer.on('claude-stream-chunk', chunkHandler);
+      }
+
+      ipcRenderer.invoke('claude-api-thinking', {
+        prompt: options.prompt,
+        messages: options.messages,
+        budgetTokens: options.budgetTokens,
+        maxTokens: options.maxTokens,
+        stream: options.stream || false
+      })
+        .then(result => {
+          if (options.stream) {
+            ipcRenderer.removeListener('claude-stream-chunk', chunkHandler);
+          }
+          resolve(result);
+        })
+        .catch(error => {
+          if (options.stream) {
+            ipcRenderer.removeListener('claude-stream-chunk', chunkHandler);
+          }
+          reject(error);
+        });
+    });
+  },
+
   // AI Modules - Story Generation & Continuity
   aiGenerateChapter: (params) => ipcRenderer.invoke('ai:generate-chapter', params),
   aiCheckContinuity: (params) => ipcRenderer.invoke('ai:check-continuity', params),
