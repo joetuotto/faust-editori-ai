@@ -114,6 +114,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadChatMemory: () => ipcRenderer.invoke('chat:load-memory'),
   saveChatMemory: (entry) => ipcRenderer.invoke('chat:save-memory', entry),
 
+  // Batch Progress Listener
+  onBatchProgress: (callback) => {
+    const handler = (_event, progress) => callback(progress);
+    ipcRenderer.on('batch-progress', handler);
+    // Return cleanup function
+    return () => ipcRenderer.removeListener('batch-progress', handler);
+  },
+
   // v1.4.1: Spec Runner (internal testing)
   runSpec: (scenario) => ipcRenderer.invoke('spec:run', scenario),
   sendSpecResult: (payload) => ipcRenderer.send('spec:done', payload),

@@ -1080,12 +1080,15 @@ const getChatLogPath = () => {
 ipcMain.handle('chat:load-memory', async () => {
   try {
     const logPath = getChatLogPath();
-    if (fs.existsSync(logPath)) {
+    // Use fs.access to check if file exists (async version)
+    try {
+      await fs.access(logPath);
       const data = await fs.readFile(logPath, 'utf-8');
       const log = JSON.parse(data);
       console.log('[Chat Memory] Loaded', log.entries?.length || 0, 'entries');
       return { success: true, data: log };
-    } else {
+    } catch (accessError) {
+      // File doesn't exist, return empty data
       return { success: true, data: { entries: [], lastUpdated: null } };
     }
   } catch (error) {
@@ -1099,10 +1102,13 @@ ipcMain.handle('chat:save-memory', async (_event, entry) => {
     const logPath = getChatLogPath();
     let log = { entries: [], lastUpdated: null };
 
-    // Load existing log
-    if (fs.existsSync(logPath)) {
+    // Load existing log (use fs.access for async check)
+    try {
+      await fs.access(logPath);
       const data = await fs.readFile(logPath, 'utf-8');
       log = JSON.parse(data);
+    } catch {
+      // File doesn't exist yet, use empty log
     }
 
     // Add new entry
@@ -1991,7 +1997,14 @@ ipcMain.handle('ai:batch-process', async (event, { project, operation = 'continu
       setProject: () => {}, // Read-only for now
       onProgress: (progress) => {
         console.log('[AI Batch] Progress:', progress);
-        // TODO: Send progress to renderer
+        // Send progress to renderer
+        event.sender.send('batch-progress', {
+          current: progress.current || 0,
+          total: progress.total || 0,
+          chapter: progress.chapter || '',
+          message: progress.message || `Käsitellään ${progress.current}/${progress.total}...`,
+          percentage: progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0
+        });
       }
     });
 

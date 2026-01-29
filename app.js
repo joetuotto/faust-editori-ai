@@ -477,9 +477,13 @@ function FAUSTApp() {
 
   // HybridWritingFlow state
   const [showContinueDialog, setShowContinueDialog] = useState(false);
+  const [hybridMode, setHybridMode] = useState('continue'); // 'continue', 'expand', 'rewrite', 'scene'
   const [continueParagraphs, setContinueParagraphs] = useState(2);
   const [continuePreview, setContinuePreview] = useState('');
   const [continuingWriting, setContinuingWriting] = useState(false);
+  const [hybridInput, setHybridInput] = useState(''); // For outline/instructions/scene description
+  const [hybridTargetWords, setHybridTargetWords] = useState(1000);
+  const [hybridStyle, setHybridStyle] = useState('vivid'); // 'vivid', 'concise', 'descriptive', 'dialogue-heavy'
 
   // Consistency check state
   const [consistencyErrors, setConsistencyErrors] = useState([]);
@@ -648,6 +652,31 @@ function FAUSTApp() {
     };
 
     loadApiKeysStatus();
+  }, []);
+
+  // Listen for batch progress updates
+  useEffect(() => {
+    if (!window.electronAPI?.onBatchProgress) return;
+
+    const cleanup = window.electronAPI.onBatchProgress((progress) => {
+      console.log('[Batch Progress]', progress);
+      setGenerationProgress({
+        stage: 'batch',
+        current: progress.current,
+        total: progress.total,
+        percentage: progress.percentage,
+        message: progress.message || `Käsitellään lukua ${progress.current}/${progress.total}...`
+      });
+
+      // Clear progress when complete
+      if (progress.current >= progress.total) {
+        setTimeout(() => {
+          setGenerationProgress(null);
+        }, 2000);
+      }
+    });
+
+    return cleanup;
   }, []);
 
   // Update complexity analysis when project changes
@@ -1334,6 +1363,55 @@ function FAUSTApp() {
       )
     }));
     setUnsavedChanges(true);
+  };
+
+  // Simple diff algorithm for text comparison
+  const computeTextDiff = (oldText, newText) => {
+    const oldWords = (oldText || '').split(/(\s+)/);
+    const newWords = (newText || '').split(/(\s+)/);
+    const result = [];
+
+    let oldIdx = 0;
+    let newIdx = 0;
+
+    while (oldIdx < oldWords.length || newIdx < newWords.length) {
+      if (oldIdx >= oldWords.length) {
+        // Added words
+        result.push({ type: 'added', text: newWords[newIdx] });
+        newIdx++;
+      } else if (newIdx >= newWords.length) {
+        // Removed words
+        result.push({ type: 'removed', text: oldWords[oldIdx] });
+        oldIdx++;
+      } else if (oldWords[oldIdx] === newWords[newIdx]) {
+        // Same
+        result.push({ type: 'same', text: newWords[newIdx] });
+        oldIdx++;
+        newIdx++;
+      } else {
+        // Find if old word appears later in new
+        const foundInNew = newWords.slice(newIdx + 1, newIdx + 10).indexOf(oldWords[oldIdx]);
+        const foundInOld = oldWords.slice(oldIdx + 1, oldIdx + 10).indexOf(newWords[newIdx]);
+
+        if (foundInNew !== -1 && (foundInOld === -1 || foundInNew < foundInOld)) {
+          // New words were added
+          result.push({ type: 'added', text: newWords[newIdx] });
+          newIdx++;
+        } else if (foundInOld !== -1) {
+          // Old word was removed
+          result.push({ type: 'removed', text: oldWords[oldIdx] });
+          oldIdx++;
+        } else {
+          // Changed
+          result.push({ type: 'removed', text: oldWords[oldIdx] });
+          result.push({ type: 'added', text: newWords[newIdx] });
+          oldIdx++;
+          newIdx++;
+        }
+      }
+    }
+
+    return result;
   };
 
   // Snapshot functions (project-level named versions)
@@ -3567,7 +3645,139 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
   const rejectContinuation = () => {
     setContinuePreview('');
     setShowContinueDialog(false);
+    setHybridInput('');
     console.log('[HybridFlow] Continuation rejected');
+  };
+
+  // Expand outline using HybridWritingFlow
+  const handleExpandOutline = async () => {
+    if (!activeChapter || !hybridFlowRef.current || !hybridInput.trim()) {
+      console.error('[HybridFlow] Missing requirements for expand');
+      return;
+    }
+
+    setContinuingWriting(true);
+    setContinuePreview('');
+
+    try {
+      const result = await hybridFlowRef.current.expandOutline(
+        activeChapterIndex,
+        hybridInput,
+        {
+          targetWords: hybridTargetWords,
+          style: hybridStyle,
+          mode: project.ai.currentMode
+        }
+      );
+
+      if (result.success) {
+        setContinuePreview(result.content);
+        console.log('[HybridFlow] Outline expanded:', result.wordCount, 'words');
+      } else {
+        alert('Laajentaminen epäonnistui');
+      }
+    } catch (error) {
+      console.error('[HybridFlow] Expand error:', error);
+      alert('Virhe: ' + error.message);
+    } finally {
+      setContinuingWriting(false);
+    }
+  };
+
+  // Rewrite section using HybridWritingFlow
+  const handleRewriteSection = async () => {
+    if (!textSelection?.text || !hybridFlowRef.current || !hybridInput.trim()) {
+      console.error('[HybridFlow] Missing requirements for rewrite');
+      return;
+    }
+
+    setContinuingWriting(true);
+    setContinuePreview('');
+
+    try {
+      const result = await hybridFlowRef.current.rewriteSection(
+        textSelection.text,
+        hybridInput,
+        { mode: project.ai.currentMode }
+      );
+
+      if (result.success) {
+        setContinuePreview(result.rewritten);
+        console.log('[HybridFlow] Section rewritten');
+      } else {
+        alert('Uudelleenkirjoitus epäonnistui');
+      }
+    } catch (error) {
+      console.error('[HybridFlow] Rewrite error:', error);
+      alert('Virhe: ' + error.message);
+    } finally {
+      setContinuingWriting(false);
+    }
+  };
+
+  // Generate scene using HybridWritingFlow
+  const handleGenerateScene = async () => {
+    if (!activeChapter || !hybridFlowRef.current || !hybridInput.trim()) {
+      console.error('[HybridFlow] Missing requirements for scene');
+      return;
+    }
+
+    setContinuingWriting(true);
+    setContinuePreview('');
+
+    try {
+      const length = hybridTargetWords <= 600 ? 'short' : hybridTargetWords >= 1500 ? 'long' : 'medium';
+      const result = await hybridFlowRef.current.generateScene(
+        activeChapterIndex,
+        hybridInput,
+        {
+          length,
+          focus: hybridStyle === 'dialogue-heavy' ? 'dialogue' : 'balanced',
+          mode: project.ai.currentMode
+        }
+      );
+
+      if (result.success) {
+        setContinuePreview(result.scene);
+        console.log('[HybridFlow] Scene generated:', result.wordCount, 'words');
+      } else {
+        alert('Kohtauksen luonti epäonnistui');
+      }
+    } catch (error) {
+      console.error('[HybridFlow] Scene error:', error);
+      alert('Virhe: ' + error.message);
+    } finally {
+      setContinuingWriting(false);
+    }
+  };
+
+  // Accept rewrite (replaces selected text)
+  const acceptRewrite = () => {
+    if (!continuePreview || !textSelection) return;
+
+    const content = activeChapter.content;
+    const before = content.substring(0, textSelection.start);
+    const after = content.substring(textSelection.end);
+    const newContent = before + continuePreview + after;
+
+    updateChapterContent(newContent);
+    setContinuePreview('');
+    setShowContinueDialog(false);
+    setTextSelection(null);
+    setHybridInput('');
+    console.log('[HybridFlow] Rewrite accepted');
+  };
+
+  // Accept scene/expansion (replaces or appends)
+  const acceptExpansion = () => {
+    if (!continuePreview || !activeChapter) return;
+
+    // For expand/scene, replace entire chapter content
+    updateChapterContent(continuePreview);
+    setContinuePreview('');
+    setShowContinueDialog(false);
+    setHybridInput('');
+    console.log('[HybridFlow] Expansion accepted');
   };
 
   // Track text selection in editor
@@ -5903,10 +6113,10 @@ ${contextPrompt}`;
             )
           ),
 
-          // Generation progress indicator
+          // Generation progress indicator with progress bar
           generationProgress && e('div', {
             style: {
-              padding: '8px 16px',
+              padding: '12px 16px',
               background: 'var(--sigil)' + '22',
               border: '1px solid var(--sigil)',
               borderRadius: '4px',
@@ -5915,7 +6125,41 @@ ${contextPrompt}`;
               color: 'var(--sigil)',
               marginTop: '8px'
             }
-          }, generationProgress.message),
+          },
+            e('div', {
+              style: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: generationProgress.percentage ? '8px' : '0'
+              }
+            },
+              e('span', null, generationProgress.message),
+              generationProgress.percentage && e('span', {
+                style: { fontWeight: 600 }
+              }, `${generationProgress.percentage}%`)
+            ),
+            // Progress bar
+            generationProgress.percentage && e('div', {
+              style: {
+                width: '100%',
+                height: '4px',
+                background: 'var(--surface-2)',
+                borderRadius: '2px',
+                overflow: 'hidden'
+              }
+            },
+              e('div', {
+                style: {
+                  width: `${generationProgress.percentage}%`,
+                  height: '100%',
+                  background: 'var(--sigil)',
+                  borderRadius: '2px',
+                  transition: 'width 0.3s ease'
+                }
+              })
+            )
+          ),
 
           // AI Suggestions (if any)
           activeChapter.aiQuality && activeChapter.aiQuality.suggestions && activeChapter.aiQuality.suggestions.length > 0 ? e('div', {
@@ -6752,126 +6996,217 @@ ${contextPrompt}`;
             )
           ) : null,
 
-          // Voice diff view (when AI has generated new version)
-          voiceDiffView ? e('div', {
-            style: {
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              background: 'var(--bg-1)',
-              border: '2px solid var(--bronze)',
-              borderRadius: '8px',
-              padding: '24px',
-              boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-              maxWidth: '80%',
-              maxHeight: '80%',
-              overflow: 'auto',
-              zIndex: 200
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'EB Garamond',
-                fontSize: '18px',
-                color: 'var(--text)',
-                marginBottom: '16px'
-              }
-            }, `Ohje: "${voiceDiffView.instruction}"`),
+          // Voice diff view (when AI has generated new version) - with diff highlighting
+          voiceDiffView ? (() => {
+            const diffResult = computeTextDiff(voiceDiffView.original, voiceDiffView.revised);
+            const origWords = (voiceDiffView.original || '').split(/\s+/).filter(Boolean).length;
+            const newWords = (voiceDiffView.revised || '').split(/\s+/).filter(Boolean).length;
+            const addedCount = diffResult.filter(d => d.type === 'added' && d.text.trim()).length;
+            const removedCount = diffResult.filter(d => d.type === 'removed' && d.text.trim()).length;
 
-            // Original text
-            e('div', {
+            return e('div', {
               style: {
-                marginBottom: '16px',
-                padding: '12px',
-                background: 'var(--bg-2)',
-                borderRadius: '4px',
-                border: '1px solid var(--border-color)'
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                background: 'var(--bg-1)',
+                border: '2px solid var(--bronze)',
+                borderRadius: '8px',
+                padding: '24px',
+                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                maxWidth: '90%',
+                width: '700px',
+                maxHeight: '85%',
+                overflow: 'auto',
+                zIndex: 200
               }
             },
+              // Header with instruction and stats
               e('div', {
                 style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-3)',
-                  marginBottom: '8px'
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  marginBottom: '16px',
+                  paddingBottom: '12px',
+                  borderBottom: '1px solid var(--border-color)'
                 }
-              }, 'ALKUPERÄINEN:'),
-              e('div', {
-                style: {
-                  fontFamily: 'EB Garamond',
-                  fontSize: '16px',
-                  color: 'var(--text-2)',
-                  lineHeight: '1.6'
-                }
-              }, voiceDiffView.original)
-            ),
+              },
+                e('div', null,
+                  e('div', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '11px',
+                      color: 'var(--text-3)',
+                      marginBottom: '4px'
+                    }
+                  }, '🎤 ÄÄNIOHJE:'),
+                  e('h3', {
+                    style: {
+                      fontFamily: 'EB Garamond',
+                      fontSize: '18px',
+                      color: 'var(--bronze)',
+                      margin: 0
+                    }
+                  }, `"${voiceDiffView.instruction}"`)
+                ),
+                e('div', {
+                  style: {
+                    display: 'flex',
+                    gap: '12px',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px'
+                  }
+                },
+                  e('span', { style: { color: '#4CAF50' } }, `+${addedCount}`),
+                  e('span', { style: { color: '#f44336' } }, `-${removedCount}`),
+                  e('span', { style: { color: 'var(--text-2)' } },
+                    `${newWords - origWords > 0 ? '+' : ''}${newWords - origWords} sanaa`
+                  )
+                )
+              ),
 
-            // Revised text
-            e('div', {
-              style: {
-                marginBottom: '24px',
-                padding: '12px',
-                background: 'var(--bg-2)',
-                borderRadius: '4px',
-                border: '1px solid var(--bronze)'
-              }
-            },
+              // Side-by-side comparison
               e('div', {
                 style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-3)',
-                  marginBottom: '8px'
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '16px',
+                  marginBottom: '20px'
                 }
-              }, 'UUSI VERSIO:'),
-              e('div', {
-                style: {
-                  fontFamily: 'EB Garamond',
-                  fontSize: '16px',
-                  color: 'var(--text)',
-                  lineHeight: '1.6'
-                }
-              }, voiceDiffView.revised)
-            ),
+              },
+                // Original text
+                e('div', {
+                  style: {
+                    padding: '12px',
+                    background: 'var(--bg-2)',
+                    borderRadius: '4px',
+                    border: '1px solid var(--border-color)'
+                  }
+                },
+                  e('div', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '11px',
+                      color: 'var(--text-3)',
+                      marginBottom: '8px',
+                      display: 'flex',
+                      justifyContent: 'space-between'
+                    }
+                  },
+                    e('span', null, '📄 ALKUPERÄINEN'),
+                    e('span', null, `${origWords} sanaa`)
+                  ),
+                  e('div', {
+                    style: {
+                      fontFamily: 'EB Garamond',
+                      fontSize: '15px',
+                      color: 'var(--text-2)',
+                      lineHeight: '1.7'
+                    }
+                  }, voiceDiffView.original)
+                ),
 
-            // Actions
-            e('div', {
-              style: {
-                display: 'flex',
-                gap: '12px',
-                justifyContent: 'flex-end'
-              }
-            },
-              e('button', {
-                onClick: rejectVoiceEdit,
+                // Revised text with diff highlighting
+                e('div', {
+                  style: {
+                    padding: '12px',
+                    background: 'var(--bronze)' + '11',
+                    borderRadius: '4px',
+                    border: '1px solid var(--bronze)'
+                  }
+                },
+                  e('div', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '11px',
+                      color: 'var(--bronze)',
+                      marginBottom: '8px',
+                      display: 'flex',
+                      justifyContent: 'space-between'
+                    }
+                  },
+                    e('span', null, '✨ UUSI VERSIO'),
+                    e('span', null, `${newWords} sanaa`)
+                  ),
+                  e('div', {
+                    style: {
+                      fontFamily: 'EB Garamond',
+                      fontSize: '15px',
+                      lineHeight: '1.7'
+                    }
+                  },
+                    // Render with diff highlighting
+                    ...diffResult.map((part, idx) => {
+                      if (part.type === 'same') {
+                        return e('span', { key: idx, style: { color: 'var(--text)' } }, part.text);
+                      } else if (part.type === 'added') {
+                        return e('span', {
+                          key: idx,
+                          style: {
+                            background: '#4CAF5044',
+                            color: '#4CAF50',
+                            borderRadius: '2px',
+                            padding: '0 2px'
+                          }
+                        }, part.text);
+                      } else if (part.type === 'removed') {
+                        return e('span', {
+                          key: idx,
+                          style: {
+                            background: '#f4433633',
+                            color: '#f44336',
+                            textDecoration: 'line-through',
+                            borderRadius: '2px',
+                            padding: '0 2px'
+                          }
+                        }, part.text);
+                      }
+                      return null;
+                    })
+                  )
+                )
+              ),
+
+              // Actions
+              e('div', {
                 style: {
-                  padding: '8px 16px',
-                  background: 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text-2)',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px'
+                  display: 'flex',
+                  gap: '12px',
+                  justifyContent: 'flex-end'
                 }
-              }, 'Hylkää'),
-              e('button', {
-                onClick: acceptVoiceEdit,
-                style: {
-                  padding: '8px 16px',
-                  background: 'var(--bronze)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#000',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  fontWeight: 600
-                }
-              }, 'Hyväksy')
-            )
-          ) : null
+              },
+                e('button', {
+                  onClick: rejectVoiceEdit,
+                  style: {
+                    padding: '10px 20px',
+                    background: 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text-2)',
+                    cursor: 'pointer',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '12px'
+                  }
+                }, '❌ Hylkää'),
+                e('button', {
+                  onClick: acceptVoiceEdit,
+                  style: {
+                    padding: '10px 20px',
+                    background: 'var(--bronze)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    color: '#000',
+                    cursor: 'pointer',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '12px',
+                    fontWeight: 600
+                  }
+                }, '✓ Hyväksy muutos')
+              )
+            );
+          })() : null
         )
       ),
 
@@ -8113,6 +8448,85 @@ ${contextPrompt}`;
               }, `🧵 Threads (${(project.plotThreads || []).length})`)
             ),
 
+            // Plot Thread Warnings (from PlotThreadTracker)
+            (() => {
+              if (!window.PlotThreadTracker) return null;
+              const tracker = new window.PlotThreadTracker(project);
+              const warnings = tracker.getWarnings();
+              if (warnings.length === 0) return null;
+
+              return e('div', {
+                style: {
+                  marginBottom: '12px',
+                  padding: '10px',
+                  background: 'rgba(255,152,0,0.1)',
+                  border: '1px solid rgba(255,152,0,0.3)',
+                  borderRadius: '4px'
+                }
+              },
+                e('div', {
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '10px',
+                    color: '#FFA726',
+                    marginBottom: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }
+                },
+                  e('span', null, '⚠️'),
+                  e('span', { style: { fontWeight: 600 } }, `JUONIVAROITUKSET (${warnings.length})`)
+                ),
+                warnings.slice(0, 5).map((warning, idx) =>
+                  e('div', {
+                    key: idx,
+                    style: {
+                      marginBottom: idx < warnings.length - 1 ? '8px' : 0,
+                      padding: '6px 8px',
+                      background: warning.severity === 'high' ? 'rgba(244,67,54,0.15)' : 'rgba(255,193,7,0.15)',
+                      borderRadius: '3px',
+                      borderLeft: `3px solid ${warning.severity === 'high' ? '#f44336' : '#FFC107'}`
+                    }
+                  },
+                    e('div', {
+                      style: {
+                        fontFamily: 'IBM Plex Mono',
+                        fontSize: '11px',
+                        color: 'var(--text)',
+                        marginBottom: '2px'
+                      }
+                    }, warning.threadName),
+                    e('div', {
+                      style: {
+                        fontFamily: 'IBM Plex Mono',
+                        fontSize: '9px',
+                        color: 'var(--text-2)'
+                      }
+                    }, warning.message),
+                    e('div', {
+                      style: {
+                        fontFamily: 'IBM Plex Mono',
+                        fontSize: '9px',
+                        color: 'var(--text-3)',
+                        fontStyle: 'italic',
+                        marginTop: '2px'
+                      }
+                    }, warning.recommendation)
+                  )
+                ),
+                warnings.length > 5 && e('div', {
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '9px',
+                    color: 'var(--text-3)',
+                    textAlign: 'center',
+                    marginTop: '8px'
+                  }
+                }, `...ja ${warnings.length - 5} muuta varoitusta`)
+              );
+            })(),
+
             // Characters detail
             (() => {
               const characters = Object.values(project.continuity?.characters || {});
@@ -8338,6 +8752,109 @@ ${contextPrompt}`;
               e('div', { style: { fontStyle: 'italic' } }, complexity.recommendation.action),
               e('div', { style: { marginTop: '4px', color: complexity.recommendation.color } }, `Tarkkuus: ${complexity.recommendation.accuracy}`)
             )
+          ),
+
+          // Consistency Checker Section
+          e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
+            e('div', {
+              style: {
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px',
+                color: 'var(--text-3)',
+                marginBottom: '8px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }
+            },
+              e('span', null, 'JOHDONMUKAISUUSTARKISTUS'),
+              e('button', {
+                onClick: async () => {
+                  if (!window.ConsistencyChecker) {
+                    alert('ConsistencyChecker ei ole ladattu');
+                    return;
+                  }
+                  setGenerationProgress({ stage: 'checking', message: 'Tarkistetaan johdonmukaisuutta...' });
+                  try {
+                    const checker = new window.ConsistencyChecker(project, window.electronAPI);
+                    const result = await checker.runFullCheck();
+                    setGenerationProgress(null);
+                    if (result.success) {
+                      if (result.errors.length === 0) {
+                        alert('✅ Ei johdonmukaisuusvirheitä!');
+                      } else {
+                        alert(`⚠️ Löydettiin ${result.errors.length} johdonmukaisuusongelmaa:\n\n` +
+                          `Kriittisiä: ${result.summary.critical}\n` +
+                          `Korkeita: ${result.summary.high}\n` +
+                          `Keskitasoa: ${result.summary.medium}\n` +
+                          `Matalia: ${result.summary.low}\n\n` +
+                          'Tarkasta merkinnät editorissa.');
+                      }
+                      setProject({ ...project });
+                    } else {
+                      alert('Tarkistus epäonnistui: ' + result.error);
+                    }
+                  } catch (err) {
+                    setGenerationProgress(null);
+                    console.error('[ConsistencyChecker]', err);
+                    alert('Virhe: ' + err.message);
+                  }
+                },
+                style: {
+                  padding: '4px 8px',
+                  background: 'var(--sigil)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: '#000',
+                  cursor: 'pointer',
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '9px',
+                  fontWeight: 600
+                }
+              }, '🔍 Tarkista')
+            ),
+
+            // Show current chapter annotations count
+            activeChapter && activeChapter.annotations && e('div', {
+              style: {
+                marginBottom: '8px',
+                padding: '8px',
+                background: 'var(--bg-2)',
+                borderRadius: '4px',
+                border: '1px solid var(--border-color)'
+              }
+            },
+              e('div', {
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '11px',
+                  color: 'var(--text-2)',
+                  marginBottom: '4px'
+                }
+              }, `Luvussa ${activeChapter.annotations.length} merkintää`),
+              (() => {
+                const aiAnnotations = (activeChapter.annotations || []).filter(a => a.source === 'ai');
+                const consistencyAnnotations = aiAnnotations.filter(a => a.type === 'ai-consistency' || a.metadata?.category);
+                if (consistencyAnnotations.length === 0) return null;
+                return e('div', {
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '10px',
+                    color: 'var(--text-3)'
+                  }
+                }, `${consistencyAnnotations.length} johdonmukaisuusmerkintää`);
+              })()
+            ),
+
+            // Quick info about what this does
+            e('div', {
+              style: {
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '9px',
+                color: 'var(--text-3)',
+                fontStyle: 'italic'
+              }
+            }, 'Tarkistaa hahmojen johdonmukaisuuden, aikajanan ja sijainnit.')
           ),
 
           // Plot Threads
@@ -11798,133 +12315,300 @@ ${contextPrompt}`;
         )
       ),
 
-      // Version Comparison Dialog
-      showVersionComparison && comparisonVersionId && e('div', {
-        style: {
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10002
-        },
-        onClick: () => setShowVersionComparison(false)
-      },
-        e('div', {
-          style: {
-            background: 'var(--bg)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '8px',
-            padding: '24px',
-            maxWidth: '1200px',
-            width: '95%',
-            maxHeight: '90vh',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column'
-          },
-          onClick: (ev) => ev.stopPropagation()
-        },
-          e('h3', {
-            style: {
-              fontFamily: 'EB Garamond',
-              fontSize: '20px',
-              color: 'var(--text)',
-              marginBottom: '16px'
-            }
-          }, 'Versiovertailu'),
+      // Version Comparison Dialog with Diff Highlighting
+      showVersionComparison && comparisonVersionId && (() => {
+        const compVersion = activeChapter.versions?.find(v => v.id === comparisonVersionId);
+        const compContent = compVersion?.content || '';
+        const currentContent = activeChapter.content || '';
+        const diffResult = computeTextDiff(compContent, currentContent);
+        const addedCount = diffResult.filter(d => d.type === 'added' && d.text.trim()).length;
+        const removedCount = diffResult.filter(d => d.type === 'removed' && d.text.trim()).length;
+        const currentWords = currentContent.split(/\s+/).filter(Boolean).length;
+        const compWords = compContent.split(/\s+/).filter(Boolean).length;
 
-          // Side-by-side comparison
+        return e('div', {
+          style: {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10002
+          },
+          onClick: () => setShowVersionComparison(false)
+        },
           e('div', {
             style: {
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '16px',
-              flex: 1,
-              overflow: 'auto'
-            }
+              background: 'var(--bg)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '8px',
+              padding: '24px',
+              maxWidth: '1400px',
+              width: '95%',
+              maxHeight: '90vh',
+              overflow: 'hidden',
+              display: 'flex',
+              flexDirection: 'column'
+            },
+            onClick: (ev) => ev.stopPropagation()
           },
-            // Current version
+            // Header with stats
             e('div', {
               style: {
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                padding: '16px',
-                overflow: 'auto'
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '16px',
+                paddingBottom: '12px',
+                borderBottom: '1px solid var(--border-color)'
               }
             },
-              e('h4', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  color: 'var(--text-2)',
-                  marginBottom: '12px'
-                }
-              }, 'Nykyinen versio (' + activeChapter.currentVersion + ')'),
-              e('div', {
+              e('h3', {
                 style: {
                   fontFamily: 'EB Garamond',
-                  fontSize: '14px',
-                  lineHeight: '1.8',
+                  fontSize: '20px',
                   color: 'var(--text)',
-                  whiteSpace: 'pre-wrap'
+                  margin: 0
                 }
-              }, activeChapter.content)
+              }, 'Versiovertailu - ' + activeChapter.title),
+              e('div', {
+                style: {
+                  display: 'flex',
+                  gap: '16px',
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '11px'
+                }
+              },
+                e('span', { style: { color: '#4CAF50' } }, `+${addedCount} lisätty`),
+                e('span', { style: { color: '#f44336' } }, `-${removedCount} poistettu`),
+                e('span', { style: { color: 'var(--text-2)' } },
+                  `${currentWords - compWords > 0 ? '+' : ''}${currentWords - compWords} sanaa`
+                )
+              )
             ),
-            // Comparison version
+
+            // View mode tabs
             e('div', {
               style: {
-                border: '1px solid var(--bronze)',
-                borderRadius: '4px',
-                padding: '16px',
-                overflow: 'auto'
+                display: 'flex',
+                gap: '8px',
+                marginBottom: '16px'
               }
             },
-              e('h4', {
+              e('button', {
+                onClick: () => {},
                 style: {
+                  padding: '6px 12px',
+                  background: 'var(--bronze)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: '#000',
+                  cursor: 'pointer',
                   fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  color: 'var(--text-2)',
-                  marginBottom: '12px'
+                  fontSize: '11px',
+                  fontWeight: 600
                 }
-              }, 'Vertailuversio (' + comparisonVersionId + ')'),
+              }, '📊 Vierekkäin'),
+              e('button', {
+                onClick: () => {},
+                style: {
+                  padding: '6px 12px',
+                  background: 'transparent',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text)',
+                  cursor: 'pointer',
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '11px'
+                }
+              }, '🔀 Yhdistetty diff')
+            ),
+
+            // Side-by-side comparison
+            e('div', {
+              style: {
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '16px',
+                flex: 1,
+                overflow: 'hidden'
+              }
+            },
+              // Comparison version (old)
               e('div', {
                 style: {
-                  fontFamily: 'EB Garamond',
-                  fontSize: '14px',
-                  lineHeight: '1.8',
-                  color: 'var(--text)',
-                  whiteSpace: 'pre-wrap'
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden'
                 }
-              }, (() => {
-                const version = activeChapter.versions?.find(v => v.id === comparisonVersionId);
-                return version ? version.content : 'Versiota ei löytynyt';
-              })())
-            )
-          ),
+              },
+                e('div', {
+                  style: {
+                    padding: '12px 16px',
+                    background: 'var(--surface-2)',
+                    borderBottom: '1px solid var(--border-color)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }
+                },
+                  e('h4', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '12px',
+                      color: 'var(--text-2)',
+                      margin: 0
+                    }
+                  }, `📸 ${comparisonVersionId}`),
+                  e('span', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '11px',
+                      color: 'var(--text-3)'
+                    }
+                  }, `${compWords} sanaa`)
+                ),
+                e('div', {
+                  style: {
+                    padding: '16px',
+                    overflow: 'auto',
+                    flex: 1,
+                    fontFamily: 'EB Garamond',
+                    fontSize: '14px',
+                    lineHeight: '1.8',
+                    color: 'var(--text)',
+                    whiteSpace: 'pre-wrap'
+                  }
+                }, compContent || 'Tyhjä versio')
+              ),
 
-          // Close button
-          e('div', { style: { marginTop: '16px', display: 'flex', justifyContent: 'flex-end' } },
-            e('button', {
-              onClick: () => setShowVersionComparison(false),
+              // Current version (new)
+              e('div', {
+                style: {
+                  border: '1px solid var(--bronze)',
+                  borderRadius: '4px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  overflow: 'hidden'
+                }
+              },
+                e('div', {
+                  style: {
+                    padding: '12px 16px',
+                    background: 'var(--bronze)' + '22',
+                    borderBottom: '1px solid var(--bronze)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
+                  }
+                },
+                  e('h4', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '12px',
+                      color: 'var(--bronze)',
+                      margin: 0
+                    }
+                  }, `✏️ Nykyinen (${activeChapter.currentVersion})`),
+                  e('span', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '11px',
+                      color: 'var(--text-3)'
+                    }
+                  }, `${currentWords} sanaa`)
+                ),
+                e('div', {
+                  style: {
+                    padding: '16px',
+                    overflow: 'auto',
+                    flex: 1,
+                    fontFamily: 'EB Garamond',
+                    fontSize: '14px',
+                    lineHeight: '1.8'
+                  }
+                },
+                  // Render diff with highlighting
+                  ...diffResult.map((part, idx) => {
+                    if (part.type === 'same') {
+                      return e('span', { key: idx, style: { color: 'var(--text)' } }, part.text);
+                    } else if (part.type === 'added') {
+                      return e('span', {
+                        key: idx,
+                        style: {
+                          background: '#4CAF5033',
+                          color: '#4CAF50',
+                          borderRadius: '2px'
+                        }
+                      }, part.text);
+                    } else if (part.type === 'removed') {
+                      return e('span', {
+                        key: idx,
+                        style: {
+                          background: '#f4433633',
+                          color: '#f44336',
+                          textDecoration: 'line-through',
+                          borderRadius: '2px'
+                        }
+                      }, part.text);
+                    }
+                    return null;
+                  })
+                )
+              )
+            ),
+
+            // Actions
+            e('div', {
               style: {
-                padding: '8px 16px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
+                marginTop: '16px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
               }
-            }, 'Sulje')
+            },
+              e('button', {
+                onClick: () => {
+                  if (confirm('Palauta tämä versio? Nykyinen sisältö korvataan.')) {
+                    restoreVersion(comparisonVersionId);
+                    setShowVersionComparison(false);
+                  }
+                },
+                style: {
+                  padding: '8px 16px',
+                  background: 'var(--bronze)',
+                  border: 'none',
+                  borderRadius: '4px',
+                  color: '#000',
+                  cursor: 'pointer',
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '12px',
+                  fontWeight: 600
+                }
+              }, '⏪ Palauta tämä versio'),
+              e('button', {
+                onClick: () => setShowVersionComparison(false),
+                style: {
+                  padding: '8px 16px',
+                  background: 'transparent',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text)',
+                  cursor: 'pointer',
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '12px'
+                }
+              }, 'Sulje')
+            )
           )
-        )
-      )
+        );
+      })()
     ),
 
     // CharacterSheet Modal (View/Edit Characters)
@@ -12462,7 +13146,7 @@ ${contextPrompt}`;
       }
     }),
 
-    // Continue Writing Dialog (HybridWritingFlow)
+    // Hybrid Writing Flow Dialog (Continue/Expand/Rewrite/Scene)
     showContinueDialog && e('div', {
       style: {
         position: 'fixed',
@@ -12483,61 +13167,285 @@ ${contextPrompt}`;
           border: '2px solid var(--bronze)',
           borderRadius: '8px',
           padding: '32px',
-          maxWidth: '800px',
-          width: '90%',
+          maxWidth: '900px',
+          width: '95%',
           maxHeight: '90vh',
           overflow: 'auto',
           position: 'relative'
         }
       },
-        e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '✍️ Continue Writing'),
-        e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '24px' } },
-          'AI jatkaa kirjoittamista nykyisestä tekstistäsi'),
-
-        e('button', {
-          onClick: () => {
-            setShowContinueDialog(false);
-            setContinuePreview('');
-          },
+        // Header
+        e('div', {
           style: {
-            position: 'absolute',
-            top: '24px',
-            right: '24px',
-            background: 'transparent',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text-3)',
-            padding: '4px 12px',
-            cursor: 'pointer',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px'
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            marginBottom: '24px'
           }
-        }, 'Close'),
-
-        // Paragraph count control
-        !continuePreview && e('div', { style: { marginBottom: '24px' } },
-          e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', display: 'block', marginBottom: '8px' } },
-            `Kappaleiden määrä: ${continueParagraphs}`),
-          e('input', {
-            type: 'range',
-            min: 1,
-            max: 5,
-            value: continueParagraphs,
-            onChange: (ev) => setContinueParagraphs(parseInt(ev.target.value)),
+        },
+          e('div', null,
+            e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '✍️ Hybrid Writing Flow'),
+            e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)' } },
+              'AI avustaa kirjoitustyössäsi eri tavoilla')
+          ),
+          e('button', {
+            onClick: () => {
+              setShowContinueDialog(false);
+              setContinuePreview('');
+              setHybridInput('');
+            },
             style: {
-              width: '100%',
-              cursor: 'pointer'
+              background: 'transparent',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text-3)',
+              padding: '6px 14px',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px'
             }
+          }, '✕ Sulje')
+        ),
+
+        // Mode selector tabs
+        !continuePreview && e('div', {
+          style: {
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '24px',
+            borderBottom: '1px solid var(--border-color)',
+            paddingBottom: '16px'
+          }
+        },
+          ['continue', 'expand', 'rewrite', 'scene'].map(mode => {
+            const labels = {
+              continue: '📝 Jatka',
+              expand: '📖 Laajenna',
+              rewrite: '🔄 Uudelleenkirjoita',
+              scene: '🎬 Luo kohtaus'
+            };
+            const isActive = hybridMode === mode;
+            const isDisabled = mode === 'rewrite' && !textSelection?.text;
+
+            return e('button', {
+              key: mode,
+              onClick: () => !isDisabled && setHybridMode(mode),
+              disabled: isDisabled,
+              style: {
+                flex: 1,
+                padding: '10px 12px',
+                background: isActive ? 'var(--bronze)' : 'transparent',
+                border: `1px solid ${isActive ? 'var(--bronze)' : 'var(--border-color)'}`,
+                borderRadius: '4px',
+                color: isActive ? '#000' : isDisabled ? 'var(--text-3)' : 'var(--text)',
+                cursor: isDisabled ? 'not-allowed' : 'pointer',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px',
+                fontWeight: isActive ? 600 : 400,
+                opacity: isDisabled ? 0.5 : 1
+              }
+            }, labels[mode]);
           })
+        ),
+
+        // Mode-specific content
+        !continuePreview && e('div', { style: { marginBottom: '24px' } },
+          // Continue mode
+          hybridMode === 'continue' && e('div', null,
+            e('div', { style: { marginBottom: '16px' } },
+              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', display: 'block', marginBottom: '8px' } },
+                `Kappaleiden määrä: ${continueParagraphs}`),
+              e('input', {
+                type: 'range',
+                min: 1,
+                max: 5,
+                value: continueParagraphs,
+                onChange: (ev) => setContinueParagraphs(parseInt(ev.target.value)),
+                style: { width: '100%', cursor: 'pointer' }
+              })
+            ),
+            e('div', {
+              style: {
+                padding: '12px',
+                background: 'var(--bg-2)',
+                borderRadius: '4px',
+                border: '1px solid var(--border-color)',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px',
+                color: 'var(--text-3)'
+              }
+            }, '💡 AI jatkaa kirjoittamista nykyisen tekstisi lopusta samassa tyylissä.')
+          ),
+
+          // Expand mode
+          hybridMode === 'expand' && e('div', null,
+            e('div', { style: { marginBottom: '16px' } },
+              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', display: 'block', marginBottom: '8px' } }, 'Tiivistelmä tai synopsis:'),
+              e('textarea', {
+                value: hybridInput,
+                onChange: (ev) => setHybridInput(ev.target.value),
+                placeholder: 'Kirjoita lyhyt tiivistelmä tai sisällysluettelo, jonka haluat laajentaa täysiksi kappaleiksi...',
+                style: {
+                  width: '100%',
+                  height: '120px',
+                  padding: '12px',
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text)',
+                  fontFamily: 'EB Garamond',
+                  fontSize: '14px',
+                  resize: 'vertical'
+                }
+              })
+            ),
+            e('div', { style: { display: 'flex', gap: '16px', marginBottom: '16px' } },
+              e('div', { style: { flex: 1 } },
+                e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } },
+                  `Tavoite: ${hybridTargetWords} sanaa`),
+                e('input', {
+                  type: 'range',
+                  min: 500,
+                  max: 4000,
+                  step: 500,
+                  value: hybridTargetWords,
+                  onChange: (ev) => setHybridTargetWords(parseInt(ev.target.value)),
+                  style: { width: '100%' }
+                })
+              ),
+              e('div', { style: { flex: 1 } },
+                e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'Tyyli:'),
+                e('select', {
+                  value: hybridStyle,
+                  onChange: (ev) => setHybridStyle(ev.target.value),
+                  style: {
+                    width: '100%',
+                    padding: '6px 8px',
+                    background: 'var(--bg)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px'
+                  }
+                },
+                  e('option', { value: 'vivid' }, 'Eloisa'),
+                  e('option', { value: 'concise' }, 'Tiivis'),
+                  e('option', { value: 'descriptive' }, 'Kuvaileva'),
+                  e('option', { value: 'dialogue-heavy' }, 'Dialogipainotteinen')
+                )
+              )
+            )
+          ),
+
+          // Rewrite mode
+          hybridMode === 'rewrite' && e('div', null,
+            textSelection?.text ? e('div', null,
+              e('div', {
+                style: {
+                  marginBottom: '16px',
+                  padding: '12px',
+                  background: 'var(--bg-2)',
+                  borderRadius: '4px',
+                  border: '1px solid var(--border-color)'
+                }
+              },
+                e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginBottom: '8px' } }, 'VALITTU TEKSTI:'),
+                e('div', {
+                  style: {
+                    fontFamily: 'EB Garamond',
+                    fontSize: '14px',
+                    color: 'var(--text)',
+                    maxHeight: '100px',
+                    overflow: 'auto'
+                  }
+                }, textSelection.text)
+              ),
+              e('div', { style: { marginBottom: '16px' } },
+                e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', display: 'block', marginBottom: '8px' } }, 'Ohjeet uudelleenkirjoitukseen:'),
+                e('input', {
+                  type: 'text',
+                  value: hybridInput,
+                  onChange: (ev) => setHybridInput(ev.target.value),
+                  placeholder: 'esim. "tee dramaattisemmaksi", "lisää dialogia", "tiivistä"...',
+                  style: {
+                    width: '100%',
+                    padding: '12px',
+                    background: 'var(--bg)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '12px'
+                  }
+                })
+              )
+            ) : e('div', {
+              style: {
+                padding: '24px',
+                background: 'var(--bg-2)',
+                borderRadius: '4px',
+                border: '1px solid var(--border-color)',
+                textAlign: 'center'
+              }
+            },
+              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-3)' } },
+                '⚠️ Valitse ensin tekstiä editorista, jota haluat uudelleenkirjoittaa.')
+            )
+          ),
+
+          // Scene mode
+          hybridMode === 'scene' && e('div', null,
+            e('div', { style: { marginBottom: '16px' } },
+              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', display: 'block', marginBottom: '8px' } }, 'Kohtauksen kuvaus:'),
+              e('textarea', {
+                value: hybridInput,
+                onChange: (ev) => setHybridInput(ev.target.value),
+                placeholder: 'Kuvaile kohtaus lyhyesti: keitä on paikalla, mitä tapahtuu, mikä on tunnelma...',
+                style: {
+                  width: '100%',
+                  height: '100px',
+                  padding: '12px',
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text)',
+                  fontFamily: 'EB Garamond',
+                  fontSize: '14px',
+                  resize: 'vertical'
+                }
+              })
+            ),
+            e('div', { style: { display: 'flex', gap: '16px' } },
+              e('div', { style: { flex: 1 } },
+                e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } },
+                  `Pituus: ~${hybridTargetWords} sanaa`),
+                e('input', {
+                  type: 'range',
+                  min: 300,
+                  max: 2500,
+                  step: 100,
+                  value: hybridTargetWords,
+                  onChange: (ev) => setHybridTargetWords(parseInt(ev.target.value)),
+                  style: { width: '100%' }
+                })
+              )
+            )
+          )
         ),
 
         // Generate button
         !continuePreview && e('button', {
-          onClick: handleContinueWriting,
-          disabled: continuingWriting,
+          onClick: () => {
+            if (hybridMode === 'continue') handleContinueWriting();
+            else if (hybridMode === 'expand') handleExpandOutline();
+            else if (hybridMode === 'rewrite') handleRewriteSection();
+            else if (hybridMode === 'scene') handleGenerateScene();
+          },
+          disabled: continuingWriting || (hybridMode !== 'continue' && !hybridInput.trim()) || (hybridMode === 'rewrite' && !textSelection?.text),
           style: {
             width: '100%',
-            padding: '12px',
+            padding: '14px',
             background: continuingWriting ? 'var(--bg-2)' : 'var(--sigil)',
             border: 'none',
             borderRadius: '4px',
@@ -12545,14 +13453,37 @@ ${contextPrompt}`;
             cursor: continuingWriting ? 'not-allowed' : 'pointer',
             fontFamily: 'IBM Plex Mono',
             fontSize: '13px',
-            fontWeight: 600
+            fontWeight: 600,
+            opacity: (continuingWriting || (hybridMode !== 'continue' && !hybridInput.trim())) ? 0.5 : 1
           }
-        }, continuingWriting ? 'Generoidaan...' : 'Generate Continuation'),
+        }, continuingWriting ? '⏳ Generoidaan...' : '✨ Generoi'),
 
         // Preview
         continuePreview && e('div', null,
-          e('div', { style: { marginBottom: '16px', padding: '16px', background: 'var(--bg-2)', borderRadius: '6px', border: '1px solid var(--border-color)' } },
-            e('h3', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-3)', marginBottom: '12px' } }, 'JATKO:'),
+          e('div', {
+            style: {
+              marginBottom: '16px',
+              padding: '20px',
+              background: 'var(--bg-2)',
+              borderRadius: '6px',
+              border: '1px solid var(--border-color)',
+              maxHeight: '400px',
+              overflow: 'auto'
+            }
+          },
+            e('div', {
+              style: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '12px'
+              }
+            },
+              e('h3', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', margin: 0 } },
+                hybridMode === 'continue' ? '📝 JATKO' : hybridMode === 'expand' ? '📖 LAAJENNETTU' : hybridMode === 'rewrite' ? '🔄 UUDELLEENKIRJOITETTU' : '🎬 KOHTAUS'),
+              e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } },
+                `${continuePreview.split(/\s+/).length} sanaa`)
+            ),
             e('div', {
               style: {
                 fontFamily: 'EB Garamond',
@@ -12567,10 +13498,14 @@ ${contextPrompt}`;
           // Accept/Reject buttons
           e('div', { style: { display: 'flex', gap: '12px' } },
             e('button', {
-              onClick: acceptContinuation,
+              onClick: () => {
+                if (hybridMode === 'continue') acceptContinuation();
+                else if (hybridMode === 'rewrite') acceptRewrite();
+                else acceptExpansion();
+              },
               style: {
                 flex: 1,
-                padding: '10px',
+                padding: '12px',
                 background: 'var(--sigil)',
                 border: 'none',
                 borderRadius: '4px',
@@ -12580,12 +13515,14 @@ ${contextPrompt}`;
                 fontSize: '12px',
                 fontWeight: 600
               }
-            }, '✓ Accept'),
+            }, hybridMode === 'continue' ? '✓ Liitä loppuun' : hybridMode === 'rewrite' ? '✓ Korvaa valittu' : '✓ Korvaa luku'),
             e('button', {
-              onClick: rejectContinuation,
+              onClick: () => {
+                setContinuePreview('');
+              },
               style: {
                 flex: 1,
-                padding: '10px',
+                padding: '12px',
                 background: 'transparent',
                 border: '1px solid var(--border-color)',
                 borderRadius: '4px',
@@ -12594,7 +13531,20 @@ ${contextPrompt}`;
                 fontFamily: 'IBM Plex Mono',
                 fontSize: '12px'
               }
-            }, '✗ Reject')
+            }, '🔄 Generoi uudelleen'),
+            e('button', {
+              onClick: rejectContinuation,
+              style: {
+                padding: '12px 20px',
+                background: 'transparent',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text-2)',
+                cursor: 'pointer',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '12px'
+              }
+            }, '✗ Hylkää')
           )
         )
       )
