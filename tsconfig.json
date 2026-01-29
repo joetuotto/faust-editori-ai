@@ -17,19 +17,21 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@ai/*": ["./modules/ai/*"],
-      "@ui/*": ["./components/ui/*"],
-      "@story/*": ["./managers/story/*"],
-      "@file/*": ["./managers/file/*"]
+      "@/*": ["./src/*"],
+      "@components/*": ["./src/components/*"],
+      "@services/*": ["./src/services/*"],
+      "@utils/*": ["./src/utils/*"],
+      "@ai/*": ["./src/services/ai/*"],
+      "@story/*": ["./src/services/story/*"]
     }
   },
   "include": [
-    "src",
-    "modules/*.ts",
-    "managers/*.ts",
+    "src/**/*",
+    "utils/**/*",
+    "*.js",
     "global.d.ts"
   ],
-  "exclude": ["node_modules", "dist", "archive"]
+  "exclude": ["node_modules", "dist", "dist-installer", "coverage"]
 }
 
 
