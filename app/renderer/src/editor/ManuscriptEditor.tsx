@@ -7,6 +7,8 @@ import { Placeholder } from '@tiptap/extensions';
 import { FinnishTypography } from './finnishTypography';
 import { Spellcheck } from './spellcheck';
 import { RewriteTarget } from './rewrite';
+import { ProvenanceGuard, ProvenanceMark, applyProvenance, cleanMarkdown, extractProvenance } from './provenance';
+import { setActiveEditor } from './activeEditor';
 import { SpellMenu, type SpellMenuState } from './SpellMenu';
 import { RewriteReview, type RewriteRequest } from './RewriteReview';
 import { RewriteMenu } from './RewriteMenu';
@@ -57,7 +59,9 @@ export function ManuscriptEditor({ docId, body, language }: Props) {
         Placeholder.configure({ placeholder: 'Aloita kirjoittaminen…' }),
         FinnishTypography,
         Spellcheck.configure({ knownWords: bibleNames, enabled: () => finnish && useStore.getState().spellcheck }),
-        RewriteTarget
+        RewriteTarget,
+        ProvenanceMark,
+        ProvenanceGuard
       ],
       content: body,
       contentType: 'markdown',
@@ -81,10 +85,20 @@ export function ManuscriptEditor({ docId, body, language }: Props) {
           }
         }
       },
+      onCreate: ({ editor }) => {
+        setActiveEditor(docId, editor);
+        const lost = applyProvenance(editor, useStore.getState().provenance[docId]);
+        if (lost > 0) useStore.getState().notify(`${lost} AI-merkintää ei voitu kohdistaa, koska tekstiä on muokattu muualla.`);
+      },
+      onDestroy: () => setActiveEditor(docId, null),
       onUpdate: ({ editor }) => {
-        const markdown = editor.getMarkdown();
-        lastEmitted.current = markdown;
-        useStore.getState().updateBody(docId, markdown);
+        const markdown = cleanMarkdown(editor);
+        const { updateBody, setProvenance } = useStore.getState();
+        if (markdown !== lastEmitted.current) {
+          lastEmitted.current = markdown;
+          updateBody(docId, markdown);
+        }
+        setProvenance(docId, extractProvenance(editor.state.doc));
       }
     },
     [docId, language]
@@ -101,7 +115,8 @@ export function ManuscriptEditor({ docId, body, language }: Props) {
     if (!editor || body === lastEmitted.current) return;
     lastEmitted.current = body;
     editor.commands.setContent(body, { contentType: 'markdown', emitUpdate: false });
-  }, [body, editor]);
+    useStore.getState().setProvenance(docId, extractProvenance(editor.state.doc));
+  }, [body, editor, docId]);
 
   if (!editor) return null;
 
@@ -116,6 +131,8 @@ export function ManuscriptEditor({ docId, body, language }: Props) {
 }
 
 function FormatBubble({ editor, onRewrite, busy }: { editor: Editor; onRewrite(r: RewriteRequest): void; busy: boolean }) {
+  // NOX is for writing: AI suggestions stay hidden unless the writer enabled them
+  const aiAllowed = useStore(s => s.theme === 'DEIS' || s.noxAssist);
   return (
     <BubbleMenu editor={editor} className="bubble" options={{ placement: 'top' }} shouldShow={({ state }) => !busy && !state.selection.empty}>
       <button className={editor.isActive('bold') ? 'on' : ''} onClick={() => editor.chain().focus().toggleBold().run()} title="Lihavointi (⌘B)">
@@ -127,8 +144,12 @@ function FormatBubble({ editor, onRewrite, busy }: { editor: Editor; onRewrite(r
       <button className={editor.isActive('blockquote') ? 'on' : ''} onClick={() => editor.chain().focus().toggleBlockquote().run()} title="Sitaatti">
         ❝
       </button>
-      <span className="sep" />
-      <RewriteMenu editor={editor} onRewrite={onRewrite} />
+      {aiAllowed && (
+        <>
+          <span className="sep" />
+          <RewriteMenu editor={editor} onRewrite={onRewrite} />
+        </>
+      )}
     </BubbleMenu>
   );
 }

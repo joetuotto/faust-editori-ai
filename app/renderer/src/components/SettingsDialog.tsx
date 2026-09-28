@@ -29,7 +29,8 @@ export function SettingsDialog() {
 function ProjectSettings() {
   const manifest = useStore(s => s.project!.manifest);
   const spellcheck = useStore(s => s.spellcheck);
-  const { updateManifest, setSpellcheck } = useStore.getState();
+  const noxAssist = useStore(s => s.noxAssist);
+  const { updateManifest, setSpellcheck, setNoxAssist } = useStore.getState();
 
   return (
     <div>
@@ -79,6 +80,12 @@ function ProjectSettings() {
         <input type="checkbox" checked={spellcheck} onChange={e => setSpellcheck(e.target.checked)} />
         <span style={{ textTransform: 'none', letterSpacing: 0, fontSize: 13, color: 'var(--text)' }}>
           Oikoluku ja kielioppi (Voikko, suomenkieliset teokset). Tarkistus tehdään omalla koneellasi.
+        </span>
+      </label>
+      <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <input type="checkbox" checked={noxAssist} onChange={e => setNoxAssist(e.target.checked)} />
+        <span style={{ textTransform: 'none', letterSpacing: 0, fontSize: 13, color: 'var(--text)' }}>
+          Salli AI-muutosehdotukset NOX-tilassa. Oletuksena NOX on kirjoittamista varten, ja avustaja vain kysyy.
         </span>
       </label>
       <button className="btn small" onClick={() => void window.faust.project.reveal()}>

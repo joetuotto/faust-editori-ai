@@ -126,6 +126,10 @@ export interface AIRequest {
   messages: ChatMessage[];
   maxTokens?: number;
   temperature?: number;
+  /** Ask for JSON matching this schema (native structured output where supported) */
+  jsonSchema?: Record<string, unknown>;
+  /** Reasoning effort for models that support it */
+  effort?: 'low' | 'medium' | 'high';
 }
 
 export interface AIResult {
@@ -149,7 +153,7 @@ export interface GrammarIssue {
   description: string;
 }
 
-export type ExportFormat = 'docx' | 'manuscript' | 'epub' | 'md' | 'html' | 'txt';
+export type ExportFormat = 'docx' | 'manuscript' | 'epub' | 'md' | 'html' | 'txt' | 'provenance';
 
 /** File extension for each export format */
 export const EXPORT_EXTENSIONS: Record<ExportFormat, string> = {
@@ -158,7 +162,8 @@ export const EXPORT_EXTENSIONS: Record<ExportFormat, string> = {
   epub: 'epub',
   md: 'md',
   html: 'html',
-  txt: 'txt'
+  txt: 'txt',
+  provenance: 'md'
 };
 
 export type Result<T = void> = { success: true; data: T } | { success: false; error: string };

@@ -1,4 +1,5 @@
 import type { OpenProject, Result } from '../../shared/types';
+import type { ProvenanceFile } from '../../shared/provenance';
 import { useStore } from './store';
 
 /**
@@ -16,7 +17,15 @@ async function openWith(call: () => Promise<Result<OpenProject> | null>): Promis
     notify(result.error, 'error');
     return false;
   }
-  setProject(result.data, await readSessionActiveId());
+  setProject(result.data, await readSessionActiveId(), await readProvenance());
+  const style = await window.faust.project.readInternal('style.json');
+  if (style) {
+    try {
+      useStore.setState({ style: JSON.parse(style) });
+    } catch {
+      // ignore a corrupt profile; it can be rebuilt
+    }
+  }
   return true;
 }
 
@@ -62,6 +71,16 @@ export async function saveSession() {
   if (!project) return;
   const session: Session = { activeId };
   await window.faust.project.writeInternal('session.json', JSON.stringify(session));
+}
+
+async function readProvenance(): Promise<ProvenanceFile['docs']> {
+  const raw = await window.faust.project.readInternal('provenance.json');
+  if (!raw) return {};
+  try {
+    return (JSON.parse(raw) as ProvenanceFile).docs ?? {};
+  } catch {
+    return {};
+  }
 }
 
 async function readSessionActiveId(): Promise<string | null> {

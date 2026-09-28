@@ -9,6 +9,7 @@ import { BibleDialog } from './components/BibleDialog';
 import { Binder } from './components/Binder';
 import { Editor } from './components/Editor';
 import { HistoryDialog } from './components/HistoryDialog';
+import { StyleDialog } from './components/StyleDialog';
 import { ExportDialog } from './components/ExportDialog';
 import { Inspector } from './components/Inspector';
 import { NewProjectDialog } from './components/NewProjectDialog';
@@ -24,7 +25,7 @@ export function App() {
   // Theme and last project from app settings
   useEffect(() => {
     void window.faust.app.getSettings().then(async settings => {
-      useStore.setState({ theme: settings.theme, spellcheck: settings.spellcheck });
+      useStore.setState({ theme: settings.theme, spellcheck: settings.spellcheck, noxAssist: settings.noxAssist });
       if (settings.lastProject) await openRecent(settings.lastProject);
     });
   }, []);
@@ -158,6 +159,7 @@ function Workspace({ onNewProject }: { onNewProject(): void }) {
       {panel === 'settings' && <SettingsDialog />}
       {panel === 'export' && <ExportDialog />}
       {panel === 'history' && <HistoryDialog />}
+      {panel === 'style' && <StyleDialog />}
     </div>
   );
 }
@@ -187,6 +189,7 @@ function ProjectMenu({ onNewProject }: { onNewProject(): void }) {
           <div className="dialog" style={{ position: 'absolute', right: 0, top: 34, width: 240, padding: 6, zIndex: 21 }}>
             {item('Tallenna versio (⌘S)', () => void snapshot())}
             {item('Vie käsikirjoitus…', () => setPanel('export'))}
+            {item('Tyylisormenjälki…', () => setPanel('style'))}
             {item('Asetukset…', () => setPanel('settings'))}
             {item('Uusi projekti…', onNewProject)}
             {item('Avaa projekti…', () => void openProjectDialog())}

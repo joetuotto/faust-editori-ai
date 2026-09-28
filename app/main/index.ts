@@ -197,6 +197,9 @@ function registerIpc() {
   ipcMain.handle('app:setSpellcheck', async (_e, spellcheck: boolean) => {
     await updateSettings({ spellcheck });
   });
+  ipcMain.handle('app:setNoxAssist', async (_e, noxAssist: boolean) => {
+    await updateSettings({ noxAssist });
+  });
   ipcMain.handle('app:forgetRecent', (_e, p: string) => forgetProject(p));
 
   ipcMain.handle('project:create', async (_e, title: string) => {
@@ -331,12 +334,13 @@ function registerIpc() {
         title: 'Vie käsikirjoitus',
         defaultPath: path.join(
           path.dirname(currentProject!),
-          `${project.manifest.title}${format === 'manuscript' ? ' (käsikirjoitus)' : ''}.${EXPORT_EXTENSIONS[format]}`
+          `${project.manifest.title}${format === 'manuscript' ? ' (käsikirjoitus)' : format === 'provenance' ? ' (AI-selvitys)' : ''}.${EXPORT_EXTENSIONS[format]}`
         ),
         filters: [{ name: EXPORT_EXTENSIONS[format].toUpperCase(), extensions: [EXPORT_EXTENSIONS[format]] }]
       });
       if (canceled || !filePath) return null;
-      const content = await exportProject(project, format);
+      const provenanceRaw = await readInternal(currentProject!, 'provenance.json');
+      const content = await exportProject(project, format, provenanceRaw ? JSON.parse(provenanceRaw) : null);
       await writeFileAtomic(filePath, content);
       return ok(filePath);
     } catch (error) {

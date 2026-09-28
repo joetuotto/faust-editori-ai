@@ -655,6 +655,21 @@ button {
   white-space: pre-wrap;
 }
 
+.review-warnings {
+  padding: 10px 18px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, #c9a227 10%, transparent);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review-warnings strong {
+  font-weight: 500;
+  color: #c9a227;
+}
+
 .review-preview {
   color: var(--text-3);
 }
@@ -776,6 +791,22 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.quick-prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.quick-prompts .chip {
+  background: none;
+  cursor: pointer;
+}
+
+.quick-prompts .chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 .chat-input textarea {
@@ -1012,3 +1043,27 @@ button {
   white-space: nowrap;
   max-width: 380px;
 }
+
+/* ---------- provenance ---------- */
+
+.show-prov .prov-ai-edit {
+  background: rgba(74, 158, 255, 0.14);
+  border-bottom: 1px solid rgba(74, 158, 255, 0.5);
+}
+
+.show-prov .prov-ai {
+  background: rgba(182, 139, 92, 0.22);
+  border-bottom: 1px solid var(--accent-2);
+}
+
+.provenance-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--border);
+}
+
+.provenance-bar .own { background: var(--text-3); }
+.provenance-bar .ai-edit { background: #4a9eff; }
+.provenance-bar .ai { background: var(--accent-2); }

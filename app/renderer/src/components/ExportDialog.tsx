@@ -9,7 +9,8 @@ const FORMATS: { format: ExportFormat; name: string; description: string }[] = [
   { format: 'docx', name: 'Word (.docx)', description: 'Kirjan näköinen taitto. Luvut alkavat uudelta sivulta.' },
   { format: 'md', name: 'Markdown (.md)', description: 'Pelkkä teksti muotoiluineen, toimii kaikkialla.' },
   { format: 'html', name: 'HTML (.html)', description: 'Luettava verkkosivu, tulostettavissa selaimesta PDF:ksi.' },
-  { format: 'txt', name: 'Teksti (.txt)', description: 'Ilman muotoilua.' }
+  { format: 'txt', name: 'Teksti (.txt)', description: 'Ilman muotoilua.' },
+  { format: 'provenance', name: 'AI-selvitys (.md)', description: 'Kuinka suuri osa tekstistä on omaa, tekoälyn muokkaamaa tai tekoälyn kirjoittamaa, luvuittain.' }
 ];
 
 export function ExportDialog() {

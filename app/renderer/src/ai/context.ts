@@ -30,6 +30,34 @@ function outline(project: OpenProject): string {
   return walk(project.manifest.structure, 0).join('\n');
 }
 
+export type Mode = 'DEIS' | 'NOX';
+
+/** How the assistant behaves in each of the two rhythms */
+export const MODE_ROLES: Record<Mode, string> = {
+  DEIS: [
+    'TILA: DEIS (päivä: ideointi ja rakenne).',
+    'Ole rohkea sparraaja: ehdota useita vaihtoehtoja, haasta rakennetta ja motiiveja, kysy mitä kirjailija tavoittelee ja nosta esiin ristiriidat ja käyttämättömät mahdollisuudet.'
+  ].join('\n'),
+  NOX: [
+    'TILA: NOX (yö: kirjoittaminen ja syvä keskittyminen).',
+    'Kirjailija kirjoittaa. Älä kirjoita tekstiä hänen puolestaan äläkä ehdota valmiita lauseita tai jatkoa.',
+    'Vastaa hyvin lyhyesti. Esitä korkeintaan yksi kysymys, joka auttaa häntä itse löytämään seuraavan askeleen.'
+  ].join('\n')
+};
+
+export const MODE_PROMPTS: Record<Mode, { label: string; prompt: string }[]> = {
+  DEIS: [
+    { label: 'Viisi käännettä', prompt: 'Ehdota viisi erilaista käännettä, joihin tarina voisi tästä kohdasta edetä. Yksi rivi per ehdotus.' },
+    { label: 'Haasta rakenne', prompt: 'Mikä rakenteessa on heikointa tai ennalta-arvattavinta? Ole suora.' },
+    { label: 'Mitä lukija tietää?', prompt: 'Mitä lukija tietää ja mitä hän odottaa tässä vaiheessa tarinaa? Mitä kannattaisi pantata?' },
+    { label: 'Henkilön motiivi', prompt: 'Kenen henkilön motiivi on tässä kohtaa epäselvin, ja mitä kysymyksiä minun pitäisi hänestä kysyä?' }
+  ],
+  NOX: [
+    { label: 'Kysy minulta', prompt: 'Kysy minulta yksi kysymys, joka auttaa minua jatkamaan tätä kohtausta.' },
+    { label: 'Kohtauksen ydin', prompt: 'Mikä on tämän kohtauksen ydin yhdellä lauseella?' }
+  ]
+};
+
 export function buildSystemPrompt(project: OpenProject): string {
   const { title, author, genre, language } = project.manifest;
   const bible = Object.values(project.bible).sort((a, b) => a.name.localeCompare(b.name, 'fi'));

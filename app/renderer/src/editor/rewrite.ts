@@ -11,6 +11,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { Extension } from '@tiptap/core';
 import { diffArrays } from 'diff';
+import { markRange, serializeClean } from './provenance';
 
 export interface RewritePreset {
   id: string;
@@ -86,7 +87,7 @@ export interface RewriteSource {
 export function getRewriteSource(editor: Editor): RewriteSource | null {
   const { state } = editor;
   const { from, to, empty, $from, $to } = state.selection;
-  const serialize = (content: JSONContent[]) => editor.markdown?.serialize({ type: 'doc', content }).trim() ?? '';
+  const serialize = (content: JSONContent[]) => serializeClean(editor, { type: 'doc', content }).trim();
 
   if (!empty && $from.sameParent($to) && $from.parent.isTextblock) {
     const inline = state.doc.slice(from, to).content.toJSON() as JSONContent[] | null;
@@ -151,11 +152,26 @@ export function cleanModelOutput(text: string): string {
 
 /* ---------- apply ---------- */
 
-/** Replace the target range with Markdown, keeping inline edits inside their paragraph */
-export function applyMarkdown(editor: Editor, range: { from: number; to: number }, mode: RewriteSource['mode'], markdown: string) {
+/**
+ * Replace the target range with Markdown, keeping inline edits inside their
+ * paragraph, and record the result as AI-edited (or AI-written) text.
+ */
+export function applyMarkdown(
+  editor: Editor,
+  range: { from: number; to: number },
+  mode: RewriteSource['mode'],
+  markdown: string,
+  provenance?: { source: 'ai' | 'ai-edit'; model?: string }
+) {
   const parsed = editor.markdown?.parse(markdown) ?? { type: 'doc', content: [] };
   const blocks = parsed.content ?? [];
   const content: JSONContent[] =
     mode === 'inline' && blocks.length === 1 && blocks[0].type === 'paragraph' ? (blocks[0].content ?? []) : blocks;
+
+  const sizeBefore = editor.state.doc.content.size;
   editor.chain().focus().insertContentAt(range, content.length > 0 ? content : '').run();
+  if (!provenance) return;
+  // The inserted content ends where the old range ended, shifted by the size change
+  const end = range.to + (editor.state.doc.content.size - sizeBefore);
+  if (end > range.from) markRange(editor, range.from, end, provenance.source, provenance.model);
 }

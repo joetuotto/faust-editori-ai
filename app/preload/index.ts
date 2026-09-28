@@ -8,6 +8,7 @@ const api: FaustAPI = {
     getSettings: () => ipcRenderer.invoke('app:getSettings'),
     setTheme: theme => ipcRenderer.invoke('app:setTheme', theme),
     setSpellcheck: enabled => ipcRenderer.invoke('app:setSpellcheck', enabled),
+    setNoxAssist: enabled => ipcRenderer.invoke('app:setNoxAssist', enabled),
     forgetRecent: path => ipcRenderer.invoke('app:forgetRecent', path),
     onMenu: handler => {
       const listener = (_e: unknown, command: MenuCommand) => handler(command);

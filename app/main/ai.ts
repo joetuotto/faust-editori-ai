@@ -40,6 +40,12 @@ async function streamAnthropic(apiKey: string, req: AIRequest, model: string, op
     stream: true
   };
   if (req.system) params.system = req.system;
+  if (req.jsonSchema || req.effort) {
+    params.output_config = {
+      ...(req.jsonSchema ? { format: { type: 'json_schema' as const, schema: req.jsonSchema } } : {}),
+      ...(req.effort && usesAdaptiveThinking(model) ? { effort: req.effort } : {})
+    };
+  }
   if (opts.think) {
     params.thinking = usesAdaptiveThinking(model)
       ? { type: 'adaptive' }
@@ -86,6 +92,11 @@ async function streamOpenAI(
       messages,
       stream: true,
       stream_options: { include_usage: true },
+      ...(req.jsonSchema
+        ? baseURL?.includes('deepseek')
+          ? { response_format: { type: 'json_object' as const } }
+          : { response_format: { type: 'json_schema' as const, json_schema: { name: 'result', schema: req.jsonSchema, strict: true } } }
+        : {}),
       ...(baseURL
         ? { max_tokens: req.maxTokens ?? 8000, ...(req.temperature !== undefined ? { temperature: req.temperature } : {}) }
         : { max_completion_tokens: req.maxTokens ?? 16000 })
@@ -117,6 +128,7 @@ async function streamGemini(apiKey: string, req: AIRequest, model: string, opts:
       ...(req.system ? { systemInstruction: req.system } : {}),
       ...(req.maxTokens ? { maxOutputTokens: req.maxTokens } : {}),
       ...(req.temperature !== undefined ? { temperature: req.temperature } : {}),
+      ...(req.jsonSchema ? { responseMimeType: 'application/json', responseJsonSchema: req.jsonSchema } : {}),
       abortSignal: opts.signal
     }
   });

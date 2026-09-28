@@ -5,7 +5,7 @@ import path from 'node:path';
 import { createProject, openProject, trashFiles, writeDoc, writeManifest } from './projectStore';
 import { convertLegacy, importLegacyFile } from './legacyImport';
 import { commitAll, history, readAt } from './history';
-import { toDocx, toEpub, toManuscriptDocx, toMarkdown, toPlainText } from './export';
+import { toDocx, toEpub, toManuscriptDocx, toMarkdown, toPlainText, toProvenanceReport } from './export';
 import JSZip from 'jszip';
 import { JSDOM } from 'jsdom';
 import { resolveInside, writeFileAtomic } from './fsutil';
@@ -217,5 +217,19 @@ describe('export', () => {
     expect(xml).toContain('VANHA ROMAANI');
     expect(xml).toContain('sanaa');
     expect(Object.keys(zip.files).some(n => n.startsWith('word/header'))).toBe(true);
+  });
+
+  it('writes an AI use statement from provenance records', async () => {
+    const legacyFile = path.join(dir, 'vanha.json');
+    await fs.writeFile(legacyFile, JSON.stringify(LEGACY));
+    const project = await openProject(await importLegacyFile(legacyFile, dir));
+    const scene = project.manifest.structure[0].children![0];
+    const report = toProvenanceReport(project, {
+      version: 1,
+      docs: { [scene.id]: { hash: 'x', spans: [{ start: 0, end: 8, source: 'ai-edit', model: 'claude-opus-5', text: 'Sisällä.' }] } }
+    });
+    expect(report).toContain('&nbsp;&nbsp;Kohtaus | 1 | 0,0 % | 100,0 % | 0,0 % |');
+    expect(report).toContain('Käytetyt mallit: claude-opus-5.');
+    expect(report).toMatch(/Käsikirjoituksessa on \d+ sanaa/);
   });
 });

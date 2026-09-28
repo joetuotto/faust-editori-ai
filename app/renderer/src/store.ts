@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { BibleEntry, BibleKind, Doc, DocMeta, NodeType, OpenProject, ProjectManifest, TreeNode } from '../../shared/types';
 import { newId } from '../../shared/text';
+import type { DocProvenance, ProvenanceFile } from '../../shared/provenance';
+import type { StyleProfile } from '../../shared/style';
 import {
   bibleFileFor,
   canHaveChildren,
@@ -19,7 +21,7 @@ const MANIFEST_SAVE_DELAY = 400;
 
 export type Theme = 'NOX' | 'DEIS';
 export type SaveState = 'saved' | 'pending' | 'saving' | 'error';
-export type Panel = 'none' | 'bible' | 'settings' | 'export' | 'history';
+export type Panel = 'none' | 'bible' | 'settings' | 'export' | 'history' | 'style' | 'structure' | 'reader';
 
 export interface Toast {
   id: number;
@@ -30,8 +32,14 @@ export interface Toast {
 interface State {
   project: OpenProject | null;
   activeId: string | null;
+  /** AI provenance per document id (.faust/provenance.json) */
+  provenance: Record<string, DocProvenance>;
+  showProvenance: boolean;
+  /** The writer's style profile (.faust/style.json) */
+  style: StyleProfile | null;
   theme: Theme;
   spellcheck: boolean;
+  noxAssist: boolean;
   showBinder: boolean;
   showInspector: boolean;
   showAI: boolean;
@@ -40,11 +48,14 @@ interface State {
   saveState: SaveState;
   toasts: Toast[];
 
-  setProject(project: OpenProject | null, activeId?: string | null): void;
+  setProject(project: OpenProject | null, activeId?: string | null, provenance?: Record<string, DocProvenance>): void;
+  setProvenance(docId: string, value: DocProvenance): void;
+  setStyle(style: StyleProfile | null): void;
   setActive(id: string | null): void;
   setTheme(theme: Theme): void;
   setSpellcheck(enabled: boolean): void;
-  toggle(key: 'showBinder' | 'showInspector' | 'showAI' | 'focusMode'): void;
+  setNoxAssist(enabled: boolean): void;
+  toggle(key: 'showBinder' | 'showInspector' | 'showAI' | 'focusMode' | 'showProvenance'): void;
   setPanel(panel: Panel): void;
   notify(text: string, kind?: Toast['kind']): void;
   dismiss(id: number): void;
@@ -69,6 +80,7 @@ interface State {
 const docTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const bibleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let manifestTimer: ReturnType<typeof setTimeout> | null = null;
+let provenanceTimer: ReturnType<typeof setTimeout> | null = null;
 let toastCounter = 0;
 
 export const useStore = create<State>((set, get) => {
@@ -80,7 +92,7 @@ export const useStore = create<State>((set, get) => {
     if (!result.success) {
       set({ saveState: 'error' });
       get().notify(`Tallennus epäonnistui: ${result.error}`, 'error');
-    } else if (docTimers.size === 0 && bibleTimers.size === 0 && !manifestTimer) {
+    } else if (docTimers.size === 0 && bibleTimers.size === 0 && !manifestTimer && !provenanceTimer) {
       set({ saveState: 'saved' });
     }
   }
@@ -126,6 +138,12 @@ export const useStore = create<State>((set, get) => {
     bibleTimers.set(id, setTimeout(() => void saveBibleNow(id), DOC_SAVE_DELAY));
   }
 
+  function saveProvenanceNow() {
+    provenanceTimer = null;
+    const file: ProvenanceFile = { version: 1, docs: get().provenance };
+    return run(() => window.faust.project.writeInternal('provenance.json', JSON.stringify(file, null, 1)));
+  }
+
   function patchProject(fn: (p: OpenProject) => OpenProject) {
     const project = get().project;
     if (project) set({ project: fn(project) });
@@ -139,8 +157,12 @@ export const useStore = create<State>((set, get) => {
   return {
     project: null,
     activeId: null,
+    provenance: {},
+    showProvenance: false,
+    style: null,
     theme: 'NOX',
     spellcheck: true,
+    noxAssist: false,
     showBinder: true,
     showInspector: false,
     showAI: false,
@@ -149,9 +171,27 @@ export const useStore = create<State>((set, get) => {
     saveState: 'saved',
     toasts: [],
 
-    setProject(project, activeId) {
+    setProject(project, activeId, provenance = {}) {
       const initial = activeId && project?.docs[activeId] ? activeId : (project?.manifest.structure[0]?.id ?? null);
-      set({ project, activeId: initial, panel: 'none', saveState: 'saved' });
+      set({ project, activeId: initial, provenance, style: null, panel: 'none', saveState: 'saved' });
+    },
+
+    setStyle(style) {
+      set({ style });
+      if (style) void run(() => window.faust.project.writeInternal('style.json', JSON.stringify(style, null, 1)));
+    },
+
+    setProvenance(docId, value) {
+      const previous = get().provenance[docId];
+      const empty = value.spans.length === 0;
+      if ((!previous && empty) || JSON.stringify(previous) === JSON.stringify(value)) return;
+      const provenance = { ...get().provenance };
+      if (empty) delete provenance[docId];
+      else provenance[docId] = value;
+      set({ provenance });
+      markPending();
+      if (provenanceTimer) clearTimeout(provenanceTimer);
+      provenanceTimer = setTimeout(() => void saveProvenanceNow(), DOC_SAVE_DELAY);
     },
 
     setActive(id) {
@@ -159,13 +199,19 @@ export const useStore = create<State>((set, get) => {
     },
 
     setTheme(theme) {
-      set({ theme });
+      // Entering NOX quiets the assistant unless the writer has asked for it
+      set(theme === 'NOX' && !get().noxAssist ? { theme, showAI: false } : { theme });
       void window.faust.app.setTheme(theme);
     },
 
     setSpellcheck(spellcheck) {
       set({ spellcheck });
       void window.faust.app.setSpellcheck(spellcheck);
+    },
+
+    setNoxAssist(noxAssist) {
+      set({ noxAssist });
+      void window.faust.app.setNoxAssist(noxAssist);
     },
 
     toggle(key) {
@@ -262,6 +308,18 @@ export const useStore = create<State>((set, get) => {
       for (const n of removed) docTimers.delete(n.id);
       const docs = { ...project.docs };
       for (const n of removed) delete docs[n.id];
+      const provenance = { ...get().provenance };
+      let provenanceChanged = false;
+      for (const n of removed) {
+        if (n.id in provenance) {
+          delete provenance[n.id];
+          provenanceChanged = true;
+        }
+      }
+      if (provenanceChanged) {
+        set({ provenance });
+        void saveProvenanceNow();
+      }
       set({
         project: { ...project, docs, manifest: { ...project.manifest, structure: tree } },
         activeId: get().activeId && removed.some(n => n.id === get().activeId) ? (tree[0]?.id ?? null) : get().activeId
@@ -335,6 +393,10 @@ export const useStore = create<State>((set, get) => {
       if (manifestTimer) {
         clearTimeout(manifestTimer);
         await saveManifestNow();
+      }
+      if (provenanceTimer) {
+        clearTimeout(provenanceTimer);
+        await saveProvenanceNow();
       }
       await Promise.all([...pendingDocs.map(saveDocNow), ...pendingBible.map(saveBibleNow)]);
     }

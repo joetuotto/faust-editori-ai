@@ -21,6 +21,7 @@ import type {
 export interface AppSettingsView {
   theme: 'NOX' | 'DEIS';
   spellcheck: boolean;
+  noxAssist: boolean;
   recent: RecentProject[];
   lastProject: string | null;
 }
@@ -47,6 +48,7 @@ export interface FaustAPI {
     getSettings(): Promise<AppSettingsView>;
     setTheme(theme: 'NOX' | 'DEIS'): Promise<void>;
     setSpellcheck(enabled: boolean): Promise<void>;
+    setNoxAssist(enabled: boolean): Promise<void>;
     forgetRecent(path: string): Promise<AppSettingsView>;
     onMenu(handler: (command: MenuCommand) => void): () => void;
   };
@@ -88,5 +90,5 @@ export interface FaustAPI {
 }
 
 /** Internal files the renderer may read/write inside <project>/.faust/ */
-export const INTERNAL_FILES = ['chat.json', 'session.json'] as const;
+export const INTERNAL_FILES = ['chat.json', 'session.json', 'provenance.json', 'style.json', 'reader.json'] as const;
 export type InternalFile = (typeof INTERNAL_FILES)[number];

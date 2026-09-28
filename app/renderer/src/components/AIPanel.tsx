@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '../../../shared/types';
 import { resolveModel } from '../../../shared/models';
-import { buildSystemPrompt, sceneContext } from '../ai/context';
+import { MODE_PROMPTS, MODE_ROLES, buildSystemPrompt, sceneContext } from '../ai/context';
 import { useStore } from '../store';
+import { getActiveEditor } from '../editor/activeEditor';
+import { applyMarkdown } from '../editor/rewrite';
 
 interface StoredChat {
   messages: ChatMessage[];
@@ -13,6 +15,7 @@ const MAX_STORED = 60;
 export function AIPanel() {
   const project = useStore(s => s.project)!;
   const activeId = useStore(s => s.activeId);
+  const mode = useStore(s => s.theme);
   const { toggle, updateBody, notify, setPanel } = useStore.getState();
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -44,14 +47,14 @@ export function AIPanel() {
     void window.faust.project.writeInternal('chat.json', JSON.stringify({ messages: next.slice(-MAX_STORED) }));
   };
 
-  const send = async () => {
-    const question = input.trim();
+  const send = async (preset?: string) => {
+    const question = (preset ?? input).trim();
     if (!question || streaming) return;
     const current = useStore.getState().project!;
     const context = attachScene ? sceneContext(current, activeId) : '';
     const userMessage: ChatMessage = { role: 'user', content: question };
     const history = [...messages, userMessage];
-    setInput('');
+    if (preset === undefined) setInput('');
     setMessages(history);
 
     // The scene goes only into the outgoing copy of the latest message
@@ -65,7 +68,7 @@ export function AIPanel() {
 
     let text = '';
     const call = window.faust.ai.generate(
-      { provider, model, system: buildSystemPrompt(current), messages: recent },
+      { provider, model, system: `${buildSystemPrompt(current)}\n\n${MODE_ROLES[mode]}`, messages: recent },
       chunk => {
         text += chunk;
         setStreaming(s => (s ? { ...s, text } : s));
@@ -86,16 +89,23 @@ export function AIPanel() {
 
   const insertIntoScene = (content: string) => {
     if (!activeId) return;
-    const doc = useStore.getState().project?.docs[activeId];
-    if (!doc) return;
-    updateBody(activeId, doc.body.trimEnd() + (doc.body.trim() ? '\n\n' : '') + content.trim() + '\n');
-    notify('Lisätty dokumentin loppuun.');
+    const editor = getActiveEditor(activeId);
+    if (editor) {
+      // Inserted through the editor so the text is recorded as AI-written
+      const end = editor.state.doc.content.size;
+      applyMarkdown(editor, { from: end, to: end }, 'block', content.trim(), { source: 'ai', model });
+    } else {
+      const doc = useStore.getState().project?.docs[activeId];
+      if (!doc) return;
+      updateBody(activeId, doc.body.trimEnd() + (doc.body.trim() ? '\n\n' : '') + content.trim() + '\n');
+    }
+    notify('Lisätty dokumentin loppuun (merkitty AI:n kirjoittamaksi).');
   };
 
   return (
     <aside className="side-panel wide">
       <div className="panel-head">
-        <span className="label">AI-avustaja</span>
+        <span className="label">AI-avustaja · {mode === 'NOX' ? 'NOX, kysyy' : 'DEIS, ideoi'}</span>
         <div style={{ display: 'flex', gap: 6 }}>
           <button className="chip" onClick={() => setPanel('settings')} title="Vaihda mallia asetuksissa">
             {model}
@@ -107,8 +117,9 @@ export function AIPanel() {
       <div className="chat" ref={chatRef}>
         {messages.length === 0 && !streaming && (
           <p className="muted">
-            Kysy teoksestasi: juonesta, henkilöistä, rytmistä tai siitä, mitä seuraavaksi voisi tapahtua. Avustaja näkee rakenteen,
-            tietopankin ja halutessasi nykyisen kohtauksen.
+            {mode === 'NOX'
+              ? 'NOX-tilassa avustaja ei kirjoita puolestasi. Se vastaa lyhyesti ja auttaa kysymyksillä eteenpäin.'
+              : 'Kysy teoksestasi: juonesta, henkilöistä, rytmistä tai siitä, mitä seuraavaksi voisi tapahtua. Avustaja näkee rakenteen, tietopankin ja halutessasi nykyisen kohtauksen.'}
           </p>
         )}
         {messages.map((m, i) => (
@@ -136,6 +147,15 @@ export function AIPanel() {
       </div>
 
       <div className="chat-input">
+        {!streaming && (
+          <div className="quick-prompts">
+            {MODE_PROMPTS[mode].map(p => (
+              <button key={p.label} className="chip" onClick={() => void send(p.prompt)}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
         <textarea
           className="textarea"
           placeholder="Kysy tai pyydä… (⌘↩ lähettää)"

@@ -5,6 +5,7 @@
 import { AlignmentType, Document, Header, HeadingLevel, Packer, PageNumber, Paragraph, TextRun } from 'docx';
 import JSZip from 'jszip';
 import { countWords } from '../shared/text';
+import { provenanceStats, type ProvenanceFile } from '../shared/provenance';
 import type { ExportFormat, OpenProject, TreeNode } from '../shared/types';
 import { blocksToHtml, parseBlocks, runsToPlain, type Block } from '../shared/markdownLite';
 
@@ -289,7 +290,48 @@ ${chapters.map((_, i) => `    <itemref idref="c${i + 1}"/>`).join('\n')}
   return zip.generateAsync({ type: 'nodebuffer', mimeType: 'application/epub+zip' });
 }
 
-export async function exportProject(project: OpenProject, format: ExportFormat): Promise<string | Buffer> {
+/**
+ * AI use statement: words written by the author, edited with AI and written by
+ * AI, per chapter. Publishers and competitions increasingly ask for this.
+ */
+export function toProvenanceReport(project: OpenProject, provenance: ProvenanceFile | null, now = new Date()): string {
+  const docs = provenance?.docs ?? {};
+  const rows: string[] = [];
+  const totals = { total: 0, own: 0, ai: 0, aiEdit: 0 };
+  const models = new Set<string>();
+  const pct = (n: number, of: number) => (of > 0 ? `${((n / of) * 100).toFixed(1).replace('.', ',')} %` : '–');
+
+  for (const { node, depth } of collectSections(project)) {
+    const stats = provenanceStats(project.docs[node.id]?.body ?? '', docs[node.id]);
+    for (const span of docs[node.id]?.spans ?? []) if (span.model) models.add(span.model);
+    totals.total += stats.total;
+    totals.own += stats.own;
+    totals.ai += stats.ai;
+    totals.aiEdit += stats.aiEdit;
+    rows.push(`| ${'&nbsp;&nbsp;'.repeat(depth)}${node.title} | ${stats.total} | ${pct(stats.own, stats.total)} | ${pct(stats.aiEdit, stats.total)} | ${pct(stats.ai, stats.total)} |`);
+  }
+
+  return [
+    `# AI-selvitys: ${project.manifest.title}`,
+    '',
+    `${project.manifest.author ? `Kirjoittaja: ${project.manifest.author}  \n` : ''}Laadittu: ${now.toLocaleDateString('fi-FI')} (FAUST)`,
+    '',
+    `Käsikirjoituksessa on ${totals.total.toLocaleString('fi-FI')} sanaa. Niistä kirjoittajan omaa tekstiä on ${pct(totals.own, totals.total)}, ` +
+      `tekoälyn avulla muokattua ${pct(totals.aiEdit, totals.total)} ja tekoälyn kirjoittamaa ${pct(totals.ai, totals.total)}.`,
+    '',
+    models.size > 0 ? `Käytetyt mallit: ${[...models].sort().join(', ')}.` : 'Tekoälyn tuottamaa tai muokkaamaa tekstiä ei ole merkitty.',
+    '',
+    '*Muokattu* tarkoittaa kohtia, joissa kirjoittaja on hyväksynyt tekoälyn muutosehdotuksen. Tekoälyn kanssa käydyt keskustelut, joista ei ole siirretty tekstiä käsikirjoitukseen, eivät näy luvuissa.',
+    '',
+    '| Luku | Sanoja | Oma | AI:n muokkaama | AI:n kirjoittama |',
+    '|---|---:|---:|---:|---:|',
+    ...rows,
+    `| **Yhteensä** | **${totals.total}** | **${pct(totals.own, totals.total)}** | **${pct(totals.aiEdit, totals.total)}** | **${pct(totals.ai, totals.total)}** |`,
+    ''
+  ].join('\n');
+}
+
+export async function exportProject(project: OpenProject, format: ExportFormat, provenance: ProvenanceFile | null = null): Promise<string | Buffer> {
   switch (format) {
     case 'md':
       return toMarkdown(project);
@@ -303,5 +345,7 @@ export async function exportProject(project: OpenProject, format: ExportFormat):
       return toManuscriptDocx(project);
     case 'epub':
       return toEpub(project);
+    case 'provenance':
+      return toProvenanceReport(project, provenance);
   }
 }

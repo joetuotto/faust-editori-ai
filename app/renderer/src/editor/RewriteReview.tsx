@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { compareStyle } from '../../../shared/style';
+import { measureOwnStyle } from '../ai/style';
 import type { Editor } from '@tiptap/react';
 import { resolveModel } from '../../../shared/models';
 import { buildSystemPrompt } from '../ai/context';
@@ -21,7 +23,7 @@ export interface RewriteRequest {
   source: RewriteSource;
 }
 
-type Phase = { kind: 'loading'; preview: string } | { kind: 'review'; hunks: Hunk[] } | { kind: 'error'; message: string };
+type Phase = { kind: 'loading'; preview: string } | { kind: 'review'; hunks: Hunk[]; model?: string } | { kind: 'error'; message: string };
 
 export function RewriteReview({ editor, request, onClose }: { editor: Editor; request: RewriteRequest; onClose(): void }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'loading', preview: '' });
@@ -37,7 +39,7 @@ export function RewriteReview({ editor, request, onClose }: { editor: Editor; re
   }, [editor, source.from, source.to]);
 
   useEffect(() => {
-    const project = useStore.getState().project;
+    const { project, style } = useStore.getState();
     if (!project) return;
     const provider = project.manifest.ai.provider;
     let preview = '';
@@ -46,7 +48,13 @@ export function RewriteReview({ editor, request, onClose }: { editor: Editor; re
       {
         provider,
         model: resolveModel(provider, project.manifest.ai.models[provider]),
-        system: `${REWRITE_SYSTEM}\n\nTaustaksi teoksen tiedot:\n${buildSystemPrompt(project)}`,
+        system: [
+          REWRITE_SYSTEM,
+          style?.description ? `KIRJAILIJAN TYYLI (noudata tätä):\n${style.description}` : '',
+          `Taustaksi teoksen tiedot:\n${buildSystemPrompt(project)}`
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
         messages: [{ role: 'user', content: `OHJE: ${request.instruction}\n\nTEKSTI:\n${source.markdown}` }],
         maxTokens: Math.max(2000, source.markdown.length * 2)
       },
@@ -66,7 +74,11 @@ export function RewriteReview({ editor, request, onClose }: { editor: Editor; re
       }
       const revised = cleanModelOutput(result.text ?? '');
       const hunks = diffHunks(source.markdown, revised);
-      setPhase(hunks.some(h => h.kind === 'change') ? { kind: 'review', hunks } : { kind: 'error', message: 'AI ei ehdottanut muutoksia.' });
+      setPhase(
+        hunks.some(h => h.kind === 'change')
+          ? { kind: 'review', hunks, model: result.model }
+          : { kind: 'error', message: 'AI ei ehdottanut muutoksia.' }
+      );
     });
     return () => {
       cancelled = true;
@@ -77,12 +89,12 @@ export function RewriteReview({ editor, request, onClose }: { editor: Editor; re
   const toggle = (index: number) =>
     setPhase(p =>
       p.kind === 'review'
-        ? { kind: 'review', hunks: p.hunks.map((h, i) => (i === index && h.kind === 'change' ? { ...h, accepted: !h.accepted } : h)) }
+        ? { ...p, hunks: p.hunks.map((h, i) => (i === index && h.kind === 'change' ? { ...h, accepted: !h.accepted } : h)) }
         : p
     );
 
   const setAll = (accepted: boolean) =>
-    setPhase(p => (p.kind === 'review' ? { kind: 'review', hunks: p.hunks.map(h => (h.kind === 'change' ? { ...h, accepted } : h)) } : p));
+    setPhase(p => (p.kind === 'review' ? { ...p, hunks: p.hunks.map(h => (h.kind === 'change' ? { ...h, accepted } : h)) } : p));
 
   const apply = () => {
     if (phase.kind !== 'review') return;
@@ -93,7 +105,7 @@ export function RewriteReview({ editor, request, onClose }: { editor: Editor; re
       return;
     }
     if (phase.hunks.some(h => h.kind === 'change' && h.accepted)) {
-      applyMarkdown(editor, target, source.mode, mergeHunks(phase.hunks));
+      applyMarkdown(editor, target, source.mode, mergeHunks(phase.hunks), { source: 'ai-edit', model: phase.model });
     }
     onClose();
   };
@@ -108,6 +120,16 @@ export function RewriteReview({ editor, request, onClose }: { editor: Editor; re
   });
 
   const changes = phase.kind === 'review' ? phase.hunks.filter(h => h.kind === 'change') : [];
+  // Does the result still sound like the writer? Measured from their own text in the manuscript
+  const hasSuggestion = phase.kind === 'review';
+  const profile = useMemo(() => {
+    const { project, provenance } = useStore.getState();
+    return hasSuggestion && project ? measureOwnStyle(project, provenance) : null;
+  }, [hasSuggestion]);
+  const warnings = useMemo(
+    () => (profile && phase.kind === 'review' ? compareStyle(profile, source.markdown, mergeHunks(phase.hunks)) : []),
+    [profile, phase, source.markdown]
+  );
   const acceptedCount = changes.filter(h => h.kind === 'change' && h.accepted).length;
 
   return (
@@ -140,6 +162,15 @@ export function RewriteReview({ editor, request, onClose }: { editor: Editor; re
           </div>
         )}
       </div>
+
+      {warnings.length > 0 && (
+        <div className="review-warnings">
+          <strong>Ei kuulosta sinulta?</strong>
+          {warnings.map(w => (
+            <div key={w.id}>{w.message}</div>
+          ))}
+        </div>
+      )}
 
       <div className="review-actions">
         {phase.kind === 'review' && (

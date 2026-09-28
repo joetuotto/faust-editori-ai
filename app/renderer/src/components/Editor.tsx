@@ -9,6 +9,7 @@ export function Editor() {
   const activeId = useStore(s => s.activeId);
   const doc = useStore(s => (s.activeId ? s.project?.docs[s.activeId] : undefined));
   const language = useStore(s => s.project?.manifest.language ?? 'fi');
+  const showProvenance = useStore(s => s.showProvenance);
   const { renameNode } = useStore.getState();
   const pageRef = useRef<HTMLDivElement>(null);
 
@@ -27,7 +28,7 @@ export function Editor() {
 
   return (
     <div className="editor-wrap">
-      <div className="editor-page" ref={pageRef}>
+      <div className={`editor-page${showProvenance ? ' show-prov' : ''}`} ref={pageRef}>
         <input
           key={`title-${activeId}`}
           className="doc-title"
