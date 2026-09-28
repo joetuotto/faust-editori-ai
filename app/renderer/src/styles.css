@@ -1307,3 +1307,78 @@ button {
 .reader-note .quote:hover {
   color: var(--accent);
 }
+
+/* ---------- find & replace ---------- */
+
+.find-bar {
+  position: sticky;
+  top: 8px;
+  z-index: 15;
+  margin: 0 0 16px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.find-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.find-row .input {
+  flex: 1;
+}
+
+.find-count {
+  min-width: 44px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.search-match {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  border-radius: 2px;
+}
+
+.search-match.current {
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+  outline: 1px solid var(--accent);
+}
+
+.search-group {
+  margin-bottom: 14px;
+}
+
+.search-doc {
+  background: none;
+  border: none;
+  padding: 0 0 4px;
+  font-family: var(--font-serif);
+  font-size: 17px;
+  color: var(--text);
+}
+
+.search-hit {
+  padding: 3px 8px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: var(--font-serif);
+  font-size: 15px;
+  color: var(--text-2);
+}
+
+.search-hit:hover {
+  background: var(--hover);
+}
+
+.search-hit mark {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--text);
+  border-radius: 2px;
+}

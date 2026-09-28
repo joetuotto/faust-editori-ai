@@ -12,6 +12,8 @@ import { setActiveEditor } from './activeEditor';
 import { SpellMenu, type SpellMenuState } from './SpellMenu';
 import { RewriteReview, type RewriteRequest } from './RewriteReview';
 import { RewriteMenu } from './RewriteMenu';
+import { Search } from './search';
+import { FindBar } from './FindBar';
 import { useStore } from '../store';
 
 interface Props {
@@ -61,7 +63,8 @@ export function ManuscriptEditor({ docId, body, language }: Props) {
         Spellcheck.configure({ knownWords: bibleNames, enabled: () => finnish && useStore.getState().spellcheck }),
         RewriteTarget,
         ProvenanceMark,
-        ProvenanceGuard
+        ProvenanceGuard,
+        Search
       ],
       content: body,
       contentType: 'markdown',
@@ -115,13 +118,19 @@ export function ManuscriptEditor({ docId, body, language }: Props) {
     if (!editor || body === lastEmitted.current) return;
     lastEmitted.current = body;
     editor.commands.setContent(body, { contentType: 'markdown', emitUpdate: false });
-    useStore.getState().setProvenance(docId, extractProvenance(editor.state.doc));
+    // Keep AI provenance: re-anchor the stored spans in the new content
+    const { provenance, setProvenance } = useStore.getState();
+    applyProvenance(editor, provenance[docId]);
+    setProvenance(docId, extractProvenance(editor.state.doc));
   }, [body, editor, docId]);
+
+  const find = useStore(s => s.find);
 
   if (!editor) return null;
 
   return (
     <>
+      {find.open && <FindBar editor={editor} initialQuery={find.query} onClose={() => useStore.getState().setFind({ open: false })} />}
       <FormatBubble editor={editor} onRewrite={setRewrite} busy={!!rewrite} />
       <EditorContent editor={editor} />
       {spellMenu && <SpellMenu editor={editor} state={spellMenu} onClose={() => setSpellMenu(null)} />}

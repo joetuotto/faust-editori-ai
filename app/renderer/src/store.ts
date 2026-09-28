@@ -21,7 +21,7 @@ const MANIFEST_SAVE_DELAY = 400;
 
 export type Theme = 'NOX' | 'DEIS';
 export type SaveState = 'saved' | 'pending' | 'saving' | 'error';
-export type Panel = 'none' | 'bible' | 'bible-update' | 'settings' | 'export' | 'history' | 'style' | 'structure' | 'reader';
+export type Panel = 'none' | 'bible' | 'bible-update' | 'settings' | 'export' | 'history' | 'style' | 'structure' | 'reader' | 'search';
 
 export interface Toast {
   id: number;
@@ -35,6 +35,10 @@ interface State {
   /** AI provenance per document id (.faust/provenance.json) */
   provenance: Record<string, DocProvenance>;
   showProvenance: boolean;
+  /** In-document find bar; `query` pre-fills it (e.g. from a project search result) */
+  find: { open: boolean; query: string };
+  /** Manuscript word total at the start of today (daily goal) */
+  dayStart: { date: string; words: number } | null;
   /** The writer's style profile (.faust/style.json) */
   style: StyleProfile | null;
   theme: Theme;
@@ -50,6 +54,7 @@ interface State {
 
   setProject(project: OpenProject | null, activeId?: string | null, provenance?: Record<string, DocProvenance>): void;
   setProvenance(docId: string, value: DocProvenance): void;
+  setFind(find: { open: boolean; query?: string }): void;
   setStyle(style: StyleProfile | null): void;
   setActive(id: string | null): void;
   setTheme(theme: Theme): void;
@@ -159,6 +164,8 @@ export const useStore = create<State>((set, get) => {
     activeId: null,
     provenance: {},
     showProvenance: false,
+    find: { open: false, query: '' },
+    dayStart: null,
     style: null,
     theme: 'NOX',
     spellcheck: true,
@@ -173,7 +180,7 @@ export const useStore = create<State>((set, get) => {
 
     setProject(project, activeId, provenance = {}) {
       const initial = activeId && project?.docs[activeId] ? activeId : (project?.manifest.structure[0]?.id ?? null);
-      set({ project, activeId: initial, provenance, style: null, panel: 'none', saveState: 'saved' });
+      set({ project, activeId: initial, provenance, style: null, panel: 'none', saveState: 'saved', find: { open: false, query: '' }, dayStart: null });
     },
 
     setStyle(style) {
@@ -212,6 +219,10 @@ export const useStore = create<State>((set, get) => {
     setNoxAssist(noxAssist) {
       set({ noxAssist });
       void window.faust.app.setNoxAssist(noxAssist);
+    },
+
+    setFind({ open, query }) {
+      set({ find: { open, query: query ?? get().find.query } });
     },
 
     toggle(key) {

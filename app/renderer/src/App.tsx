@@ -13,6 +13,7 @@ import { StyleDialog } from './components/StyleDialog';
 import { BibleUpdateDialog } from './components/BibleUpdateDialog';
 import { StructureDialog } from './components/StructureDialog';
 import { ReaderDialog } from './components/ReaderDialog';
+import { SearchDialog } from './components/SearchDialog';
 import { ExportDialog } from './components/ExportDialog';
 import { Inspector } from './components/Inspector';
 import { NewProjectDialog } from './components/NewProjectDialog';
@@ -108,6 +109,14 @@ export function App() {
           case 'show-history':
             s.setPanel('history');
             break;
+          case 'find': {
+            const selected = window.getSelection()?.toString().trim() ?? '';
+            s.setFind({ open: true, query: selected && !selected.includes('\n') ? selected : undefined });
+            break;
+          }
+          case 'find-project':
+            s.setPanel('search');
+            break;
         }
       }),
     []
@@ -167,6 +176,7 @@ function Workspace({ onNewProject }: { onNewProject(): void }) {
       {panel === 'bible-update' && <BibleUpdateDialog />}
       {panel === 'structure' && <StructureDialog />}
       {panel === 'reader' && <ReaderDialog />}
+      {panel === 'search' && <SearchDialog />}
     </div>
   );
 }
@@ -210,9 +220,72 @@ function ProjectMenu({ onNewProject }: { onNewProject(): void }) {
   );
 }
 
+/** Local calendar date, e.g. 2026-09-28 */
+function today(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+interface Progress {
+  days: Record<string, { start: number; end: number }>;
+}
+
+/**
+ * Daily goal: words written today = manuscript total now minus the total at
+ * the first moment the project was open today. Days are kept in
+ * .faust/progress.json for a simple writing log.
+ */
+function useDailyProgress(total: number): number {
+  const projectPath = useStore(s => s.project?.path);
+  const dayStart = useStore(s => s.dayStart);
+  const [loaded, setLoaded] = useState<{ path: string; progress: Progress } | null>(null);
+  // Only trust a log read for the project that is open now
+  const log = loaded && loaded.path === projectPath ? loaded.progress : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!projectPath) return;
+    void window.faust.project.readInternal('progress.json').then(raw => {
+      if (cancelled) return;
+      let parsed: Progress = { days: {} };
+      try {
+        if (raw) parsed = JSON.parse(raw) as Progress;
+      } catch {
+        // start a fresh log
+      }
+      setLoaded({ path: projectPath, progress: parsed });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath]);
+
+  // Start (or roll over to) today once the log is loaded
+  useEffect(() => {
+    if (!log) return;
+    const date = today();
+    if (dayStart?.date === date) return;
+    const start = log.days[date]?.start ?? total;
+    useStore.setState({ dayStart: { date, words: start } });
+  }, [log, dayStart, total]);
+
+  // Record today's end count, at most every few seconds
+  useEffect(() => {
+    if (!log || !dayStart) return;
+    const timer = setTimeout(() => {
+      const next: Progress = { days: { ...log.days, [dayStart.date]: { start: dayStart.words, end: total } } };
+      void window.faust.project.writeInternal('progress.json', JSON.stringify(next, null, 1));
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [log, dayStart, total]);
+
+  return dayStart ? total - dayStart.words : 0;
+}
+
 function StatusBar() {
   const docs = useStore(s => s.project!.docs);
   const target = useStore(s => s.project!.manifest.targets.totalWords);
+  const dailyTarget = useStore(s => s.project!.manifest.targets.dailyWords);
   const activeId = useStore(s => s.activeId);
   const saveState = useStore(s => s.saveState);
   const focusMode = useStore(s => s.focusMode);
@@ -220,6 +293,8 @@ function StatusBar() {
   const total = useMemo(() => Object.values(docs).reduce((sum, d) => sum + countWords(d.body), 0), [docs]);
   const current = activeId && docs[activeId] ? countWords(docs[activeId].body) : 0;
   const percent = target > 0 ? Math.min(100, (total / target) * 100) : 0;
+  const todayWords = useDailyProgress(total);
+  const dailyPercent = dailyTarget > 0 ? Math.min(100, (Math.max(0, todayWords) / dailyTarget) * 100) : 0;
 
   const saveLabel = { saved: 'Tallennettu', pending: 'Muutoksia…', saving: 'Tallennetaan…', error: 'Tallennus epäonnistui' }[saveState];
 
@@ -232,6 +307,18 @@ function StatusBar() {
       <div className="progress" title={`${percent.toFixed(0)} %`}>
         <div style={{ width: `${percent}%` }} />
       </div>
+      {dailyTarget > 0 && (
+        <>
+          <span title="Tänään kirjoitetut sanat (lisätyt miinus poistetut)">
+            Tänään {todayWords >= 0 ? '+' : ''}
+            {todayWords.toLocaleString('fi-FI')} / {dailyTarget.toLocaleString('fi-FI')}
+            {todayWords >= dailyTarget ? ' ✓' : ''}
+          </span>
+          <div className="progress" title={`${dailyPercent.toFixed(0)} %`}>
+            <div style={{ width: `${dailyPercent}%` }} />
+          </div>
+        </>
+      )}
       <div className="spacer" />
       {focusMode && (
         <button className="btn ghost small" onClick={() => useStore.getState().toggle('focusMode')}>

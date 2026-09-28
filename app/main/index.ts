@@ -118,7 +118,10 @@ function buildMenu() {
         { role: 'cut', label: 'Leikkaa' },
         { role: 'copy', label: 'Kopioi' },
         { role: 'paste', label: 'Liitä' },
-        { role: 'selectAll', label: 'Valitse kaikki' }
+        { role: 'selectAll', label: 'Valitse kaikki' },
+        { type: 'separator' },
+        { label: 'Etsi…', accelerator: 'CmdOrCtrl+F', click: () => sendMenu('find') },
+        { label: 'Etsi koko teoksesta…', accelerator: 'CmdOrCtrl+Shift+F', click: () => sendMenu('find-project') }
       ]
     },
     {
