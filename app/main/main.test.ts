@@ -36,7 +36,10 @@ const LEGACY = {
     {
       id: 'chapter-1', type: 'chapter', title: 'Ensimmäinen', order: 0,
       content: 'Rivi yksi.\nRivi *kaksi*.', synopsis: 'Alku', povCharacter: 'Aino',
-      annotations: [{ id: 'n1', text: 'huom' }],
+      annotations: [
+        { id: 'n1', text: 'huom' },
+        { id: 'n2', type: 'user_comment', position: 17, length: 5, content: 'Tarkista', resolved: true }
+      ],
       children: [{ id: 'scene-1', type: 'scene', title: 'Kohtaus', content: 'Sisällä.', order: 0 }]
     }
   ],
@@ -44,7 +47,7 @@ const LEGACY = {
   locations: [{ id: 'l1', name: 'Mökki', description: 'Järven rannalla' }],
   plotThreads: [{ id: 't1', title: 'Kadonnut kirje', status: 'open' }],
   snapshots: [{ id: 's1', name: 'Vanha versio' }],
-  bookmarks: []
+  bookmarks: [{ id: 'b1', chapterId: 'chapter-1', position: 12, name: 'Tästä jatkan' }]
 };
 
 describe('fsutil', () => {
@@ -129,6 +132,22 @@ describe('legacy import', () => {
     expect(JSON.stringify(converted)).not.toContain('sk-secret');
   });
 
+  it('turns legacy annotations and bookmarks into anchored comments', () => {
+    const converted = convertLegacy(LEGACY);
+    const first = converted.docs.find(d => d.node.title === 'Ensimmäinen')!;
+    const threads = converted.comments[first.node.id].threads;
+    expect(threads.map(t => [t.kind, t.quote])).toEqual([
+      ['comment', 'Rivi'],
+      ['comment', 'kaksi'],
+      ['bookmark', 'Rivi kaksi.']
+    ]);
+    expect(threads[1].messages[0]).toMatchObject({ author: 'import', text: 'Tarkista' });
+    expect(threads[1].resolved).toBe(true);
+    expect(threads[2].label).toBe('Tästä jatkan');
+    // Not anchored yet: the editor places them by quote, the hint picks between repeats
+    expect(threads.every(t => t.start === -1 && t.hint !== undefined)).toBe(true);
+  });
+
   it('imports a legacy file into a new folder that opens', async () => {
     const legacyFile = path.join(dir, 'vanha.faust');
     await fs.writeFile(legacyFile, JSON.stringify(LEGACY));
@@ -139,6 +158,8 @@ describe('legacy import', () => {
     expect(Object.values(project.bible).map(e => e.name).sort()).toEqual(['Aino', 'Kadonnut kirje', 'Mökki']);
     const legacyJson = JSON.parse(await fs.readFile(path.join(projectPath, '.faust', 'legacy.json'), 'utf-8'));
     expect(legacyJson.importedFrom).toBe('vanha.faust');
+    const comments = JSON.parse(await fs.readFile(path.join(projectPath, '.faust', 'comments.json'), 'utf-8'));
+    expect(Object.values(comments.docs)).toHaveLength(1);
     // Original file untouched
     expect(JSON.parse(await fs.readFile(legacyFile, 'utf-8')).title).toBe('Vanha romaani');
   });

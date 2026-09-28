@@ -8,6 +8,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { BibleEntry, BibleKind, Doc, DocMeta, DocStatus, NodeType, ProjectManifest, ProviderId, TreeNode } from '../shared/types';
 import { newId, plainLinesToMarkdown } from '../shared/text';
+import { bookmarkLabel, type CommentThread, type CommentsFile, type DocComments } from '../shared/comments';
 import { bibleFileFor, docFileFor } from '../shared/tree';
 import { resolveModel } from '../shared/models';
 import { PROJECT_GITIGNORE, emptyManifest, uniqueProjectPath, writeBibleEntry, writeDoc, writeInternal, writeManifest } from './projectStore';
@@ -22,6 +23,8 @@ export interface ConvertedProject {
   docs: { node: TreeNode; doc: Doc }[];
   bible: BibleEntry[];
   leftovers: Record<string, unknown>;
+  /** Legacy annotations and bookmarks as comment threads per new document id */
+  comments: Record<string, DocComments>;
 }
 
 const STATUSES: DocStatus[] = ['plan', 'draft', 'revision', 'final'];
@@ -52,11 +55,63 @@ export function isLegacyProject(data: unknown): data is LegacyProject {
     (data as LegacyProject).format !== 'faust-project';
 }
 
+/**
+ * The legacy editor stored a plain-text offset. Lines became paragraphs, so
+ * an offset only roughly survives; the quoted text is the real anchor and the
+ * offset only picks between repeated phrases.
+ */
+function legacyAnchor(content: string, position: unknown, length: unknown, wholeLine: boolean): { quote: string; hint: number } | null {
+  const text = content.replace(/\r\n/g, '\n');
+  const pos = Math.max(0, Math.min(Number(position) || 0, text.length));
+  let start = pos;
+  let end = pos + Math.max(0, Number(length) || 0);
+  if (wholeLine || end === start) {
+    // No range: the line (bookmark) or the word at the offset
+    const boundary = wholeLine ? /\n/ : /[\s.,;:!?”"'()–—-]/;
+    while (start > 0 && !boundary.test(text[start - 1])) start--;
+    while (end < text.length && !boundary.test(text[end])) end++;
+  }
+  // Anchors stay inside one paragraph; asterisks and underscores became emphasis in Markdown
+  const quote = text.slice(start, Math.min(end, text.length)).split('\n')[0].replace(/[*_]/g, '').trim();
+  if (!quote) return null;
+  // Every newline before the offset became a paragraph break (two characters)
+  const newlines = (text.slice(0, start).match(/\n/g) ?? []).length;
+  return { quote, hint: start + newlines };
+}
+
+function annotationThreads(item: LegacyDoc, now: string): CommentThread[] {
+  const content = str(item.content);
+  const list: LegacyDoc[] = Array.isArray(item.annotations) ? item.annotations : [];
+  return list.flatMap(a => {
+    const anchor = legacyAnchor(content, a.position, a.length, false);
+    const text = str(a.content || a.text || a.note).trim();
+    if (!anchor || !text) return [];
+    const label = [a.type && String(a.type).startsWith('ai_') ? 'AI' : '', a.priority && a.priority !== 'medium' ? str(a.priority) : '']
+      .filter(Boolean)
+      .join(', ');
+    return [
+      {
+        id: newId(),
+        kind: 'comment' as const,
+        quote: anchor.quote,
+        start: -1,
+        end: -1,
+        hint: anchor.hint,
+        messages: [{ author: 'import' as const, text: label ? `[${label}] ${text}` : text, at: str(a.createdAt) || now }],
+        resolved: !!a.resolved,
+        created: str(a.createdAt) || now
+      }
+    ];
+  });
+}
+
 function convertDocs(
   items: LegacyDoc[],
   now: string,
   out: { node: TreeNode; doc: Doc }[],
-  extras: Record<string, unknown>
+  extras: Record<string, unknown>,
+  legacyIds: Map<string, { id: string; content: string }>,
+  comments: Record<string, DocComments>
 ): TreeNode[] {
   return [...items]
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -84,9 +139,12 @@ function convertDocs(
       if (Object.keys(unmapped).length > 0) extras[id] = { legacyId: item.id, ...unmapped };
 
       out.push({ node, doc: { meta, body: plainLinesToMarkdown(str(item.content)) } });
+      if (item.id !== undefined) legacyIds.set(String(item.id), { id, content: str(item.content) });
+      const threads = annotationThreads(item, now);
+      if (threads.length > 0) comments[id] = { hash: '', threads };
 
       if (Array.isArray(item.children) && item.children.length > 0) {
-        node.children = convertDocs(item.children, now, out, extras);
+        node.children = convertDocs(item.children, now, out, extras, legacyIds, comments);
       }
       return node;
     });
@@ -140,7 +198,28 @@ export function convertLegacy(legacy: LegacyProject, now = new Date().toISOStrin
 
   const docs: { node: TreeNode; doc: Doc }[] = [];
   const docExtras: Record<string, unknown> = {};
-  manifest.structure = convertDocs(Array.isArray(legacy.structure) ? legacy.structure : [], now, docs, docExtras);
+  const legacyIds = new Map<string, { id: string; content: string }>();
+  const comments: Record<string, DocComments> = {};
+  manifest.structure = convertDocs(Array.isArray(legacy.structure) ? legacy.structure : [], now, docs, docExtras, legacyIds, comments);
+
+  for (const b of Array.isArray(legacy.bookmarks) ? (legacy.bookmarks as LegacyDoc[]) : []) {
+    const target = legacyIds.get(String(b.chapterId));
+    const anchor = target && legacyAnchor(target.content, b.position, 0, true);
+    if (!target || !anchor) continue;
+    const doc = (comments[target.id] ??= { hash: '', threads: [] });
+    doc.threads.push({
+      id: newId(),
+      kind: 'bookmark',
+      label: str(b.name) || bookmarkLabel(anchor.quote),
+      quote: anchor.quote,
+      start: -1,
+      end: -1,
+      hint: anchor.hint,
+      messages: [],
+      resolved: false,
+      created: str(b.created) || now
+    });
+  }
 
   const bible: BibleEntry[] = [
     ...(legacy.characters ?? []).map((c: LegacyDoc) => bibleEntry('characters', c, now)),
@@ -158,7 +237,7 @@ export function convertLegacy(legacy: LegacyProject, now = new Date().toISOStrin
   );
   if (Object.keys(docExtras).length > 0) leftovers.documentExtras = docExtras;
 
-  return { manifest, docs, bible, leftovers };
+  return { manifest, docs, bible, leftovers, comments };
 }
 
 /** Write a converted project to a new folder next to `parentDir`; returns its path */
@@ -179,6 +258,10 @@ export async function importLegacyFile(legacyFile: string, parentDir: string): P
     null,
     2
   ));
+  if (Object.keys(converted.comments).length > 0) {
+    const file: CommentsFile = { version: 1, docs: converted.comments };
+    await writeInternal(projectPath, 'comments.json', JSON.stringify(file, null, 1));
+  }
   await writeFileAtomic(path.join(projectPath, '.gitignore'), PROJECT_GITIGNORE);
   await writeManifest(projectPath, converted.manifest);
   return projectPath;

@@ -1382,3 +1382,117 @@ button {
   color: var(--text);
   border-radius: 2px;
 }
+
+/* ---------- comments & bookmarks ---------- */
+
+:root,
+:root[data-theme='NOX'] {
+  --comment: rgba(232, 200, 120, 0.13);
+  --comment-line: rgba(232, 200, 120, 0.55);
+  --comment-active: rgba(232, 200, 120, 0.3);
+}
+
+:root[data-theme='DEIS'] {
+  --comment: rgba(237, 161, 0, 0.14);
+  --comment-line: rgba(160, 110, 0, 0.6);
+  --comment-active: rgba(237, 161, 0, 0.32);
+}
+
+/* Anchors are always faintly visible so a comment is never "lost" in the text */
+.manuscript .comment-comment {
+  border-bottom: 1px dotted var(--comment-line);
+}
+
+.show-comments .manuscript .comment-comment {
+  background: var(--comment);
+  cursor: pointer;
+}
+
+.manuscript .comment-bookmark {
+  box-shadow: inset 2px 0 0 var(--comment-line);
+}
+
+.comments-panel .tabs {
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.comment-thread {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--comment-line);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comment-thread.comment-bookmark {
+  border-left-color: var(--accent-2);
+}
+
+.comment-thread.active {
+  border-color: var(--border-strong);
+  background: var(--selected);
+}
+
+.comment-thread.resolved {
+  opacity: 0.6;
+}
+
+.comment-quote {
+  font-family: var(--font-serif);
+  font-style: italic;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.comment-thread .textarea {
+  min-height: 0;
+  resize: vertical;
+}
+
+.comment-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.comment-actions,
+.comment-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.comment-buttons {
+  flex-direction: row;
+}
+
+.comment-toggle {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.bookmark-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bookmark-list button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  text-align: left;
+  gap: 2px;
+}

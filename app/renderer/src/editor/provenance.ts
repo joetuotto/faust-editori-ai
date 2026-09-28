@@ -74,9 +74,12 @@ function sameMarks(a?: JSONContent['marks'], b?: JSONContent['marks']) {
   return JSON.stringify(a ?? []) === JSON.stringify(b ?? []);
 }
 
-/** Remove provenance marks and merge text nodes that became identical */
+/** Marks that exist only in the editor (stored in .faust/, never in Markdown) */
+const EDITOR_ONLY_MARKS = new Set(['provenance', 'comment']);
+
+/** Remove editor-only marks and merge text nodes that became identical */
 export function stripProvenance(node: JSONContent): JSONContent {
-  const marks = node.marks?.filter(m => m.type !== 'provenance');
+  const marks = node.marks?.filter(m => !EDITOR_ONLY_MARKS.has(m.type));
   const out: JSONContent = { ...node, ...(node.marks ? { marks: marks!.length ? marks : undefined } : {}) };
   if (!out.marks) delete out.marks;
   if (node.content) {
@@ -94,7 +97,7 @@ export function stripProvenance(node: JSONContent): JSONContent {
   return out;
 }
 
-/** Markdown of the editor content without provenance marks */
+/** Markdown of the editor content without editor-only marks */
 export function cleanMarkdown(editor: Editor): string {
   return editor.markdown?.serialize(stripProvenance(editor.getJSON())) ?? editor.getMarkdown();
 }

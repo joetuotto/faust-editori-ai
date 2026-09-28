@@ -16,6 +16,8 @@ import { ReaderDialog } from './components/ReaderDialog';
 import { SearchDialog } from './components/SearchDialog';
 import { ExportDialog } from './components/ExportDialog';
 import { Inspector } from './components/Inspector';
+import { CommentsPanel } from './components/CommentsPanel';
+import { startThreadInActive } from './editor/commentActions';
 import { NewProjectDialog } from './components/NewProjectDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { Toasts } from './components/Toasts';
@@ -94,6 +96,15 @@ export function App() {
           case 'toggle-inspector':
             s.toggle('showInspector');
             break;
+          case 'toggle-comments':
+            s.toggle('showComments');
+            break;
+          case 'add-comment':
+            startThreadInActive('comment');
+            break;
+          case 'add-bookmark':
+            startThreadInActive('bookmark');
+            break;
           case 'toggle-ai':
             s.toggle('showAI');
             break;
@@ -133,8 +144,16 @@ export function App() {
 
 function Workspace({ onNewProject }: { onNewProject(): void }) {
   const project = useStore(s => s.project)!;
-  const { showBinder, showInspector, showAI, focusMode, panel, theme } = useStore(
-    useShallow(s => ({ showBinder: s.showBinder, showInspector: s.showInspector, showAI: s.showAI, focusMode: s.focusMode, panel: s.panel, theme: s.theme }))
+  const { showBinder, showInspector, showComments, showAI, focusMode, panel, theme } = useStore(
+    useShallow(s => ({
+      showBinder: s.showBinder,
+      showInspector: s.showInspector,
+      showComments: s.showComments,
+      showAI: s.showAI,
+      focusMode: s.focusMode,
+      panel: s.panel,
+      theme: s.theme
+    }))
   );
   const { toggle, setTheme, setPanel } = useStore.getState();
 
@@ -150,11 +169,14 @@ function Workspace({ onNewProject }: { onNewProject(): void }) {
           <button className="btn small" onClick={() => setPanel('structure')}>Rakenne</button>
           <button className="btn small" onClick={() => setPanel('history')} title="Versiohistoria (⇧⌘H)">Historia</button>
           <button className={`btn small${showInspector ? ' active' : ''}`} onClick={() => toggle('showInspector')}>Tarkastelija</button>
+          <button className={`btn small${showComments ? ' active' : ''}`} onClick={() => toggle('showComments')} title="Kommentit ja kirjanmerkit (⌘3)">
+            Kommentit
+          </button>
           <button className={`btn small${showAI ? ' active' : ''}`} onClick={() => toggle('showAI')}>AI</button>
           <button className="btn small" title="Vaihda päivä- ja yötilan välillä" onClick={() => setTheme(theme === 'NOX' ? 'DEIS' : 'NOX')}>
             {theme}
           </button>
-          <button className="btn small" onClick={() => toggle('focusMode')} title="Fokustila (⇧⌘F)">Fokus</button>
+          <button className="btn small" onClick={() => toggle('focusMode')} title="Fokustila (⇧⌘↩)">Fokus</button>
           <ProjectMenu onNewProject={onNewProject} />
         </header>
       )}
@@ -163,6 +185,7 @@ function Workspace({ onNewProject }: { onNewProject(): void }) {
         {showBinder && !focusMode && <Binder />}
         <Editor />
         {showInspector && !focusMode && <Inspector />}
+        {showComments && !focusMode && <CommentsPanel />}
         {showAI && !focusMode && <AIPanel />}
       </div>
 

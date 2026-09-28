@@ -3,6 +3,7 @@ import type { BibleEntry, BibleKind, Doc, DocMeta, NodeType, OpenProject, Projec
 import { newId } from '../../shared/text';
 import type { DocProvenance, ProvenanceFile } from '../../shared/provenance';
 import type { StyleProfile } from '../../shared/style';
+import type { CommentThread, CommentsFile, DocComments } from '../../shared/comments';
 import {
   bibleFileFor,
   canHaveChildren,
@@ -35,6 +36,11 @@ interface State {
   /** AI provenance per document id (.faust/provenance.json) */
   provenance: Record<string, DocProvenance>;
   showProvenance: boolean;
+  /** Comments and bookmarks per document id (.faust/comments.json) */
+  comments: Record<string, DocComments>;
+  /** Thread selected in the comments panel or clicked in the text */
+  activeComment: string | null;
+  showComments: boolean;
   /** In-document find bar; `query` pre-fills it (e.g. from a project search result) */
   find: { open: boolean; query: string };
   /** Manuscript word total at the start of today (daily goal) */
@@ -52,15 +58,25 @@ interface State {
   saveState: SaveState;
   toasts: Toast[];
 
-  setProject(project: OpenProject | null, activeId?: string | null, provenance?: Record<string, DocProvenance>): void;
+  setProject(
+    project: OpenProject | null,
+    activeId?: string | null,
+    provenance?: Record<string, DocProvenance>,
+    comments?: Record<string, DocComments>
+  ): void;
   setProvenance(docId: string, value: DocProvenance): void;
+  setComments(docId: string, value: DocComments | undefined): void;
+  addThread(docId: string, thread: CommentThread): void;
+  updateThread(docId: string, id: string, patch: Partial<CommentThread>): void;
+  deleteThread(docId: string, id: string): void;
+  setActiveComment(id: string | null): void;
   setFind(find: { open: boolean; query?: string }): void;
   setStyle(style: StyleProfile | null): void;
   setActive(id: string | null): void;
   setTheme(theme: Theme): void;
   setSpellcheck(enabled: boolean): void;
   setNoxAssist(enabled: boolean): void;
-  toggle(key: 'showBinder' | 'showInspector' | 'showAI' | 'focusMode' | 'showProvenance'): void;
+  toggle(key: 'showBinder' | 'showInspector' | 'showAI' | 'focusMode' | 'showProvenance' | 'showComments'): void;
   setPanel(panel: Panel): void;
   notify(text: string, kind?: Toast['kind']): void;
   dismiss(id: number): void;
@@ -86,6 +102,7 @@ const docTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const bibleTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let manifestTimer: ReturnType<typeof setTimeout> | null = null;
 let provenanceTimer: ReturnType<typeof setTimeout> | null = null;
+let commentsTimer: ReturnType<typeof setTimeout> | null = null;
 let toastCounter = 0;
 
 export const useStore = create<State>((set, get) => {
@@ -97,7 +114,7 @@ export const useStore = create<State>((set, get) => {
     if (!result.success) {
       set({ saveState: 'error' });
       get().notify(`Tallennus epäonnistui: ${result.error}`, 'error');
-    } else if (docTimers.size === 0 && bibleTimers.size === 0 && !manifestTimer && !provenanceTimer) {
+    } else if (docTimers.size === 0 && bibleTimers.size === 0 && !manifestTimer && !provenanceTimer && !commentsTimer) {
       set({ saveState: 'saved' });
     }
   }
@@ -149,6 +166,24 @@ export const useStore = create<State>((set, get) => {
     return run(() => window.faust.project.writeInternal('provenance.json', JSON.stringify(file, null, 1)));
   }
 
+  function saveCommentsNow() {
+    commentsTimer = null;
+    const file: CommentsFile = { version: 1, docs: get().comments };
+    return run(() => window.faust.project.writeInternal('comments.json', JSON.stringify(file, null, 1)));
+  }
+
+  function patchComments(docId: string, fn: (threads: CommentThread[]) => CommentThread[], hash?: string) {
+    const current = get().comments[docId];
+    const threads = fn(current?.threads ?? []);
+    const comments = { ...get().comments };
+    if (threads.length === 0) delete comments[docId];
+    else comments[docId] = { hash: hash ?? current?.hash ?? '', threads };
+    set({ comments });
+    markPending();
+    if (commentsTimer) clearTimeout(commentsTimer);
+    commentsTimer = setTimeout(() => void saveCommentsNow(), DOC_SAVE_DELAY);
+  }
+
   function patchProject(fn: (p: OpenProject) => OpenProject) {
     const project = get().project;
     if (project) set({ project: fn(project) });
@@ -164,6 +199,9 @@ export const useStore = create<State>((set, get) => {
     activeId: null,
     provenance: {},
     showProvenance: false,
+    comments: {},
+    activeComment: null,
+    showComments: false,
     find: { open: false, query: '' },
     dayStart: null,
     style: null,
@@ -178,9 +216,9 @@ export const useStore = create<State>((set, get) => {
     saveState: 'saved',
     toasts: [],
 
-    setProject(project, activeId, provenance = {}) {
+    setProject(project, activeId, provenance = {}, comments = {}) {
       const initial = activeId && project?.docs[activeId] ? activeId : (project?.manifest.structure[0]?.id ?? null);
-      set({ project, activeId: initial, provenance, style: null, panel: 'none', saveState: 'saved', find: { open: false, query: '' }, dayStart: null });
+      set({ project, activeId: initial, provenance, comments, activeComment: null, style: null, panel: 'none', saveState: 'saved', find: { open: false, query: '' }, dayStart: null });
     },
 
     setStyle(style) {
@@ -199,6 +237,30 @@ export const useStore = create<State>((set, get) => {
       markPending();
       if (provenanceTimer) clearTimeout(provenanceTimer);
       provenanceTimer = setTimeout(() => void saveProvenanceNow(), DOC_SAVE_DELAY);
+    },
+
+    setComments(docId, value) {
+      const previous = get().comments[docId];
+      if (previous === value) return;
+      patchComments(docId, () => value?.threads ?? [], value?.hash);
+    },
+
+    addThread(docId, thread) {
+      patchComments(docId, threads => [...threads, thread]);
+      set({ activeComment: thread.id, showComments: true });
+    },
+
+    updateThread(docId, id, patch) {
+      patchComments(docId, threads => threads.map(t => (t.id === id ? { ...t, ...patch } : t)));
+    },
+
+    deleteThread(docId, id) {
+      patchComments(docId, threads => threads.filter(t => t.id !== id));
+      if (get().activeComment === id) set({ activeComment: null });
+    },
+
+    setActiveComment(activeComment) {
+      set({ activeComment });
     },
 
     setActive(id) {
@@ -331,6 +393,12 @@ export const useStore = create<State>((set, get) => {
         set({ provenance });
         void saveProvenanceNow();
       }
+      if (removed.some(n => n.id in get().comments)) {
+        const comments = { ...get().comments };
+        for (const n of removed) delete comments[n.id];
+        set({ comments });
+        void saveCommentsNow();
+      }
       set({
         project: { ...project, docs, manifest: { ...project.manifest, structure: tree } },
         activeId: get().activeId && removed.some(n => n.id === get().activeId) ? (tree[0]?.id ?? null) : get().activeId
@@ -408,6 +476,10 @@ export const useStore = create<State>((set, get) => {
       if (provenanceTimer) {
         clearTimeout(provenanceTimer);
         await saveProvenanceNow();
+      }
+      if (commentsTimer) {
+        clearTimeout(commentsTimer);
+        await saveCommentsNow();
       }
       await Promise.all([...pendingDocs.map(saveDocNow), ...pendingBible.map(saveBibleNow)]);
     }

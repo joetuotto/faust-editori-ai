@@ -1,5 +1,6 @@
 import type { OpenProject, Result } from '../../shared/types';
 import type { ProvenanceFile } from '../../shared/provenance';
+import type { CommentsFile } from '../../shared/comments';
 import { useStore } from './store';
 
 /**
@@ -17,7 +18,7 @@ async function openWith(call: () => Promise<Result<OpenProject> | null>): Promis
     notify(result.error, 'error');
     return false;
   }
-  setProject(result.data, await readSessionActiveId(), await readProvenance());
+  setProject(result.data, await readSessionActiveId(), await readProvenance(), await readComments());
   const style = await window.faust.project.readInternal('style.json');
   if (style) {
     try {
@@ -78,6 +79,16 @@ async function readProvenance(): Promise<ProvenanceFile['docs']> {
   if (!raw) return {};
   try {
     return (JSON.parse(raw) as ProvenanceFile).docs ?? {};
+  } catch {
+    return {};
+  }
+}
+
+async function readComments(): Promise<CommentsFile['docs']> {
+  const raw = await window.faust.project.readInternal('comments.json');
+  if (!raw) return {};
+  try {
+    return (JSON.parse(raw) as CommentsFile).docs ?? {};
   } catch {
     return {};
   }

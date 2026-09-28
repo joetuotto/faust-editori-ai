@@ -38,6 +38,9 @@ export type MenuCommand =
   | 'toggle-binder'
   | 'toggle-inspector'
   | 'toggle-ai'
+  | 'toggle-comments'
+  | 'add-comment'
+  | 'add-bookmark'
   | 'show-bible'
   | 'show-settings'
   | 'show-history'
@@ -92,5 +95,5 @@ export interface FaustAPI {
 }
 
 /** Internal files the renderer may read/write inside <project>/.faust/ */
-export const INTERNAL_FILES = ['chat.json', 'session.json', 'provenance.json', 'style.json', 'reader.json', 'progress.json'] as const;
+export const INTERNAL_FILES = ['chat.json', 'session.json', 'provenance.json', 'style.json', 'reader.json', 'progress.json', 'comments.json'] as const;
 export type InternalFile = (typeof INTERNAL_FILES)[number];

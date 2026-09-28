@@ -128,17 +128,21 @@ function buildMenu() {
       label: 'Lisää',
       submenu: [
         { label: 'Uusi luku', accelerator: 'CmdOrCtrl+Shift+L', click: () => sendMenu('new-chapter') },
-        { label: 'Uusi kohtaus', accelerator: 'CmdOrCtrl+Shift+K', click: () => sendMenu('new-scene') }
+        { label: 'Uusi kohtaus', accelerator: 'CmdOrCtrl+Shift+K', click: () => sendMenu('new-scene') },
+        { type: 'separator' },
+        { label: 'Kommentti', accelerator: 'CmdOrCtrl+Alt+M', click: () => sendMenu('add-comment') },
+        { label: 'Kirjanmerkki', accelerator: 'CmdOrCtrl+Alt+B', click: () => sendMenu('add-bookmark') }
       ]
     },
     {
       label: 'Näytä',
       submenu: [
         { label: 'DEIS / NOX', accelerator: 'CmdOrCtrl+Shift+D', click: () => sendMenu('toggle-theme') },
-        { label: 'Fokustila', accelerator: 'CmdOrCtrl+Shift+F', click: () => sendMenu('focus-mode') },
+        { label: 'Fokustila', accelerator: 'CmdOrCtrl+Shift+Return', click: () => sendMenu('focus-mode') },
         { type: 'separator' },
         { label: 'Sisällys', accelerator: 'CmdOrCtrl+1', click: () => sendMenu('toggle-binder') },
         { label: 'Tarkastelija', accelerator: 'CmdOrCtrl+2', click: () => sendMenu('toggle-inspector') },
+        { label: 'Kommentit ja kirjanmerkit', accelerator: 'CmdOrCtrl+3', click: () => sendMenu('toggle-comments') },
         { label: 'AI-avustaja', accelerator: 'CmdOrCtrl+K', click: () => sendMenu('toggle-ai') },
         { label: 'Tarinan tietopankki', accelerator: 'CmdOrCtrl+B', click: () => sendMenu('show-bible') },
         { type: 'separator' },
