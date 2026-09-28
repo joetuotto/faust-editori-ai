@@ -64,7 +64,8 @@ const api: FaustAPI = {
         });
       return { id, result };
     },
-    cancel: id => ipcRenderer.send('ai:cancel', id)
+    cancel: id => ipcRenderer.send('ai:cancel', id),
+    transcribe: (audio, mime, language) => ipcRenderer.invoke('ai:transcribe', audio, mime, language)
   }
 };
 

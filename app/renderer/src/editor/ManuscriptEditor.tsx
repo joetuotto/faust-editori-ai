@@ -8,7 +8,7 @@ import { FinnishTypography } from './finnishTypography';
 import { Spellcheck } from './spellcheck';
 import { RewriteTarget } from './rewrite';
 import { ProvenanceGuard, ProvenanceMark, applyProvenance, cleanMarkdown, extractProvenance } from './provenance';
-import { setActiveEditor } from './activeEditor';
+import { setActiveEditor, setFocusedEditor } from './activeEditor';
 import { SpellMenu, type SpellMenuState } from './SpellMenu';
 import { RewriteReview, type RewriteRequest } from './RewriteReview';
 import { RewriteMenu } from './RewriteMenu';
@@ -23,6 +23,8 @@ interface Props {
   docId: string;
   body: string;
   language: string;
+  /** The main pane (find bar lives there); false for the split view's second pane */
+  primary?: boolean;
 }
 
 /** Character, place and thread names from the story bible, cached per bible version */
@@ -38,7 +40,7 @@ function bibleNames(): Set<string> {
   return names;
 }
 
-export function ManuscriptEditor({ docId, body, language }: Props) {
+export function ManuscriptEditor({ docId, body, language, primary = true }: Props) {
   const lastEmitted = useRef(body);
   const [spellMenu, setSpellMenu] = useState<SpellMenuState | null>(null);
   const [rewrite, setRewrite] = useState<RewriteRequest | null>(null);
@@ -113,7 +115,7 @@ export function ManuscriptEditor({ docId, body, language }: Props) {
         const pending = comments[docId]?.threads.find(t => t.id === activeComment);
         if (pending) requestAnimationFrame(() => !editor.isDestroyed && revealAnchor(editor, pending));
       },
-      onDestroy: () => setActiveEditor(docId, null),
+      onFocus: () => setFocusedEditor(docId),
       onUpdate: ({ editor }) => {
         const markdown = cleanMarkdown(editor);
         const { updateBody, setProvenance, setComments, comments } = useStore.getState();
@@ -155,7 +157,7 @@ export function ManuscriptEditor({ docId, body, language }: Props) {
 
   return (
     <>
-      {find.open && <FindBar editor={editor} initialQuery={find.query} onClose={() => useStore.getState().setFind({ open: false })} />}
+      {primary && find.open && <FindBar editor={editor} initialQuery={find.query} onClose={() => useStore.getState().setFind({ open: false })} />}
       <FormatBubble editor={editor} docId={docId} onRewrite={setRewrite} busy={!!rewrite} />
       {/* Highlight the selected thread's text; ids are hex so they are safe in a selector */}
       {showComments && activeComment && /^[\w-]+$/.test(activeComment) && (

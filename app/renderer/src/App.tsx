@@ -7,7 +7,7 @@ import { useStore } from './store';
 import { AIPanel } from './components/AIPanel';
 import { BibleDialog } from './components/BibleDialog';
 import { Binder } from './components/Binder';
-import { Editor } from './components/Editor';
+import { Editor, toggleSplit } from './components/Editor';
 import { HistoryDialog } from './components/HistoryDialog';
 import { StyleDialog } from './components/StyleDialog';
 import { BibleUpdateDialog } from './components/BibleUpdateDialog';
@@ -19,7 +19,8 @@ import { Inspector } from './components/Inspector';
 import { CommentsPanel } from './components/CommentsPanel';
 import { startThreadInActive } from './editor/commentActions';
 import { insertFootnote } from './editor/footnote';
-import { getActiveEditor } from './editor/activeEditor';
+import { toggleDictation } from './editor/dictation';
+import { getFocusedEditor } from './editor/activeEditor';
 import { NewProjectDialog } from './components/NewProjectDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { Toasts } from './components/Toasts';
@@ -107,8 +108,18 @@ export function App() {
           case 'add-bookmark':
             startThreadInActive('bookmark');
             break;
+          case 'toggle-corkboard':
+            s.setView(s.view === 'corkboard' ? 'editor' : 'corkboard');
+            break;
+          case 'toggle-split':
+            s.setView('editor');
+            toggleSplit();
+            break;
+          case 'dictate':
+            toggleDictation();
+            break;
           case 'add-footnote':
-            insertFootnote(s.activeId ? getActiveEditor(s.activeId) : null);
+            insertFootnote(getFocusedEditor(s.activeId)?.editor ?? null);
             break;
           case 'toggle-ai':
             s.toggle('showAI');
@@ -149,7 +160,7 @@ export function App() {
 
 function Workspace({ onNewProject }: { onNewProject(): void }) {
   const project = useStore(s => s.project)!;
-  const { showBinder, showInspector, showComments, showAI, focusMode, panel, theme } = useStore(
+  const { showBinder, showInspector, showComments, showAI, focusMode, panel, theme, view } = useStore(
     useShallow(s => ({
       showBinder: s.showBinder,
       showInspector: s.showInspector,
@@ -157,7 +168,8 @@ function Workspace({ onNewProject }: { onNewProject(): void }) {
       showAI: s.showAI,
       focusMode: s.focusMode,
       panel: s.panel,
-      theme: s.theme
+      theme: s.theme,
+      view: s.view
     }))
   );
   const { toggle, setTheme, setPanel } = useStore.getState();
@@ -171,6 +183,13 @@ function Workspace({ onNewProject }: { onNewProject(): void }) {
           <div className="spacer" />
           <button className={`btn small${showBinder ? ' active' : ''}`} onClick={() => toggle('showBinder')}>Sisällys</button>
           <button className="btn small" onClick={() => setPanel('bible')}>Tietopankki</button>
+          <button
+            className={`btn small${view === 'corkboard' ? ' active' : ''}`}
+            onClick={() => useStore.getState().setView(view === 'corkboard' ? 'editor' : 'corkboard')}
+            title="Korttitaulu (⌘4)"
+          >
+            Kortit
+          </button>
           <button className="btn small" onClick={() => setPanel('structure')}>Rakenne</button>
           <button className="btn small" onClick={() => setPanel('history')} title="Versiohistoria (⇧⌘H)">Historia</button>
           <button className={`btn small${showInspector ? ' active' : ''}`} onClick={() => toggle('showInspector')}>Tarkastelija</button>
@@ -348,6 +367,7 @@ function StatusBar() {
         </>
       )}
       <div className="spacer" />
+      <DictationButton />
       {focusMode && (
         <button className="btn ghost small" onClick={() => useStore.getState().toggle('focusMode')}>
           Poistu fokustilasta
@@ -355,5 +375,33 @@ function StatusBar() {
       )}
       <span className={saveState === 'error' ? 'save-error' : ''}>{saveLabel}</span>
     </footer>
+  );
+}
+
+function DictationButton() {
+  const dictation = useStore(s => s.dictation);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (dictation?.state !== 'recording') return;
+    const timer = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(timer);
+  }, [dictation?.state]);
+
+  const seconds = dictation ? Math.max(0, Math.round((now - dictation.since) / 1000)) : 0;
+  const label =
+    dictation?.state === 'recording'
+      ? `● ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} lopeta`
+      : dictation?.state === 'transcribing'
+        ? 'Litteroidaan…'
+        : '🎙 Sanele';
+  return (
+    <button
+      className={`btn ghost small dictate${dictation?.state === 'recording' ? ' recording' : ''}`}
+      disabled={dictation?.state === 'transcribing'}
+      onClick={toggleDictation}
+      title="Sanele tekstiä kursorin kohtaan (⌥⌘D). Puhe litteroidaan OpenAI:lla tai Geminillä, kun lopetat."
+    >
+      {label}
+    </button>
   );
 }

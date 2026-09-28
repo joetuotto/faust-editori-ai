@@ -1590,3 +1590,182 @@ button {
   font-family: var(--font-serif);
   font-size: 15px;
 }
+
+/* ---------- split view ---------- */
+
+.editor-split {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+
+.editor-wrap.pane {
+  flex: 1 1 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.editor-wrap.pane .editor-page {
+  padding: 40px 36px 30vh;
+}
+
+.editor-wrap.secondary {
+  border-left: 1px solid var(--border);
+  background: var(--bg-2);
+}
+
+.pane-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.pane-head .label {
+  flex: 1;
+}
+
+/* ---------- corkboard ---------- */
+
+.corkboard {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 0 28px 40px;
+}
+
+.corkboard-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
+}
+
+.corkboard-head strong {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 170px;
+  padding: 12px 14px 10px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--text-3);
+  border-radius: var(--radius);
+  cursor: grab;
+  position: relative;
+}
+
+.card[data-status='draft'] { border-top-color: var(--accent-2); }
+.card[data-status='revision'] { border-top-color: #c9a227; }
+.card[data-status='final'] { border-top-color: var(--success); }
+
+.card.active {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.card.drop-before::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.card-title {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  color: var(--ink);
+}
+
+.card-title .icon {
+  color: var(--text-3);
+  margin-right: 6px;
+}
+
+.card-synopsis {
+  flex: 1;
+  resize: none;
+  border: none;
+  background: transparent;
+  color: var(--text-2);
+  font-family: var(--font-serif);
+  font-size: 14px;
+  line-height: 1.4;
+  outline: none;
+  min-height: 70px;
+}
+
+.card-foot {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.card-foot .btn {
+  margin-left: auto;
+}
+
+/* ---------- collections ---------- */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip.on {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--selected);
+}
+
+.binder-head .select {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  padding: 3px 6px;
+}
+
+.collection-desc {
+  padding: 0 16px 8px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+/* ---------- dictation ---------- */
+
+.dictate.recording {
+  color: var(--error);
+  border-color: var(--error);
+}

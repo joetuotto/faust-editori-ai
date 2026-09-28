@@ -44,7 +44,10 @@
       ],
       "icon": "build/faust-dock-icon.icns",
       "darkModeSupport": true,
-      "identity": null
+      "identity": null,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "FAUST käyttää mikrofonia sanelussa: puhe muutetaan tekstiksi käsikirjoitukseen."
+      }
     },
     "dmg": {
       "title": "FAUST Installer",

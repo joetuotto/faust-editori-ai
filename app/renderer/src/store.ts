@@ -4,6 +4,7 @@ import { newId } from '../../shared/text';
 import type { DocProvenance, ProvenanceFile } from '../../shared/provenance';
 import type { StyleProfile } from '../../shared/style';
 import type { ModelPrice } from '../../shared/models';
+import type { Collection } from '../../shared/collections';
 import type { CommentThread, CommentsFile, DocComments } from '../../shared/comments';
 import {
   bibleFileFor,
@@ -23,6 +24,7 @@ const MANIFEST_SAVE_DELAY = 400;
 
 export type Theme = 'NOX' | 'DEIS';
 export type SaveState = 'saved' | 'pending' | 'saving' | 'error';
+export type MainView = 'editor' | 'corkboard';
 export type Panel = 'none' | 'bible' | 'bible-update' | 'settings' | 'export' | 'history' | 'style' | 'structure' | 'reader' | 'search';
 
 export interface Toast {
@@ -42,6 +44,14 @@ interface State {
   /** Thread selected in the comments panel or clicked in the text */
   activeComment: string | null;
   showComments: boolean;
+  /** What the main area shows */
+  view: MainView;
+  /** Document in the second editor pane (split view) */
+  splitId: string | null;
+  /** Collection shown in the binder and on the corkboard instead of the whole tree */
+  collectionId: string | null;
+  /** Dictation in progress */
+  dictation: { state: 'recording' | 'transcribing'; since: number } | null;
   /** In-document find bar; `query` pre-fills it (e.g. from a project search result) */
   find: { open: boolean; query: string };
   /** Manuscript word total at the start of today (daily goal) */
@@ -73,6 +83,11 @@ interface State {
   updateThread(docId: string, id: string, patch: Partial<CommentThread>): void;
   deleteThread(docId: string, id: string): void;
   setActiveComment(id: string | null): void;
+  setView(view: MainView): void;
+  setSplit(id: string | null): void;
+  setCollection(id: string | null): void;
+  saveCollection(collection: Collection): void;
+  deleteCollection(id: string): void;
   setFind(find: { open: boolean; query?: string }): void;
   setStyle(style: StyleProfile | null): void;
   setActive(id: string | null): void;
@@ -205,6 +220,10 @@ export const useStore = create<State>((set, get) => {
     comments: {},
     activeComment: null,
     showComments: false,
+    view: 'editor',
+    splitId: null,
+    collectionId: null,
+    dictation: null,
     find: { open: false, query: '' },
     dayStart: null,
     style: null,
@@ -222,7 +241,7 @@ export const useStore = create<State>((set, get) => {
 
     setProject(project, activeId, provenance = {}, comments = {}) {
       const initial = activeId && project?.docs[activeId] ? activeId : (project?.manifest.structure[0]?.id ?? null);
-      set({ project, activeId: initial, provenance, comments, activeComment: null, style: null, panel: 'none', saveState: 'saved', find: { open: false, query: '' }, dayStart: null });
+      set({ project, activeId: initial, provenance, comments, activeComment: null, view: 'editor', splitId: null, collectionId: null, style: null, panel: 'none', saveState: 'saved', find: { open: false, query: '' }, dayStart: null });
     },
 
     setStyle(style) {
@@ -267,8 +286,33 @@ export const useStore = create<State>((set, get) => {
       set({ activeComment });
     },
 
+    setView(view) {
+      set({ view });
+    },
+
+    setSplit(splitId) {
+      // The same document in both panes would fight over the text
+      set({ splitId: splitId && splitId === get().activeId ? null : splitId });
+    },
+
+    setCollection(collectionId) {
+      set({ collectionId });
+    },
+
+    saveCollection(collection) {
+      const list = get().project?.manifest.collections ?? [];
+      const exists = list.some(c => c.id === collection.id);
+      get().updateManifest({ collections: exists ? list.map(c => (c.id === collection.id ? collection : c)) : [...list, collection] });
+    },
+
+    deleteCollection(id) {
+      get().updateManifest({ collections: (get().project?.manifest.collections ?? []).filter(c => c.id !== id) });
+      if (get().collectionId === id) set({ collectionId: null });
+    },
+
     setActive(id) {
-      set({ activeId: id });
+      // Opening the split pane's document in the main pane closes the split
+      set({ activeId: id, ...(id && id === get().splitId ? { splitId: null } : {}) });
     },
 
     setTheme(theme) {
@@ -405,7 +449,8 @@ export const useStore = create<State>((set, get) => {
       }
       set({
         project: { ...project, docs, manifest: { ...project.manifest, structure: tree } },
-        activeId: get().activeId && removed.some(n => n.id === get().activeId) ? (tree[0]?.id ?? null) : get().activeId
+        activeId: get().activeId && removed.some(n => n.id === get().activeId) ? (tree[0]?.id ?? null) : get().activeId,
+        splitId: removed.some(n => n.id === get().splitId) ? null : get().splitId
       });
       await saveManifestNow();
       await run(() => window.faust.project.trash(removed.map(n => n.file)));

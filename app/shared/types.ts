@@ -10,6 +10,8 @@
  *     .git/                           automatic version history
  */
 
+import type { Collection } from './collections';
+
 export const PROJECT_FORMAT = 'faust-project';
 export const PROJECT_FORMAT_VERSION = 3;
 
@@ -98,6 +100,8 @@ export interface ProjectManifest {
   ai: AISettings;
   structure: TreeNode[];
   bible: Record<BibleKind, string[]>;
+  /** Saved filters over the manuscript */
+  collections?: Collection[];
 }
 
 /** Everything the renderer needs to show an open project */

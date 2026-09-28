@@ -2,7 +2,7 @@ import type { Editor } from '@tiptap/core';
 import { bookmarkLabel, type CommentKind } from '../../../shared/comments';
 import { newId } from '../../../shared/text';
 import { extractAnchors, addAnchor, removeAnchor } from './comments';
-import { getActiveEditor } from './activeEditor';
+import { getActiveEditor, getFocusedEditor } from './activeEditor';
 import { useStore } from '../store';
 
 /** Anchor a new comment or bookmark at the selection and open it in the comments panel */
@@ -32,11 +32,10 @@ export function startThread(editor: Editor, docId: string, kind: CommentKind) {
   useStore.getState().setComments(docId, { hash, threads: useStore.getState().comments[docId]?.threads ?? [] });
 }
 
-/** Menu command: comment or bookmark in the open document */
+/** Menu command: comment or bookmark in the document being edited */
 export function startThreadInActive(kind: CommentKind) {
-  const { activeId } = useStore.getState();
-  const editor = activeId ? getActiveEditor(activeId) : null;
-  if (activeId && editor) startThread(editor, activeId, kind);
+  const target = getFocusedEditor(useStore.getState().activeId);
+  if (target) startThread(target.editor, target.docId, kind);
 }
 
 /** Delete a thread and its mark in the text */

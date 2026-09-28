@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell, systemPreferences, type MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
 import type { MenuCommand } from '../shared/api';
 import { INTERNAL_FILES } from '../shared/api';
@@ -10,6 +10,7 @@ import { addUsage, emptyUsage, localDate, type UsageFile } from '../shared/usage
 import type { ModelPrice } from '../shared/models';
 import { exportProject } from './export';
 import { toPdf } from './pdf';
+import { transcribe } from './transcribe';
 import { commitAll, history, readAt } from './history';
 import { keyStatus, setKey } from './keys';
 import * as language from './language';
@@ -125,7 +126,9 @@ function buildMenu() {
         { role: 'selectAll', label: 'Valitse kaikki' },
         { type: 'separator' },
         { label: 'Etsi…', accelerator: 'CmdOrCtrl+F', click: () => sendMenu('find') },
-        { label: 'Etsi koko teoksesta…', accelerator: 'CmdOrCtrl+Shift+F', click: () => sendMenu('find-project') }
+        { label: 'Etsi koko teoksesta…', accelerator: 'CmdOrCtrl+Shift+F', click: () => sendMenu('find-project') },
+        { type: 'separator' },
+        { label: 'Sanele', accelerator: 'CmdOrCtrl+Alt+D', click: () => sendMenu('dictate') }
       ]
     },
     {
@@ -148,6 +151,8 @@ function buildMenu() {
         { label: 'Sisällys', accelerator: 'CmdOrCtrl+1', click: () => sendMenu('toggle-binder') },
         { label: 'Tarkastelija', accelerator: 'CmdOrCtrl+2', click: () => sendMenu('toggle-inspector') },
         { label: 'Kommentit ja kirjanmerkit', accelerator: 'CmdOrCtrl+3', click: () => sendMenu('toggle-comments') },
+        { label: 'Korttitaulu', accelerator: 'CmdOrCtrl+4', click: () => sendMenu('toggle-corkboard') },
+        { label: 'Rinnakkaisnäkymä', accelerator: 'CmdOrCtrl+\\', click: () => sendMenu('toggle-split') },
         { label: 'AI-avustaja', accelerator: 'CmdOrCtrl+K', click: () => sendMenu('toggle-ai') },
         { label: 'Tarinan tietopankki', accelerator: 'CmdOrCtrl+B', click: () => sendMenu('show-bible') },
         { type: 'separator' },
@@ -404,6 +409,13 @@ function registerIpc() {
       running.delete(id);
     }
   });
+  ipcMain.handle('ai:transcribe', async (_e, audio: Uint8Array, mime: string, lang: string) => {
+    // macOS asks the writer once; elsewhere the permission handler decides
+    if (process.platform === 'darwin' && !(await systemPreferences.askForMediaAccess('microphone'))) {
+      return { success: false, error: 'Mikrofonin käyttö on estetty. Salli se Järjestelmäasetuksissa.' };
+    }
+    return transcribe(Buffer.from(audio), mime, lang);
+  });
   ipcMain.on('ai:cancel', (_e, id: string) => running.get(id)?.abort());
 }
 
@@ -432,6 +444,11 @@ function recordUsage(projectPath: string, provider: ProviderId, model: string, u
 /* ---------- lifecycle ---------- */
 
 app.whenReady().then(async () => {
+  // The only permission the app needs is the microphone for dictation
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) => {
+    const audioOnly = permission === 'media' && 'mediaTypes' in details && (details.mediaTypes ?? []).every(t => t === 'audio');
+    callback(audioOnly);
+  });
   registerIpc();
   buildMenu();
   createWindow();

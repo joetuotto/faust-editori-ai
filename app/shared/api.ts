@@ -44,6 +44,9 @@ export type MenuCommand =
   | 'add-comment'
   | 'add-bookmark'
   | 'add-footnote'
+  | 'toggle-corkboard'
+  | 'toggle-split'
+  | 'dictate'
   | 'show-bible'
   | 'show-settings'
   | 'show-history'
@@ -99,6 +102,8 @@ export interface FaustAPI {
       options?: { think?: boolean; onTool?: (label: string) => void }
     ): { id: string; result: Promise<AIResult> };
     cancel(id: string): void;
+    /** Speech to text for dictation (OpenAI or Gemini) */
+    transcribe(audio: Uint8Array, mime: string, language: string): Promise<{ success: boolean; text?: string; error?: string; service?: string }>;
   };
 }
 
