@@ -8,6 +8,7 @@ import { AIPanel } from './components/AIPanel';
 import { BibleDialog } from './components/BibleDialog';
 import { Binder } from './components/Binder';
 import { Editor } from './components/Editor';
+import { HistoryDialog } from './components/HistoryDialog';
 import { ExportDialog } from './components/ExportDialog';
 import { Inspector } from './components/Inspector';
 import { NewProjectDialog } from './components/NewProjectDialog';
@@ -23,7 +24,7 @@ export function App() {
   // Theme and last project from app settings
   useEffect(() => {
     void window.faust.app.getSettings().then(async settings => {
-      useStore.setState({ theme: settings.theme });
+      useStore.setState({ theme: settings.theme, spellcheck: settings.spellcheck });
       if (settings.lastProject) await openRecent(settings.lastProject);
     });
   }, []);
@@ -100,6 +101,9 @@ export function App() {
           case 'show-settings':
             s.setPanel('settings');
             break;
+          case 'show-history':
+            s.setPanel('history');
+            break;
         }
       }),
     []
@@ -130,6 +134,7 @@ function Workspace({ onNewProject }: { onNewProject(): void }) {
           <div className="spacer" />
           <button className={`btn small${showBinder ? ' active' : ''}`} onClick={() => toggle('showBinder')}>Sisällys</button>
           <button className="btn small" onClick={() => setPanel('bible')}>Tietopankki</button>
+          <button className="btn small" onClick={() => setPanel('history')} title="Versiohistoria (⇧⌘H)">Historia</button>
           <button className={`btn small${showInspector ? ' active' : ''}`} onClick={() => toggle('showInspector')}>Tarkastelija</button>
           <button className={`btn small${showAI ? ' active' : ''}`} onClick={() => toggle('showAI')}>AI</button>
           <button className="btn small" title="Vaihda päivä- ja yötilan välillä" onClick={() => setTheme(theme === 'NOX' ? 'DEIS' : 'NOX')}>
@@ -152,6 +157,7 @@ function Workspace({ onNewProject }: { onNewProject(): void }) {
       {panel === 'bible' && <BibleDialog />}
       {panel === 'settings' && <SettingsDialog />}
       {panel === 'export' && <ExportDialog />}
+      {panel === 'history' && <HistoryDialog />}
     </div>
   );
 }

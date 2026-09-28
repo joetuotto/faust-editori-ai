@@ -7,11 +7,12 @@ import { writeFileAtomic } from './fsutil';
 
 export interface AppSettings {
   theme: 'NOX' | 'DEIS';
+  spellcheck: boolean;
   recent: RecentProject[];
   lastProject: string | null;
 }
 
-const DEFAULTS: AppSettings = { theme: 'NOX', recent: [], lastProject: null };
+const DEFAULTS: AppSettings = { theme: 'NOX', spellcheck: true, recent: [], lastProject: null };
 const MAX_RECENT = 10;
 
 let cache: AppSettings | null = null;

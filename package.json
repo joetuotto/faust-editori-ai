@@ -73,7 +73,10 @@
     ],
     "directories": {
       "output": "dist-installer"
-    }
+    },
+    "asarUnpack": [
+      "node_modules/@yongsk0066/voikko/**"
+    ]
   },
   "devDependencies": {
     "@babel/core": "^7.28.6",
@@ -84,11 +87,17 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@tiptap/extensions": "^3.31.3",
+    "@tiptap/markdown": "^3.31.3",
+    "@tiptap/pm": "^3.31.3",
+    "@tiptap/react": "^3.31.3",
+    "@tiptap/starter-kit": "^3.31.3",
     "@types/node": "^22.10.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^5.2.0",
     "babel-loader": "^10.0.0",
+    "diff": "^8.0.4",
     "electron": "^44.4.5",
     "electron-builder": "^26.15.3",
     "electron-mocha": "^13.1.0",
@@ -103,6 +112,7 @@
     "identity-obj-proxy": "^3.0.0",
     "jest": "^30.2.0",
     "jest-environment-jsdom": "^30.2.0",
+    "jsdom": "^30.1.1",
     "prettier": "^3.8.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -149,14 +159,16 @@
     "@anthropic-ai/sdk": "^0.128.0",
     "@google/genai": "^2.24.0",
     "@google/generative-ai": "^0.24.1",
+    "@yongsk0066/voikko": "^0.4.0",
     "docx": "^8.5.0",
     "dotenv": "^17.2.3",
     "isomorphic-git": "^1.42.3",
+    "jszip": "^3.10.2",
     "openai": "^6.17.0",
     "yaml": "^2.9.1"
   },
   "overrides": {
     "serialize-javascript": "^7.0.5",
-    "diff": "^8.0.3"
+    "diff": "$diff"
   }
 }

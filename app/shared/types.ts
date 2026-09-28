@@ -141,6 +141,24 @@ export interface ModelInfo {
   name: string;
 }
 
-export type ExportFormat = 'md' | 'docx' | 'html' | 'txt';
+/** A grammar problem inside one paragraph (offsets relative to the paragraph text) */
+export interface GrammarIssue {
+  start: number;
+  length: number;
+  suggestions: string[];
+  description: string;
+}
+
+export type ExportFormat = 'docx' | 'manuscript' | 'epub' | 'md' | 'html' | 'txt';
+
+/** File extension for each export format */
+export const EXPORT_EXTENSIONS: Record<ExportFormat, string> = {
+  docx: 'docx',
+  manuscript: 'docx',
+  epub: 'epub',
+  md: 'md',
+  html: 'html',
+  txt: 'txt'
+};
 
 export type Result<T = void> = { success: true; data: T } | { success: false; error: string };

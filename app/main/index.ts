@@ -3,10 +3,12 @@ import path from 'node:path';
 import type { MenuCommand } from '../shared/api';
 import { INTERNAL_FILES } from '../shared/api';
 import type { AIRequest, BibleEntry, Doc, ExportFormat, OpenProject, ProjectManifest, ProviderId, Result } from '../shared/types';
+import { EXPORT_EXTENSIONS } from '../shared/types';
 import { generate, listModels } from './ai';
 import { exportProject } from './export';
 import { commitAll, history, readAt } from './history';
 import { keyStatus, setKey } from './keys';
+import * as language from './language';
 import { importLegacyFile } from './legacyImport';
 import {
   createProject,
@@ -71,6 +73,7 @@ async function activate(projectPath: string): Promise<Result<OpenProject>> {
     const project = await openProject(projectPath);
     if (currentProject && currentProject !== projectPath) await flushCommit('Projekti suljettu');
     currentProject = projectPath;
+    await language.loadDictionaries(projectPath);
     await rememberProject(projectPath, project.manifest.title);
     // First commit of an imported or new project
     void commitAll(projectPath, 'Projekti avattu').catch(() => {});
@@ -100,6 +103,7 @@ function buildMenu() {
         { label: 'Tuo vanha .faust-tiedosto…', click: () => sendMenu('import-legacy') },
         { type: 'separator' },
         { label: 'Tallenna versio', accelerator: 'CmdOrCtrl+S', click: () => sendMenu('snapshot') },
+        { label: 'Versiohistoria…', accelerator: 'CmdOrCtrl+Shift+H', click: () => sendMenu('show-history') },
         { label: 'Vie käsikirjoitus…', accelerator: 'CmdOrCtrl+E', click: () => sendMenu('export') },
         { type: 'separator' },
         isMac ? { role: 'close', label: 'Sulje ikkuna' } : { role: 'quit', label: 'Lopeta' }
@@ -190,6 +194,9 @@ function registerIpc() {
   ipcMain.handle('app:setTheme', async (_e, theme: 'NOX' | 'DEIS') => {
     await updateSettings({ theme });
   });
+  ipcMain.handle('app:setSpellcheck', async (_e, spellcheck: boolean) => {
+    await updateSettings({ spellcheck });
+  });
   ipcMain.handle('app:forgetRecent', (_e, p: string) => forgetProject(p));
 
   ipcMain.handle('project:create', async (_e, title: string) => {
@@ -240,6 +247,7 @@ function registerIpc() {
   ipcMain.handle('project:close', async () => {
     await flushCommit('Projekti suljettu');
     currentProject = null;
+    await language.loadDictionaries(null);
     await updateSettings({ lastProject: null });
     mainWindow?.setTitle('FAUST');
   });
@@ -321,8 +329,11 @@ function registerIpc() {
       const project = await openProject(requireProject());
       const { canceled, filePath } = await dialog.showSaveDialog(mainWindow!, {
         title: 'Vie käsikirjoitus',
-        defaultPath: path.join(path.dirname(currentProject!), `${project.manifest.title}.${format}`),
-        filters: [{ name: format.toUpperCase(), extensions: [format] }]
+        defaultPath: path.join(
+          path.dirname(currentProject!),
+          `${project.manifest.title}${format === 'manuscript' ? ' (käsikirjoitus)' : ''}.${EXPORT_EXTENSIONS[format]}`
+        ),
+        filters: [{ name: EXPORT_EXTENSIONS[format].toUpperCase(), extensions: [EXPORT_EXTENSIONS[format]] }]
       });
       if (canceled || !filePath) return null;
       const content = await exportProject(project, format);
@@ -332,6 +343,12 @@ function registerIpc() {
       return fail(error);
     }
   });
+
+  ipcMain.handle('lang:available', () => language.isAvailable());
+  ipcMain.handle('lang:check', (_e, words: string[]) => language.check(words));
+  ipcMain.handle('lang:suggest', (_e, word: string) => language.suggest(word));
+  ipcMain.handle('lang:grammar', (_e, paragraphs: string[]) => language.grammar(paragraphs));
+  ipcMain.handle('lang:addWord', (_e, word: string, scope: 'project' | 'user') => language.addWord(word, scope));
 
   ipcMain.handle('ai:keyStatus', () => keyStatus());
   ipcMain.handle('ai:setKey', (_e, provider: ProviderId, key: string) => setKey(provider, key));

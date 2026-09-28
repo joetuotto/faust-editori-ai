@@ -4,7 +4,9 @@ import { useStore } from '../store';
 import { Dialog } from './Dialog';
 
 const FORMATS: { format: ExportFormat; name: string; description: string }[] = [
-  { format: 'docx', name: 'Word (.docx)', description: 'Kustantamoille ja kommentointiin. Luvut alkavat uudelta sivulta.' },
+  { format: 'manuscript', name: 'Käsikirjoitus kustantamolle (.docx)', description: 'Nimiösivu ja sanamäärä, 12 pt, riviväli 1,5, ylätunniste ja sivunumerot.' },
+  { format: 'epub', name: 'E-kirja (.epub)', description: 'EPUB 3 lukulaitteille ja -sovelluksille, sisällysluettelo mukana.' },
+  { format: 'docx', name: 'Word (.docx)', description: 'Kirjan näköinen taitto. Luvut alkavat uudelta sivulta.' },
   { format: 'md', name: 'Markdown (.md)', description: 'Pelkkä teksti muotoiluineen, toimii kaikkialla.' },
   { format: 'html', name: 'HTML (.html)', description: 'Luettava verkkosivu, tulostettavissa selaimesta PDF:ksi.' },
   { format: 'txt', name: 'Teksti (.txt)', description: 'Ilman muotoilua.' }

@@ -31,6 +31,7 @@ interface State {
   project: OpenProject | null;
   activeId: string | null;
   theme: Theme;
+  spellcheck: boolean;
   showBinder: boolean;
   showInspector: boolean;
   showAI: boolean;
@@ -42,6 +43,7 @@ interface State {
   setProject(project: OpenProject | null, activeId?: string | null): void;
   setActive(id: string | null): void;
   setTheme(theme: Theme): void;
+  setSpellcheck(enabled: boolean): void;
   toggle(key: 'showBinder' | 'showInspector' | 'showAI' | 'focusMode'): void;
   setPanel(panel: Panel): void;
   notify(text: string, kind?: Toast['kind']): void;
@@ -138,6 +140,7 @@ export const useStore = create<State>((set, get) => {
     project: null,
     activeId: null,
     theme: 'NOX',
+    spellcheck: true,
     showBinder: true,
     showInspector: false,
     showAI: false,
@@ -158,6 +161,11 @@ export const useStore = create<State>((set, get) => {
     setTheme(theme) {
       set({ theme });
       void window.faust.app.setTheme(theme);
+    },
+
+    setSpellcheck(spellcheck) {
+      set({ spellcheck });
+      void window.faust.app.setSpellcheck(spellcheck);
     },
 
     toggle(key) {

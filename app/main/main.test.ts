@@ -5,7 +5,9 @@ import path from 'node:path';
 import { createProject, openProject, trashFiles, writeDoc, writeManifest } from './projectStore';
 import { convertLegacy, importLegacyFile } from './legacyImport';
 import { commitAll, history, readAt } from './history';
-import { toDocx, toMarkdown, toPlainText } from './export';
+import { toDocx, toEpub, toManuscriptDocx, toMarkdown, toPlainText } from './export';
+import JSZip from 'jszip';
+import { JSDOM } from 'jsdom';
 import { resolveInside, writeFileAtomic } from './fsutil';
 
 let dir: string;
@@ -181,5 +183,39 @@ describe('export', () => {
 
     const docx = await toDocx(project);
     expect(docx.subarray(0, 2).toString()).toBe('PK');
+  });
+
+  it('builds a valid EPUB 3 package', async () => {
+    const legacyFile = path.join(dir, 'vanha.json');
+    await fs.writeFile(legacyFile, JSON.stringify({ ...LEGACY, title: 'Kirja & "lainaus"' }));
+    const project = await openProject(await importLegacyFile(legacyFile, dir));
+
+    const zip = await JSZip.loadAsync(await toEpub(project, new Date('2026-01-01T00:00:00Z')));
+    const names = Object.keys(zip.files);
+    expect(names[0]).toBe('mimetype');
+    expect(await zip.file('mimetype')!.async('string')).toBe('application/epub+zip');
+
+    const { DOMParser } = new JSDOM().window;
+    for (const name of names.filter(n => /\.(xhtml|opf|xml)$/.test(n))) {
+      const xml = await zip.file(name)!.async('string');
+      const parsed = new DOMParser().parseFromString(xml, 'application/xml');
+      expect(parsed.getElementsByTagName('parsererror').length, name).toBe(0);
+    }
+    const opf = await zip.file('OEBPS/content.opf')!.async('string');
+    expect(opf).toContain('<dc:title>Kirja &amp; &quot;lainaus&quot;</dc:title>');
+    expect(opf).toContain('2026-01-01T00:00:00Z');
+    const chapter = await zip.file('OEBPS/chapter-1.xhtml')!.async('string');
+    expect(chapter).toContain('<em>kaksi</em>');
+  });
+
+  it('builds a manuscript with a title page', async () => {
+    const legacyFile = path.join(dir, 'vanha.json');
+    await fs.writeFile(legacyFile, JSON.stringify(LEGACY));
+    const project = await openProject(await importLegacyFile(legacyFile, dir));
+    const zip = await JSZip.loadAsync(await toManuscriptDocx(project));
+    const xml = await zip.file('word/document.xml')!.async('string');
+    expect(xml).toContain('VANHA ROMAANI');
+    expect(xml).toContain('sanaa');
+    expect(Object.keys(zip.files).some(n => n.startsWith('word/header'))).toBe(true);
   });
 });

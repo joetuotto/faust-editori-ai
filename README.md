@@ -23,6 +23,15 @@ npm run build-mac  # macOS-asennuspaketti (myös build-win, build-linux)
 
 AI-avaimet syötetään sovelluksen Asetuksissa, ja ne tallennetaan käyttöjärjestelmän avainnippuun salattuina. Kehityksessä avaimet voi antaa myös ympäristömuuttujina (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `GROK_API_KEY`, `DEEPSEEK_API_KEY`).
 
+## Kirjoittaminen
+
+- **Editori** (TipTap/ProseMirror): kursiivi ja lihavointi, otsikot, sitaatit ja kohtauskatko (`***`). Teksti tallennetaan Markdownina.
+- **Suomen typografia** kirjoitettaessa: `"` → ”, `'` → ’, `--` → – (ajatusviiva), `...` → …, ja `- ` kappaleen alussa → repliikkiviiva (–).
+- **Oikoluku ja kielioppi Voikolla**, paikallisesti omalla koneella. Virheen päällä oikea painike näyttää korjausehdotukset. Sanan voi lisätä projektin sanakirjaan (`.faust/words.txt`, kulkee projektin mukana) tai omaan sanakirjaan. Tietopankin nimet hyväksytään taivutettuina (esim. *Kvarnströmille*).
+- **AI-muutosehdotukset**: valitse teksti ja valitse *AI ▾* (esim. Korjaa kieli, Tiivistä, Paranna rytmiä tai oma ohje). Ehdotus näytetään sanatason muutoksina, ja jokaisen muutoksen voi hyväksyä tai hylätä erikseen. Teksti muuttuu vasta, kun hyväksyt valitut muutokset.
+- **Versiohistoria** (⇧⌘H): dokumentin aiemmat versiot, erot nykyiseen tekstiin ja palautus. Nykyinen teksti tallennetaan versioksi ennen palautusta, joten palautuksenkin voi perua.
+- **Vienti** (⌘E): käsikirjoitus kustantamolle (DOCX: nimiösivu, sanamäärä, 12 pt, riviväli 1,5, ylätunniste ja sivunumerot), EPUB 3 -e-kirja, Word, Markdown, HTML ja teksti.
+
 ## Projekti on kansio
 
 Teos tallennetaan tavallisina tiedostoina, jotka voi lukea millä tahansa ohjelmalla:
@@ -32,7 +41,7 @@ Romaani.faust/
   project.json                  nimi, asetukset ja sisällyksen rakenne
   manuscript/luku-1-a1b2c3.md   yksi Markdown-tiedosto per luku/kohtaus (+ YAML-otsake)
   bible/characters/*.md         henkilöt, paikat (locations) ja juonilangat (threads)
-  .faust/                       sovelluksen sisäiset tiedot (keskusteluhistoria, roskakori)
+  .faust/                       sovelluksen tiedot: projektin sanakirja, keskusteluhistoria, roskakori
   .git/                         automaattinen versiohistoria
 ```
 

@@ -8,6 +8,7 @@ import type {
   BibleEntry,
   Doc,
   ExportFormat,
+  GrammarIssue,
   HistoryEntry,
   ModelInfo,
   OpenProject,
@@ -19,6 +20,7 @@ import type {
 
 export interface AppSettingsView {
   theme: 'NOX' | 'DEIS';
+  spellcheck: boolean;
   recent: RecentProject[];
   lastProject: string | null;
 }
@@ -37,12 +39,14 @@ export type MenuCommand =
   | 'toggle-ai'
   | 'show-bible'
   | 'show-settings'
+  | 'show-history'
   | 'focus-mode';
 
 export interface FaustAPI {
   app: {
     getSettings(): Promise<AppSettingsView>;
     setTheme(theme: 'NOX' | 'DEIS'): Promise<void>;
+    setSpellcheck(enabled: boolean): Promise<void>;
     forgetRecent(path: string): Promise<AppSettingsView>;
     onMenu(handler: (command: MenuCommand) => void): () => void;
   };
@@ -63,6 +67,15 @@ export interface FaustAPI {
     writeInternal(name: InternalFile, content: string): Promise<Result>;
     reveal(): Promise<void>;
     export(format: ExportFormat): Promise<Result<string> | null>;
+  };
+  lang: {
+    /** False if the Finnish checker failed to load */
+    available(): Promise<boolean>;
+    /** Returns the misspelled subset of `words` */
+    check(words: string[]): Promise<string[]>;
+    suggest(word: string): Promise<string[]>;
+    grammar(paragraphs: string[]): Promise<GrammarIssue[][]>;
+    addWord(word: string, scope: 'project' | 'user'): Promise<void>;
   };
   ai: {
     keyStatus(): Promise<Record<ProviderId, boolean>>;

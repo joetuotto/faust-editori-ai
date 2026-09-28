@@ -28,7 +28,8 @@ export function SettingsDialog() {
 
 function ProjectSettings() {
   const manifest = useStore(s => s.project!.manifest);
-  const { updateManifest } = useStore.getState();
+  const spellcheck = useStore(s => s.spellcheck);
+  const { updateManifest, setSpellcheck } = useStore.getState();
 
   return (
     <div>
@@ -74,6 +75,12 @@ function ProjectSettings() {
           />
         </label>
       </div>
+      <label className="field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <input type="checkbox" checked={spellcheck} onChange={e => setSpellcheck(e.target.checked)} />
+        <span style={{ textTransform: 'none', letterSpacing: 0, fontSize: 13, color: 'var(--text)' }}>
+          Oikoluku ja kielioppi (Voikko, suomenkieliset teokset). Tarkistus tehdään omalla koneellasi.
+        </span>
+      </label>
       <button className="btn small" onClick={() => void window.faust.project.reveal()}>
         Näytä projektikansio
       </button>
