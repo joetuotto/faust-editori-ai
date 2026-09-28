@@ -9,6 +9,7 @@ const api: FaustAPI = {
     setTheme: theme => ipcRenderer.invoke('app:setTheme', theme),
     setSpellcheck: enabled => ipcRenderer.invoke('app:setSpellcheck', enabled),
     setNoxAssist: enabled => ipcRenderer.invoke('app:setNoxAssist', enabled),
+    setPrices: prices => ipcRenderer.invoke('app:setPrices', prices),
     forgetRecent: path => ipcRenderer.invoke('app:forgetRecent', path),
     onMenu: handler => {
       const listener = (_e: unknown, command: MenuCommand) => handler(command);
@@ -50,10 +51,17 @@ const api: FaustAPI = {
       const listener = (_e: unknown, chunkId: string, text: string) => {
         if (chunkId === id) onText?.(text);
       };
+      const toolListener = (_e: unknown, callId: string, label: string) => {
+        if (callId === id) options?.onTool?.(label);
+      };
       ipcRenderer.on('ai:chunk', listener);
+      ipcRenderer.on('ai:tool', toolListener);
       const result = ipcRenderer
-        .invoke('ai:generate', id, request, options)
-        .finally(() => ipcRenderer.removeListener('ai:chunk', listener));
+        .invoke('ai:generate', id, request, { think: options?.think })
+        .finally(() => {
+          ipcRenderer.removeListener('ai:chunk', listener);
+          ipcRenderer.removeListener('ai:tool', toolListener);
+        });
       return { id, result };
     },
     cancel: id => ipcRenderer.send('ai:cancel', id)

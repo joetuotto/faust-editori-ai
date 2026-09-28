@@ -8,9 +8,10 @@ import { flatten } from '../../../shared/tree';
 
 const MAX_SCENE_CHARS = 12000;
 
-function bibleSection(title: string, entries: BibleEntry[]): string {
+function bibleSection(title: string, entries: BibleEntry[], compact = false): string {
   if (entries.length === 0) return '';
   const lines = entries.map(e => {
+    if (compact) return `- ${e.name}${e.summary ? ` — ${e.summary}` : ''}`;
     const fields = Object.entries(e.fields)
       .slice(0, 8)
       .map(([k, v]) => `${k}: ${v}`)
@@ -58,7 +59,18 @@ export const MODE_PROMPTS: Record<Mode, { label: string; prompt: string }[]> = {
   ]
 };
 
-export function buildSystemPrompt(project: OpenProject): string {
+/** How the model should use project lookups when it has them */
+const TOOL_GUIDE = [
+  'TYÖKALUT: Voit hakea tietopankin merkinnän kaikki tiedot (get_bible_entry), lukea minkä tahansa luvun tai kohtauksen (get_document) ja etsiä koko käsikirjoituksesta (search_manuscript).',
+  'Hae tiedot ennen kuin väität jotain yksityiskohdista, joita et näe tässä kehotteessa. Älä hae turhaan, jos vastaus löytyy jo keskustelusta.'
+].join('\n');
+
+/**
+ * Project context for the system prompt. With `tools`, the story bible is
+ * only a list of names (details are looked up), which keeps the prompt small.
+ */
+export function buildSystemPrompt(project: OpenProject, options: { tools?: boolean } = {}): string {
+  const compact = !!options.tools;
   const { title, author, genre, language } = project.manifest;
   const bible = Object.values(project.bible).sort((a, b) => a.name.localeCompare(b.name, 'fi'));
 
@@ -72,9 +84,10 @@ export function buildSystemPrompt(project: OpenProject): string {
     'RAKENNE:',
     outline(project) || '(ei vielä lukuja)',
     '',
-    bibleSection('HENKILÖT', bible.filter(e => e.kind === 'characters')),
-    bibleSection('PAIKAT', bible.filter(e => e.kind === 'locations')),
-    bibleSection('JUONILANGAT', bible.filter(e => e.kind === 'threads'))
+    bibleSection('HENKILÖT', bible.filter(e => e.kind === 'characters'), compact),
+    bibleSection('PAIKAT', bible.filter(e => e.kind === 'locations'), compact),
+    bibleSection('JUONILANGAT', bible.filter(e => e.kind === 'threads'), compact),
+    compact ? `\n${TOOL_GUIDE}` : ''
   ]
     .filter(line => line !== undefined)
     .join('\n')

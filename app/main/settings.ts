@@ -3,6 +3,7 @@ import { app } from 'electron';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { RecentProject } from '../shared/types';
+import type { ModelPrice } from '../shared/models';
 import { writeFileAtomic } from './fsutil';
 
 export interface AppSettings {
@@ -12,9 +13,11 @@ export interface AppSettings {
   noxAssist: boolean;
   recent: RecentProject[];
   lastProject: string | null;
+  /** The writer's own prices (USD per million tokens) for the cost estimate */
+  prices: Record<string, ModelPrice>;
 }
 
-const DEFAULTS: AppSettings = { theme: 'NOX', spellcheck: true, noxAssist: false, recent: [], lastProject: null };
+const DEFAULTS: AppSettings = { theme: 'NOX', spellcheck: true, noxAssist: false, recent: [], lastProject: null, prices: {} };
 const MAX_RECENT = 10;
 
 let cache: AppSettings | null = null;

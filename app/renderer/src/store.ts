@@ -3,6 +3,7 @@ import type { BibleEntry, BibleKind, Doc, DocMeta, NodeType, OpenProject, Projec
 import { newId } from '../../shared/text';
 import type { DocProvenance, ProvenanceFile } from '../../shared/provenance';
 import type { StyleProfile } from '../../shared/style';
+import type { ModelPrice } from '../../shared/models';
 import type { CommentThread, CommentsFile, DocComments } from '../../shared/comments';
 import {
   bibleFileFor,
@@ -48,6 +49,8 @@ interface State {
   /** The writer's style profile (.faust/style.json) */
   style: StyleProfile | null;
   theme: Theme;
+  /** The writer's price overrides for the AI cost estimate (app setting) */
+  prices: Record<string, ModelPrice>;
   spellcheck: boolean;
   noxAssist: boolean;
   showBinder: boolean;
@@ -206,6 +209,7 @@ export const useStore = create<State>((set, get) => {
     dayStart: null,
     style: null,
     theme: 'NOX',
+    prices: {},
     spellcheck: true,
     noxAssist: false,
     showBinder: true,

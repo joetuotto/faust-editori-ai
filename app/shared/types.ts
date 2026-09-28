@@ -72,7 +72,7 @@ export interface BibleEntry {
   modified: string;
 }
 
-export type ProviderId = 'anthropic' | 'openai' | 'grok' | 'gemini' | 'deepseek';
+export type ProviderId = 'anthropic' | 'openai' | 'grok' | 'gemini' | 'deepseek' | 'ollama';
 
 export interface AISettings {
   provider: ProviderId;
@@ -136,6 +136,16 @@ export interface AIRequest {
   jsonSchema?: Record<string, unknown>;
   /** Reasoning effort for models that support it */
   effort?: 'low' | 'medium' | 'high';
+  /** Let the model look things up in the open project (story bible, documents, search) */
+  tools?: boolean;
+}
+
+export interface TokenUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  /** Prompt-cache reads and writes (Anthropic), counted apart from inputTokens */
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 }
 
 export interface AIResult {
@@ -143,7 +153,9 @@ export interface AIResult {
   text?: string;
   error?: string;
   model?: string;
-  usage?: { inputTokens?: number; outputTokens?: number };
+  usage?: TokenUsage;
+  /** What the model looked up with project tools, in order */
+  lookups?: string[];
 }
 
 export interface ModelInfo {

@@ -31,7 +31,7 @@ export function App() {
   // Theme and last project from app settings
   useEffect(() => {
     void window.faust.app.getSettings().then(async settings => {
-      useStore.setState({ theme: settings.theme, spellcheck: settings.spellcheck, noxAssist: settings.noxAssist });
+      useStore.setState({ theme: settings.theme, spellcheck: settings.spellcheck, noxAssist: settings.noxAssist, prices: settings.prices ?? {} });
       if (settings.lastProject) await openRecent(settings.lastProject);
     });
   }, []);

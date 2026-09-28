@@ -45,7 +45,8 @@ export async function getKey(provider: ProviderId): Promise<string | null> {
 
 export async function keyStatus(): Promise<Record<ProviderId, boolean>> {
   const status = {} as Record<ProviderId, boolean>;
-  for (const p of PROVIDERS) status[p.id] = !!(await getKey(p.id));
+  // A local server needs no key; whether it runs shows when models are fetched
+  for (const p of PROVIDERS) status[p.id] = !!p.local || !!(await getKey(p.id));
   return status;
 }
 

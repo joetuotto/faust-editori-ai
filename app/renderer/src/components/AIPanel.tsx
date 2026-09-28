@@ -1,13 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage } from '../../../shared/types';
-import { resolveModel } from '../../../shared/models';
+import { estimateCost, formatCost, priceFor, resolveModel, supportsTools } from '../../../shared/models';
+import { localDate, summarizeUsage } from '../../../shared/usage';
+import { usageChanged, useUsage } from '../ai/usage';
 import { MODE_PROMPTS, MODE_ROLES, buildSystemPrompt, sceneContext } from '../ai/context';
 import { useStore } from '../store';
 import { getActiveEditor } from '../editor/activeEditor';
 import { applyMarkdown } from '../editor/rewrite';
 
+/** A chat turn as shown; `lookups` never goes to the model */
+interface DisplayMessage extends ChatMessage {
+  lookups?: string[];
+}
+
 interface StoredChat {
-  messages: ChatMessage[];
+  messages: DisplayMessage[];
 }
 
 const MAX_STORED = 60;
@@ -18,10 +25,18 @@ export function AIPanel() {
   const mode = useStore(s => s.theme);
   const { toggle, updateBody, notify, setPanel } = useStore.getState();
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [input, setInput] = useState('');
   const [attachScene, setAttachScene] = useState(true);
-  const [streaming, setStreaming] = useState<{ id: string; text: string } | null>(null);
+  const [streaming, setStreaming] = useState<{
+    id: string;
+    text: string;
+    lookups: string[];
+  } | null>(null);
+  const [lastCost, setLastCost] = useState<number | null>(null);
+  const prices = useStore(s => s.prices);
+  const usage = useUsage();
+  const today = useMemo(() => summarizeUsage(usage, d => d === localDate(), prices), [usage, prices]);
   const chatRef = useRef<HTMLDivElement>(null);
 
   const provider = project.manifest.ai.provider;
@@ -42,7 +57,7 @@ export function AIPanel() {
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight });
   }, [messages, streaming?.text]);
 
-  const persist = (next: ChatMessage[]) => {
+  const persist = (next: DisplayMessage[]) => {
     setMessages(next);
     void window.faust.project.writeInternal('chat.json', JSON.stringify({ messages: next.slice(-MAX_STORED) }));
   };
@@ -50,38 +65,58 @@ export function AIPanel() {
   const send = async (preset?: string) => {
     const question = (preset ?? input).trim();
     if (!question || streaming) return;
+    // Lookups read the saved files, so pending edits are written first
+    await useStore.getState().flush();
     const current = useStore.getState().project!;
+    const tools = supportsTools(provider);
     const context = attachScene ? sceneContext(current, activeId) : '';
-    const userMessage: ChatMessage = { role: 'user', content: question };
+    const userMessage: DisplayMessage = { role: 'user', content: question };
     const history = [...messages, userMessage];
     if (preset === undefined) setInput('');
     setMessages(history);
 
     // The scene goes only into the outgoing copy of the latest message
-    const outgoing = history.map((m, i) =>
-      i === history.length - 1 && context ? { ...m, content: `${context}\n\n${m.content}` } : m
-    );
+    const outgoing: ChatMessage[] = history.map((m, i) => ({
+      role: m.role,
+      content: i === history.length - 1 && context ? `${context}\n\n${m.content}` : m.content
+    }));
 
     // Keep the last turns; the conversation must start with a user message
     const recent = outgoing.slice(-20);
     while (recent[0]?.role === 'assistant') recent.shift();
 
     let text = '';
+    const lookups: string[] = [];
     const call = window.faust.ai.generate(
-      { provider, model, system: `${buildSystemPrompt(current)}\n\n${MODE_ROLES[mode]}`, messages: recent },
+      {
+        provider,
+        model,
+        system: `${buildSystemPrompt(current, { tools })}\n\n${MODE_ROLES[mode]}`,
+        messages: recent,
+        tools
+      },
       chunk => {
         text += chunk;
         setStreaming(s => (s ? { ...s, text } : s));
+      },
+      {
+        onTool: label => {
+          lookups.push(label);
+          setStreaming(s => (s ? { ...s, lookups: [...lookups] } : s));
+        }
       }
     );
-    setStreaming({ id: call.id, text: '' });
+    setStreaming({ id: call.id, text: '', lookups: [] });
     const result = await call.result;
     setStreaming(null);
+    if (result.usage) setLastCost(estimateCost(priceFor(provider, result.model ?? model, prices), result.usage));
+    usageChanged();
 
+    const found = lookups.length ? { lookups } : {};
     if (result.success) {
-      persist([...history, { role: 'assistant', content: result.text ?? text }]);
+      persist([...history, { role: 'assistant', content: (result.text ?? text).trim(), ...found }]);
     } else {
-      if (text) persist([...history, { role: 'assistant', content: text }]);
+      if (text) persist([...history, { role: 'assistant', content: text, ...found }]);
       else persist(history);
       notify(result.error ?? 'AI-kutsu epäonnistui', 'error');
     }
@@ -125,6 +160,7 @@ export function AIPanel() {
         {messages.map((m, i) => (
           <div key={i} className={`msg ${m.role}`}>
             <div className="who">{m.role === 'user' ? 'Sinä' : 'FAUST'}</div>
+            {m.lookups && <Lookups items={m.lookups} />}
             <div className="text">{m.content}</div>
             {m.role === 'assistant' && (
               <div className="msg-actions">
@@ -141,6 +177,7 @@ export function AIPanel() {
         {streaming && (
           <div className="msg assistant">
             <div className="who">FAUST</div>
+            {streaming.lookups.length > 0 && <Lookups items={streaming.lookups} />}
             <div className="text">{streaming.text || '…'}</div>
           </div>
         )}
@@ -168,6 +205,13 @@ export function AIPanel() {
             }
           }}
         />
+        <div
+          className="muted usage-meter"
+          title={`Arvioitu hinta listahinnoista. Tänään ${today.calls} kutsua, ${today.inputTokens.toLocaleString('fi-FI')} tokenia sisään, ${today.outputTokens.toLocaleString('fi-FI')} ulos.${today.unpriced.length ? ` Ei hintaa: ${today.unpriced.join(', ')}.` : ''}`}
+        >
+          {lastCost !== null ? `${formatCost(lastCost)} · ` : ''}tänään {formatCost(today.cost)}
+          {today.unpriced.length ? '+' : ''}
+        </div>
         <div className="row">
           <label className="muted" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <input type="checkbox" checked={attachScene} onChange={e => setAttachScene(e.target.checked)} />
@@ -191,5 +235,17 @@ export function AIPanel() {
         </div>
       </div>
     </aside>
+  );
+}
+
+function Lookups({ items }: { items: string[] }) {
+  return (
+    <div className="lookups" title="Avustaja haki nämä tiedot projektista">
+      {items.map((l, i) => (
+        <span key={i} className="lookup">
+          ↳ {l}
+        </span>
+      ))}
+    </div>
   );
 }

@@ -10,7 +10,7 @@ require('dotenv').config();
 // AI API Clients
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 const { resolveModel, acceptsSampling, usesAdaptiveThinking } = require('./src/utils/models');
 
 // AI Modules (loaded lazily to avoid circular dependencies)
@@ -1447,24 +1447,21 @@ ipcMain.handle('gemini-api', async (event, promptOrOptions) => {
     if (!apiKey) return missingKeyError('GOOGLE_API_KEY');
 
     const params = normalizeAIParams(promptOrOptions, 'gemini');
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
+    const client = new GoogleGenAI({ apiKey });
+    const response = await client.models.generateContent({
       model: params.model,
-      ...(params.system ? { systemInstruction: params.system } : {})
-    });
-
-    const result = await model.generateContent({
       contents: params.messages.map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }]
       })),
-      generationConfig: {
+      config: {
+        ...(params.system ? { systemInstruction: params.system } : {}),
         temperature: params.temperature,
         ...(params.maxTokens ? { maxOutputTokens: params.maxTokens } : {})
       }
     });
 
-    return { success: true, data: result.response.text() };
+    return { success: true, data: response.text ?? '' };
   } catch (error) {
     console.error('Gemini API error:', error);
     return { success: false, error: error.message };

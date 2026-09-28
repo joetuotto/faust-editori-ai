@@ -2,9 +2,12 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type MenuItemConstruc
 import path from 'node:path';
 import type { MenuCommand } from '../shared/api';
 import { INTERNAL_FILES } from '../shared/api';
-import type { AIRequest, BibleEntry, Doc, ExportFormat, OpenProject, ProjectManifest, ProviderId, Result } from '../shared/types';
+import type { AIRequest, AIResult, BibleEntry, Doc, ExportFormat, OpenProject, ProjectManifest, ProviderId, Result } from '../shared/types';
 import { EXPORT_EXTENSIONS } from '../shared/types';
 import { generate, listModels } from './ai';
+import { projectTools } from './aiTools';
+import { addUsage, emptyUsage, localDate, type UsageFile } from '../shared/usage';
+import type { ModelPrice } from '../shared/models';
 import { exportProject } from './export';
 import { commitAll, history, readAt } from './history';
 import { keyStatus, setKey } from './keys';
@@ -207,6 +210,9 @@ function registerIpc() {
   ipcMain.handle('app:setNoxAssist', async (_e, noxAssist: boolean) => {
     await updateSettings({ noxAssist });
   });
+  ipcMain.handle('app:setPrices', async (_e, prices: Record<string, ModelPrice>) => {
+    await updateSettings({ prices });
+  });
   ipcMain.handle('app:forgetRecent', (_e, p: string) => forgetProject(p));
 
   ipcMain.handle('project:create', async (_e, title: string) => {
@@ -369,19 +375,50 @@ function registerIpc() {
   ipcMain.handle('ai:generate', async (event, id: string, request: AIRequest, options?: { think?: boolean }) => {
     const controller = new AbortController();
     running.set(id, controller);
+    const projectPath = currentProject;
     try {
-      return await generate(request, {
+      // Tools read the saved project; the renderer flushes pending edits before asking
+      const tools = request.tools && projectPath ? projectTools(await openProject(projectPath)) : undefined;
+      const result = await generate(request, {
         signal: controller.signal,
         think: options?.think,
+        tools,
         onText: text => {
           if (!event.sender.isDestroyed()) event.sender.send('ai:chunk', id, text);
+        },
+        onTool: label => {
+          if (!event.sender.isDestroyed()) event.sender.send('ai:tool', id, label);
         }
       });
+      if (projectPath && result.usage) void recordUsage(projectPath, request.provider ?? 'anthropic', result.model ?? request.model ?? '', result.usage);
+      return result;
     } finally {
       running.delete(id);
     }
   });
   ipcMain.on('ai:cancel', (_e, id: string) => running.get(id)?.abort());
+}
+
+/* ---------- AI usage log ---------- */
+
+// Serialized so concurrent calls do not lose each other's counts
+let usageQueue: Promise<void> = Promise.resolve();
+function recordUsage(projectPath: string, provider: ProviderId, model: string, usage: NonNullable<AIResult['usage']>) {
+  usageQueue = usageQueue.then(async () => {
+    try {
+      const raw = await readInternal(projectPath, 'usage.json');
+      let file: UsageFile = emptyUsage();
+      try {
+        if (raw) file = JSON.parse(raw) as UsageFile;
+      } catch {
+        // start a new log if the old one is unreadable
+      }
+      await writeInternal(projectPath, 'usage.json', JSON.stringify(addUsage(file, localDate(), provider, model, usage), null, 1));
+    } catch (error) {
+      console.error('Usage log failed:', error);
+    }
+  });
+  return usageQueue;
 }
 
 /* ---------- lifecycle ---------- */

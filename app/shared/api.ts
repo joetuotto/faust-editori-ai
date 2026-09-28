@@ -17,6 +17,7 @@ import type {
   RecentProject,
   Result
 } from './types';
+import type { ModelPrice } from './models';
 
 export interface AppSettingsView {
   theme: 'NOX' | 'DEIS';
@@ -24,6 +25,7 @@ export interface AppSettingsView {
   noxAssist: boolean;
   recent: RecentProject[];
   lastProject: string | null;
+  prices: Record<string, ModelPrice>;
 }
 
 export type MenuCommand =
@@ -54,6 +56,7 @@ export interface FaustAPI {
     setTheme(theme: 'NOX' | 'DEIS'): Promise<void>;
     setSpellcheck(enabled: boolean): Promise<void>;
     setNoxAssist(enabled: boolean): Promise<void>;
+    setPrices(prices: Record<string, ModelPrice>): Promise<void>;
     forgetRecent(path: string): Promise<AppSettingsView>;
     onMenu(handler: (command: MenuCommand) => void): () => void;
   };
@@ -89,11 +92,15 @@ export interface FaustAPI {
     setKey(provider: ProviderId, key: string): Promise<{ encrypted: boolean }>;
     listModels(provider: ProviderId): Promise<{ success: boolean; models?: ModelInfo[]; error?: string }>;
     /** Streams text through onText; resolves with the complete result */
-    generate(request: AIRequest, onText?: (text: string) => void, options?: { think?: boolean }): { id: string; result: Promise<AIResult> };
+    generate(
+      request: AIRequest,
+      onText?: (text: string) => void,
+      options?: { think?: boolean; onTool?: (label: string) => void }
+    ): { id: string; result: Promise<AIResult> };
     cancel(id: string): void;
   };
 }
 
 /** Internal files the renderer may read/write inside <project>/.faust/ */
-export const INTERNAL_FILES = ['chat.json', 'session.json', 'provenance.json', 'style.json', 'reader.json', 'progress.json', 'comments.json'] as const;
+export const INTERNAL_FILES = ['chat.json', 'session.json', 'provenance.json', 'style.json', 'reader.json', 'progress.json', 'comments.json', 'usage.json'] as const;
 export type InternalFile = (typeof INTERNAL_FILES)[number];
