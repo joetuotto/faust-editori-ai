@@ -37,6 +37,12 @@ export interface DocMeta {
   pov?: string;
   label?: string;
   storyTime?: string;
+  /** Story bible entries (ids) that appear in this document */
+  characters?: string[];
+  locations?: string[];
+  threads?: string[];
+  /** Tension 1–10, set by the writer or estimated by AI */
+  tension?: number;
   created: string;
   modified: string;
   /** Unknown fields are preserved on round-trip */

@@ -34,4 +34,18 @@ describe('rewrite diff', () => {
     expect(cleanModelOutput('"Teksti."')).toBe('Teksti.');
     expect(cleanModelOutput('Hän sanoi: "ei".')).toBe('Hän sanoi: "ei".');
   });
+
+  it('shows a near-total rewrite as one change', () => {
+    const hunks = diffHunks('Järvi oli tyyni. Kukaan ei puhunut.', 'Peilityyni vesi lepäsi hämärässä, eikä kukaan sanonut sanaakaan.');
+    expect(hunks).toHaveLength(1);
+    expect(hunks[0]).toMatchObject({ kind: 'change', removed: 'Järvi oli tyyni. Kukaan ei puhunut.' });
+  });
+
+  it('folds short unchanged bridges into one change', () => {
+    const original = 'Aino käveli hitaasti ja varovasti rantaan illalla, kun aurinko laski metsän taakse hiljaa.';
+    const revised = 'Aino hiipi hiljaa ja arasti rantaan illalla, kun aurinko laski metsän taakse hiljaa.';
+    const changes = diffHunks(original, revised).filter(h => h.kind === 'change');
+    expect(changes).toHaveLength(1);
+    expect(changes[0]).toMatchObject({ removed: 'käveli hitaasti ja varovasti', added: 'hiipi hiljaa ja arasti' });
+  });
 });

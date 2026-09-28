@@ -118,8 +118,47 @@ function tokenize(text: string): string[] {
   return text.match(/\s+|\S+/g) ?? [];
 }
 
-/** Word-level diff; adjacent removals and additions form one change */
+/**
+ * Word-level diff; adjacent removals and additions form one change. Short
+ * unchanged fragments between two changes are folded into one change, and a
+ * near-total rewrite is shown as a single replacement, so the review stays
+ * readable instead of alternating word by word.
+ */
 export function diffHunks(original: string, revised: string): Hunk[] {
+  const hunks = rawHunks(original, revised);
+  const same = hunks.reduce((n, h) => n + (h.kind === 'same' ? h.text.trim().length : 0), 0);
+  const total = Math.max(original.trim().length, revised.trim().length, 1);
+  if (hunks.some(h => h.kind === 'change') && same / total < 0.35) {
+    return [{ kind: 'change', removed: original, added: revised, accepted: true }];
+  }
+
+  const merged: Hunk[] = [];
+  for (let i = 0; i < hunks.length; i++) {
+    const h = hunks[i];
+    const prev = merged[merged.length - 1];
+    const next = hunks[i + 1];
+    const bridge = h.kind === 'same' && prev?.kind === 'change' && next?.kind === 'change' && isShortBridge(h.text);
+    if (bridge && prev.kind === 'change' && next.kind === 'change') {
+      prev.removed += h.text + next.removed;
+      prev.added += h.text + next.added;
+      i++;
+    } else if (h.kind === 'change' && prev?.kind === 'change') {
+      prev.removed += h.removed;
+      prev.added += h.added;
+    } else {
+      merged.push({ ...h });
+    }
+  }
+  return merged;
+}
+
+/** Whitespace, or at most two short words, between two changes */
+function isShortBridge(text: string): boolean {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  return words.length === 0 || (words.length <= 2 && words.every(w => w.length <= 4));
+}
+
+function rawHunks(original: string, revised: string): Hunk[] {
   const hunks: Hunk[] = [];
   for (const part of diffArrays(tokenize(original), tokenize(revised))) {
     const value = part.value.join('');

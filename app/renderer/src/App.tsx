@@ -10,6 +10,9 @@ import { Binder } from './components/Binder';
 import { Editor } from './components/Editor';
 import { HistoryDialog } from './components/HistoryDialog';
 import { StyleDialog } from './components/StyleDialog';
+import { BibleUpdateDialog } from './components/BibleUpdateDialog';
+import { StructureDialog } from './components/StructureDialog';
+import { ReaderDialog } from './components/ReaderDialog';
 import { ExportDialog } from './components/ExportDialog';
 import { Inspector } from './components/Inspector';
 import { NewProjectDialog } from './components/NewProjectDialog';
@@ -135,6 +138,7 @@ function Workspace({ onNewProject }: { onNewProject(): void }) {
           <div className="spacer" />
           <button className={`btn small${showBinder ? ' active' : ''}`} onClick={() => toggle('showBinder')}>Sisällys</button>
           <button className="btn small" onClick={() => setPanel('bible')}>Tietopankki</button>
+          <button className="btn small" onClick={() => setPanel('structure')}>Rakenne</button>
           <button className="btn small" onClick={() => setPanel('history')} title="Versiohistoria (⇧⌘H)">Historia</button>
           <button className={`btn small${showInspector ? ' active' : ''}`} onClick={() => toggle('showInspector')}>Tarkastelija</button>
           <button className={`btn small${showAI ? ' active' : ''}`} onClick={() => toggle('showAI')}>AI</button>
@@ -160,6 +164,9 @@ function Workspace({ onNewProject }: { onNewProject(): void }) {
       {panel === 'export' && <ExportDialog />}
       {panel === 'history' && <HistoryDialog />}
       {panel === 'style' && <StyleDialog />}
+      {panel === 'bible-update' && <BibleUpdateDialog />}
+      {panel === 'structure' && <StructureDialog />}
+      {panel === 'reader' && <ReaderDialog />}
     </div>
   );
 }
@@ -189,6 +196,7 @@ function ProjectMenu({ onNewProject }: { onNewProject(): void }) {
           <div className="dialog" style={{ position: 'absolute', right: 0, top: 34, width: 240, padding: 6, zIndex: 21 }}>
             {item('Tallenna versio (⌘S)', () => void snapshot())}
             {item('Vie käsikirjoitus…', () => setPanel('export'))}
+            {item('Esilukija…', () => setPanel('reader'))}
             {item('Tyylisormenjälki…', () => setPanel('style'))}
             {item('Asetukset…', () => setPanel('settings'))}
             {item('Uusi projekti…', onNewProject)}

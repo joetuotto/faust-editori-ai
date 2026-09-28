@@ -32,6 +32,15 @@ AI-avaimet syötetään sovelluksen Asetuksissa, ja ne tallennetaan käyttöjär
 - **Versiohistoria** (⇧⌘H): dokumentin aiemmat versiot, erot nykyiseen tekstiin ja palautus. Nykyinen teksti tallennetaan versioksi ennen palautusta, joten palautuksenkin voi perua.
 - **Vienti** (⌘E): käsikirjoitus kustantamolle (DOCX: nimiösivu, sanamäärä, 12 pt, riviväli 1,5, ylätunniste ja sivunumerot), EPUB 3 -e-kirja, Word, Markdown, HTML ja teksti.
 
+## Tekoäly kirjailijan ehdoilla
+
+- **DEIS ja NOX ovat myös avustajan roolit.** DEIS-tilassa avustaja ideoi, ehdottaa vaihtoehtoja ja haastaa rakennetta. NOX-tilassa se ei kirjoita puolestasi: se vastaa lyhyesti ja auttaa korkeintaan kysymyksellä. AI-muutosehdotukset piilotetaan NOX-tilassa, ellei niitä erikseen sallita asetuksissa.
+- **Alkuperän seuranta**: jokaisesta kohdasta tiedetään, onko se omaa tekstiä, AI:n muokkaamaa (hyväksytty muutosehdotus) vai AI:n kirjoittamaa (lisätty avustajasta). Itse kirjoitettu teksti on aina omaa, myös AI-kohdan keskellä. Merkinnät tallentuvat tiedostoon `.faust/provenance.json`, eivätkä ne päädy käsikirjoituksen tekstitiedostoihin. Tarkastelija näyttää osuudet ja voi korostaa AI-tekstin. **AI-selvitys** viedään luvuittaisena taulukkona kustantamolle tai kilpailuun.
+- **Tyylisormenjälki**: omasta tekstistä (ilman AI-kohtia) lasketaan paikallisesti mm. lauseiden pituus ja vaihtelu, sanojen pituus, sanaston rikkaus ja repliikkityyli. Halutessasi AI kirjoittaa tyylikuvauksen, jota voit muokata ja jota muutosehdotukset noudattavat. Jos ehdotus poikkeaa selvästi äänestäsi, näet varoituksen **”Ei kuulosta sinulta?”** ennen hyväksymistä.
+- **Tietopankki päivittyy tekstistä**: tarkastelijan *Päivitä tietopankki tekstistä* lukee kohtauksen ja ehdottaa uusia faktoja, uusia henkilöitä, paikkoja ja juonilankoja, merkitsee kohtaukseen siinä esiintyvät merkinnät ja huomauttaa ristiriidoista. Jokaisen muutoksen voi hyväksyä erikseen.
+- **Rakenne** (DEIS): *Rytmi*-näkymä näyttää kohtauksittain jännitteen, pituuden, dialogin osuuden ja näkökulmahenkilön; jännitteen voi merkitä itse tai arvioida AI:lla. *Juonilangat* ja *Henkilöt* näyttävät, missä kohtauksissa kukin on mukana, ja varoittavat unohtuneista langoista. *Taulukko* näyttää samat tiedot tekstinä.
+- **Esilukija** lukee luvun tai koko käsikirjoituksen valitsemanasi lukijana (tavallinen lukija, lajityypin ystävä, kriittinen kustannustoimittaja, nuori lukija) ja kertoo, missä mielenkiinto herpaantui, mikä jäi epäselväksi ja mikä toimi. Lainauksista pääsee suoraan tekstikohtaan.
+
 ## Projekti on kansio
 
 Teos tallennetaan tavallisina tiedostoina, jotka voi lukea millä tahansa ohjelmalla:
@@ -41,7 +50,8 @@ Romaani.faust/
   project.json                  nimi, asetukset ja sisällyksen rakenne
   manuscript/luku-1-a1b2c3.md   yksi Markdown-tiedosto per luku/kohtaus (+ YAML-otsake)
   bible/characters/*.md         henkilöt, paikat (locations) ja juonilangat (threads)
-  .faust/                       sovelluksen tiedot: projektin sanakirja, keskusteluhistoria, roskakori
+  .faust/                       sovelluksen tiedot: sanakirja, AI-alkuperä, tyyliprofiili, esilukijan raportit,
+                                keskusteluhistoria, roskakori
   .git/                         automaattinen versiohistoria
 ```
 

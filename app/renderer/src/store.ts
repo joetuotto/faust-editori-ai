@@ -21,7 +21,7 @@ const MANIFEST_SAVE_DELAY = 400;
 
 export type Theme = 'NOX' | 'DEIS';
 export type SaveState = 'saved' | 'pending' | 'saving' | 'error';
-export type Panel = 'none' | 'bible' | 'settings' | 'export' | 'history' | 'style' | 'structure' | 'reader';
+export type Panel = 'none' | 'bible' | 'bible-update' | 'settings' | 'export' | 'history' | 'style' | 'structure' | 'reader';
 
 export interface Toast {
   id: number;
