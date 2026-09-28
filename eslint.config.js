@@ -5,6 +5,8 @@ const js = require('@eslint/js');
 const react = require('eslint-plugin-react');
 const prettier = require('eslint-plugin-prettier');
 const prettierConfig = require('eslint-config-prettier');
+const tseslint = require('typescript-eslint');
+const reactHooks = require('eslint-plugin-react-hooks');
 
 module.exports = [
   // Base recommended config
@@ -23,6 +25,8 @@ module.exports = [
       '*.backup*',
       '*.with-changes',
       'coverage/**',
+      'out/**',
+      'vendor/**',
       // Files with ES module syntax that can't be linted as scripts
       'utils/contrast.js',
     ],
@@ -168,6 +172,26 @@ module.exports = [
         afterEach: 'readonly',
         jest: 'readonly',
       },
+    },
+  },
+
+  // ES module files
+  {
+    files: ['App.jsx', 'mcp-server/**/*.js', 'src/**/__tests__/**/*.js'],
+    languageOptions: {
+      sourceType: 'module',
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+  },
+
+  // FAUST 3 app (TypeScript)
+  ...tseslint.configs.recommended.map(config => ({ ...config, files: ['app/**/*.{ts,tsx}', '*.config.ts'] })),
+  {
+    files: ['app/**/*.{ts,tsx}'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     },
   },
 ];

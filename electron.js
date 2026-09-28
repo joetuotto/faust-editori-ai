@@ -1,8 +1,8 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, shell } = require('electron');
 const { convertToRTF, convertToHTML, convertToDocx } = require("./utils/documentConverters");
+const { writeFileAtomic, backupBeforeOverwrite } = require('./utils/safeWrite');
 const path = require('path');
 const fs = require('fs').promises;
-const https = require('https');
 
 // Load environment variables
 require('dotenv').config();
@@ -10,7 +10,8 @@ require('dotenv').config();
 // AI API Clients
 const OpenAI = require('openai');
 const Anthropic = require('@anthropic-ai/sdk');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
+const { resolveModel, acceptsSampling, usesAdaptiveThinking } = require('./src/utils/models');
 
 // AI Modules (loaded lazily to avoid circular dependencies)
 let StoryContinuityTracker, BatchProcessor, HybridWritingFlow, CostOptimizer;
@@ -93,7 +94,7 @@ async function loadUiPrefs() {
 
 async function saveUiPrefs(next) {
   uiPrefs = { ...uiPrefs, ...next };
-  await fs.writeFile(getUiPrefsPath(), JSON.stringify(uiPrefs, null, 2), 'utf-8');
+  await writeFileAtomic(getUiPrefsPath(), JSON.stringify(uiPrefs, null, 2));
   console.log('[UI Prefs] Saved:', uiPrefs);
 }
 
@@ -128,6 +129,15 @@ function createWindow() {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 12, y: 16 }
     // v1.4.1: Removed backgroundColor to allow theme CSS to control background
+  });
+
+  // Never open new windows or navigate away from the app; external links go to the browser
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url)) shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith('file://')) event.preventDefault();
   });
 
   // Load production app
@@ -565,6 +575,11 @@ app.on('window-all-closed', () => {
   }
 });
 
+// Rotating copies of project files, taken before each overwrite
+function getProjectBackupDir() {
+  return path.join(app.getPath('userData'), 'backups');
+}
+
 // Tallenna projekti (.faust format)
 ipcMain.handle('save-project', async (event, projectData) => {
   try {
@@ -585,7 +600,8 @@ ipcMain.handle('save-project', async (event, projectData) => {
         version: '2.0'  // FAUST v2.0 format
       };
 
-      await fs.writeFile(filePath, JSON.stringify(dataWithMeta, null, 2), 'utf-8');
+      await backupBeforeOverwrite(filePath, getProjectBackupDir(), { minIntervalMs: 0 });
+      await writeFileAtomic(filePath, JSON.stringify(dataWithMeta, null, 2));
       return { success: true, path: filePath };
     }
     return { success: false };
@@ -658,7 +674,8 @@ ipcMain.handle('autosave-project', async (event, { projectData, filePath }) => {
       modified: new Date().toISOString()
     };
 
-    await fs.writeFile(filePath, JSON.stringify(dataWithMeta, null, 2), 'utf-8');
+    await backupBeforeOverwrite(filePath, getProjectBackupDir());
+    await writeFileAtomic(filePath, JSON.stringify(dataWithMeta, null, 2));
     return { success: true, path: filePath };
   } catch (error) {
     console.error('[Autosave] Error:', error);
@@ -1058,7 +1075,7 @@ ipcMain.handle('save-api-keys', async (event, keys) => {
       console.warn('[Security] Encryption unavailable, storing in plain text');
     }
 
-    await fs.writeFile(getConfigPath(), JSON.stringify(config, null, 2), 'utf-8');
+    await writeFileAtomic(getConfigPath(), JSON.stringify(config, null, 2));
     await loadApiConfig(); // Reload
     return { success: true, encrypted: safeStorage.isEncryptionAvailable() };
   } catch (error) {
@@ -1125,7 +1142,7 @@ ipcMain.handle('chat:save-memory', async (_event, entry) => {
     log.lastUpdated = new Date().toISOString();
 
     // Save
-    await fs.writeFile(logPath, JSON.stringify(log, null, 2), 'utf-8');
+    await writeFileAtomic(logPath, JSON.stringify(log, null, 2));
     console.log('[Chat Memory] Saved entry:', entry.type);
     return { success: true };
   } catch (error) {
@@ -1172,7 +1189,7 @@ ipcMain.handle('spec:run', async (_event, scenario = 'default') => {
 // After save-api-keys
 ipcMain.handle('save-backup', async (event, project) => {
   const backupPath = path.join(app.getPath('userData'), 'backup.json');
-  await fs.writeFile(backupPath, JSON.stringify(project, null, 2), 'utf-8');
+  await writeFileAtomic(backupPath, JSON.stringify(project, null, 2));
   return { success: true };
 });
 
@@ -1186,38 +1203,93 @@ ipcMain.handle('load-backup', async () => {
   }
 });
 
-// Claude API (Anthropic SDK - REAL IMPLEMENTATION)
+// ---------------------------------------------------------------------------
+// AI provider handlers
+// Model IDs are resolved through src/utils/models.js so retired IDs saved in
+// old projects fall back to a current default instead of failing.
+// ---------------------------------------------------------------------------
+
+// Accepts a plain prompt string or { prompt, messages, model, temperature,
+// max_tokens | maxTokens, system, options } (DeepSeek historically nested options)
+function normalizeAIParams(input, provider) {
+  const p = typeof input === 'string' ? { prompt: input } : { ...(input || {}), ...((input && input.options) || {}) };
+  const messages = Array.isArray(p.messages) && p.messages.length > 0
+    ? p.messages
+    : [{ role: 'user', content: p.prompt }];
+  return {
+    messages,
+    model: resolveModel(provider, p.model),
+    temperature: typeof p.temperature === 'number' ? p.temperature : 0.7,
+    maxTokens: p.max_tokens || p.maxTokens || null,
+    system: p.system || null,
+    topP: typeof p.top_p === 'number' ? p.top_p : undefined
+  };
+}
+
+function missingKeyError(name) {
+  return {
+    success: false,
+    error: `${name} puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.`
+  };
+}
+
+function getAnthropicClient() {
+  const apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
+  return apiKey ? new Anthropic({ apiKey }) : null;
+}
+
+// Build a Messages API request. Current Claude models reject sampling
+// parameters and budget_tokens, and refusals are rescued by server-side fallbacks.
+function buildClaudeRequest({ messages, model, temperature, maxTokens, system }, extra = {}) {
+  const request = {
+    model,
+    max_tokens: maxTokens || 16000,
+    messages,
+    ...extra
+  };
+  if (system) request.system = system;
+  if (acceptsSampling('anthropic', model) && !extra.thinking) {
+    request.temperature = temperature;
+  }
+  if (/^claude-(opus-5|fable-5-1)/.test(model)) {
+    request.betas = ['server-side-fallback-2026-07-01'];
+    request.fallbacks = 'default';
+  }
+  return request;
+}
+
+function claudeResultFromMessage(message) {
+  if (message.stop_reason === 'refusal') {
+    const category = message.stop_details?.category;
+    return {
+      success: false,
+      error: `Malli kieltäytyi vastaamasta${category ? ` (${category})` : ''}.`,
+      stopReason: 'refusal'
+    };
+  }
+  const text = message.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  const thinking = message.content.filter(b => b.type === 'thinking').map(b => b.thinking).join('\n');
+  return {
+    success: true,
+    data: text,
+    response: text,
+    thinking,
+    usage: message.usage,
+    stopReason: message.stop_reason,
+    model: message.model
+  };
+}
+
+// Claude API
 ipcMain.handle('claude-api', async (event, promptOrOptions) => {
   try {
-    // Support both string prompt and { prompt, model, temperature, max_tokens } object
-    const prompt = typeof promptOrOptions === 'string' ? promptOrOptions : promptOrOptions.prompt;
-    const model = typeof promptOrOptions === 'object' ? promptOrOptions.model : null;
-    const temperature = typeof promptOrOptions === 'object' ? promptOrOptions.temperature : 0.7;
-    const maxTokens = typeof promptOrOptions === 'object' ? promptOrOptions.max_tokens : 2000;
+    const anthropic = getAnthropicClient();
+    if (!anthropic) return missingKeyError('ANTHROPIC_API_KEY');
 
-    let apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
-
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'ANTHROPIC_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.'
-      };
-    }
-
-    const anthropic = new Anthropic({ apiKey });
-
-    const message = await anthropic.messages.create({
-      model: model || 'claude-3-5-sonnet-20241022',
-      max_tokens: maxTokens,
-      temperature: temperature,
-      messages: [{ role: 'user', content: prompt }]
-    });
-
-    return {
-      success: true,
-      data: message.content[0].text,
-      usage: message.usage
-    };
+    const params = normalizeAIParams(promptOrOptions, 'anthropic');
+    // Streaming avoids HTTP timeouts on long generations
+    const message = await anthropic.beta.messages.stream(buildClaudeRequest(params)).finalMessage();
+    return claudeResultFromMessage(message);
   } catch (error) {
     console.error('Claude API error:', error);
     return { success: false, error: error.message };
@@ -1227,63 +1299,22 @@ ipcMain.handle('claude-api', async (event, promptOrOptions) => {
 // Claude API Streaming - Real-time token-by-token response
 ipcMain.handle('claude-api-stream', async (event, options) => {
   try {
-    const {
-      prompt,
-      messages = [],
-      model,
-      temperature = 0.7,
-      maxTokens = 4096,
-      system = null
-    } = options;
+    const anthropic = getAnthropicClient();
+    if (!anthropic) return missingKeyError('ANTHROPIC_API_KEY');
 
-    let apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
+    const params = normalizeAIParams(options, 'anthropic');
+    const stream = anthropic.beta.messages.stream(buildClaudeRequest(params));
 
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'ANTHROPIC_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain.'
-      };
-    }
-
-    const anthropic = new Anthropic({ apiKey });
-
-    // Build messages array
-    const apiMessages = messages.length > 0
-      ? messages
-      : [{ role: 'user', content: prompt }];
-
-    // Create streaming request
-    const streamParams = {
-      model: model || 'claude-sonnet-4-20250514',
-      max_tokens: maxTokens,
-      temperature: temperature,
-      messages: apiMessages
-    };
-
-    // Add system prompt if provided
-    if (system) {
-      streamParams.system = system;
-    }
-
-    const stream = anthropic.messages.stream(streamParams);
-
-    // Send chunks as they arrive
     stream.on('text', (text) => {
-      event.sender.send('claude-stream-chunk', {
-        text,
-        type: 'text'
-      });
+      event.sender.send('claude-stream-chunk', { text, type: 'text' });
     });
 
-    // Wait for completion
     const finalMessage = await stream.finalMessage();
-
-    return {
-      success: true,
-      usage: finalMessage.usage,
-      stopReason: finalMessage.stop_reason,
-      model: finalMessage.model
-    };
+    const result = claudeResultFromMessage(finalMessage);
+    if (!result.success) {
+      event.sender.send('claude-stream-chunk', { error: result.error, type: 'error' });
+    }
+    return result;
   } catch (error) {
     console.error('Claude Stream API error:', error);
     event.sender.send('claude-stream-chunk', {
@@ -1294,169 +1325,114 @@ ipcMain.handle('claude-api-stream', async (event, options) => {
   }
 });
 
-// Claude API with Extended Thinking - Deep analysis mode
-ipcMain.handle('claude-api-thinking', async (event, options) => {
+// Claude API with thinking - Deep analysis mode.
+// Adaptive thinking replaces the old fixed budget_tokens; `budgetTokens` from
+// older callers is ignored, and depth is controlled with effort instead.
+ipcMain.handle('claude-api-thinking', async (event, options = {}) => {
   try {
-    const {
-      prompt,
-      messages = [],
-      budgetTokens = 10000,
-      maxTokens = 16000,
-      stream = false
-    } = options;
+    const anthropic = getAnthropicClient();
+    if (!anthropic) return missingKeyError('ANTHROPIC_API_KEY');
 
-    let apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
+    const params = normalizeAIParams({ ...options, maxTokens: options.maxTokens || 32000 }, 'anthropic');
+    const thinking = usesAdaptiveThinking(params.model)
+      ? { thinking: { type: 'adaptive', display: 'summarized' }, output_config: { effort: options.effort || 'high' } }
+      : { thinking: { type: 'enabled', budget_tokens: Math.min(options.budgetTokens || 10000, params.maxTokens - 1) } };
 
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'ANTHROPIC_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain.'
-      };
-    }
+    const stream = anthropic.beta.messages.stream(buildClaudeRequest(params, thinking));
 
-    const anthropic = new Anthropic({ apiKey });
-
-    // Build messages array
-    const apiMessages = messages.length > 0
-      ? messages
-      : [{ role: 'user', content: prompt }];
-
-    // Extended thinking requires specific model and settings
-    const thinkingParams = {
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: maxTokens,
-      thinking: {
-        type: 'enabled',
-        budget_tokens: budgetTokens
-      },
-      messages: apiMessages
-    };
-
-    if (stream) {
-      // Streaming with extended thinking
-      const streamResponse = anthropic.messages.stream(thinkingParams);
-
-      streamResponse.on('contentBlockStart', (block) => {
-        if (block.content_block?.type === 'thinking') {
-          event.sender.send('claude-stream-chunk', {
-            type: 'thinking_start'
-          });
+    if (options.stream) {
+      stream.on('streamEvent', (ev) => {
+        if (ev.type === 'content_block_start' && ev.content_block?.type === 'thinking') {
+          event.sender.send('claude-stream-chunk', { type: 'thinking_start' });
+        } else if (ev.type === 'content_block_delta') {
+          if (ev.delta?.type === 'thinking_delta') {
+            event.sender.send('claude-stream-chunk', { text: ev.delta.thinking, type: 'thinking' });
+          } else if (ev.delta?.type === 'text_delta') {
+            event.sender.send('claude-stream-chunk', { text: ev.delta.text, type: 'text' });
+          }
         }
       });
-
-      streamResponse.on('text', (text, snapshot) => {
-        // Check if this is thinking or text content
-        const currentBlock = snapshot.content?.[snapshot.content.length - 1];
-        const chunkType = currentBlock?.type === 'thinking' ? 'thinking' : 'text';
-
-        event.sender.send('claude-stream-chunk', {
-          text,
-          type: chunkType
-        });
-      });
-
-      const finalMessage = await streamResponse.finalMessage();
-
-      // Extract thinking and text content
-      const thinkingBlocks = finalMessage.content.filter(b => b.type === 'thinking');
-      const textBlocks = finalMessage.content.filter(b => b.type === 'text');
-
-      return {
-        success: true,
-        thinking: thinkingBlocks.map(b => b.thinking).join('\n'),
-        response: textBlocks.map(b => b.text).join('\n'),
-        usage: finalMessage.usage,
-        stopReason: finalMessage.stop_reason
-      };
-    } else {
-      // Non-streaming extended thinking
-      const response = await anthropic.messages.create(thinkingParams);
-
-      // Extract thinking and text content
-      const thinkingBlocks = response.content.filter(b => b.type === 'thinking');
-      const textBlocks = response.content.filter(b => b.type === 'text');
-
-      return {
-        success: true,
-        thinking: thinkingBlocks.map(b => b.thinking).join('\n'),
-        response: textBlocks.map(b => b.text).join('\n'),
-        usage: response.usage,
-        stopReason: response.stop_reason
-      };
     }
+
+    const finalMessage = await stream.finalMessage();
+    return claudeResultFromMessage(finalMessage);
   } catch (error) {
     console.error('Claude Thinking API error:', error);
     return { success: false, error: error.message };
   }
 });
 
+// OpenAI-compatible chat completions (xAI, DeepSeek)
+async function openAICompatibleChat({ url, apiKey, params, timeoutMs = 120000 }) {
+  const body = {
+    model: params.model,
+    messages: params.system
+      ? [{ role: 'system', content: params.system }, ...params.messages]
+      : params.messages,
+    max_tokens: params.maxTokens || 4000,
+    temperature: params.temperature
+  };
+  if (params.topP !== undefined) body.top_p = params.topP;
+
+  const response = await withTimeout(
+    fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(body)
+    }),
+    timeoutMs
+  );
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`API error ${response.status}: ${detail.slice(0, 300)}`);
+  }
+
+  const data = await response.json();
+  return { success: true, data: data.choices[0].message.content, usage: data.usage, model: data.model };
+}
+
 // Grok API (xAI)
 ipcMain.handle('grok-api', async (event, promptOrOptions) => {
   try {
-    // Support both string prompt and { prompt, model, temperature, max_tokens } object
-    const prompt = typeof promptOrOptions === 'string' ? promptOrOptions : promptOrOptions.prompt;
-    const model = typeof promptOrOptions === 'object' ? promptOrOptions.model : null;
-    const temperature = typeof promptOrOptions === 'object' ? promptOrOptions.temperature : 0.7;
-    const maxTokens = typeof promptOrOptions === 'object' ? promptOrOptions.max_tokens : 2000;
+    const apiKey = process.env.GROK_API_KEY || apiConfig.GROK_API_KEY;
+    if (!apiKey) return missingKeyError('GROK_API_KEY');
 
-    let apiKey = process.env.GROK_API_KEY || apiConfig.GROK_API_KEY || 'your-grok-api-key-here';
-
-    const response = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model || "grok-2-1212",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: maxTokens,
-        temperature: temperature
-      })
+    return await openAICompatibleChat({
+      url: 'https://api.x.ai/v1/chat/completions',
+      apiKey,
+      params: normalizeAIParams(promptOrOptions, 'grok')
     });
-
-    if (!response.ok) {
-      throw new Error(`Grok API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return { success: true, data: data.choices[0].message.content };
   } catch (error) {
+    console.error('Grok API error:', error);
     return { success: false, error: error.message };
   }
 });
 
-// OpenAI API (SDK - REAL IMPLEMENTATION)
+// OpenAI API
 ipcMain.handle('openai-api', async (event, promptOrOptions) => {
   try {
-    // Support both string prompt and { prompt, model, temperature, max_tokens } object
-    const prompt = typeof promptOrOptions === 'string' ? promptOrOptions : promptOrOptions.prompt;
-    const model = typeof promptOrOptions === 'object' ? promptOrOptions.model : null;
-    const temperature = typeof promptOrOptions === 'object' ? promptOrOptions.temperature : 0.7;
-    const maxTokens = typeof promptOrOptions === 'object' ? promptOrOptions.max_tokens : 2000;
+    const apiKey = process.env.OPENAI_API_KEY || apiConfig.OPENAI_API_KEY;
+    if (!apiKey) return missingKeyError('OPENAI_API_KEY');
 
-    let apiKey = process.env.OPENAI_API_KEY || apiConfig.OPENAI_API_KEY;
-
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'OPENAI_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.'
-      };
-    }
-
+    const params = normalizeAIParams(promptOrOptions, 'openai');
     const openai = new OpenAI({ apiKey });
-
     const completion = await openai.chat.completions.create({
-      model: model || 'gpt-4-turbo-preview',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: maxTokens,
-      temperature: temperature
+      model: params.model,
+      messages: params.system
+        ? [{ role: 'system', content: params.system }, ...params.messages]
+        : params.messages,
+      max_completion_tokens: params.maxTokens || 4000
     });
 
     return {
       success: true,
       data: completion.choices[0].message.content,
-      usage: completion.usage
+      usage: completion.usage,
+      model: completion.model
     };
   } catch (error) {
     console.error('OpenAI API error:', error);
@@ -1464,61 +1440,30 @@ ipcMain.handle('openai-api', async (event, promptOrOptions) => {
   }
 });
 
-// Google Gemini API (SDK - REAL IMPLEMENTATION)
-ipcMain.handle('gemini-api', async (event, prompt) => {
+// Google Gemini API
+ipcMain.handle('gemini-api', async (event, promptOrOptions) => {
   try {
-    let apiKey = process.env.GOOGLE_API_KEY || apiConfig.GOOGLE_API_KEY;
-    
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'GOOGLE_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.'
-      };
-    }
+    const apiKey = process.env.GOOGLE_API_KEY || apiConfig.GOOGLE_API_KEY;
+    if (!apiKey) return missingKeyError('GOOGLE_API_KEY');
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
-    
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-
-    return { 
-      success: true, 
-      data: text
-    };
-  } catch (error) {
-    console.error('Gemini API error:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// Cursor API (oletetaan että tämä on custom API)
-ipcMain.handle('cursor-api', async (event, prompt) => {
-  try {
-    let apiKey = process.env.CURSOR_API_KEY || apiConfig.CURSOR_API_KEY || 'your-cursor-api-key-here';
-
-    const response = await fetch("https://api.cursor.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: "cursor-pro",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 2000,
-        temperature: 0.7
-      })
+    const params = normalizeAIParams(promptOrOptions, 'gemini');
+    const client = new GoogleGenAI({ apiKey });
+    const response = await client.models.generateContent({
+      model: params.model,
+      contents: params.messages.map(m => ({
+        role: m.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: typeof m.content === 'string' ? m.content : JSON.stringify(m.content) }]
+      })),
+      config: {
+        ...(params.system ? { systemInstruction: params.system } : {}),
+        temperature: params.temperature,
+        ...(params.maxTokens ? { maxOutputTokens: params.maxTokens } : {})
+      }
     });
 
-    if (!response.ok) {
-      throw new Error(`Cursor API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return { success: true, data: data.choices[0].message.content };
+    return { success: true, data: response.text ?? '' };
   } catch (error) {
+    console.error('Gemini API error:', error);
     return { success: false, error: error.message };
   }
 });
@@ -1526,56 +1471,77 @@ ipcMain.handle('cursor-api', async (event, prompt) => {
 // DeepSeek API (OpenAI-compatible)
 ipcMain.handle('deepseek-api', async (event, payload) => {
   try {
-    let apiKey = process.env.DEEPSEEK_API_KEY || apiConfig.DEEPSEEK_API_KEY;
-    
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'DEEPSEEK_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.'
-      };
-    }
+    const apiKey = process.env.DEEPSEEK_API_KEY || apiConfig.DEEPSEEK_API_KEY;
+    if (!apiKey) return missingKeyError('DEEPSEEK_API_KEY');
 
-    const { prompt, options = {} } = typeof payload === 'object' && payload !== null
-      ? { prompt: payload.prompt, options: payload.options || {} }
-      : { prompt: payload, options: {} };
-
-    if (!prompt || typeof prompt !== 'string') {
-      throw new Error('DeepSeek API error: invalid prompt payload');
-    }
-
-    const temperature = typeof options.temperature === 'number' ? options.temperature : 0.7;
-    const maxTokens = typeof options.max_tokens === 'number' ? options.max_tokens : 2000;
-    const topP = typeof options.top_p === 'number' ? options.top_p : 0.9;
-    const model = options.model || 'deepseek-chat';
-
-    // v1.4.1: Timeout protection
-    const response = await withTimeout(
-      fetch("https://api.deepseek.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: maxTokens,
-          temperature,
-          top_p: topP,
-          stream: false
-        })
-      }),
-      30000  // 30s timeout
-    );
-
-    if (!response.ok) {
-      throw new Error(`DeepSeek API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return { success: true, data: data.choices[0].message.content, usage: data.usage };
+    return await openAICompatibleChat({
+      url: 'https://api.deepseek.com/v1/chat/completions',
+      apiKey,
+      params: normalizeAIParams(payload, 'deepseek')
+    });
   } catch (error) {
     console.error('DeepSeek API error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// List the models an API key can use, so the UI can offer current models
+// instead of a hard-coded list
+ipcMain.handle('ai:list-models', async (event, provider) => {
+  try {
+    const bearer = (key) => ({ headers: { Authorization: `Bearer ${key}` } });
+    const getJSON = async (url, init) => {
+      const res = await withTimeout(fetch(url, init), 15000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    };
+
+    switch (provider) {
+      case 'anthropic': {
+        const anthropic = getAnthropicClient();
+        if (!anthropic) return missingKeyError('ANTHROPIC_API_KEY');
+        const models = [];
+        for await (const m of anthropic.models.list()) {
+          models.push({ id: m.id, name: m.display_name || m.id });
+        }
+        return { success: true, models };
+      }
+      case 'openai': {
+        const key = process.env.OPENAI_API_KEY || apiConfig.OPENAI_API_KEY;
+        if (!key) return missingKeyError('OPENAI_API_KEY');
+        const data = await getJSON('https://api.openai.com/v1/models', bearer(key));
+        return { success: true, models: data.data.map(m => ({ id: m.id, name: m.id })) };
+      }
+      case 'grok': {
+        const key = process.env.GROK_API_KEY || apiConfig.GROK_API_KEY;
+        if (!key) return missingKeyError('GROK_API_KEY');
+        const data = await getJSON('https://api.x.ai/v1/models', bearer(key));
+        return { success: true, models: data.data.map(m => ({ id: m.id, name: m.id })) };
+      }
+      case 'deepseek': {
+        const key = process.env.DEEPSEEK_API_KEY || apiConfig.DEEPSEEK_API_KEY;
+        if (!key) return missingKeyError('DEEPSEEK_API_KEY');
+        const data = await getJSON('https://api.deepseek.com/models', bearer(key));
+        return { success: true, models: data.data.map(m => ({ id: m.id, name: m.id })) };
+      }
+      case 'gemini': {
+        const key = process.env.GOOGLE_API_KEY || apiConfig.GOOGLE_API_KEY;
+        if (!key) return missingKeyError('GOOGLE_API_KEY');
+        const data = await getJSON('https://generativelanguage.googleapis.com/v1beta/models', {
+          headers: { 'x-goog-api-key': key }
+        });
+        return {
+          success: true,
+          models: data.models
+            .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+            .map(m => ({ id: m.name.replace(/^models\//, ''), name: m.displayName || m.name }))
+        };
+      }
+      default:
+        return { success: false, error: `Tuntematon palveluntarjoaja: ${provider}` };
+    }
+  } catch (error) {
+    console.error('List models error:', error);
     return { success: false, error: error.message };
   }
 });
@@ -1748,182 +1714,40 @@ Return ONLY the chapter text, no meta-commentary.`;
     let generatedContent;
     let usage = null;
 
+    const params = normalizeAIParams({
+      prompt,
+      model: project.ai?.models?.[provider],
+      temperature: modeConfig.temperature,
+      maxTokens: modeConfig.maxTokens
+    }, provider);
+
     if (provider === 'openai') {
-      const modelName = project.ai?.models?.openai || 'gpt-4-turbo-preview';
       const completion = await aiClient.chat.completions.create({
-        model: modelName,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: modeConfig.maxTokens,
-        temperature: modeConfig.temperature
+        model: params.model,
+        messages: params.messages,
+        max_completion_tokens: params.maxTokens
       });
       generatedContent = completion.choices[0].message.content;
       usage = completion.usage;
 
-    } else if (provider === 'grok') {
-      // Grok API using native https module for proper UTF-8 support
-      const modelName = project.ai?.models?.grok || 'grok-2-1212';
-      const requestData = {
-        model: modelName,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: modeConfig.maxTokens,
-        temperature: modeConfig.temperature
-      };
-
-      const postData = Buffer.from(JSON.stringify(requestData), 'utf-8');
-
-      const options = {
-        hostname: 'api.x.ai',
-        port: 443,
-        path: '/v1/chat/completions',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Content-Length': Buffer.byteLength(postData),
-          'Authorization': `Bearer ${apiKey}`
-        },
-        timeout: 120000  // 120 second timeout
-      };
-
-      const data = await new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          req.destroy();
-          reject(new Error('Grok API timeout after 120 seconds'));
-        }, 120000);
-
-        const req = https.request(options, (res) => {
-          let responseData = '';
-
-          res.setEncoding('utf8');
-          res.on('data', (chunk) => {
-            responseData += chunk;
-          });
-
-          res.on('end', () => {
-            clearTimeout(timeoutId);
-            if (res.statusCode >= 200 && res.statusCode < 300) {
-              try {
-                resolve(JSON.parse(responseData));
-              } catch (e) {
-                reject(new Error(`Grok API returned invalid JSON: ${e.message}`));
-              }
-            } else {
-              console.error('[Grok] API error:', res.statusCode, responseData);
-              reject(new Error(`Grok API error (${res.statusCode}): ${responseData.substring(0, 200)}`));
-            }
-          });
-        });
-
-        req.on('error', (e) => {
-          clearTimeout(timeoutId);
-          reject(new Error(`Grok API request failed: ${e.message}`));
-        });
-
-        req.on('timeout', () => {
-          req.destroy();
-          reject(new Error('Grok API connection timeout'));
-        });
-
-        req.write(postData);
-        req.end();
+    } else if (provider === 'grok' || provider === 'deepseek') {
+      const result = await openAICompatibleChat({
+        url: provider === 'grok'
+          ? 'https://api.x.ai/v1/chat/completions'
+          : 'https://api.deepseek.com/v1/chat/completions',
+        apiKey,
+        params
       });
-
-      console.log('[Grok] Response:', data);
-
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error('Grok API returned invalid response format');
-      }
-
-      generatedContent = data.choices[0].message.content;
-      usage = data.usage;
-
-    } else if (provider === 'deepseek') {
-      // DeepSeek API using native https module for proper UTF-8 support
-      const modelName = project.ai?.models?.deepseek || 'deepseek-chat';
-      const requestData = {
-        model: modelName,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: modeConfig.maxTokens,
-        temperature: modeConfig.temperature
-      };
-
-      const postData = Buffer.from(JSON.stringify(requestData), 'utf-8');
-
-      const options = {
-        hostname: 'api.deepseek.com',
-        port: 443,
-        path: '/v1/chat/completions',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Content-Length': Buffer.byteLength(postData),
-          'Authorization': `Bearer ${apiKey}`
-        },
-        timeout: 120000  // 120 second timeout
-      };
-
-      const data = await new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          req.destroy();
-          reject(new Error('DeepSeek API timeout after 120 seconds'));
-        }, 120000);
-
-        const req = https.request(options, (res) => {
-          let responseData = '';
-
-          res.setEncoding('utf8');
-          res.on('data', (chunk) => {
-            responseData += chunk;
-          });
-
-          res.on('end', () => {
-            clearTimeout(timeoutId);
-            if (res.statusCode >= 200 && res.statusCode < 300) {
-              try {
-                resolve(JSON.parse(responseData));
-              } catch (e) {
-                reject(new Error(`DeepSeek API returned invalid JSON: ${e.message}`));
-              }
-            } else {
-              console.error('[DeepSeek] API error:', res.statusCode, responseData);
-              reject(new Error(`DeepSeek API error (${res.statusCode}): ${responseData.substring(0, 200)}`));
-            }
-          });
-        });
-
-        req.on('error', (e) => {
-          clearTimeout(timeoutId);
-          reject(new Error(`DeepSeek API request failed: ${e.message}`));
-        });
-
-        req.on('timeout', () => {
-          req.destroy();
-          reject(new Error('DeepSeek API connection timeout'));
-        });
-
-        req.write(postData);
-        req.end();
-      });
-
-      console.log('[DeepSeek] Response:', data);
-
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error('DeepSeek API returned invalid response format');
-      }
-
-      generatedContent = data.choices[0].message.content;
-      usage = data.usage;
+      generatedContent = result.data;
+      usage = result.usage;
 
     } else {
       // Anthropic/Claude
-      const modelName = project.ai?.models?.anthropic || 'claude-3-5-sonnet-20241022';
-      const message = await aiClient.messages.create({
-        model: modelName,
-        max_tokens: modeConfig.maxTokens,
-        temperature: modeConfig.temperature,
-        messages: [{ role: 'user', content: prompt }]
-      });
-      generatedContent = message.content[0].text;
-      usage = message.usage;
+      const message = await aiClient.beta.messages.stream(buildClaudeRequest(params)).finalMessage();
+      const result = claudeResultFromMessage(message);
+      if (!result.success) throw new Error(result.error);
+      generatedContent = result.data;
+      usage = result.usage;
     }
 
     // Update continuity tracker
