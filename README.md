@@ -21,7 +21,7 @@ npm start          # käynnistää käännetyn sovelluksen
 npm run build-mac  # macOS-asennuspaketti (myös build-win, build-linux)
 ```
 
-AI-avaimet syötetään sovelluksen Asetuksissa, ja ne tallennetaan käyttöjärjestelmän avainnippuun salattuina. Kehityksessä avaimet voi antaa myös ympäristömuuttujina (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `GROK_API_KEY`, `DEEPSEEK_API_KEY`).
+AI-avaimet syötetään sovelluksen Asetuksissa, ja ne tallennetaan käyttöjärjestelmän avainnippuun salattuina. Kehityksessä avaimet voi antaa myös ympäristömuuttujina (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `GROK_API_KEY`, `DEEPSEEK_API_KEY`). Paikallinen [Ollama](https://ollama.com) ei tarvitse avainta; sen osoitteen voi vaihtaa Asetuksissa tai muuttujalla `OLLAMA_HOST`.
 
 ## Kirjoittaminen
 
@@ -29,8 +29,16 @@ AI-avaimet syötetään sovelluksen Asetuksissa, ja ne tallennetaan käyttöjär
 - **Suomen typografia** kirjoitettaessa: `"` → ”, `'` → ’, `--` → – (ajatusviiva), `...` → …, ja `- ` kappaleen alussa → repliikkiviiva (–).
 - **Oikoluku ja kielioppi Voikolla**, paikallisesti omalla koneella. Virheen päällä oikea painike näyttää korjausehdotukset. Sanan voi lisätä projektin sanakirjaan (`.faust/words.txt`, kulkee projektin mukana) tai omaan sanakirjaan. Tietopankin nimet hyväksytään taivutettuina (esim. *Kvarnströmille*).
 - **AI-muutosehdotukset**: valitse teksti ja valitse *AI ▾* (esim. Korjaa kieli, Tiivistä, Paranna rytmiä tai oma ohje). Ehdotus näytetään sanatason muutoksina, ja jokaisen muutoksen voi hyväksyä tai hylätä erikseen. Teksti muuttuu vasta, kun hyväksyt valitut muutokset.
+- **Etsi ja korvaa**: ⌘F dokumentissa, ⇧⌘F koko teoksessa (osumat asiayhteyksineen, korvaus kaikkiin lukuihin kerralla). Kirjainkoko ja kokonaiset sanat valittavissa; korostuksen yli menevät osumat löytyvät myös.
+- **Päivän sanatavoite**: tilarivi näyttää tänään kirjoitetut sanat tavoitetta vasten. Päivät kirjautuvat tiedostoon `.faust/progress.json`.
+- **Kommentit ja kirjanmerkit** (⌥⌘M, ⌥⌘B, paneeli ⌘3): kommentti kiinnittyy valittuun tekstiin ja seuraa sitä muokattaessa. Ketjuun voi lisätä merkintöjä, sen voi merkitä ratkaistuksi, ja kirjanmerkeistä on koko teoksen luettelo. Kommentit eivät päädy käsikirjoitukseen eivätkä vientiin (`.faust/comments.json`).
+- **Alaviitteet** (⌥⌘F): viite näkyy tekstissä numerona ja avautuu muokattavaksi napsauttamalla. Markdownissa muoto on `^[viitteen teksti]`.
+- **Korttitaulu** (⌘4): luvut tai kohtaukset kortteina (synopsis, tila, näkökulmahenkilö, sanamäärä). Synopsiksen voi kirjoittaa suoraan korttiin, ja järjestystä muutetaan vetämällä.
+- **Rinnakkaisnäkymä** (⌘\\ tai ⫽ sisällyksessä): kaksi lukua tai kohtausta vierekkäin, esimerkiksi suunnitelma ja teksti.
+- **Kokoelmat**: tallennetut rajaukset (tyyppi, tila, näkökulmahenkilö, tietopankin merkintä, merkintä tai teksti), esim. *kaikki Ainon kohtaukset* tai *keskeneräiset luvut*. Kokoelma näkyy sisällyksessä ja korttitaululla.
+- **Sanelu** (⌥⌘D tai tilarivin 🎙): puhe litteroidaan OpenAI:lla tai Geminillä, kun lopetat, ja teksti lisätään kursorin kohtaan omana tekstinäsi.
 - **Versiohistoria** (⇧⌘H): dokumentin aiemmat versiot, erot nykyiseen tekstiin ja palautus. Nykyinen teksti tallennetaan versioksi ennen palautusta, joten palautuksenkin voi perua.
-- **Vienti** (⌘E): käsikirjoitus kustantamolle (DOCX: nimiösivu, sanamäärä, 12 pt, riviväli 1,5, ylätunniste ja sivunumerot), EPUB 3 -e-kirja, Word, Markdown, HTML ja teksti.
+- **Vienti** (⌘E): käsikirjoitus kustantamolle (DOCX: nimiösivu, sanamäärä, 12 pt, riviväli 1,5, ylätunniste ja sivunumerot), taitettu A5-kirja PDF:nä (sivunumerot, EB Garamond), EPUB 3 -e-kirja, Word, Markdown, HTML ja teksti. Alaviitteet ovat Wordissa oikeina alaviitteinä, e-kirjassa ponnahdusviitteinä ja muualla loppuviitteinä. Suomenkieliset tekstit voi tavuttaa Voikolla (PDF, EPUB, Word), jotta tasattuun tekstiin ei jää suuria välejä.
 
 ## Tekoäly kirjailijan ehdoilla
 
@@ -39,6 +47,10 @@ AI-avaimet syötetään sovelluksen Asetuksissa, ja ne tallennetaan käyttöjär
 - **Tyylisormenjälki**: omasta tekstistä (ilman AI-kohtia) lasketaan paikallisesti mm. lauseiden pituus ja vaihtelu, sanojen pituus, sanaston rikkaus ja repliikkityyli. Halutessasi AI kirjoittaa tyylikuvauksen, jota voit muokata ja jota muutosehdotukset noudattavat. Jos ehdotus poikkeaa selvästi äänestäsi, näet varoituksen **”Ei kuulosta sinulta?”** ennen hyväksymistä.
 - **Tietopankki päivittyy tekstistä**: tarkastelijan *Päivitä tietopankki tekstistä* lukee kohtauksen ja ehdottaa uusia faktoja, uusia henkilöitä, paikkoja ja juonilankoja, merkitsee kohtaukseen siinä esiintyvät merkinnät ja huomauttaa ristiriidoista. Jokaisen muutoksen voi hyväksyä erikseen.
 - **Rakenne** (DEIS): *Rytmi*-näkymä näyttää kohtauksittain jännitteen, pituuden, dialogin osuuden ja näkökulmahenkilön; jännitteen voi merkitä itse tai arvioida AI:lla. *Juonilangat* ja *Henkilöt* näyttävät, missä kohtauksissa kukin on mukana, ja varoittavat unohtuneista langoista. *Taulukko* näyttää samat tiedot tekstinä.
+- **Avustaja hakee tiedot itse**: keskustelussa avustaja voi lukea tietopankin merkinnän kokonaan, minkä tahansa luvun tai kohtauksen ja etsiä koko käsikirjoituksesta. Keskustelussa näkyy, mitä se haki. Näin kehote pysyy pienenä eikä koko tietopankkia tarvitse lähettää joka viestissä.
+- **Paikallinen malli**: Ollaman kautta mallit toimivat omalla koneella. Teksti ei lähde verkkoon, eikä käytöstä tule kuluja.
+- **Kulut näkyvissä**: jokaisen kutsun tokenimäärät kirjataan projektiin (`.faust/usage.json`). AI-paneeli näyttää viimeisen kutsun ja päivän arvioidun hinnan, ja *Asetukset → AI-kulut* päivän, kuukauden ja koko projektin summat. Hinnat ovat muokattavia arvioita.
+- **Tietopankin luonnokset**: *✨ Luonnostele AI:lla* ehdottaa lyhyen kuvauksen perusteella teokseen sopivan henkilön, paikan tai juonilangan. Luonnosta voi muokata ennen tallennusta.
 - **Esilukija** lukee luvun tai koko käsikirjoituksen valitsemanasi lukijana (tavallinen lukija, lajityypin ystävä, kriittinen kustannustoimittaja, nuori lukija) ja kertoo, missä mielenkiinto herpaantui, mikä jäi epäselväksi ja mikä toimi. Lainauksista pääsee suoraan tekstikohtaan.
 
 ## Projekti on kansio
@@ -50,8 +62,8 @@ Romaani.faust/
   project.json                  nimi, asetukset ja sisällyksen rakenne
   manuscript/luku-1-a1b2c3.md   yksi Markdown-tiedosto per luku/kohtaus (+ YAML-otsake)
   bible/characters/*.md         henkilöt, paikat (locations) ja juonilangat (threads)
-  .faust/                       sovelluksen tiedot: sanakirja, AI-alkuperä, tyyliprofiili, esilukijan raportit,
-                                keskusteluhistoria, roskakori
+  .faust/                       sovelluksen tiedot: sanakirja, AI-alkuperä, kommentit, tyyliprofiili, esilukijan
+                                raportit, keskusteluhistoria, AI-kulut, kirjoitusloki, roskakori
   .git/                         automaattinen versiohistoria
 ```
 
@@ -59,7 +71,7 @@ Romaani.faust/
 - **Versiohistoria**: muutokset tallentuvat gittiin automaattisesti (pari minuuttia viimeisen muokkauksen jälkeen ja sovellusta suljettaessa). `Cmd+S` tallentaa version heti.
 - **Poistetut** luvut siirtyvät kansioon `.faust/trash/`.
 - **Synkronointi**: kansion voi pitää iCloudissa, Dropboxissa tai omassa git-repossa.
-- **Vanhat `.faust`-tiedostot** (FAUST 1.x/2.x) tuodaan kohdasta *Tiedosto → Tuo vanha .faust-tiedosto*. Alkuperäinen tiedosto jää ennalleen, eikä mitään tietoa hävitetä: uudelle muodolle vieraat tiedot (snapshotit, kirjanmerkit, merkinnät) säilyvät tiedostossa `.faust/legacy.json`.
+- **Vanhat `.faust`-tiedostot** (FAUST 1.x/2.x) tuodaan kohdasta *Tiedosto → Tuo vanha .faust-tiedosto*. Alkuperäinen tiedosto jää ennalleen, eikä mitään tietoa hävitetä: vanhat merkinnät ja kirjanmerkit tulevat kommenteiksi ja kirjanmerkeiksi tekstiin kiinnitettyinä, ja uudelle muodolle vieraat tiedot (esim. snapshotit) säilyvät tiedostossa `.faust/legacy.json`.
 
 ## Rakenne
 
@@ -71,7 +83,7 @@ app/
   renderer/   React 19 -käyttöliittymä (zustand-tila)
 ```
 
-- AI-kutsut tehdään vain pääprosessissa, joten avaimet eivät koskaan päädy käyttöliittymään. Kaikki palveluntarjoajat (Anthropic, OpenAI, Gemini, xAI, DeepSeek) käyttävät samaa rajapintaa, ja vastaukset striimataan.
+- AI-kutsut tehdään vain pääprosessissa, joten avaimet eivät koskaan päädy käyttöliittymään. Kaikki palveluntarjoajat (Anthropic, OpenAI, Gemini, xAI, DeepSeek, paikallinen Ollama) käyttävät samaa rajapintaa, ja vastaukset striimataan. Avustajan projektihaut ajetaan pääprosessissa, eivätkä ne voi muuttaa projektia.
 - Mallien nimiä ei ole kovakoodattu kutsuihin. Oletukset ovat tiedostossa `app/shared/models.ts`, käytöstä poistetut mallit vaihtuvat automaattisesti oletukseen, ja Asetuksista voi hakea avaimella käytettävissä olevat mallit suoraan palveluntarjoajalta.
 - Käyttöliittymä toimii ilman verkkoa: fontit ja kirjastot on paketoitu sovellukseen.
 
