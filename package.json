@@ -79,7 +79,18 @@
     },
     "asarUnpack": [
       "node_modules/@yongsk0066/voikko/**"
-    ]
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "icon": "build/icon.svg.png",
+      "maintainer": "FAUST Team <faust@users.noreply.github.com>",
+      "synopsis": "Suomenkielinen kirjoituseditori",
+      "executableName": "faust"
+    }
   },
   "devDependencies": {
     "@babel/core": "^7.28.6",
