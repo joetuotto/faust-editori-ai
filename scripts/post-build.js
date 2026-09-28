@@ -14,7 +14,11 @@ const CRITICAL_FILES = [
   { src: 'build/character-engine-logo.png', dst: 'dist/build/character-engine-logo.png' },
   { src: 'utils/dictionaries/fi-basic.json', dst: 'dist/utils/dictionaries/fi-basic.json' },
   { src: 'utils/dictionaries/fi-expanded.txt', dst: 'dist/utils/dictionaries/fi-expanded.txt' },
+  { src: 'src/utils/models.js', dst: 'dist/src/utils/models.js' },
   { src: 'src/utils/constants.js', dst: 'dist/src/utils/constants.js' },
+  // Vendored runtime so the app works fully offline (no CDN)
+  { src: 'node_modules/react/umd/react.production.min.js', dst: 'dist/vendor/react.production.min.js' },
+  { src: 'node_modules/react-dom/umd/react-dom.production.min.js', dst: 'dist/vendor/react-dom.production.min.js' },
   { src: 'src/utils/annotationTypes.js', dst: 'dist/src/utils/annotationTypes.js' },
   { src: 'src/utils/voiceInput.js', dst: 'dist/src/utils/voiceInput.js' },
   { src: 'src/utils/CommandManager.js', dst: 'dist/src/utils/CommandManager.js' },
@@ -36,6 +40,37 @@ const CRITICAL_FILES = [
   { src: 'src/services/story/PlotThreadTracker.js', dst: 'dist/src/services/story/PlotThreadTracker.js' },
   { src: 'src/services/validation/ConsistencyChecker.js', dst: 'dist/src/services/validation/ConsistencyChecker.js' }
 ];
+
+// Font faces bundled from @fontsource (latin + latin-ext covers Finnish and Swedish)
+const FONT_FACES = [
+  { pkg: '@fontsource/eb-garamond', css: ['400.css', '400-italic.css', '500.css', '500-italic.css', '600.css', '600-italic.css'] },
+  { pkg: '@fontsource/ibm-plex-mono', css: ['400.css', '500.css'] }
+];
+const FONT_SUBSETS = ['latin', 'latin-ext'];
+
+// Builds dist/styles/fonts.css and copies the referenced woff2 files next to it
+async function bundleFonts() {
+  const outDir = path.join(__dirname, '..', 'dist', 'styles');
+  await fs.ensureDir(path.join(outDir, 'fonts'));
+  const faces = [];
+
+  for (const { pkg, css } of FONT_FACES) {
+    const pkgDir = path.dirname(require.resolve(`${pkg}/package.json`));
+    for (const file of css) {
+      const source = await fs.readFile(path.join(pkgDir, file), 'utf-8');
+      for (const block of source.match(/@font-face\s*{[^}]*}/g) || []) {
+        const woff2 = block.match(/url\(\.\/files\/([^)]+\.woff2)\)/);
+        if (!woff2 || !FONT_SUBSETS.some(sub => woff2[1].includes(`-${sub}-`))) continue;
+        await fs.copy(path.join(pkgDir, 'files', woff2[1]), path.join(outDir, 'fonts', woff2[1]));
+        faces.push(block.replace(/src:[^;]+;/, `src: url(./fonts/${woff2[1]}) format('woff2');`));
+      }
+    }
+  }
+
+  if (faces.length === 0) throw new Error('No font faces found');
+  await fs.writeFile(path.join(outDir, 'fonts.css'), faces.join('\n\n') + '\n');
+  return faces.length;
+}
 
 async function main() {
   console.log('📦 Post-build: Starting...');
@@ -68,6 +103,13 @@ async function main() {
     } catch (error) {
       errors.push(`Error copying ${src}: ${error.message}`);
     }
+  }
+
+  try {
+    const count = await bundleFonts();
+    copied.push(`${count} font faces`);
+  } catch (error) {
+    errors.push(`Error bundling fonts: ${error.message}`);
   }
 
   // Report

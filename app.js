@@ -129,8 +129,8 @@ const createDefaultProject = () => ({
   // AI settings
   ai: {
     provider: 'anthropic',  // Global fallback
-    model: 'claude-sonnet-4-5',
-    activeModel: 'claude-3-5-sonnet-20241022',  // Currently selected model (NEW: unified model selection)
+    model: window.FAUST_MODELS.DEFAULT_MODELS.anthropic,
+    activeModel: window.FAUST_MODELS.DEFAULT_MODELS.anthropic,  // Currently selected model
     batchGeneration: false,
 
     // Provider configuration per function
@@ -144,10 +144,7 @@ const createDefaultProject = () => ({
 
     // Model names per provider (can be customized)
     models: {
-      anthropic: 'claude-3-5-sonnet-20241022',
-      openai: 'gpt-4-turbo-preview',
-      grok: 'grok-2-1212',
-      deepseek: 'deepseek-chat'
+      ...window.FAUST_MODELS.DEFAULT_MODELS
     },
 
     // Writing modes
@@ -192,12 +189,12 @@ const createDefaultProject = () => ({
     provider: 'anthropic', // anthropic, openai, local
     anthropic: {
       apiKey: '',
-      model: 'claude-sonnet-4-5',
+      model: window.FAUST_MODELS.DEFAULT_MODELS.anthropic,
       maxTokens: 4096
     },
     openai: {
       apiKey: '',
-      model: 'gpt-4',
+      model: window.FAUST_MODELS.DEFAULT_MODELS.openai,
       maxTokens: 4096
     },
     local: {
@@ -262,6 +259,8 @@ function FAUSTApp() {
     character: null,
     mode: 'create'
   });
+  const [characterSheetMode, setCharacterSheetMode] = useState('list'); // 'list', 'view', 'edit'
+  const [selectedCharacter, setSelectedCharacter] = useState(null);
 
   // LocationSheet modal state
   const [showLocationSheet, setShowLocationSheet] = useState(false);
@@ -876,7 +875,7 @@ function FAUSTApp() {
 
         // Insert menu
         case 'new-chapter':
-          addNewChapter();
+          addChapter();
           break;
         case 'insert-text':
           if (arg && editorRef.current) {
@@ -2430,9 +2429,6 @@ function FAUSTApp() {
       case 'gemini':
         response = await window.electronAPI.geminiAPI(apiParams);
         break;
-      case 'cursor':
-        response = await window.electronAPI.cursorAPI(apiParams);
-        break;
       default:
         console.warn(`[AI] Unknown provider: ${provider}, falling back to Anthropic`);
         response = await window.electronAPI.claudeAPI(apiParams);
@@ -3918,7 +3914,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     const userMessage = message.trim();
 
     // Add user message to history
-    setAiChatHistory(prev => [...prev, { role: 'user', content: userMessage }]);
+    setAiChatMessages(prev => [...prev, { role: 'user', content: userMessage }]);
     setAiChatInput('');
 
     // Check if user wants to edit text (keywords or forceEdit flag)
@@ -3954,16 +3950,16 @@ Respond helpfully and concisely. If the question is about the current chapter, y
 
       if (result.success) {
         console.log('[AI Chat] Response received');
-        setAiChatHistory(prev => [...prev, { role: 'assistant', content: result.data.trim() }]);
+        setAiChatMessages(prev => [...prev, { role: 'assistant', content: result.data.trim() }]);
         setAiChatVoiceState('idle');
       } else {
         console.error('[AI Chat] AI error:', result.error);
-        setAiChatHistory(prev => [...prev, { role: 'error', content: 'Virhe: ' + result.error }]);
+        setAiChatMessages(prev => [...prev, { role: 'error', content: 'Virhe: ' + result.error }]);
         setAiChatVoiceState('error');
       }
     } catch (error) {
       console.error('[AI Chat] Exception:', error);
-      setAiChatHistory(prev => [...prev, { role: 'error', content: 'Virhe: ' + error.message }]);
+      setAiChatMessages(prev => [...prev, { role: 'error', content: 'Virhe: ' + error.message }]);
       setAiChatVoiceState('error');
     }
   };
@@ -3972,13 +3968,13 @@ Respond helpfully and concisely. If the question is about the current chapter, y
   const editTextFromChat = async (instruction) => {
     const targetText = textSelection?.text || activeChapter?.content;
     if (!targetText) {
-      setAiChatHistory(prev => [...prev, { role: 'error', content: 'Ei tekstiä muokattavaksi. Valitse teksti tai varmista että luvussa on sisältöä.' }]);
+      setAiChatMessages(prev => [...prev, { role: 'error', content: 'Ei tekstiä muokattavaksi. Valitse teksti tai varmista että luvussa on sisältöä.' }]);
       return;
     }
 
     if (!window.electronAPI) {
       console.error('[AI Chat Edit] Electron API not available');
-      setAiChatHistory(prev => [...prev, { role: 'error', content: 'Electron API ei saatavilla' }]);
+      setAiChatMessages(prev => [...prev, { role: 'error', content: 'Electron API ei saatavilla' }]);
       return;
     }
 
@@ -4012,19 +4008,19 @@ Return ONLY the rewritten text, no explanations.`;
           instruction: instruction
         });
 
-        setAiChatHistory(prev => [...prev, {
+        setAiChatMessages(prev => [...prev, {
           role: 'assistant',
           content: `✅ Muokattu ${textSelection?.text ? 'valittu teksti' : 'koko luku'}. Katso diff-näkymä editorissa.`
         }]);
         setAiChatVoiceState('idle');
       } else {
         console.error('[AI Chat Edit] AI error:', result.error);
-        setAiChatHistory(prev => [...prev, { role: 'error', content: 'Virhe: ' + result.error }]);
+        setAiChatMessages(prev => [...prev, { role: 'error', content: 'Virhe: ' + result.error }]);
         setAiChatVoiceState('error');
       }
     } catch (error) {
       console.error('[AI Chat Edit] Exception:', error);
-      setAiChatHistory(prev => [...prev, { role: 'error', content: 'Virhe: ' + error.message }]);
+      setAiChatMessages(prev => [...prev, { role: 'error', content: 'Virhe: ' + error.message }]);
       setAiChatVoiceState('error');
     }
   };
@@ -4110,10 +4106,7 @@ ${contextPrompt}`;
     try {
       // Get selected provider and model
       const provider = project.ai.provider || 'anthropic';
-      const modelName = project.ai.models?.[provider] ||
-        (provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
-         provider === 'openai' ? 'gpt-4-turbo-preview' :
-         provider === 'grok' ? 'grok-2-1212' : 'deepseek-chat');
+      const modelName = window.FAUST_MODELS.resolveModel(provider, project.ai.models?.[provider]);
 
       let result;
       // Call appropriate API based on provider
@@ -10988,18 +10981,24 @@ ${contextPrompt}`;
 
               e('input', {
                 type: 'text',
-                value: project.ai?.activeModel || 'claude-3-5-sonnet-20241022',
+                value: project.ai?.activeModel || window.FAUST_MODELS.DEFAULT_MODELS.anthropic,
                 onChange: (ev) => {
-                  setProject(prev => ({
-                    ...prev,
-                    ai: {
-                      ...prev.ai,
-                      activeModel: ev.target.value
-                    }
-                  }));
+                  const model = ev.target.value;
+                  setProject(prev => {
+                    const provider = window.FAUST_MODELS.providerForModel(model) || prev.ai.provider || 'anthropic';
+                    return {
+                      ...prev,
+                      ai: {
+                        ...prev.ai,
+                        provider,
+                        activeModel: model,
+                        models: { ...prev.ai.models, [provider]: model }
+                      }
+                    };
+                  });
                   setUnsavedChanges(true);
                 },
-                placeholder: 'claude-3-5-sonnet-20241022',
+                placeholder: window.FAUST_MODELS.DEFAULT_MODELS.anthropic,
                 style: {
                   width: '100%',
                   padding: '12px',
@@ -11021,7 +11020,7 @@ ${contextPrompt}`;
                   marginTop: '8px',
                   fontStyle: 'italic'
                 }
-              }, '📝 Syötä täsmällinen mallin nimi (esim. claude-3-5-sonnet-20241022, gpt-4-turbo, grok-2-1212)')
+              }, '📝 Syötä täsmällinen mallin nimi (esim. claude-opus-5, gpt-5, grok-4). Käytöstä poistetut mallit vaihtuvat automaattisesti oletusmalliin.')
             ),
 
             // Quick Select buttons
@@ -11046,12 +11045,7 @@ ${contextPrompt}`;
                   gap: '8px'
                 }
               },
-                [
-                  { name: 'Claude 3.5 Sonnet', model: 'claude-3-5-sonnet-20241022' },
-                  { name: 'GPT-4 Turbo', model: 'gpt-4-turbo-preview' },
-                  { name: 'Grok 2', model: 'grok-2-1212' },
-                  { name: 'DeepSeek V3', model: 'deepseek-chat' }
-                ].map(preset =>
+                window.FAUST_MODELS.SUGGESTED_MODELS.map(preset =>
                   e('button', {
                     key: preset.model,
                     onClick: () => {
@@ -11059,7 +11053,9 @@ ${contextPrompt}`;
                         ...prev,
                         ai: {
                           ...prev.ai,
-                          activeModel: preset.model
+                          provider: preset.provider,
+                          activeModel: preset.model,
+                          models: { ...prev.ai.models, [preset.provider]: preset.model }
                         }
                       }));
                       setUnsavedChanges(true);
@@ -11427,9 +11423,7 @@ ${contextPrompt}`;
         e('input', {
           type: 'text',
           value: project.ai.models?.[project.ai.provider || 'anthropic'] ||
-                 (project.ai.provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
-                  project.ai.provider === 'openai' ? 'gpt-4-turbo-preview' :
-                  project.ai.provider === 'grok' ? 'grok-2-1212' : 'deepseek-chat'),
+                 window.FAUST_MODELS.DEFAULT_MODELS[project.ai.provider || 'anthropic'],
           onChange: (ev) => {
             const provider = project.ai.provider || 'anthropic';
             setProject(prev => ({
@@ -11444,7 +11438,7 @@ ${contextPrompt}`;
             }));
             setUnsavedChanges(true);
           },
-          placeholder: 'e.g. claude-opus-4-20250514',
+          placeholder: 'esim. ' + window.FAUST_MODELS.DEFAULT_MODELS[project.ai.provider || 'anthropic'],
           style: {
             width: '100%',
             padding: '8px',
@@ -13559,7 +13553,7 @@ ${contextPrompt}`;
       onInsertText: (text) => {
         if (activeChapter) {
           const newContent = (activeChapter.content || '') + '\n\n' + text;
-          handleTextChange(newContent);
+          updateChapterContent(newContent);
         }
       }
     }),

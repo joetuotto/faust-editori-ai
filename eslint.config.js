@@ -170,4 +170,13 @@ module.exports = [
       },
     },
   },
+
+  // ES module files
+  {
+    files: ['App.jsx', 'mcp-server/**/*.js', 'src/**/__tests__/**/*.js'],
+    languageOptions: {
+      sourceType: 'module',
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+  },
 ];
