@@ -17,8 +17,8 @@ const CRITICAL_FILES = [
   { src: 'src/utils/models.js', dst: 'dist/src/utils/models.js' },
   { src: 'src/utils/constants.js', dst: 'dist/src/utils/constants.js' },
   // Vendored runtime so the app works fully offline (no CDN)
-  { src: 'node_modules/react/umd/react.production.min.js', dst: 'dist/vendor/react.production.min.js' },
-  { src: 'node_modules/react-dom/umd/react-dom.production.min.js', dst: 'dist/vendor/react-dom.production.min.js' },
+  { src: 'vendor/react18/react.production.min.js', dst: 'dist/vendor/react.production.min.js' },
+  { src: 'vendor/react18/react-dom.production.min.js', dst: 'dist/vendor/react-dom.production.min.js' },
   { src: 'src/utils/annotationTypes.js', dst: 'dist/src/utils/annotationTypes.js' },
   { src: 'src/utils/voiceInput.js', dst: 'dist/src/utils/voiceInput.js' },
   { src: 'src/utils/CommandManager.js', dst: 'dist/src/utils/CommandManager.js' },

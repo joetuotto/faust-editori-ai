@@ -1,272 +1,75 @@
-# 🜍 FAUST
+# FAUST
 
-**Esoteerinen kirjoituseditori DEIS ja NOX -moodeilla**
+**Suomenkielinen kirjoituseditori kaunokirjallisuudelle, DEIS- ja NOX-rytmillä**
 
 > *"Päivä ja yö eivät ole teemoja, vaan hermoston kaksi rytmiä."*
 
-Modernin UX/UI-filosofian, Scrivener-tyyppisen organisoinnin ja AI-avustajien yhdistelmä. Rakennettu Electronilla, Reactilla ja alkemian periaatteilla.
+- **DEIS** (päivä): ideointi, rakenne, tarinan tietopankki
+- **NOX** (yö): kirjoittaminen, syvä fokus
+
+FAUST 3 on uudelleenrakennettu versio. Vanha 1.x/2.x-sovellus on vielä repossa siirtymävaiheen ajan (ks. [Vanha sovellus](#vanha-sovellus)).
 
 ---
 
-## 🌓 **DEIS & NOX - Kaksi tietoisuustilaa**
-
-### 🜕 **DEIS - Päivän mieli (Light Mode)**
-- Lämmin luunvalkoinen tausta (#F9F6F0)
-- Messinki-kultaiset korostukset (#C89D5E)
-- Rationaalinen, järjestävä, ilmava
-- **Käyttö**: Ideointi, rakenteiden luonnostelu, hahmojen suhteet
-
-### 🌑 **NOX - Yön mieli (Dark Mode)**
-- Lämmin tummanruskea-musta tausta (#141210)
-- Vanhan kullan hehku (#9A7B4F)
-- Introspektiivinen, meditatiivinen, immersiivinen
-- **Käyttö**: Kirjoittaminen, revisio, tematiikan syventäminen
-
-**Rituaalinen vaihto**: Moodien välinen siirtymä on 1.2s valo-rituaali (fade → gradient swipe → reilluminate)
-
----
-
-## ✨ **Ominaisuudet**
-
-### 🜍 **Alkemialliset sigilit ja typografia**
-- **EB Garamond** - Otsikot ja klassinen teksti
-- **IBM Plex Mono** - Runko-teksti ja editori
-- **Space Mono** - UI-elementit ja AI-paneelit
-- **Sigilit**: 6 alkemiallista symbolia hover/click-animaatioilla
-
-### 🎨 **World-Class UX/UI Design**
-Integroitu viiden maailman huippusuunnittelijan filosofia:
-- **Sagmeister & Walsh**: Emotionaalinen typografia, orgaaniset värikaaret
-- **Pentagram/Bierut**: Typografinen harmonia, golden ratio, whitespace-arkkitehtuuri
-- **Superside**: Design tokens, adaptiivinen layout
-- **IDEO**: Kognitiivisen kuorman hallinta, mielentilan rakentaminen
-- **Clement Mok**: Ajaton selkeys, semanttinen visuaalisuus
-
-### 📚 **Scrivener-Style Ominaisuudet**
-- **Inspector-paneeli**: Synopsis, status, tavoitteet, muistiinpanot per luku
-- **Hierarkkinen rakenne**: Kansiot ja luvut
-- **Projektin statistiikka**: Kokonaisword count, progress tracking
-- **Metadata**: Per-item metadata + statukset
-
-### 🤖 **Cursor-Style AI-Avustajat**
-- **Useita AI-chatteja**: GPT-4, Claude, Gemini, Grok
-- **Adaptiivinen layout**: 1-2 chättiä ruudun koon mukaan
-- **Quick actions**: Valittu teksti → AI, jatka kirjoitus
-- **Chat history**: Keskustelut tallentuvat automaattisesti
-
-### ⌨️ **Täydelliset Pikanäppäimet**
-- `Cmd+S` - Tallenna (automaattinen)
-- `Cmd+Z` / `Cmd+Shift+Z` - Undo/Redo
-- `Cmd+F` - Etsi & Korvaa
-- `Cmd+B` / `Cmd+I` - Lihavointi / Kursivointi
-- `Cmd+/` - Näytä kaikki pikanäppäimet
-- `Cmd+Alt+I` - Inspector
-- `Cmd+Alt+A` - AI-avustajat
-- `ESC` - Sulje modaalit
-
-### 📤 **Vienti (Export)**
-- **PDF** - Ammattimaiset dokumentit
-- **DOCX** - Word-yhteensopivuus (tulossa)
-- **Markdown** - .md-tiedostot
-- **HTML** - Web-valmis
-- **TXT** - Puhdas teksti
-- **RTF** - Rich Text Format
-
-### 🚀 **Suorituskyky**
-- **useMemo/useCallback**: Optimoidut renderöinnit
-- **Debounced save**: 1.5s debounce tallennukselle
-- **Throttled analytics**: Emotionaalinen analyysi 2s debounce
-- **Large document detection**: 10k+ merkit optimoitu
-- **LocalStorage**: Instant load/save
-
----
-
-## 🖥️ **Asennus & Käyttö**
-
-### **Kehitysympäristö**
+## Käyttö
 
 ```bash
-# 1. Kloonaa repo
-git clone https://github.com/yourusername/faust.git
-cd faust
-
-# 2. Asenna riippuvuudet
 npm install
-
-# 3. Käynnistä FAUST
-npm start
+npm run dev        # kehitystila (hot reload)
+npm run build      # tuotantokäännös kansioon out/
+npm start          # käynnistää käännetyn sovelluksen
+npm run build-mac  # macOS-asennuspaketti (myös build-win, build-linux)
 ```
 
-### **Tuotantoversio (tulossa)**
+AI-avaimet syötetään sovelluksen Asetuksissa, ja ne tallennetaan käyttöjärjestelmän avainnippuun salattuina. Kehityksessä avaimet voi antaa myös ympäristömuuttujina (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `GROK_API_KEY`, `DEEPSEEK_API_KEY`).
+
+## Projekti on kansio
+
+Teos tallennetaan tavallisina tiedostoina, jotka voi lukea millä tahansa ohjelmalla:
+
+```
+Romaani.faust/
+  project.json                  nimi, asetukset ja sisällyksen rakenne
+  manuscript/luku-1-a1b2c3.md   yksi Markdown-tiedosto per luku/kohtaus (+ YAML-otsake)
+  bible/characters/*.md         henkilöt, paikat (locations) ja juonilangat (threads)
+  .faust/                       sovelluksen sisäiset tiedot (keskusteluhistoria, roskakori)
+  .git/                         automaattinen versiohistoria
+```
+
+- **Tallennus on atominen**: tiedosto kirjoitetaan ensin väliaikaiseksi ja vaihdetaan paikalleen, joten kaatuminen kesken tallennuksen ei riko tekstiä.
+- **Versiohistoria**: muutokset tallentuvat gittiin automaattisesti (pari minuuttia viimeisen muokkauksen jälkeen ja sovellusta suljettaessa). `Cmd+S` tallentaa version heti.
+- **Poistetut** luvut siirtyvät kansioon `.faust/trash/`.
+- **Synkronointi**: kansion voi pitää iCloudissa, Dropboxissa tai omassa git-repossa.
+- **Vanhat `.faust`-tiedostot** (FAUST 1.x/2.x) tuodaan kohdasta *Tiedosto → Tuo vanha .faust-tiedosto*. Alkuperäinen tiedosto jää ennalleen, eikä mitään tietoa hävitetä: uudelle muodolle vieraat tiedot (snapshotit, kirjanmerkit, merkinnät) säilyvät tiedostossa `.faust/legacy.json`.
+
+## Rakenne
+
+```
+app/
+  shared/     tietomalli, puurakenne, Markdown-apurit, AI-mallirekisteri (ajetaan molemmissa prosesseissa)
+  main/       Electronin pääprosessi: projektin tallennus, git-historia, AI-palvelut, vienti
+  preload/    tyypitetty silta window.faust
+  renderer/   React 19 -käyttöliittymä (zustand-tila)
+```
+
+- AI-kutsut tehdään vain pääprosessissa, joten avaimet eivät koskaan päädy käyttöliittymään. Kaikki palveluntarjoajat (Anthropic, OpenAI, Gemini, xAI, DeepSeek) käyttävät samaa rajapintaa, ja vastaukset striimataan.
+- Mallien nimiä ei ole kovakoodattu kutsuihin. Oletukset ovat tiedostossa `app/shared/models.ts`, käytöstä poistetut mallit vaihtuvat automaattisesti oletukseen, ja Asetuksista voi hakea avaimella käytettävissä olevat mallit suoraan palveluntarjoajalta.
+- Käyttöliittymä toimii ilman verkkoa: fontit ja kirjastot on paketoitu sovellukseen.
+
+## Kehitys
 
 ```bash
-# Rakenna sovellus
-npm run build
-
-# Luo jaettava paketti
-npm run dist
+npm test           # vitest (app/) + jest (vanha sovellus)
+npm run lint
+npm run type-check
 ```
 
----
+## Vanha sovellus
 
-## 📦 **Teknologia**
+FAUST 1.x/2.x (`electron.js`, `app.js`, `src/`) toimii vielä rinnalla, kunnes kaikki sen ominaisuudet on siirretty:
 
-- **Electron** - Desktop-sovelluskehys
-- **React 18** - UI-kirjasto (ilman JSX, pure `createElement`)
-- **Tailwind CSS** - Utility-first CSS (CDN)
-- **LocalStorage** - Paikallinen tallennus
-- **IPC (Inter-Process Communication)** - Electron main ↔ renderer
-
----
-
-## 🎯 **Arkkitehtuuri**
-
-```
-faust/
-├── app.js              # React UI (6000+ riviä, FAUST Editor)
-├── electron.js         # Electron main process + IPC handlers
-├── preload.js          # Electron preload (context bridge)
-├── index.html          # HTML entry point
-├── package.json        # Dependencies
-└── README.md           # Tämä tiedosto
+```bash
+npm run legacy:start
 ```
 
-### **Keskeiset komponentit**
-
-1. **KirjoitusStudio** (React) - Pääkomponentti
-2. **Design Tokens** - Keskitetty tyyli-hallinta
-3. **IPC Handlers** (Electron) - File I/O, export, menu actions
-4. **Toast System** - Kauniit notifikaatiot
-5. **Shortcuts Modal** - Pikanäppäinohje
-
----
-
-## 🧪 **Testaus**
-
-### **Perusominaisuudet**
-- [x] Tallennus & lataus LocalStorageen
-- [x] Undo/Redo historia (50 steps)
-- [x] Find & Replace
-- [x] Inspector metadata
-- [x] AI-chats
-- [x] Export PDF/TXT/MD/HTML/RTF
-- [x] Keyboard shortcuts
-- [x] Toast notifications
-
-### **Suorituskyky**
-- [x] useMemo optimoinnit
-- [x] Debounced save
-- [x] Throttled analytics
-- [x] Large document support
-
----
-
-## 📝 **Käyttöohjeet**
-
-### **1. Luo uusi projekti**
-- `Tiedosto → Uusi projekti` tai `Cmd+N`
-
-### **2. Lisää lukuja**
-- Klikkaa `Käsikirjoitus` -kansio
-- Klikkaa `+` -nappi sivupalkissa
-
-### **3. Kirjoita**
-- Valitse luku sivupalkista
-- Kirjoita editorissa
-- **Automaattinen tallennus** aktivoituu 1.5s tyhjäkäynnin jälkeen
-
-### **4. Käytä Inspector-paneelia**
-- `Cmd+Alt+I` tai klikkaa 🛈-ikonia
-- Lisää synopsis, status, tavoite, muistiinpanot
-
-### **5. AI-avustajat**
-- `Cmd+Alt+A` tai klikkaa AI-ikonia
-- Valitse malli (GPT-4, Claude, etc.)
-- Kysy mitä vain tai valitse tekstiä → paina Quick action
-
-### **6. Vie valmis teos**
-- `Tiedosto → Vie → PDF/DOCX/Markdown...`
-- Valitse sijainti
-- Valmis!
-
----
-
-## 🎨 **Design Philosophy**
-
-### **Typografia**
-- **Font**: System fonts (-apple-system, SF Pro)
-- **Sizes**: Fibonacci/Golden ratio (13px, 17px, 27px, 44px)
-- **Line height**: 1.6 (optimal reading)
-- **Letter spacing**: Minimaalinen (0-0.02em)
-
-### **Colors**
-- **Primary**: #0a84ff (Blue)
-- **Success**: #30d158 (Green)
-- **Warning**: #ff9f0a (Orange)
-- **Error**: #ff453a (Red)
-- **Background**: Gradient dark grays
-
-### **Spacing**
-- **Base**: 8px grid
-- **Scale**: 4px, 8px, 12px, 16px, 24px, 32px, 48px, 72px
-
-### **Emotional Arc**
-Värit reagoivat tekstin tunnetilaan:
-- **Positiivinen** → Lämpimät sävyt (pink)
-- **Negatiivinen** → Kylmät sävyt (blue)
-- **Neutraali** → Klassinen tumma
-
----
-
-## 🐛 **Tiedossa olevat rajoitukset**
-
-1. **AI-vastaukset**: Tällä hetkellä demo-vastauksia (ei oikeaa API-integraatiota)
-2. **DOCX-vienti**: Tulee tulevassa versiossa
-3. **Cloud sync**: Ei vielä pilvisynkronointia
-4. **Collaboration**: Ei reaaliaikaista yhteistyötä
-
----
-
-## 🚀 **Tulevat ominaisuudet**
-
-- [ ] Oikeat AI API -integraatiot (OpenAI, Anthropic, etc.)
-- [ ] DOCX-vienti täydellä muotoilulla
-- [ ] Dark/Light mode toggle
-- [ ] Snapshots (versiohistoria)
-- [ ] Research-kansio (liitteet, kuvat)
-- [ ] Cloud backup (Google Drive, Dropbox)
-- [ ] Auto-update
-- [ ] Crash reporting
-
----
-
-## 📄 **Lisenssi**
-
-MIT License - Vapaa käyttöön ja muokkaukseen.
-
----
-
-## 👨‍💻 **Tekijä**
-
-Rakennettu Claude AI:n ja Cursorin avulla, yhdistäen maailman parhaiden suunnittelijoiden periaatteet yhteen saumattomaan kirjoituskokemukseen.
-
-**Versio**: 1.0.0  
-**Viimeisin päivitys**: $(date +%Y-%m-%d)
-
----
-
-## 🙏 **Kiitokset**
-
-- **Sagmeister & Walsh** - Emotionaalinen rohkeus
-- **Pentagram / Michael Bierut** - Typografinen täydellisyys
-- **Superside** - Skaalautuvuus
-- **IDEO** - Kokemuksellisuus
-- **Clement Mok** - Ajaton selkeys
-- **Scrivener** - Kirjoittajan työkalu
-- **Cursor** - AI-avusteinen kehitys
-
-## Offline Mode
-
-FAUST toimii täysin offline core-toiminnoissa (kirjoittaminen, tallennus localStorageen + backup.json userData-kansioon), UI ja layout. AI-ominaisuudet (Claude, GPT, Gemini jne.) ja web-haku vaativat internet-yhteyden – offline-tilassa näytetään 'Offline – AI ei käytettävissä'. Fontit ja React bundlattu paikallisesti webpack:lla. Rakenna offline-asennus npm run build:lla.
-
-
+Molemmat versiot käyttävät samoja tallennettuja API-avaimia.
