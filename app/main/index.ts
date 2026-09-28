@@ -9,6 +9,7 @@ import { projectTools } from './aiTools';
 import { addUsage, emptyUsage, localDate, type UsageFile } from '../shared/usage';
 import type { ModelPrice } from '../shared/models';
 import { exportProject } from './export';
+import { toPdf } from './pdf';
 import { commitAll, history, readAt } from './history';
 import { keyStatus, setKey } from './keys';
 import * as language from './language';
@@ -134,7 +135,8 @@ function buildMenu() {
         { label: 'Uusi kohtaus', accelerator: 'CmdOrCtrl+Shift+K', click: () => sendMenu('new-scene') },
         { type: 'separator' },
         { label: 'Kommentti', accelerator: 'CmdOrCtrl+Alt+M', click: () => sendMenu('add-comment') },
-        { label: 'Kirjanmerkki', accelerator: 'CmdOrCtrl+Alt+B', click: () => sendMenu('add-bookmark') }
+        { label: 'Kirjanmerkki', accelerator: 'CmdOrCtrl+Alt+B', click: () => sendMenu('add-bookmark') },
+        { label: 'Alaviite', accelerator: 'CmdOrCtrl+Alt+F', click: () => sendMenu('add-footnote') }
       ]
     },
     {
@@ -340,7 +342,7 @@ function registerIpc() {
     if (currentProject) shell.showItemInFolder(path.join(currentProject, MANIFEST_FILE));
   });
 
-  ipcMain.handle('project:export', async (_e, format: ExportFormat) => {
+  ipcMain.handle('project:export', async (_e, format: ExportFormat, options?: { hyphenate?: boolean }) => {
     try {
       const project = await openProject(requireProject());
       const { canceled, filePath } = await dialog.showSaveDialog(mainWindow!, {
@@ -352,8 +354,14 @@ function registerIpc() {
         filters: [{ name: EXPORT_EXTENSIONS[format].toUpperCase(), extensions: [EXPORT_EXTENSIONS[format]] }]
       });
       if (canceled || !filePath) return null;
-      const provenanceRaw = await readInternal(currentProject!, 'provenance.json');
-      const content = await exportProject(project, format, provenanceRaw ? JSON.parse(provenanceRaw) : null);
+      const hyphenate = options?.hyphenate && project.manifest.language === 'fi' ? await language.hyphenator() : null;
+      let content: string | Buffer;
+      if (format === 'pdf') {
+        content = await toPdf(project, { hyphenate });
+      } else {
+        const provenanceRaw = await readInternal(currentProject!, 'provenance.json');
+        content = await exportProject(project, format, provenanceRaw ? JSON.parse(provenanceRaw) : null, { hyphenate });
+      }
       await writeFileAtomic(filePath, content);
       return ok(filePath);
     } catch (error) {

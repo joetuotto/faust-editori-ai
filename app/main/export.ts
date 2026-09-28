@@ -1,13 +1,21 @@
 /**
  * Compile the manuscript (in binder order) into a single file.
  * Chapters become headings, scenes are separated by scene breaks.
+ * Footnotes become real footnotes in Word, pop-up notes in EPUB and
+ * endnotes elsewhere. Typeset formats can get Voikko soft hyphens.
  */
-import { AlignmentType, Document, Header, HeadingLevel, Packer, PageNumber, Paragraph, TextRun } from 'docx';
+import { AlignmentType, Document, FootnoteReferenceRun, Header, HeadingLevel, Packer, PageNumber, Paragraph, TextRun } from 'docx';
 import JSZip from 'jszip';
 import { countWords } from '../shared/text';
 import { provenanceStats, type ProvenanceFile } from '../shared/provenance';
 import type { ExportFormat, OpenProject, TreeNode } from '../shared/types';
-import { blocksToHtml, parseBlocks, runsToPlain, type Block } from '../shared/markdownLite';
+import { blocksToHtml, parseBlocks, runsToHtml, runsToPlain, type Block, type Run } from '../shared/markdownLite';
+import { hyphenateBlocks, type Hyphenator } from '../shared/hyphenate';
+
+export interface ExportOptions {
+  /** Soft hyphens for EPUB, Word (book) and PDF */
+  hyphenate?: Hyphenator | null;
+}
 
 interface Section {
   node: TreeNode;
@@ -28,7 +36,7 @@ function collectSections(project: OpenProject): Section[] {
 }
 
 /** Headings for folders/chapters, a scene break before every scene after the first */
-function manuscriptBlocks(project: OpenProject): Block[] {
+function manuscriptBlocks(project: OpenProject, hyphenate?: Hyphenator | null): Block[] {
   const blocks: Block[] = [];
   let previousWasScene = false;
   for (const { node, depth, body } of collectSections(project)) {
@@ -41,7 +49,28 @@ function manuscriptBlocks(project: OpenProject): Block[] {
     }
     blocks.push(...parseBlocks(body));
   }
-  return blocks;
+  return hyphenate ? hyphenateBlocks(blocks, hyphenate) : blocks;
+}
+
+/** Numbers footnotes in reading order and keeps their text for the notes list */
+function noteList(start = 0) {
+  const notes: Run[][] = [];
+  return {
+    notes,
+    add(note: Run[]): number {
+      notes.push(note);
+      return start + notes.length;
+    },
+    get next() {
+      return start + notes.length;
+    }
+  };
+}
+
+function htmlNotesSection(notes: Run[][], start = 0): string {
+  if (notes.length === 0) return '';
+  const items = notes.map((n, i) => `<li id="fn-${start + i + 1}" value="${start + i + 1}">${runsToHtml(n)} <a href="#ref-${start + i + 1}" class="back">↩</a></li>`);
+  return `<section class="notes"><h2>Viitteet</h2>\n<ol>\n${items.join('\n')}\n</ol></section>`;
 }
 
 export function toMarkdown(project: OpenProject): string {
@@ -63,23 +92,20 @@ export function toMarkdown(project: OpenProject): string {
 
 export function toPlainText(project: OpenProject): string {
   const lines = [project.manifest.title.toUpperCase(), ''];
+  const notes = noteList();
+  const mark = (note: Run[]) => `[${notes.add(note)}]`;
   for (const block of manuscriptBlocks(project)) {
     if (block.type === 'break') lines.push('* * *', '');
-    else if (block.type === 'heading') lines.push('', runsToPlain(block.runs).toUpperCase(), '');
-    else lines.push(runsToPlain(block.runs), '');
+    else if (block.type === 'heading') lines.push('', runsToPlain(block.runs, mark).toUpperCase(), '');
+    else lines.push(runsToPlain(block.runs, mark), '');
+  }
+  if (notes.notes.length > 0) {
+    lines.push('', 'VIITTEET', '', ...notes.notes.map((n, i) => `[${i + 1}] ${runsToPlain(n)}`));
   }
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }
 
-export function toHtml(project: OpenProject): string {
-  const { title, author, language } = project.manifest;
-  const escape = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-  return `<!doctype html>
-<html lang="${escape(language || 'fi')}">
-<head>
-<meta charset="utf-8">
-<title>${escape(title)}</title>
-<style>
+const HTML_CSS = `
   body { font-family: 'EB Garamond', Georgia, serif; max-width: 36em; margin: 3em auto; padding: 0 1em; line-height: 1.6; font-size: 1.15em; }
   h1, h2, h3 { text-align: center; font-weight: 500; }
   p { margin: 0; text-indent: 1.5em; }
@@ -87,18 +113,77 @@ export function toHtml(project: OpenProject): string {
   .scene-break { text-align: center; text-indent: 0; margin: 1.5em 0; }
   blockquote { margin: 1em 2em; font-style: italic; }
   .author { text-align: center; text-indent: 0; margin-bottom: 3em; }
+  sup.fn a { text-decoration: none; }
+  .notes { margin-top: 3em; font-size: 0.9em; }
+  .notes h2 { font-size: 1.1em; }
+  .notes li { margin-bottom: 0.4em; }
+  .notes .back { text-decoration: none; }`;
+
+/** Book-like print layout for PDF: A5, justified, chapters on a new page */
+const PRINT_CSS = `
+  @page { size: A5; }
+  body { font-family: 'EB Garamond', Georgia, serif; font-size: 11pt; line-height: 1.45; margin: 0; hyphens: manual; }
+  .title-page { text-align: center; padding-top: 30%; break-after: page; }
+  .title-page h1 { font-size: 24pt; font-weight: 500; margin: 0 0 12pt; }
+  .title-page .author { font-size: 13pt; text-align: center; text-indent: 0; }
+  h2, h3, h4 { text-align: center; font-weight: 500; break-after: avoid; }
+  h2 { font-size: 15pt; break-before: page; margin: 25% 0 2em; }
+  h3 { font-size: 12pt; margin: 2em 0 1em; }
+  p { margin: 0; text-indent: 1.2em; text-align: justify; orphans: 2; widows: 2; }
+  h2 + p, h3 + p, h4 + p, .scene-break + p { text-indent: 0; }
+  .scene-break { text-align: center; text-indent: 0; margin: 1em 0; }
+  blockquote { margin: 0.8em 1.5em; font-style: italic; }
+  sup.fn { font-size: 0.7em; line-height: 0; }
+  sup.fn a { color: inherit; text-decoration: none; }
+  .notes { break-before: page; font-size: 9.5pt; }
+  .notes h2 { break-before: auto; margin-top: 0; }
+  .notes li { margin-bottom: 0.3em; text-align: left; }
+  .notes .back { display: none; }`;
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+}
+
+export function toHtml(project: OpenProject, options: ExportOptions & { print?: boolean; fontFaces?: string } = {}): string {
+  const { title, author, language } = project.manifest;
+  const notes = noteList();
+  const ref = (note: Run[]) => {
+    const n = notes.add(note);
+    return `<sup class="fn"><a href="#fn-${n}" id="ref-${n}">${n}</a></sup>`;
+  };
+  const blocks = manuscriptBlocks(project, options.print ? options.hyphenate : null).map(b => (b.type === 'heading' ? { ...b, level: b.level + 1 } : b));
+  const body = blocksToHtml(blocks, ref);
+  const head = options.print
+    ? `<section class="title-page"><h1>${escapeHtml(title)}</h1>${author ? `<p class="author">${escapeHtml(author)}</p>` : ''}</section>`
+    : `<h1>${escapeHtml(title)}</h1>\n${author ? `<p class="author">${escapeHtml(author)}</p>` : ''}`;
+  return `<!doctype html>
+<html lang="${escapeHtml(language || 'fi')}">
+<head>
+<meta charset="utf-8">
+<title>${escapeHtml(title)}</title>
+<style>${options.fontFaces ?? ''}${options.print ? PRINT_CSS : HTML_CSS}
 </style>
 </head>
 <body>
-<h1>${escape(title)}</h1>
-${author ? `<p class="author">${escape(author)}</p>` : ''}
-${blocksToHtml(manuscriptBlocks(project).map(b => (b.type === 'heading' ? { ...b, level: b.level + 1 } : b)))}
+${head}
+${body}
+${htmlNotesSection(notes.notes)}
 </body>
 </html>
 `;
 }
 
-export async function toDocx(project: OpenProject): Promise<Buffer> {
+/** Word runs for a block; footnotes become real Word footnotes */
+function docxRuns(runs: Run[], italic: boolean, footnotes: Record<number, { children: Paragraph[] }>): (TextRun | FootnoteReferenceRun)[] {
+  return runs.map(r => {
+    if (!r.note) return new TextRun({ text: r.text, bold: r.bold, italics: r.italic || italic });
+    const id = Object.keys(footnotes).length + 1;
+    footnotes[id] = { children: [new Paragraph({ children: r.note.map(n => new TextRun({ text: n.text, bold: n.bold, italics: n.italic })) })] };
+    return new FootnoteReferenceRun(id);
+  });
+}
+
+export async function toDocx(project: OpenProject, options: ExportOptions = {}): Promise<Buffer> {
   const { title, author } = project.manifest;
   const headingLevels = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3];
   const paragraphs: Paragraph[] = [
@@ -106,14 +191,15 @@ export async function toDocx(project: OpenProject): Promise<Buffer> {
   ];
   if (author) paragraphs.push(new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun(author)] }));
 
+  const footnotes: Record<number, { children: Paragraph[] }> = {};
   let firstAfterBreak = true;
-  for (const block of manuscriptBlocks(project)) {
+  for (const block of manuscriptBlocks(project, options.hyphenate)) {
     if (block.type === 'break') {
       paragraphs.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 240, after: 240 }, children: [new TextRun('* * *')] }));
       firstAfterBreak = true;
       continue;
     }
-    const runs = block.runs.map(r => new TextRun({ text: r.text, bold: r.bold, italics: r.italic || block.type === 'quote' }));
+    const runs = docxRuns(block.runs, block.type === 'quote', footnotes);
     if (block.type === 'heading') {
       paragraphs.push(new Paragraph({ heading: headingLevels[block.level - 1], alignment: AlignmentType.CENTER, pageBreakBefore: block.level === 1, children: runs }));
       firstAfterBreak = true;
@@ -131,6 +217,7 @@ export async function toDocx(project: OpenProject): Promise<Buffer> {
     creator: author || 'FAUST',
     title,
     styles: { default: { document: { run: { font: 'Times New Roman', size: 24 } } } },
+    footnotes,
     sections: [{ children: paragraphs }]
   });
   return Packer.toBuffer(doc);
@@ -155,6 +242,7 @@ export async function toManuscriptDocx(project: OpenProject): Promise<Buffer> {
   ];
 
   const body: Paragraph[] = [];
+  const footnotes: Record<number, { children: Paragraph[] }> = {};
   let firstAfterBreak = true;
   for (const block of manuscriptBlocks(project)) {
     if (block.type === 'break') {
@@ -162,7 +250,7 @@ export async function toManuscriptDocx(project: OpenProject): Promise<Buffer> {
       firstAfterBreak = true;
       continue;
     }
-    const runs = block.runs.map(r => new TextRun({ text: r.text, bold: r.bold, italics: r.italic || block.type === 'quote' }));
+    const runs = docxRuns(block.runs, block.type === 'quote', footnotes);
     if (block.type === 'heading') {
       body.push(new Paragraph({ alignment: AlignmentType.CENTER, pageBreakBefore: true, spacing: { before: 2400, after: 720, line: 360 }, children: runs }));
       firstAfterBreak = true;
@@ -178,6 +266,7 @@ export async function toManuscriptDocx(project: OpenProject): Promise<Buffer> {
     creator: author || 'FAUST',
     title,
     styles: { default: { document: { run: { font: 'Times New Roman', size: 24 } } } },
+    footnotes,
     sections: [
       { properties: { page: { margin } }, children: titlePage },
       {
@@ -200,7 +289,11 @@ function xmlEscape(text: string): string {
 
 const EPUB_CSS = `body { font-family: serif; line-height: 1.5; margin: 0 5%; }
 h1, h2, h3 { text-align: center; font-weight: normal; margin: 2em 0 1em; page-break-after: avoid; }
-p { margin: 0; text-indent: 1.5em; text-align: justify; }
+p { margin: 0; text-indent: 1.5em; text-align: justify; -webkit-hyphens: manual; hyphens: manual; }
+sup.fn { font-size: 0.7em; line-height: 0; }
+sup.fn a { text-decoration: none; }
+aside.footnote { font-size: 0.85em; margin-top: 1em; }
+aside.footnote p { text-indent: 0; text-align: left; }
 h1 + p, h2 + p, h3 + p, .scene-break + p, .title-page p { text-indent: 0; }
 .scene-break { text-align: center; text-indent: 0; margin: 1em 0; }
 blockquote { margin: 1em 1.5em; font-style: italic; }
@@ -221,14 +314,26 @@ ${body}
 }
 
 /** EPUB 3 e-book: one file per top-level chapter or folder */
-export async function toEpub(project: OpenProject, now = new Date()): Promise<Buffer> {
+export async function toEpub(project: OpenProject, now = new Date(), options: ExportOptions = {}): Promise<Buffer> {
   const { title, author, language, id } = project.manifest;
   const lang = xmlEscape(language || 'fi');
 
-  // Each top-level node with its descendants becomes one chapter file
+  // Each top-level node with its descendants becomes one chapter file; its notes
+  // follow it as EPUB 3 footnotes (reading systems show them as pop-ups)
+  let noteCount = 0;
   const chapters = project.manifest.structure.map((top, index) => {
     const sub: OpenProject = { ...project, manifest: { ...project.manifest, structure: [top] } };
-    const html = blocksToHtml(manuscriptBlocks(sub)).replace(/<br>/g, '<br/>');
+    const notes = noteList(noteCount);
+    const ref = (note: Run[]) => {
+      const n = notes.add(note);
+      return `<sup class="fn"><a epub:type="noteref" href="#fn-${n}" id="ref-${n}">${n}</a></sup>`;
+    };
+    const body = blocksToHtml(manuscriptBlocks(sub, options.hyphenate), ref);
+    const asides = notes.notes.map(
+      (n, i) => `<aside epub:type="footnote" class="footnote" id="fn-${noteCount + i + 1}"><p><a href="#ref-${noteCount + i + 1}">${noteCount + i + 1}.</a> ${runsToHtml(n)}</p></aside>`
+    );
+    noteCount = notes.next;
+    const html = [body, ...asides].join('\n').replace(/<br>/g, '<br/>');
     return { file: `chapter-${index + 1}.xhtml`, title: top.title, html };
   });
 
@@ -331,7 +436,12 @@ export function toProvenanceReport(project: OpenProject, provenance: ProvenanceF
   ].join('\n');
 }
 
-export async function exportProject(project: OpenProject, format: ExportFormat, provenance: ProvenanceFile | null = null): Promise<string | Buffer> {
+export async function exportProject(
+  project: OpenProject,
+  format: Exclude<ExportFormat, 'pdf'>,
+  provenance: ProvenanceFile | null = null,
+  options: ExportOptions = {}
+): Promise<string | Buffer> {
   switch (format) {
     case 'md':
       return toMarkdown(project);
@@ -340,11 +450,11 @@ export async function exportProject(project: OpenProject, format: ExportFormat, 
     case 'html':
       return toHtml(project);
     case 'docx':
-      return toDocx(project);
+      return toDocx(project, options);
     case 'manuscript':
       return toManuscriptDocx(project);
     case 'epub':
-      return toEpub(project);
+      return toEpub(project, new Date(), options);
     case 'provenance':
       return toProvenanceReport(project, provenance);
   }

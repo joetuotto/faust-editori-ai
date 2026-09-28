@@ -15,6 +15,7 @@ import { RewriteMenu } from './RewriteMenu';
 import { Search } from './search';
 import { CommentMark, applyComments, revealAnchor, updateThreads } from './comments';
 import { startThread } from './commentActions';
+import { Footnote } from './footnote';
 import { FindBar } from './FindBar';
 import { useStore } from '../store';
 
@@ -67,7 +68,8 @@ export function ManuscriptEditor({ docId, body, language }: Props) {
         ProvenanceMark,
         ProvenanceGuard,
         Search,
-        CommentMark
+        CommentMark,
+        Footnote
       ],
       content: body,
       contentType: 'markdown',

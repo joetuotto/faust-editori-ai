@@ -33,7 +33,7 @@ const api: FaustAPI = {
     readInternal: name => ipcRenderer.invoke('project:readInternal', name),
     writeInternal: (name, content) => ipcRenderer.invoke('project:writeInternal', name, content),
     reveal: () => ipcRenderer.invoke('project:reveal'),
-    export: format => ipcRenderer.invoke('project:export', format)
+    export: (format, options) => ipcRenderer.invoke('project:export', format, options)
   },
   lang: {
     available: () => ipcRenderer.invoke('lang:available'),

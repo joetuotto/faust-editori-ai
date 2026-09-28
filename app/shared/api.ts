@@ -43,6 +43,7 @@ export type MenuCommand =
   | 'toggle-comments'
   | 'add-comment'
   | 'add-bookmark'
+  | 'add-footnote'
   | 'show-bible'
   | 'show-settings'
   | 'show-history'
@@ -76,7 +77,7 @@ export interface FaustAPI {
     readInternal(name: InternalFile): Promise<string | null>;
     writeInternal(name: InternalFile, content: string): Promise<Result>;
     reveal(): Promise<void>;
-    export(format: ExportFormat): Promise<Result<string> | null>;
+    export(format: ExportFormat, options?: { hyphenate?: boolean }): Promise<Result<string> | null>;
   };
   lang: {
     /** False if the Finnish checker failed to load */

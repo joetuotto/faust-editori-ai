@@ -18,6 +18,8 @@ interface VoikkoInstance {
   setIgnoreNumbers(value: boolean): void;
   setAcceptUnfinishedParagraphsInGc(value: boolean): void;
   setAcceptTitlesInGc(value: boolean): void;
+  hyphenate(word: string, separator?: string, allowContextChanges?: boolean): string;
+  setNoUglyHyphenation(value: boolean): void;
 }
 
 let voikko: Promise<VoikkoInstance | null> | null = null;
@@ -68,6 +70,15 @@ export async function loadDictionaries(dir: string | null) {
 
 function isCustomWord(word: string) {
   return matchesKnownWord(word, projectWords) || matchesKnownWord(word, userWords);
+}
+
+/** Voikko hyphenation with soft hyphens, or null if Voikko is not available */
+export async function hyphenator(): Promise<((word: string) => string) | null> {
+  const v = await getVoikko();
+  if (!v) return null;
+  v.setNoUglyHyphenation(true);
+  // No context changes: the letters must stay exactly as written
+  return word => v.hyphenate(word, '\u00AD', false);
 }
 
 export async function isAvailable(): Promise<boolean> {

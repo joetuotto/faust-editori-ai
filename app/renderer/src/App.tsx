@@ -18,6 +18,8 @@ import { ExportDialog } from './components/ExportDialog';
 import { Inspector } from './components/Inspector';
 import { CommentsPanel } from './components/CommentsPanel';
 import { startThreadInActive } from './editor/commentActions';
+import { insertFootnote } from './editor/footnote';
+import { getActiveEditor } from './editor/activeEditor';
 import { NewProjectDialog } from './components/NewProjectDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { Toasts } from './components/Toasts';
@@ -104,6 +106,9 @@ export function App() {
             break;
           case 'add-bookmark':
             startThreadInActive('bookmark');
+            break;
+          case 'add-footnote':
+            insertFootnote(s.activeId ? getActiveEditor(s.activeId) : null);
             break;
           case 'toggle-ai':
             s.toggle('showAI');

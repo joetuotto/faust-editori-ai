@@ -1540,3 +1540,53 @@ button {
   width: 64px;
   text-align: right;
 }
+
+/* ---------- footnotes ---------- */
+
+.manuscript {
+  counter-reset: footnote;
+}
+
+.manuscript .footnote {
+  position: relative;
+}
+
+.manuscript .footnote-ref::after {
+  counter-increment: footnote;
+  content: counter(footnote);
+  font-family: var(--font-mono);
+  font-size: 0.6em;
+  color: var(--accent);
+  padding: 0 1px;
+  cursor: pointer;
+}
+
+.manuscript .footnote.selected .footnote-ref::after {
+  background: var(--selected);
+  border-radius: 2px;
+}
+
+.footnote-editor {
+  position: absolute;
+  left: -8px;
+  top: 1.6em;
+  z-index: 15;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  text-indent: 0;
+}
+
+.footnote-editor .textarea {
+  font-family: var(--font-serif);
+  font-size: 15px;
+}

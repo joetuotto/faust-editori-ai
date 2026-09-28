@@ -171,13 +171,14 @@ export interface GrammarIssue {
   description: string;
 }
 
-export type ExportFormat = 'docx' | 'manuscript' | 'epub' | 'md' | 'html' | 'txt' | 'provenance';
+export type ExportFormat = 'docx' | 'manuscript' | 'epub' | 'pdf' | 'md' | 'html' | 'txt' | 'provenance';
 
 /** File extension for each export format */
 export const EXPORT_EXTENSIONS: Record<ExportFormat, string> = {
   docx: 'docx',
   manuscript: 'docx',
   epub: 'epub',
+  pdf: 'pdf',
   md: 'md',
   html: 'html',
   txt: 'txt',
