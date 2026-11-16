@@ -91,6 +91,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   aiCheckContinuity: (params) => ipcRenderer.invoke('ai:check-continuity', params),
   aiBatchProcess: (params) => ipcRenderer.invoke('ai:batch-process', params),
 
+  // AI provider: Claude (Anthropic) or Cherry Studio gateway
+  aiGetProvider: () => ipcRenderer.invoke('ai:get-provider'),
+  aiSetProvider: (settings) => ipcRenderer.invoke('ai:set-provider', settings),
+  aiListCherryModels: () => ipcRenderer.invoke('ai:list-cherry-models'),
+  aiTestProvider: () => ipcRenderer.invoke('ai:test-provider'),
+
   // API Key management
   loadApiKeys: () => ipcRenderer.invoke('load-api-keys'),
   saveApiKeys: (keys) => ipcRenderer.invoke('save-api-keys', keys),

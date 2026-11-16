@@ -4,6 +4,8 @@
  * v2.0: Project structure for AI book generation
  */
 
+import { AIProviderSettings } from './src/components/AIProviderSettings.js';
+
 const { createElement: e, useState, useEffect, useRef } = React;
 
 // CharacterGenerator, callAIProvider, and RefinementManager
@@ -8328,6 +8330,9 @@ ${contextPrompt}`;
             e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginTop: '8px', fontStyle: 'italic' } },
               'AI jatkaa kirjoittamista tekstisi lopusta')
           ),
+
+          // AI provider: Claude directly or Cherry Studio's local gateway
+          e(AIProviderSettings, null),
 
           // Claude API Key
           e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },

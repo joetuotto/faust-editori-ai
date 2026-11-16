@@ -59,6 +59,151 @@ async function loadApiConfig() {
   }
 }
 
+// Persist the config object (keys + AI provider settings), encrypted when possible
+async function persistApiConfig(keys) {
+  let config;
+
+  if (safeStorage.isEncryptionAvailable()) {
+    const keysJson = JSON.stringify(keys);
+    const encrypted = safeStorage.encryptString(keysJson);
+    const encryptedBase64 = encrypted.toString('base64');
+
+    config = {
+      apiKeysEncrypted: encryptedBase64,
+      version: '1.4.3',
+      encryptionMethod: 'electron-safeStorage'
+    };
+    console.log('[Security] API keys encrypted with safeStorage');
+  } else {
+    // Fallback to plain text if encryption unavailable
+    config = { apiKeys: keys };
+    console.warn('[Security] Encryption unavailable, storing in plain text');
+  }
+
+  await fs.writeFile(getConfigPath(), JSON.stringify(config, null, 2), 'utf-8');
+  await loadApiConfig(); // Reload
+  return { encrypted: safeStorage.isEncryptionAvailable() };
+}
+
+// ============================================
+// AI PROVIDER: Claude (Anthropic) or Cherry Studio API Gateway
+// ============================================
+// Cherry Studio exposes an Anthropic-compatible endpoint on its local API
+// gateway (Cherry Studio: Settings → API Gateway). Pointing the Anthropic SDK
+// at it gives FAUST every model configured in Cherry Studio without changing
+// the call sites: the same messages.create / messages.stream calls are used.
+
+const CHERRY_DEFAULT_GATEWAY_URL = 'http://127.0.0.1:23333';
+
+function getAIProviderConfig() {
+  const provider = String(process.env.FAUST_AI_PROVIDER || apiConfig.AI_PROVIDER || 'anthropic').toLowerCase();
+  const gatewayUrl = String(process.env.CHERRY_GATEWAY_URL || apiConfig.CHERRY_GATEWAY_URL || CHERRY_DEFAULT_GATEWAY_URL)
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/v1$/, '');
+
+  return {
+    provider: provider === 'cherry' ? 'cherry' : 'anthropic',
+    gatewayUrl,
+    model: process.env.CHERRY_MODEL || apiConfig.CHERRY_MODEL || '',
+    cherryKey: process.env.CHERRY_API_KEY || apiConfig.CHERRY_API_KEY || '',
+    anthropicKey: process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY || ''
+  };
+}
+
+// Settings as shown to the renderer: never includes key values
+function publicAIProviderConfig() {
+  const cfg = getAIProviderConfig();
+  return {
+    provider: cfg.provider,
+    gatewayUrl: cfg.gatewayUrl,
+    model: cfg.model,
+    hasCherryKey: !!cfg.cherryKey,
+    hasAnthropicKey: !!cfg.anthropicKey,
+    providerFromEnv: !!process.env.FAUST_AI_PROVIDER
+  };
+}
+
+// Text of a Messages API response. Gateway models may put a thinking block first,
+// so content[0].text is not reliable.
+function messageText(message) {
+  if (!message || !Array.isArray(message.content)) return '';
+  return message.content.filter(b => b.type === 'text').map(b => b.text).join('');
+}
+
+// Anthropic-SDK-shaped client that talks to the Cherry Studio gateway.
+// It swaps Claude model names for the selected gateway model, drops the
+// Claude-only "thinking" parameter and keeps text blocks first.
+function createCherryClient({ apiKey, baseURL, model }) {
+  const inner = new Anthropic({ apiKey, baseURL });
+
+  const prepare = (params = {}) => {
+    // Gateway model ids look like "providerId:modelId"; anything else is a Claude name
+    const requested = typeof params.model === 'string' && params.model.includes(':') ? params.model : model;
+    const next = { ...params, model: requested };
+    delete next.thinking;
+    return next;
+  };
+
+  const textFirst = (message) => {
+    if (message && Array.isArray(message.content)) {
+      const text = message.content.filter(b => b.type === 'text');
+      const rest = message.content.filter(b => b.type !== 'text');
+      message.content = text.length > 0 ? [...text, ...rest] : [{ type: 'text', text: '' }, ...rest];
+    }
+    return message;
+  };
+
+  return {
+    isCherryGateway: true,
+    model,
+    messages: {
+      create: async (params, options) => {
+        const prepared = prepare(params);
+        const result = await inner.messages.create(prepared, options);
+        return prepared.stream ? result : textFirst(result);
+      },
+      stream: (params, options) => inner.messages.stream(prepare(params), options)
+    }
+  };
+}
+
+// Client for the selected provider. Throws a user-facing error if it is not configured.
+function getClaudeClient() {
+  const cfg = getAIProviderConfig();
+
+  if (cfg.provider === 'cherry') {
+    if (!cfg.cherryKey) {
+      throw new Error('Cherry Studion yhdyskäytävän avain puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain.');
+    }
+    if (!cfg.model) {
+      throw new Error('Cherry Studion mallia ei ole valittu. Mene Asetuksiin (Cmd+,) ja valitse malli.');
+    }
+    return createCherryClient({ apiKey: cfg.cherryKey, baseURL: cfg.gatewayUrl, model: cfg.model });
+  }
+
+  if (!cfg.anthropicKey) {
+    throw new Error('ANTHROPIC_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.');
+  }
+  return new Anthropic({ apiKey: cfg.anthropicKey });
+}
+
+// Turn SDK/network errors into messages that say what to do
+function describeAIError(error) {
+  const message = (error && error.message) || String(error);
+  const cfg = getAIProviderConfig();
+  if (cfg.provider !== 'cherry') return message;
+
+  const status = error && error.status;
+  if (status === 401 || status === 403) {
+    return 'Cherry Studion yhdyskäytävä hylkäsi avaimen. Kopioi avain Cherry Studiosta (Settings → API Gateway → API Key) ja tallenna se FAUSTin asetuksiin.';
+  }
+  if (!status && /connect|ECONNREFUSED|fetch failed|network/i.test(message)) {
+    return `Cherry Studion yhdyskäytävään ei saada yhteyttä (${cfg.gatewayUrl}). Varmista, että Cherry Studio on käynnissä ja API Gateway on päällä.`;
+  }
+  return message;
+}
+
 // --- v1.4.1: UI Prefs (persist theme/layout/modes) ---
 let uiPrefs = {
   theme: 'NOX',            // 'NOX' | 'DEIS'
@@ -1030,32 +1175,98 @@ ipcMain.handle('load-api-keys', async () => {
 // Save API Keys (v1.4.3: with encryption)
 ipcMain.handle('save-api-keys', async (event, keys) => {
   try {
-    let config;
-
-    // Try to encrypt if available
-    if (safeStorage.isEncryptionAvailable()) {
-      const keysJson = JSON.stringify(keys);
-      const encrypted = safeStorage.encryptString(keysJson);
-      const encryptedBase64 = encrypted.toString('base64');
-
-      config = {
-        apiKeysEncrypted: encryptedBase64,
-        version: '1.4.3',
-        encryptionMethod: 'electron-safeStorage'
-      };
-      console.log('[Security] API keys encrypted with safeStorage');
-    } else {
-      // Fallback to plain text if encryption unavailable
-      config = { apiKeys: keys };
-      console.warn('[Security] Encryption unavailable, storing in plain text');
-    }
-
-    await fs.writeFile(getConfigPath(), JSON.stringify(config, null, 2), 'utf-8');
-    await loadApiConfig(); // Reload
-    return { success: true, encrypted: safeStorage.isEncryptionAvailable() };
+    const { encrypted } = await persistApiConfig(keys);
+    return { success: true, encrypted };
   } catch (error) {
     console.error('[Security] Save API keys error:', error);
     return { success: false, error: error.message };
+  }
+});
+
+// AI provider settings: Claude (Anthropic) or Cherry Studio gateway
+ipcMain.handle('ai:get-provider', async () => {
+  return { success: true, ...publicAIProviderConfig() };
+});
+
+ipcMain.handle('ai:set-provider', async (_event, next = {}) => {
+  try {
+    const updated = { ...apiConfig };
+    if (next.provider === 'cherry' || next.provider === 'anthropic') {
+      updated.AI_PROVIDER = next.provider;
+    }
+    if (typeof next.gatewayUrl === 'string' && next.gatewayUrl.trim()) {
+      updated.CHERRY_GATEWAY_URL = next.gatewayUrl.trim();
+    }
+    if (typeof next.model === 'string') {
+      updated.CHERRY_MODEL = next.model;
+    }
+    await persistApiConfig(updated);
+    console.log('[AI Provider] Settings saved:', publicAIProviderConfig());
+    return { success: true, ...publicAIProviderConfig() };
+  } catch (error) {
+    console.error('[AI Provider] Save error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// List the models Cherry Studio offers through its gateway
+ipcMain.handle('ai:list-cherry-models', async () => {
+  const cfg = getAIProviderConfig();
+  if (!cfg.cherryKey) {
+    return { success: false, error: 'Cherry Studion yhdyskäytävän avain puuttuu.' };
+  }
+
+  try {
+    const response = await withTimeout(
+      fetch(`${cfg.gatewayUrl}/v1/models`, {
+        headers: { Authorization: `Bearer ${cfg.cherryKey}` }
+      }),
+      8000
+    );
+
+    if (response.status === 401 || response.status === 403) {
+      return { success: false, error: describeAIError({ status: response.status, message: 'Forbidden' }) };
+    }
+    if (!response.ok) {
+      return { success: false, error: `Yhdyskäytävä vastasi virheellä ${response.status}.` };
+    }
+
+    const body = await response.json();
+    const models = (body.data || []).map(m => ({
+      id: m.id,
+      name: String(m.id).split(':').slice(1).join(':') || m.id,
+      owner: m.owned_by || ''
+    }));
+    return { success: true, models };
+  } catch (error) {
+    return {
+      success: false,
+      error: `Cherry Studion yhdyskäytävään ei saada yhteyttä (${cfg.gatewayUrl}). Varmista, että Cherry Studio on käynnissä ja API Gateway on päällä.`
+    };
+  }
+});
+
+// Send one short request through the selected provider
+ipcMain.handle('ai:test-provider', async () => {
+  try {
+    const client = getClaudeClient();
+    const started = Date.now();
+    const message = await withTimeout(
+      client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: 'Vastaa yhdellä sanalla: toimii' }]
+      }),
+      90000
+    );
+    return {
+      success: true,
+      text: messageText(message).trim(),
+      model: message.model,
+      ms: Date.now() - started
+    };
+  } catch (error) {
+    return { success: false, error: describeAIError(error) };
   }
 });
 
@@ -1187,16 +1398,8 @@ ipcMain.handle('claude-api', async (event, promptOrOptions) => {
     const temperature = typeof promptOrOptions === 'object' ? promptOrOptions.temperature : 0.7;
     const maxTokens = typeof promptOrOptions === 'object' ? promptOrOptions.max_tokens : 2000;
 
-    let apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
-
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'ANTHROPIC_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.'
-      };
-    }
-
-    const anthropic = new Anthropic({ apiKey });
+    // Claude directly, or the model selected in Cherry Studio's gateway
+    const anthropic = getClaudeClient();
 
     const message = await anthropic.messages.create({
       model: model || 'claude-3-5-sonnet-20241022',
@@ -1207,12 +1410,12 @@ ipcMain.handle('claude-api', async (event, promptOrOptions) => {
 
     return {
       success: true,
-      data: message.content[0].text,
+      data: messageText(message),
       usage: message.usage
     };
   } catch (error) {
     console.error('Claude API error:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: describeAIError(error) };
   }
 });
 
@@ -1228,16 +1431,7 @@ ipcMain.handle('claude-api-stream', async (event, options) => {
       system = null
     } = options;
 
-    let apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
-
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'ANTHROPIC_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain.'
-      };
-    }
-
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = getClaudeClient();
 
     // Build messages array
     const apiMessages = messages.length > 0
@@ -1278,11 +1472,12 @@ ipcMain.handle('claude-api-stream', async (event, options) => {
     };
   } catch (error) {
     console.error('Claude Stream API error:', error);
+    const message = describeAIError(error);
     event.sender.send('claude-stream-chunk', {
-      error: error.message,
+      error: message,
       type: 'error'
     });
-    return { success: false, error: error.message };
+    return { success: false, error: message };
   }
 });
 
@@ -1297,16 +1492,9 @@ ipcMain.handle('claude-api-thinking', async (event, options) => {
       stream = false
     } = options;
 
-    let apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
-
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'ANTHROPIC_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain.'
-      };
-    }
-
-    const anthropic = new Anthropic({ apiKey });
+    // With the Cherry Studio gateway the "thinking" parameter is dropped and
+    // the selected model decides on its own whether it reasons first
+    const anthropic = getClaudeClient();
 
     // Build messages array
     const apiMessages = messages.length > 0
@@ -1378,12 +1566,13 @@ ipcMain.handle('claude-api-thinking', async (event, options) => {
     }
   } catch (error) {
     console.error('Claude Thinking API error:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: describeAIError(error) };
   }
 });
 
-// NOTE: Other AI providers (OpenAI, Grok, DeepSeek, Gemini) removed in v2.0
-// FAUST now uses Claude exclusively for best writing quality
+// NOTE: Other AI providers (OpenAI, Grok, DeepSeek, Gemini) removed in v2.0.
+// Models other than Claude are reached through the Cherry Studio gateway
+// (see getClaudeClient above), not through separate provider handlers.
 
 // Add after export handlers or before AI APIs
 ipcMain.on('show-context-menu', async (event, { x, y, selection, isEditable }) => {
@@ -1439,12 +1628,7 @@ ipcMain.on('show-context-menu', async (event, { x, y, selection, isEditable }) =
 // AI MODULES - Story Generation & Continuity
 // ============================================
 
-// Helper: Get Claude API client
-function getClaudeClient() {
-  const apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('Claude API key missing. Mene Asetuksiin (Cmd+,) ja syötä avain.');
-  return new Anthropic({ apiKey });
-}
+// getClaudeClient() is defined near the top of this file (AI PROVIDER section)
 
 // Generate chapter content with Claude AI
 ipcMain.handle('ai:generate-chapter', async (event, { chapterId, project, mode = 'production' }) => {
@@ -1519,7 +1703,7 @@ Return ONLY the chapter text, no meta-commentary.`;
       messages: [{ role: 'user', content: prompt }]
     });
 
-    const generatedContent = message.content[0].text;
+    const generatedContent = messageText(message);
     const usage = message.usage;
 
     // Update continuity tracker
