@@ -26,6 +26,10 @@ module.exports = {
   resolve: {
     extensions: ['.js', '.jsx']
   },
+  // Loaded from disk by Electron, so download-size hints do not apply
+  performance: {
+    hints: false
+  },
   plugins: [
     new HtmlWebpackPlugin({
       template: './index.html'

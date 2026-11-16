@@ -5,6 +5,7 @@
  */
 
 import { AIProviderSettings } from './src/components/AIProviderSettings.js';
+import { FaustEditor } from './src/components/FaustEditor.js';
 
 const { createElement: e, useState, useEffect, useRef } = React;
 
@@ -1410,19 +1411,14 @@ function FAUSTApp() {
         if (editorRef.current) {
           editorRef.current.focus();
           editorRef.current.setSelectionRange(bookmark.position, bookmark.position);
-          // Scroll to position
-          const lineHeight = 24;
-          const linesBeforeBookmark = (activeChapter.content || '').substring(0, bookmark.position).split('\n').length;
-          editorRef.current.scrollTop = linesBeforeBookmark * lineHeight - 200;
+          editorRef.current.scrollToPos(bookmark.position);
         }
       }, 100);
     } else {
       if (editorRef.current) {
         editorRef.current.focus();
         editorRef.current.setSelectionRange(bookmark.position, bookmark.position);
-        const lineHeight = 24;
-        const linesBeforeBookmark = (activeChapter.content || '').substring(0, bookmark.position).split('\n').length;
-        editorRef.current.scrollTop = linesBeforeBookmark * lineHeight - 200;
+        editorRef.current.scrollToPos(bookmark.position);
       }
     }
     setShowBookmarksPanel(false);
@@ -1654,13 +1650,7 @@ function FAUSTApp() {
     if (editorRef.current) {
       editorRef.current.focus();
       editorRef.current.setSelectionRange(result.start, result.end);
-      // Scroll to selection
-      const textarea = editorRef.current;
-      const lineHeight = parseInt(getComputedStyle(textarea).lineHeight) || 20;
-      const totalLines = textarea.value.split('\n').length;
-      const currentLine = textarea.value.substring(0, result.start).split('\n').length;
-      const scrollPosition = (currentLine / totalLines) * textarea.scrollHeight;
-      textarea.scrollTop = Math.max(0, scrollPosition - textarea.clientHeight / 2);
+      editorRef.current.scrollToPos(result.start);
     }
   };
 
@@ -3841,30 +3831,6 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     } else {
       setTextSelection(null);
     }
-  };
-
-  // Typewriter Mode - scroll to keep cursor centered
-  const handleTypewriterScroll = () => {
-    if (!typewriterMode || !editorRef.current) return;
-
-    const textarea = editorRef.current;
-    const cursorPosition = textarea.selectionStart;
-    const textBeforeCursor = textarea.value.substring(0, cursorPosition);
-    const linesBefore = textBeforeCursor.split('\n').length;
-
-    // Calculate line height (approximate)
-    const computedStyle = window.getComputedStyle(textarea);
-    const fontSize = parseFloat(computedStyle.fontSize);
-    const lineHeight = parseFloat(computedStyle.lineHeight) || fontSize * 1.5;
-
-    // Calculate cursor Y position
-    const cursorY = linesBefore * lineHeight;
-
-    // Scroll to center the cursor
-    const viewportHeight = textarea.clientHeight;
-    const targetScroll = cursorY - (viewportHeight / 2);
-
-    textarea.scrollTop = Math.max(0, targetScroll);
   };
 
   // Initialize session when component mounts or project loads
@@ -6815,29 +6781,17 @@ ${contextPrompt}`;
                     )
               ),
 
-              // Textarea with Typewriter Mode support
-              e('textarea', {
+              // Manuscript editor (CodeMirror, see src/components/FaustEditor.js).
+              // editorRef gets a textarea-compatible element. Remounted per chapter
+              // so every chapter starts with its own cursor and scroll position.
+              e(FaustEditor, {
+                key: activeChapter.id,
                 ref: editorRef,
-                className: 'faust-textarea',
                 value: activeChapter.content,
-                onChange: (ev) => {
-                  updateChapterContent(ev.target.value);
-                  if (typewriterMode) {
-                    setTimeout(handleTypewriterScroll, 10);
-                  }
-                },
+                onChange: (text) => updateChapterContent(text),
                 onMouseUp: handleTextSelection,
-                onKeyUp: (ev) => {
-                  handleTextSelection();
-                  if (typewriterMode && (ev.key === 'Enter' || ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) {
-                    handleTypewriterScroll();
-                  }
-                },
-                onClick: () => {
-                  if (typewriterMode) {
-                    setTimeout(handleTypewriterScroll, 10);
-                  }
-                },
+                onKeyUp: handleTextSelection,
+                typewriterMode: typewriterMode, // the editor keeps the cursor line centered
                 placeholder: 'Aloita kirjoittaminen...',
                 style: {
                   flex: 1,
@@ -6845,10 +6799,10 @@ ${contextPrompt}`;
                   fontSize: `${18 * (parseInt(editorZoom) / 100)}px`,
                   lineHeight: lineSpacing,
                   textAlign: textAlign,
-                  paddingBottom: `${parseFloat(paragraphSpacing) * 16}px`,
-                  paddingLeft: '60px', // Add left padding for annotation margin
-                  paddingTop: typewriterMode ? '40vh' : undefined, // Extra top padding for typewriter mode
-                  scrollBehavior: typewriterMode ? 'smooth' : undefined
+                  // Typewriter mode needs room above the first and below the last line
+                  paddingTop: typewriterMode ? '40vh' : undefined,
+                  paddingBottom: typewriterMode ? '50vh' : `${parseFloat(paragraphSpacing) * 16}px`,
+                  paddingLeft: '60px' // room for the annotation margin
                 }
               })
             ) // Close editor container with formatting toolbar

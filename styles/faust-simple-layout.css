@@ -153,28 +153,15 @@
   overflow: hidden;
 }
 
-/* Textarea - fills editor content area */
-.faust-textarea {
+/* Manuscript editor host (CodeMirror, src/components/FaustEditor.js) */
+.faust-editor-host {
   width: 100%;
-  min-height: 100%;
-  background: transparent;
-  border: none;
-  outline: none;
-  resize: none;
   color: inherit;
-  font-family: inherit;
-  font-size: inherit;
-  line-height: inherit;
 
-  /* Explicitly enable text selection and editing */
+  /* The window title bar is draggable; the editor must stay selectable */
   -webkit-app-region: no-drag;
   -webkit-user-select: text;
   user-select: text;
-  cursor: text;
-}
-
-.faust-textarea::placeholder {
-  color: var(--text-3, rgba(255,255,255,0.3));
 }
 
 /* Footer/status bar */
