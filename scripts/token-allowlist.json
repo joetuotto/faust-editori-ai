@@ -1,0 +1,77 @@
+{
+  "app.js": {
+    "colourLiteral": 277,
+    "bareFontName": 508,
+    "pixelFontSize": 548,
+    "transitionAll": 22,
+    "alertCall": 71,
+    "confirmCall": 16,
+    "pictograph": 110
+  },
+  "src/components/AIProviderSettings.js": {
+    "colourLiteral": 2,
+    "bareFontName": 1,
+    "pixelFontSize": 9
+  },
+  "src/components/AnnotationMargin.js": {
+    "colourLiteral": 2,
+    "bareFontName": 7,
+    "pixelFontSize": 8,
+    "transitionAll": 1,
+    "confirmCall": 1,
+    "pictograph": 2
+  },
+  "src/components/Dialogs.js": {
+    "colourLiteral": 4,
+    "bareFontName": 17,
+    "pixelFontSize": 18
+  },
+  "src/components/ErrorBoundary.js": {
+    "colourLiteral": 9,
+    "pixelFontSize": 4
+  },
+  "src/components/FaustEditor.js": {
+    "colourLiteral": 6,
+    "bareFontName": 1
+  },
+  "src/components/Modals/ChapterSheetModal.js": {
+    "colourLiteral": 29,
+    "bareFontName": 52,
+    "pixelFontSize": 54,
+    "pictograph": 9
+  },
+  "src/components/Modals/LocationSheetModal.js": {
+    "colourLiteral": 27,
+    "bareFontName": 45,
+    "pixelFontSize": 47,
+    "pictograph": 9
+  },
+  "src/components/Modals/ThreadSheetModal.js": {
+    "colourLiteral": 21,
+    "bareFontName": 39,
+    "pixelFontSize": 43,
+    "pictograph": 9
+  },
+  "src/services/ai/CostOptimizer.js": {
+    "pictograph": 2
+  },
+  "src/services/story/ComplexityAnalyzer.js": {
+    "colourLiteral": 4,
+    "pictograph": 4
+  },
+  "src/services/story/PlotThreadTracker.js": {
+    "colourLiteral": 6
+  },
+  "src/utils/annotationTypes.js": {
+    "colourLiteral": 9,
+    "pictograph": 8
+  },
+  "styles/claude-chat.css": {
+    "colourLiteral": 40,
+    "transitionAll": 3
+  },
+  "styles/faust-simple-layout.css": {
+    "colourLiteral": 21,
+    "transitionAll": 3
+  }
+}
