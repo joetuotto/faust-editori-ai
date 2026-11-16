@@ -303,35 +303,42 @@ Return ONLY valid JSON in this format:
    * Get thread timeline (for visualization)
    */
   getTimeline(threadId) {
-    const thread = this.project.plotThreads.find(t => t.id === threadId);
+    const thread = (this.project.plotThreads || []).find(t => t.id === threadId);
     if (!thread) return null;
 
+    // Threads come from two places: AI detection stores { chapterIndex, ... }
+    // objects, the thread form may store a plain chapter number or nothing.
+    // A thread without developments must not take the timeline view down.
+    const chapterIndexOf = (value) => (value && typeof value === 'object' ? value.chapterIndex : value);
+    const titleOf = (index) => (this.project.structure[index] ? this.project.structure[index].title : undefined);
     const timeline = [];
 
-    // Add introduction
-    timeline.push({
-      type: 'introduced',
-      chapterIndex: thread.introduced.chapterIndex,
-      chapterTitle: this.project.structure[thread.introduced.chapterIndex]?.title
-    });
+    const introducedIndex = chapterIndexOf(thread.introduced);
+    if (Number.isInteger(introducedIndex)) {
+      timeline.push({
+        type: 'introduced',
+        chapterIndex: introducedIndex,
+        chapterTitle: titleOf(introducedIndex)
+      });
+    }
 
-    // Add developments
-    thread.developments.forEach(dev => {
+    (Array.isArray(thread.developments) ? thread.developments : []).forEach(dev => {
+      if (!dev || !Number.isInteger(dev.chapterIndex)) return;
       timeline.push({
         type: 'development',
         chapterIndex: dev.chapterIndex,
-        chapterTitle: this.project.structure[dev.chapterIndex]?.title,
+        chapterTitle: titleOf(dev.chapterIndex),
         description: dev.description
       });
     });
 
-    // Add resolution
-    if (thread.resolved) {
+    const resolvedIndex = chapterIndexOf(thread.resolved);
+    if (Number.isInteger(resolvedIndex)) {
       timeline.push({
         type: 'resolved',
-        chapterIndex: thread.resolved.chapterIndex,
-        chapterTitle: this.project.structure[thread.resolved.chapterIndex]?.title,
-        description: thread.resolved.description
+        chapterIndex: resolvedIndex,
+        chapterTitle: titleOf(resolvedIndex),
+        description: thread.resolved && typeof thread.resolved === 'object' ? thread.resolved.description : undefined
       });
     }
 
