@@ -14,8 +14,40 @@ import {
   trimSpaces, collapseEmptyLines,
   buildSearchPattern, findMatches, replaceAllMatches
 } from './src/editor/textTools.js';
+import { Icon, icons } from './src/components/icons.js';
+import { ToastHost, notify, installAlertShim } from './src/components/ui.js';
+
+// window.alert -> notify (src/components/ui.js). Removed when the last legacy call is gone.
+installAlertShim();
 
 const { createElement: e, useState, useEffect, useRef } = React;
+
+// Classic scrollbars take room on both sides of the manuscript scroller: their width is
+// measured at start and on window focus and written as --scrollbar-w (0px with overlay bars).
+function measureScrollbar() {
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:absolute;top:-99px;width:50px;height:50px;overflow:scroll';
+  document.body.append(probe);
+  document.documentElement.style.setProperty('--scrollbar-w', (probe.offsetWidth - probe.clientWidth) + 'px');
+  probe.remove();
+}
+
+// The theme change. Stores the theme, tells the main process (native menus, select lists and
+// confirm boxes follow it) and sets data-theme: at once on the first run and under reduced
+// motion, otherwise under the golden swipe (styles/faust-tokens.css, part 5).
+function applyTheme(next, animate) {
+  const root = document.documentElement;
+  const calm = !animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  try { localStorage.setItem('faust-theme', next); } catch (err) { /* private mode */ }
+  if (window.electronAPI && window.electronAPI.setTheme) window.electronAPI.setTheme(next);
+  if (calm) { root.setAttribute('data-theme', next); return; }
+  root.classList.add('faust-theme-switching');                      // 80 % dip and colour cross-fade
+  const swipe = document.createElement('div');
+  swipe.className = 'faust-theme-swipe';                            // the golden band, 800ms after a 150ms dip
+  document.body.append(swipe);
+  setTimeout(() => root.setAttribute('data-theme', next), 550);     // the band is over the centre
+  setTimeout(() => { swipe.remove(); root.classList.remove('faust-theme-switching'); }, 1200);
+}
 
 // CharacterGenerator, callAIProvider, and RefinementManager
 // are now loaded from src/services/ai/ as IIFE modules
@@ -227,6 +259,8 @@ function FAUSTApp() {
     return saved ? saved === 'NOX' : true;
   });
   const [showInspector, setShowInspector] = useState(false);
+  // Native fullscreen, reported by the main process through the menu channel ('fullscreen-changed')
+  const [isFullScreen, setIsFullScreen] = useState(false);
 
   // Typewriter Mode - keeps active line centered
   const [typewriterMode, setTypewriterMode] = useState(() => {
@@ -529,13 +563,22 @@ function FAUSTApp() {
     ? project.structure.find(ch => ch.id === splitViewChapterId)
     : null;
 
-  // Apply theme
+  // Apply theme: at once on the first run, with the swipe when the author switches
+  const themeAppliedRef = useRef(false);
   useEffect(() => {
     const theme = isDarkMode ? 'NOX' : 'DEIS';
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('faust-theme', theme);
+    applyTheme(theme, themeAppliedRef.current);
+    themeAppliedRef.current = true;
     console.log(`[Theme] ${theme}`);
   }, [isDarkMode]);
+
+  // Scrollbar width for the page's left edge: at start and whenever the window gets focus
+  // (attaching a mouse turns overlay scrollbars into classic ones)
+  useEffect(() => {
+    measureScrollbar();
+    window.addEventListener('focus', measureScrollbar);
+    return () => window.removeEventListener('focus', measureScrollbar);
+  }, []);
 
   // Sync plot threads from project
   useEffect(() => {
@@ -756,6 +799,9 @@ function FAUSTApp() {
       case 'show-settings': openAISettings(); break;
       case 'show-project-settings': setShowProjectSettings(true); break;
       case 'show-shortcuts': setShowShortcuts(true); break;
+
+      // Window state from the main process (the menu channel is the only one it has)
+      case 'fullscreen-changed': setIsFullScreen(!!arg); break;
 
       default:
         console.warn('[Menu] Unhandled action:', action);
@@ -3792,7 +3838,15 @@ ${contextPrompt}`;
     .filter(chapter => (chapter.content || '').trim())
     .map(chapter => ({ id: chapter.id, title: chapter.title || 'Nimetön luku', words: countWords(chapter.content) }));
 
-  return e('div', { className: focusMode ? 'faust-app faust-focus-mode' : 'faust-app' },
+  return e('div', {
+    className: (focusMode ? 'faust-app faust-focus-mode' : 'faust-app') + (isFullScreen ? ' is-fullscreen' : ''),
+    // Widths of the open side panels, for everything that centres on the editor pane
+    // (notifications, launcher, chat window). Today's widths; var(--sidebar-w) and 0px after region C.
+    style: {
+      '--left-col-w': sidebarCollapsed ? (focusMode ? '0px' : '40px') : '220px',   // focus mode hides the collapsed rail
+      '--right-col-w': showInspector ? (inspectorCollapsed ? '40px' : '300px') : '0px'
+    }
+  },
     // Dialogs that can appear over anything else
     e(TextPromptDialog, {
       request: textPrompt,
@@ -3819,7 +3873,7 @@ ${contextPrompt}`;
       onExport: ({ format, chapterIds }) => window.electronAPI.exportManuscript({ project, format, chapterIds })
     }),
     focusMode && e('button', {
-      className: 'faust-focus-exit',
+      className: 'faust-btn faust-btn--quiet faust-focus-exit',
       onClick: toggleFocusMode,
       title: 'Poistu keskittymistilasta (⇧⌘F)'
     }, 'Poistu keskittymistilasta'),
@@ -5733,6 +5787,7 @@ ${contextPrompt}`;
             e('button', {
               onClick: handleVoiceEdit,
               disabled: voiceState !== 'idle',
+              'aria-busy': voiceState !== 'idle',
               style: {
                 background: voiceState === 'listening' ? '#ff4444' :
                            voiceState === 'processing' ? '#ffaa00' : 'var(--bronze)',
@@ -6547,7 +6602,7 @@ ${contextPrompt}`;
       ),
 
       // Right inspector (hidden by default)
-      e(ErrorBoundary, { label: 'Inspector', onDismiss: () => setShowInspector(false) }, showInspector && e('div', { className: inspectorCollapsed ? 'faust-inspector collapsed' : 'faust-inspector visible' },
+      e(ErrorBoundary, { label: 'Inspector', onDismiss: () => setShowInspector(false) }, showInspector && e('div', { className: inspectorCollapsed ? 'faust-inspector visible collapsed' : 'faust-inspector visible' },
         // Collapse button (always visible on right edge)
         e('button', {
           onClick: () => setInspectorCollapsed(!inspectorCollapsed),
@@ -6555,7 +6610,7 @@ ${contextPrompt}`;
           style: {
             position: 'absolute',
             top: '12px',
-            right: inspectorCollapsed ? '4px' : '268px', // From right edge, not left
+            right: inspectorCollapsed ? '4px' : '20px', // From right edge, not left
             width: inspectorCollapsed ? '32px' : '24px',
             height: '24px',
             background: 'var(--bg-2)',
@@ -12424,37 +12479,19 @@ ${contextPrompt}`;
       }
     })),
 
-    // Claude Chat Toggle Button (floating)
-    !claudeChatOpen && e('button', {
-      onClick: () => setClaudeChatOpen(true),
-      title: 'Avaa Claude Assistentti',
-      style: {
-        position: 'fixed',
-        right: '20px',
-        bottom: '20px',
-        width: '56px',
-        height: '56px',
-        borderRadius: '50%',
-        background: 'var(--accent, #8b7355)',
-        border: 'none',
-        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '24px',
-        zIndex: 999,
-        transition: 'transform 0.2s, box-shadow 0.2s'
-      },
-      onMouseEnter: (ev) => {
-        ev.target.style.transform = 'scale(1.1)';
-        ev.target.style.boxShadow = '0 6px 16px rgba(0, 0, 0, 0.3)';
-      },
-      onMouseLeave: (ev) => {
-        ev.target.style.transform = 'scale(1)';
-        ev.target.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.2)';
-      }
-    }, '✨')
+    // Chat launcher: the one permitted floating control (.faust-fab). 36px, above the status
+    // bar, left of an open Inspector; not rendered while the chat or the Liminal Engine is open.
+    !claudeChatOpen && !aiAssistantOpen && e('button', {
+      className: 'faust-fab',
+      'aria-label': 'Avaa erillinen keskustelu: vastaus näkyy sitä mukaa kuin tekoäly kirjoittaa sitä, ja vastauksen voi lisätä luvun loppuun',
+      title: 'Avaa erillinen keskustelu: vastaus näkyy sitä mukaa kuin tekoäly kirjoittaa sitä, ja vastauksen voi lisätä luvun loppuun',
+      onClick: () => setClaudeChatOpen(true)
+    }, icons.star8({ size: 16 })),
+
+    // Notifications (the replacement for native alert boxes)
+    e(ToastHost),
+    // Layer host: popovers, menus and tooltips render here through ReactDOM.createPortal
+    e('div', { className: 'faust-layer' })
   );
 }
 
