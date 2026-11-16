@@ -2,14 +2,21 @@
  * CommandManager - Centralized Undo/Redo System
  *
  * Implements Command Pattern for all project operations.
- * Max 50 undo steps to prevent memory issues.
+ * Continuous typing is merged into one undo step (see
+ * UpdateContentCommand.mergeWith), so the step limit counts edits, not keystrokes.
  */
+
+// Words in a text; 0 for empty or whitespace-only text
+function countWords(text) {
+  const trimmed = (text || '').trim();
+  return trimmed ? trimmed.split(/\s+/).length : 0;
+}
 
 class CommandManager {
   constructor() {
     this.undoStack = [];
     this.redoStack = [];
-    this.maxUndoSteps = 50;
+    this.maxUndoSteps = 200;
   }
 
   /**
@@ -18,10 +25,17 @@ class CommandManager {
    */
   execute(command) {
     command.execute();
-    this.undoStack.push(command);
 
     // Clear redo stack when new action is performed
     this.redoStack = [];
+
+    // Keystrokes that continue the previous typing run extend that undo step
+    const last = this.undoStack[this.undoStack.length - 1];
+    if (last && typeof last.mergeWith === 'function' && last.mergeWith(command)) {
+      return;
+    }
+
+    this.undoStack.push(command);
 
     // Limit undo stack size
     if (this.undoStack.length > this.maxUndoSteps) {
@@ -120,6 +134,44 @@ class UpdateContentCommand {
     this.chapterId = chapterId;
     this.oldContent = oldContent;
     this.newContent = newContent;
+
+    // Typing run bookkeeping: a run is a series of small changes of the same
+    // kind (inserting or deleting) with no long pause in between
+    const delta = newContent.length - oldContent.length;
+    this.kind = Math.abs(delta) > UpdateContentCommand.MAX_KEYSTROKE_CHARS || delta === 0
+      ? 'edit'
+      : (delta > 0 ? 'insert' : 'delete');
+    this.startedAt = Date.now();
+    this.lastChangeAt = this.startedAt;
+    this.endsRun = this.kind === 'insert' && UpdateContentCommand.endsWithLineBreak(oldContent, newContent);
+  }
+
+  // True when the keystroke added a line break: a new paragraph starts a new undo step
+  static endsWithLineBreak(oldContent, newContent) {
+    let start = 0;
+    const shortest = Math.min(oldContent.length, newContent.length);
+    while (start < shortest && oldContent[start] === newContent[start]) start++;
+    const added = newContent.length - oldContent.length;
+    return newContent.slice(start, start + added).includes('\n');
+  }
+
+  /**
+   * Absorb the next command if it continues this typing run.
+   * @returns {boolean} true if merged (the caller must not push `next`)
+   */
+  mergeWith(next) {
+    if (!(next instanceof UpdateContentCommand)) return false;
+    if (next.chapterId !== this.chapterId) return false;
+    if (this.kind === 'edit' || next.kind !== this.kind) return false;
+    if (this.endsRun) return false;
+    if (next.oldContent !== this.newContent) return false;
+    if (next.startedAt - this.lastChangeAt > UpdateContentCommand.RUN_PAUSE_MS) return false;
+    if (next.startedAt - this.startedAt > UpdateContentCommand.RUN_MAX_MS) return false;
+
+    this.newContent = next.newContent;
+    this.lastChangeAt = next.startedAt;
+    this.endsRun = next.endsRun;
+    return true;
   }
 
   execute() {
@@ -127,7 +179,7 @@ class UpdateContentCommand {
       ...prev,
       structure: prev.structure.map(ch =>
         ch.id === this.chapterId
-          ? { ...ch, content: this.newContent, wordCount: this.newContent.trim().split(/\s+/).length }
+          ? { ...ch, content: this.newContent, wordCount: countWords(this.newContent) }
           : ch
       )
     }));
@@ -138,12 +190,21 @@ class UpdateContentCommand {
       ...prev,
       structure: prev.structure.map(ch =>
         ch.id === this.chapterId
-          ? { ...ch, content: this.oldContent, wordCount: this.oldContent.trim().split(/\s+/).length }
+          ? { ...ch, content: this.oldContent, wordCount: countWords(this.oldContent) }
           : ch
       )
     }));
   }
 }
+
+// A change of at most this many characters counts as a keystroke (covers
+// autocorrected pairs and composed characters); anything larger is a paste,
+// a formatting action or an AI edit and gets its own undo step
+UpdateContentCommand.MAX_KEYSTROKE_CHARS = 2;
+// A pause this long ends the typing run
+UpdateContentCommand.RUN_PAUSE_MS = 1200;
+// A single undo step never covers more than this much continuous typing
+UpdateContentCommand.RUN_MAX_MS = 20000;
 
 /**
  * Add character

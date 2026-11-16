@@ -615,6 +615,7 @@ function FAUSTApp() {
   });
 
   const editorRef = useRef(null);
+  const liveContentRef = useRef({ chapterId: null, content: '' }); // see updateChapterContent
   const autosaveTimerRef = useRef(null);
   const [autosaveRetryCount, setAutosaveRetryCount] = useState(0);
   const [isOffline, setIsOffline] = useState(false);
@@ -635,6 +636,10 @@ function FAUSTApp() {
 
   // Get active chapter
   const activeChapter = project.structure.find(ch => ch.id === activeChapterId) || project.structure[0];
+
+  // Content of the active chapter as of this render. updateChapterContent keeps
+  // it current between renders, because fast typing can outrun React state.
+  liveContentRef.current = { chapterId: activeChapter?.id, content: activeChapter?.content || '' };
   const activeChapterIndex = project.structure.findIndex(ch => ch.id === activeChapterId);
 
   // Get split view chapter (if enabled)
@@ -988,10 +993,15 @@ function FAUSTApp() {
   const updateChapterContent = (newContent, skipHistory = false) => {
     if (!activeChapter) return;
 
-    const oldContent = activeChapter.content || '';
+    // Use the live content, not the rendered state: two keystrokes can arrive
+    // before React re-renders, and undo must restore exactly what was there
+    const live = liveContentRef.current;
+    const oldContent = live.chapterId === activeChapter.id ? live.content : (activeChapter.content || '');
 
     // Don't create command if content hasn't changed
     if (oldContent === newContent) return;
+
+    liveContentRef.current = { chapterId: activeChapter.id, content: newContent };
 
     // Use Command Pattern for undo/redo
     if (!skipHistory && commandManagerRef.current && window.UpdateContentCommand) {
