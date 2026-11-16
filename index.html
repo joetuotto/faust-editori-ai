@@ -6,8 +6,13 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:;">
     <title>FAUST - Esoteerinen kirjoituseditori</title>
 
-    <!-- PR1: Faust Theme CSS (NOX/DEIS) -->
+    <!-- First paint in the stored theme (the key app.js reads); only the two theme names are accepted -->
+    <script>try{document.documentElement.setAttribute('data-theme',localStorage.getItem('faust-theme')==='DEIS'?'DEIS':'NOX')}catch(e){}</script>
+
+    <!-- Legacy theme file; superseded by faust-tokens.css and deleted in clean-up -->
     <link rel="stylesheet" href="./styles/faust-theme.css" />
+    <!-- Design tokens (NOX/DEIS), aliases for every name the code uses, element base -->
+    <link rel="stylesheet" href="./styles/faust-tokens.css" />
 
     <!-- NEW: Simple Clean Layout (replaces complex grid) -->
     <link rel="stylesheet" href="./styles/faust-simple-layout.css" />

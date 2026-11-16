@@ -1,0 +1,541 @@
+/* styles/faust-tokens.css : FAUST design tokens, NOX and DEIS
+ *
+ * REPLACES styles/faust-theme.css as the single source of colour, type and scale.
+ * Staging: in the foundation commit this file is linked right AFTER faust-theme.css and
+ * overrides it (every selector here is at least as specific as the one it supersedes, so
+ * the order alone decides). faust-theme.css is deleted in the clean-up step; nothing in
+ * app.js or src/ uses its classes (.text-*, .bg-*, .sigil-icon, .editor-breathing-cursor,
+ * .theme-transition-overlay), so it may also be deleted at once.
+ *
+ * Load order in index.html:
+ *   faust-theme.css (legacy) -> faust-tokens.css -> faust-simple-layout.css
+ *   -> faust-components.css -> Google Fonts link
+ * The CSS has no prefers-color-scheme query: the theme is data-theme alone. The main process
+ * mirrors it into nativeTheme.themeSource, so native menus and select lists follow it.
+ *
+ * Part 1 scales | Part 2 NOX and DEIS colours | Part 3 aliases for every name the code
+ * uses today | Part 4 element base | Part 5 preferences, theme change, keyframes
+ */
+
+/* ================= Part 1: scales (theme-independent) ================= */
+:root {
+  /* Families. The generic keyword comes last; in faust-theme.css it came second, which
+     made every name after it dead. Offline the first installed name wins. */
+  --font-serif: "EB Garamond", "Garamond", "Adobe Garamond Pro", "Hoefler Text",
+                "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua",
+                Georgia, "Times New Roman", serif;
+  --font-mono:  "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Monaco,
+                "Cascadia Mono", Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+
+  /* Weights. --w-serif is a grade and is set per theme in Part 2. */
+  --w-serif-display: 500;    /* titles of 22px and more: a book sets a chapter opening by size, not by weight */
+  --w-serif-title: 600;      /* 15 and 17px titles, where size alone does not carry the level */
+  --w-serif-bold: 700;
+  --w-mono: 400;
+  --w-mono-strong: 500;      /* the only emphasis in mono; 600 is the primary button label */
+
+  /* Sizes. Named --fs-* so they cannot be mistaken for the colour tokens --text-2, --text-3. */
+  --fs-micro: 10px;          /* digits in count badges and keycaps only, never a sentence */
+  --fs-meta: 11px;           /* labels, counts, hints: the floor for any word */
+  --fs-ui: 12px;             /* buttons, tabs, menus, status bar */
+  --fs-input: 13px;          /* what the author types into a mono field */
+  --fs-serif-sm: 14px;       /* floor for EB Garamond */
+  --fs-serif: 15px;          /* serif interface text */
+  --fs-title-pop: 15px;
+  --fs-title-panel: 17px;
+  --fs-title-dialog: 22px;
+  --fs-title-view: 26px;
+  --fs-title-chapter: 30px;
+
+  /* Font shorthands: one inline `font` property instead of four. */
+  --type-label:         var(--w-mono-strong) var(--fs-meta)/16px var(--font-mono);
+  --type-meta:          var(--w-mono) var(--fs-meta)/16px var(--font-mono);
+  --type-ui:            var(--w-mono) var(--fs-ui)/16px var(--font-mono);
+  --type-ui-strong:     var(--w-mono-strong) var(--fs-ui)/16px var(--font-mono);
+  --type-input:         var(--w-mono) var(--fs-input)/20px var(--font-mono);
+  --type-serif:         var(--w-serif) var(--fs-serif)/22px var(--font-serif);
+  --type-serif-sm:      var(--w-serif) var(--fs-serif-sm)/20px var(--font-serif);
+  --type-quote:         italic var(--w-serif) var(--fs-serif-sm)/20px var(--font-serif);
+  --type-title-pop:     var(--w-serif-title) var(--fs-title-pop)/20px var(--font-serif);
+  --type-title-panel:   var(--w-serif-title) var(--fs-title-panel)/24px var(--font-serif);
+  --type-title-dialog:  var(--w-serif-display) var(--fs-title-dialog)/28px var(--font-serif);
+  --type-title-view:    var(--w-serif-display) var(--fs-title-view)/32px var(--font-serif);
+  --type-title-chapter: var(--w-serif-display) var(--fs-title-chapter)/36px var(--font-serif);
+  --type-prose:         var(--w-serif) 18px/1.65 var(--font-serif);   /* AI prose that can enter the manuscript */
+
+  --tracking-caps: 0.08em;   /* every uppercase mono label (section titles, chips, finding kinds) and the wordmark */
+  --tracking-title: -0.01em; /* serif titles from 26px up; 22px and smaller are set at 0 */
+  --leading-ui: 1.35;
+  --leading-prose: 1.65;
+  --leading-legacy: 1.65;    /* body leading of today's inline-styled markup; becomes --leading-ui in clean-up */
+
+  /* Manuscript page. --ms-size is set inline on the page element by app.js: 18px x zoom.
+     --measure and --page-inset are re-declared on the page element (faust-components.css),
+     because a custom property is resolved where it is declared. */
+  --ms-size: 18px;
+  --ms-leading: 1.8;
+  --measure-narrow: 24;      /* em of the manuscript size: about 62 characters of EB Garamond */
+  --measure-normal: 28;      /* about 70 characters: the default */
+  --measure-wide: 34;        /* about 88 characters: the owner's 720px page at 100 % zoom */
+  --measure-em: var(--measure-normal);
+  --measure-face: 1;         /* width of the chosen manuscript face relative to EB Garamond; set inline with the
+                                font (MANUSCRIPT_FONTS), so every face carries the same number of characters */
+  --measure: calc(var(--ms-size) * var(--measure-em) * var(--measure-face));
+  --annot-gutter: 40px;      /* strip to the right of the text reserved for annotation markers */
+  --page-gutter: clamp(40px, 8cqw, 72px);   /* never smaller than the annotation strip */
+  --page-w: calc(var(--measure) + 2 * var(--annot-gutter));
+  --page-inset: max(var(--page-gutter), calc((100% - var(--measure)) / 2));   /* side padding of the text INSIDE the scroller */
+  --scrollbar-w: 0px;        /* width of a classic scrollbar, measured once at start and written on <html> (F7);
+                                0px with overlay scrollbars. The manuscript scroller reserves it on both edges. */
+  --page-edge: max(calc(var(--page-gutter) + var(--scrollbar-w)), calc((100% - var(--measure)) / 2));   /* the same left edge for boxes OUTSIDE the scroller: title, meta row, format tools */
+  --page-pad-top: 48px;
+
+  /* Spacing, 4px base. 6, 10, 14, 18 and 20 are retired. */
+  --sp-half: 2px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+  --sp-8: 64px;
+
+  /* Radius and border widths */
+  --radius-xs: 2px;          /* marks in text, progress tracks, segmented options */
+  --radius-sm: 4px;          /* controls, rows, chips, keycaps, cards, the inline prompt */
+  --radius-md: 8px;          /* layers that float: popovers, dialogs, notifications, the suggestion bar */
+  --radius-pill: 999px;      /* dots, count badges */
+  --bw: 1px;
+  --bw-strong: 2px;          /* focus ring, active tab, selected bar */
+  --mark-line: 1px;          /* underline and strike of marks in text (the stem of EB Garamond at 18px is about 1.2px) */
+  --dialog-frame-w: 2px;     /* the owner's bronze dialog frame; 1px is the lighter alternative */
+
+  /* Control heights */
+  --h-sm: 24px;              /* row actions, small buttons */
+  --h-md: 28px;              /* header, toolbars, side panels */
+  --h-lg: 32px;              /* dialogs, fields, sigil tiles */
+  --h-xl: 40px;              /* large sigil button, suggestion bar */
+
+  /* Layout constants */
+  --header-h: 52px;
+  --formatbar-h: 40px;
+  --footer-h: 28px;
+  --sidebar-w: 220px;
+  --inspector-w: 320px;
+  --aipanel-w: clamp(360px, 30vw, 440px);
+  --left-col-w: 0px;         /* set on .faust-app: width of the open sidebar, 0px when closed */
+  --right-col-w: 0px;        /* set on .faust-app: width of the open right panel, 0px when closed */
+  --dock-h: 0px;             /* set on the page element while the bottom dock is occupied */
+
+  /* Layers. The bands sit around the literals still in the code (editor overlays 100 to
+     300, header dropdowns 1000, legacy modals 9999 to 10002, error boundary 20000), so a
+     migrated layer and an unmigrated one always stack correctly. */
+  --z-raised: 10;
+  --z-sticky: 50;
+  --z-float: 100;            /* suggestion bar, floating result, selection bubble */
+  --z-popover: 300;          /* popovers anchored in the editor pane (they render in the layer host, 4.9) */
+  --z-dock: 900;             /* chat window, launcher */
+  --z-panel: 950;            /* a side panel that still overlays (legacy Liminal Engine) */
+  --z-dropdown: 1000;        /* menus and popovers anchored in the header */
+  --z-modal: 10000;          /* dialogs; legacy modals are 9999 to 10002 */
+  --z-dialog: 10100;         /* prompt and confirm: above every modal, migrated or not */
+  --z-toast: 15000;          /* notifications, theme swipe */
+  --z-tooltip: 15100;
+  --z-fatal: 20000;          /* error boundary */
+
+  /* Motion */
+  --dur-instant: 80ms;       /* press */
+  --dur-fast: 150ms;         /* hover, focus, menus, popovers, notifications */
+  --dur-sigil: 200ms;        /* the sigil's golden aura (faust_ui_spec.json) */
+  --dur-mid: 250ms;          /* dialogs in ("modal: 250ms fade-in") */
+  --dur-slow: 300ms;         /* panels ("panel_toggles: 300ms") */
+  --dur-theme: 400ms;        /* NOX and DEIS cross-fade under the swipe */
+  --dur-swipe: 800ms;        /* the golden swipe ("Golden gradient swipe left to right (800ms)") */
+  --ease-out: ease-out;
+  --ease-std: cubic-bezier(0.4, 0, 0.2, 1);
+  --theme-swipe: rgba(200,157,94,0.30);
+  --scrim-blur: 4px;
+
+  /* Editor internals: FaustEditor.js sets these inline; the defaults equal its fallbacks. */
+  --fe-pad-top: 0px;
+  --fe-pad-bottom: 0px;
+  --fe-pad-left: 0px;
+  --fe-para-gap: 0px;
+  --fe-align: left;
+}
+
+@media (min-width: 1680px) {
+  :root { --sidebar-w: 240px; --inspector-w: 340px; }
+}
+@media (max-height: 719px) {
+  :root { --formatbar-h: 36px; --page-pad-top: 24px; }
+}
+
+/* ================= Part 2: colours ================= */
+/* NOX is also the default, so the first paint is never unstyled. */
+:root,
+:root[data-theme="NOX"] {
+  /* Surfaces: panel < page < paper < raised; sunken sits between panel and raised */
+  --surface-panel: #0C0B09;
+  --surface-page: #141210;
+  --surface-paper: #1C1917;
+  --surface-raised: #26221D;
+  --surface-sunken: #181512;
+  --scrim: rgba(8,7,6,0.62);
+  /* Translucent fills: usable on any surface */
+  --fill-subtle: rgba(240,233,225,0.05);
+  --fill-hover: rgba(240,233,225,0.07);
+  --fill-active: rgba(240,233,225,0.12);
+  /* Text levels; --ink is the manuscript */
+  --text: #F0E9E1;
+  --text-2: #B4A998;
+  --text-3: #9C907D;
+  --text-disabled: #82786A;
+  --ink: #E9E4DA;
+  /* Rules and borders */
+  --rule: rgba(240,233,225,0.10);
+  --border: rgba(240,233,225,0.18);
+  --border-control: #7D7364;
+  /* Accent: bronze is the fill, gold is the line. --accent-text is for words (4.5:1),
+     --accent-line for strokes and glyphs (3:1 on every surface, tint and fill) */
+  --accent: #B68B5C;
+  --accent-hover: #C59A6A;
+  --accent-active: #A67D50;
+  --on-accent: #17130E;
+  --accent-text: #C7A25A;
+  --accent-line: #C7A25A;
+  --accent-tint: rgba(199,162,90,0.14);
+  --accent-tint-strong: rgba(199,162,90,0.20);
+  --gilt: #E8C878;
+  --focus-ring: #C7A25A;
+  --dialog-frame: var(--accent);        /* the owner's 2px bronze frame */
+  --sigil-aura: drop-shadow(0 0 4px rgba(232,200,120,0.55));   /* the golden aura: light around the glyph */
+  /* States: verdigris, realgar, cinnabar, azurite */
+  --success: #6DBB8A;
+  --success-text: #7CC597;
+  --success-bg: rgba(109,187,138,0.12);
+  --success-border: rgba(109,187,138,0.40);
+  --warning: #EE8F3A;
+  --warning-text: #F4A05A;
+  --warning-bg: rgba(238,143,58,0.12);
+  --warning-border: rgba(238,143,58,0.40);
+  --error: #E5786F;
+  --error-text: #EE9088;
+  --error-bg: rgba(229,120,111,0.12);
+  --error-border: rgba(229,120,111,0.42);
+  --info: #93AECB;
+  --info-text: #A3B9D2;
+  --info-bg: rgba(147,174,203,0.12);
+  --info-border: rgba(147,174,203,0.40);
+  --danger: #E5786F;
+  --danger-hover: #EE9088;
+  --on-danger: #17130E;
+  /* Selection, diff, highlights */
+  --selection-bg: rgba(199,162,90,0.30);
+  --diff-ins-bg: rgba(109,187,138,0.12);
+  --diff-ins-bg-active: rgba(109,187,138,0.28);
+  --diff-ins-line: #6DBB8A;
+  --diff-del-bg: rgba(229,120,111,0.15);
+  --diff-del-line: #E5786F;
+  --diff-del-text: var(--text-2);
+  --hl-search-bg: rgba(232,200,120,0.24);
+  --hl-search-line: #C7A25A;
+  --hl-search-current-bg: #E8C878;
+  --hl-search-current-text: #17130E;
+  --hl-ai-bg: rgba(199,162,90,0.13);
+  --hl-ai-line: #C7A25A;
+  --hl-finding-bg: rgba(238,143,58,0.14);
+  --hl-finding-line: var(--warning);
+  --hl-finding-error-bg: rgba(229,120,111,0.14);
+  --hl-finding-error-line: #E5786F;
+  --hl-finding-note-bg: rgba(147,174,203,0.12);
+  --hl-finding-note-line: var(--info);
+  --hl-avoid-bg: rgba(201,160,188,0.14);
+  --hl-avoid-line: #C9A0BC;
+  --hl-todo-bg: rgba(199,162,90,0.16);
+  --hl-todo-text: #D6B777;
+  /* Tooltip: a dark raised fill in NOX (an inverted cream box would glare) */
+  --tooltip-bg: #3A342C;
+  --tooltip-text: #F0E9E1;
+  --tooltip-border: var(--border);
+  /* Scrollbar, tracks and categorical thread colours */
+  --scrollbar-thumb: var(--border-control);
+  --track: rgba(240,233,225,0.12);      /* progress, spinner and slider tracks; not strengthened by prefers-contrast */
+  --thread-1: #B68B5C;
+  --thread-2: #7F93A8;
+  --thread-3: #A584AB;
+  --thread-4: #6F9A82;
+  --thread-5: #C07C66;
+  --thread-6: #A89B5E;
+  /* Elevation, vignette, manuscript grade */
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.40);
+  --shadow-2: 0 0 0 1px rgba(240,233,225,0.06), 0 8px 24px rgba(0,0,0,0.50);
+  --shadow-3: 0 0 0 1px rgba(240,233,225,0.08), 0 24px 64px rgba(0,0,0,0.60);
+  --vignette: rgba(0,0,0,0.30);
+  --w-serif: 420;            /* light on dark blooms: a lighter grade */
+  --font-smoothing: antialiased;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%239C907D' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  color-scheme: dark;
+}
+
+:root[data-theme="DEIS"] {
+  /* Surfaces: panel < page < paper < raised; sunken sits between panel and raised */
+  --surface-panel: #EDE4D8;
+  --surface-page: #F8F2E8;
+  --surface-paper: #FCF8F1;
+  --surface-raised: #FFFDFA;
+  --surface-sunken: #F5EEE3;
+  --scrim: rgba(46,36,24,0.42);
+  /* Translucent fills: usable on any surface */
+  --fill-subtle: rgba(46,42,38,0.05);
+  --fill-hover: rgba(46,42,38,0.06);
+  --fill-active: rgba(46,42,38,0.11);
+  /* Text levels; --ink is the manuscript */
+  --text: #2E2A26;
+  --text-2: #554C42;
+  --text-3: #665D52;
+  --text-disabled: #82786B;
+  --ink: #2E2A26;
+  /* Rules and borders */
+  --rule: rgba(46,42,38,0.12);
+  --border: rgba(46,42,38,0.20);
+  --border-control: #897C6B;
+  /* Accent: bronze is the fill, a dark gold is the line. --accent-text is for words (4.5:1),
+     --accent-line for strokes and glyphs (3:1 on every surface, tint and fill) */
+  --accent: #715C38;
+  --accent-hover: #5F4D2E;
+  --accent-active: #524226;
+  --on-accent: #FEFBF8;
+  --accent-text: #66522F;
+  --accent-line: #8F651C;
+  --accent-tint: rgba(113,92,56,0.12);
+  --accent-tint-strong: rgba(113,92,56,0.20);
+  --gilt: #9C7B43;
+  --focus-ring: #66522F;
+  --dialog-frame: var(--accent-line);   /* gold, so the frame and the 2px focus ring inside it are two colours */
+  --sigil-aura: none;                   /* light does not glow on a light ground: the hover is the tint alone */
+  /* States: verdigris, realgar, cinnabar, azurite */
+  --success: #2A6E4F;
+  --success-text: #235C42;
+  --success-bg: rgba(42,110,79,0.10);
+  --success-border: rgba(42,110,79,0.38);
+  --warning: #A1480C;
+  --warning-text: #8E4109;
+  --warning-bg: rgba(161,72,12,0.10);
+  --warning-border: rgba(161,72,12,0.38);
+  --error: #A63434;
+  --error-text: #912B2B;
+  --error-bg: rgba(166,52,52,0.09);
+  --error-border: rgba(166,52,52,0.38);
+  --info: #3A5A82;
+  --info-text: #34527A;
+  --info-bg: rgba(58,90,130,0.09);
+  --info-border: rgba(58,90,130,0.36);
+  --danger: #A63434;
+  --danger-hover: #912B2B;
+  --on-danger: #FEFBF8;
+  /* Selection, diff, highlights */
+  --selection-bg: rgba(113,92,56,0.24);
+  --diff-ins-bg: rgba(42,110,79,0.10);
+  --diff-ins-bg-active: rgba(42,110,79,0.24);
+  --diff-ins-line: #2A6E4F;
+  --diff-del-bg: rgba(166,52,52,0.11);
+  --diff-del-line: #A63434;
+  --diff-del-text: var(--text-2);
+  --hl-search-bg: rgba(156,123,67,0.26);
+  --hl-search-line: #66522F;
+  --hl-search-current-bg: #715C38;
+  --hl-search-current-text: #FEFBF8;
+  --hl-ai-bg: rgba(156,123,67,0.14);
+  --hl-ai-line: #66522F;
+  --hl-finding-bg: rgba(161,72,12,0.12);
+  --hl-finding-line: var(--warning);
+  --hl-finding-error-bg: rgba(166,52,52,0.10);
+  --hl-finding-error-line: #A63434;
+  --hl-finding-note-bg: rgba(58,90,130,0.10);
+  --hl-finding-note-line: var(--info);
+  --hl-avoid-bg: rgba(122,74,106,0.11);
+  --hl-avoid-line: #7A4A6A;
+  --hl-todo-bg: rgba(113,92,56,0.13);
+  --hl-todo-text: #66522F;
+  /* Tooltip: ink on paper reversed */
+  --tooltip-bg: #2E2A26;
+  --tooltip-text: #FCF8F1;
+  --tooltip-border: rgba(46,42,38,0);
+  /* Scrollbar, tracks and categorical thread colours */
+  --scrollbar-thumb: var(--border-control);
+  --track: rgba(46,42,38,0.11);         /* progress, spinner and slider tracks; not strengthened by prefers-contrast */
+  --thread-1: #8A6A3A;
+  --thread-2: #4F6B85;
+  --thread-3: #7A5580;
+  --thread-4: #3F7358;
+  --thread-5: #9A4F3A;
+  --thread-6: #77702C;
+  /* Elevation, vignette, manuscript grade */
+  --shadow-1: 0 1px 2px rgba(60,44,24,0.10);
+  --shadow-2: 0 1px 2px rgba(60,44,24,0.08), 0 8px 24px rgba(60,44,24,0.14);
+  --shadow-3: 0 2px 6px rgba(60,44,24,0.10), 0 24px 64px rgba(60,44,24,0.22);
+  --vignette: rgba(113,92,56,0.06);
+  --w-serif: 450;            /* dark on light thins: a slightly heavier grade */
+  --font-smoothing: auto;
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23665D52' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  color-scheme: light;
+}
+
+/* ================= Part 3: aliases (name the code uses today -> role token) =================
+ * These keep app.js and the modal files painting correctly from the first commit. The
+ * selector repeats the attribute forms so that it outranks the same names in the theme
+ * blocks of faust-theme.css while that file is still linked.
+ * New code never uses a left-hand name. Delete an alias when grep finds no use of it.
+ */
+:root,
+:root[data-theme="NOX"],
+:root[data-theme="DEIS"] {
+  /* never defined before: 168 uses rendered transparent */
+  --bg: var(--surface-raised);          /* dialog panels, header dropdown, Inspector fields */
+  --bg-1: var(--surface-raised);        /* popovers, dialogs, sheets */
+  --bg-2: var(--surface-sunken);        /* chips, cards, fields, inert button fill */
+  --bg-3: var(--fill-active);           /* hover of a find-history row */
+  --surface-2: var(--surface-sunken);
+  --bg-tertiary: var(--accent-tint);    /* selected chapter row */
+  --ink-light: var(--text-2);           /* chat stylesheet */
+  --font-body: var(--font-serif);       /* chat stylesheet */
+  /* defined before, now pointing at roles */
+  --bg-primary: var(--surface-page);
+  --bg-secondary: var(--surface-panel);
+  --paper: var(--surface-paper);
+  --border-color: var(--border);
+  --border-strong: var(--border-control);
+  --bronze: var(--accent);              /* fills (bridge S2 gives every button on it the on-accent label); safe as text on the five surfaces */
+  --sigil: var(--accent-text);          /* text, borders and fills alike: passes in each role */
+  --gold: var(--accent-text);
+  --gold-hover: var(--gilt);
+  --link: var(--accent-text);
+  /* Hooks the feature code reads (src/editor/suggestionsCore.js: "the --sugg-* tokens can
+     override each one"). Each is a role token, so a suggestion in the manuscript and a
+     diff in a dialog are one vocabulary. Kept: these names are that code's interface. */
+  --sugg-ins-bg: var(--diff-ins-bg);
+  --sugg-ins-line: var(--diff-ins-line);
+  --sugg-del-bg: transparent;           /* a deletion in the manuscript has no ground at rest */
+  --sugg-del-text: var(--text-3);
+  --sugg-current: var(--accent-line);   /* the line of the passage a suggestion refers to, and of the suggestion under review */
+  --sugg-block-bg: var(--surface-sunken);
+  --target-bg: var(--hl-ai-bg);         /* the passage the open prompt will act on */
+  /* names from faust-theme.css that no code references; kept defined until the file is deleted */
+  --shadow: var(--surface-sunken);
+  --paper-shadow: var(--shadow-1);
+  --btn-primary: var(--accent);
+  --btn-primary-hover: var(--accent-hover);
+  --btn-secondary: transparent;
+  --btn-secondary-border: var(--border-control);
+  --btn-danger: var(--danger);
+  --btn-danger-hover: var(--danger-hover);
+  --btn-success: var(--success);
+  --btn-success-hover: var(--success);
+}
+
+/* ================= Part 4: element base ================= */
+html {
+  font-synthesis: none;                                   /* a missing face shows upright, never faked */
+  -webkit-font-smoothing: var(--font-smoothing);
+  text-rendering: optimizeLegibility;
+}
+:root { transition: none; }                               /* cancels the 800ms rule of faust-theme.css */
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--surface-page);
+  color: var(--text);
+  font-family: var(--font-mono);
+  line-height: var(--leading-legacy);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  font-weight: var(--w-serif-title);
+  letter-spacing: var(--tracking-title);
+  color: var(--text);
+}
+
+/* Unstyled form controls take the theme's text colour and the interface face. Size and
+   line height are left to the browser until a control gets its faust- class. */
+button, input, select, textarea { font-family: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+a { color: var(--accent-text); text-underline-offset: 2px; }
+
+/* One focus ring. An outline, because no inline border or box-shadow can hide it. */
+:where(button, a[href], summary, input, select, textarea, [role="button"], [role="tab"],
+       [role="menuitem"], [role="option"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: var(--bw-strong) solid var(--focus-ring);
+  outline-offset: 2px;
+}
+:where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), textarea, select):focus-visible {
+  outline-offset: 0;
+}
+
+/* Scrollbars, selection, placeholders and native controls: faust-components.css section 1
+   (they follow the theme through color-scheme above plus accent-color and scrollbar-color). */
+
+/* ================= Part 5: preferences, theme change, keyframes ================= */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Activity must stay visible without movement: a slow blink between two opacities. */
+  .faust-spinner, .faust-progress--indeterminate > i {
+    animation: faust-blink 1.2s steps(2, jump-none) infinite !important;
+  }
+  /* Listening stays visible without the travelling ring: a static halo. */
+  .faust-btn[data-state="listening"] { animation: none !important; box-shadow: 0 0 0 3px var(--error-bg); }
+  .faust-theme-swipe { display: none; }
+}
+
+@media (prefers-contrast: more) {
+  :root, :root[data-theme="NOX"] {
+    --text-2: #D8CFC0; --text-3: #C2B8A8; --text-disabled: #A69B8B; --ink: #FFFFFF;
+    --rule: rgba(240,233,225,0.30); --border: rgba(240,233,225,0.45); --border-control: #B4A998;
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%23C2B8A8' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  }
+  :root[data-theme="DEIS"] {
+    --text-2: #3A332C; --text-3: #4A423A; --text-disabled: #6A6156; --ink: #000000;
+    --rule: rgba(46,42,38,0.30); --border: rgba(46,42,38,0.45); --border-control: #5F564C;
+    --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%234A423A' stroke-width='1.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5l3 3 3-3'/%3E%3C/svg%3E");
+  }
+}
+
+/* Theme change (faust_ui_spec.json "mode_transition"): the view dips to 80 %, a golden
+   band sweeps left to right, the colours cross-fade under it, the view returns to 100 %.
+   app.js adds .faust-theme-switching to <html> and appends one .faust-theme-swipe element
+   for 1200ms; with reduced motion neither is added and the change is immediate. */
+@media (prefers-reduced-motion: no-preference) {
+  :root.faust-theme-switching, :root.faust-theme-switching * {
+    transition: background-color var(--dur-theme) var(--ease-std),
+                color var(--dur-theme) var(--ease-std),
+                border-color var(--dur-theme) var(--ease-std) !important;
+  }
+  :root.faust-theme-switching .faust-app { animation: faust-theme-dip 1200ms ease-in-out both; }
+  .faust-theme-swipe {
+    position: fixed; inset: 0; z-index: var(--z-toast); pointer-events: none;
+    background: linear-gradient(90deg, transparent 0%, var(--theme-swipe) 50%, transparent 100%);
+    animation: faust-golden-swipe var(--dur-swipe) ease-in-out 150ms both;
+  }
+}
+
+@keyframes faust-golden-swipe { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes faust-theme-dip { 0%, 100% { opacity: 1; } 12.5%, 79% { opacity: 0.8; } }
+@keyframes faust-spin   { to { transform: rotate(360deg); } }
+@keyframes faust-blink  { from { opacity: 1; } to { opacity: 0.4; } }
+@keyframes faust-fade   { from { opacity: 0; } }
+@keyframes faust-rise   { from { opacity: 0; transform: translateY(6px); } }
+@keyframes faust-drop   { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes faust-slide  { from { transform: translateX(-100%); } to { transform: translateX(350%); } }
+@keyframes faust-settle { from { background-color: var(--diff-ins-bg-active); } to { background-color: transparent; } }
+@keyframes faust-dot    { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+@keyframes faust-sigil-pulse { 50% { transform: scale(1.06); } }
+@keyframes faust-listen { from { box-shadow: 0 0 0 0 var(--error-border); } to { box-shadow: 0 0 0 8px transparent; } }
