@@ -361,6 +361,8 @@ function attachCloseGuard(win) {
       // answers with project:close-confirmed or project:close-cancelled
       win.webContents.send('menu-action', 'save-and-close');
     } else if (choice === 1) {
+      // Discarded on purpose: there is nothing to recover next time
+      fs.unlink(getRecoveryPath()).catch(() => {});
       rendererDirty = false;
       win.close();
     } else {

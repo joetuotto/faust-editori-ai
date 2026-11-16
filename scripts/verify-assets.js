@@ -15,7 +15,7 @@ const REQUIRED_ASSETS = [
 ];
 
 const OPTIONAL_ASSETS = [
-  'dist/utils/dictionaries/fi-basic.json'
+  'dist/vendor/react.production.min.js'
 ];
 
 async function main() {

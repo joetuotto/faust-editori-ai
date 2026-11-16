@@ -6,7 +6,7 @@
 
 import { AIProviderSettings } from './src/components/AIProviderSettings.js';
 import { FaustEditor } from './src/components/FaustEditor.js';
-import { TextPromptDialog, ShortcutsDialog, ExportDialog } from './src/components/Dialogs.js';
+import { TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog } from './src/components/Dialogs.js';
 import {
   countWords, countCharacters, countProjectWords, estimatePages,
   toggleInline, setHeading, toggleLinePrefix, insertText, transformSelection,
@@ -188,27 +188,6 @@ const createDefaultProject = () => ({
       requestCount: 0
     }
   },
-
-  // API Configuration
-  apiConfig: {
-    provider: 'anthropic', // anthropic, openai, local
-    anthropic: {
-      apiKey: '',
-      model: 'claude-sonnet-4-5',
-      maxTokens: 4096
-    },
-    openai: {
-      apiKey: '',
-      model: 'gpt-4',
-      maxTokens: 4096
-    },
-    local: {
-      endpoint: 'http://localhost:1234',
-      model: 'local-model'
-    },
-    lastTested: null,
-    isConfigured: false
-  }
 });
 
 // ComplexityAnalyzer is now loaded from src/services/story/ComplexityAnalyzer.js as IIFE module
@@ -261,17 +240,12 @@ function FAUSTApp() {
   });
   const [sessionStartWords, setSessionStartWords] = useState(0);
   const [sessionStartTime, setSessionStartTime] = useState(null);
-  const [showWritingGoalsPanel, setShowWritingGoalsPanel] = useState(false);
 
   // Timeline View state
   const [showTimelineView, setShowTimelineView] = useState(false);
 
   // Research Folder state
   const [showResearchFolder, setShowResearchFolder] = useState(false);
-  const [researchItems, setResearchItems] = useState(() => {
-    // Load from project or initialize empty
-    return [];
-  });
   const [showCastPlanDialog, setShowCastPlanDialog] = useState(false);
   const [castPlanStep, setCastPlanStep] = useState(1); // 1=input, 2=AI analysis, 3=review
   const [showCharacterBuilder, setShowCharacterBuilder] = useState(false);
@@ -284,11 +258,6 @@ function FAUSTApp() {
 
   // CharacterSheet modal state (view/edit existing characters)
   const [showCharacterSheet, setShowCharacterSheet] = useState(false);
-  const [characterModalState, setCharacterModalState] = useState({
-    isOpen: false,
-    character: null,
-    mode: 'create'
-  });
 
   // LocationSheet modal state
   const [showLocationSheet, setShowLocationSheet] = useState(false);
@@ -308,15 +277,6 @@ function FAUSTApp() {
   // ExportModal state
   const [showExportModal, setShowExportModal] = useState(false);
 
-  // AI Toolbar state
-  // showAIToolbar removed - unused state with no associated panel
-  const [aiToolbarPosition, setAIToolbarPosition] = useState(() => {
-    const saved = localStorage.getItem('faust-ai-toolbar-position');
-    return saved ? JSON.parse(saved) : { x: window.innerWidth - 500, y: 80 };
-  });
-  const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-
   // Handler to save chapter data from modal
   const handleChapterSheetSave = (chapterData) => {
     setProject(prev => ({
@@ -328,77 +288,6 @@ function FAUSTApp() {
     setUnsavedChanges(true);
     setShowChapterSheetModal(false);
     console.log('[ChapterSheet] Chapter updated:', activeChapterId);
-  };
-
-  // Character modal helpers
-  const openCharacterModal = (mode = 'create', character = null) => {
-    setCharacterModalState({
-      isOpen: true,
-      character,
-      mode
-    });
-  };
-
-  const closeCharacterModal = () => {
-    setCharacterModalState({
-      isOpen: false,
-      character: null,
-      mode: 'create'
-    });
-  };
-
-  const handleCharacterSave = async (characterData) => {
-    setProject(prev => {
-      const characters = [...(prev.characters || [])];
-      const index = characters.findIndex(c => {
-        if (c.id && characterData.id) {
-          return c.id === characterData.id;
-        }
-        return c === characterModalState.character;
-      });
-
-      if (index === -1) {
-        characters.push(characterData);
-      } else {
-        characters[index] = { ...characters[index], ...characterData };
-      }
-
-      return {
-        ...prev,
-        characters
-      };
-    });
-
-    setUnsavedChanges(true);
-  };
-
-  const handleCharacterDelete = (character) => {
-    if (!character) return;
-
-    const name = character.basicInfo?.name || character.name || 'hahmo';
-    if (!confirm(`Delete character "${name}"?`)) {
-      return;
-    }
-
-    setProject(prev => ({
-      ...prev,
-      characters: (prev.characters || []).filter(c => {
-        if (character.id && c.id) {
-          return c.id !== character.id;
-        }
-        return c !== character;
-      })
-    }));
-
-    if (
-      characterModalState.isOpen &&
-      characterModalState.character &&
-      ((character.id && characterModalState.character.id === character.id) || characterModalState.character === character)
-    ) {
-      closeCharacterModal();
-    }
-
-    setUnsavedChanges(true);
   };
 
   // Handler to save location data from modal
@@ -508,16 +397,12 @@ function FAUSTApp() {
   const [showRecentFilesMenu, setShowRecentFilesMenu] = useState(false);
 
   // Settings state
-  const [showSettings, setShowSettings] = useState(false);
-  const [settingsTab, setSettingsTab] = useState('api'); // api, general, advanced
-  const [apiTestResult, setApiTestResult] = useState(null); // {success, message}
 
   // AI Generation state
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(null); // {stage, message}
 
   // API key input state
-  const [showApiKeyInput, setShowApiKeyInput] = useState(null); // null or provider name
   const [apiKeyInputValue, setApiKeyInputValue] = useState('');
 
   // Panel collapse state
@@ -539,8 +424,6 @@ function FAUSTApp() {
   // Snapshots state
   const [showSnapshotsPanel, setShowSnapshotsPanel] = useState(false);
 
-  // Collections state
-  const [showCollectionsPanel, setShowCollectionsPanel] = useState(false);
   const [activeCollectionId, setActiveCollectionId] = useState(null);
 
   // Claude Chat state
@@ -548,13 +431,18 @@ function FAUSTApp() {
 
   // Inspector tabs state
   const [inspectorTab, setInspectorTab] = useState('editor'); // editor, chapter, project, ai
-  const [apiKeysStatus, setApiKeysStatus] = useState({}); // {anthropic: true, openai: false, ...}
+  const [apiKeysStatus, setApiKeysStatus] = useState({}); // { anthropic: true }
 
   // Find & Replace state
+  // Character sheet (list / view / edit). These two went missing in 8a68586,
+  // which made the sheet throw as soon as it opened.
+  const [selectedCharacter, setSelectedCharacter] = useState(null);
+  const [characterSheetMode, setCharacterSheetMode] = useState('list'); // 'list', 'view', 'edit'
   const [showFindDialog, setShowFindDialog] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [textPrompt, setTextPrompt] = useState(null); // open text question, see askText
+  const [confirmRequest, setConfirmRequest] = useState(null); // open yes/no question, see askConfirm
   const [showReplaceDialog, setShowReplaceDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [replaceTerm, setReplaceTerm] = useState('');
@@ -578,7 +466,6 @@ function FAUSTApp() {
   const panelsBeforeFocusRef = useRef(null);  // panel visibility to restore after focus mode
   const [autosaveError, setAutosaveError] = useState(null);
   const voiceInputRef = useRef(null);
-  const historyTimerRef = useRef(null); // Debounce timer for history
 
   // AI Modules refs
   const commandManagerRef = useRef(null);
@@ -597,6 +484,11 @@ function FAUSTApp() {
   // it current between renders, because fast typing can outrun React state.
   liveContentRef.current = { chapterId: activeChapter?.id, content: activeChapter?.content || '' };
   projectRef.current = project;
+
+  // Counts are computed from the text on every render: a stored total goes stale
+  const totalWords = countProjectWords(project.structure);
+  const chapterWords = countWords(activeChapter?.content);
+  const chapterCharacters = countCharacters(activeChapter?.content);
   const activeChapterIndex = project.structure.findIndex(ch => ch.id === activeChapterId);
 
   // Get split view chapter (if enabled)
@@ -628,10 +520,7 @@ function FAUSTApp() {
         const result = await window.electronAPI.loadApiKeys();
         if (result.success && result.keys) {
           const status = {
-            anthropic: !!(result.keys.ANTHROPIC_API_KEY),
-            openai: !!(result.keys.OPENAI_API_KEY),
-            deepseek: !!(result.keys.DEEPSEEK_API_KEY),
-            grok: !!(result.keys.GROK_API_KEY)
+            anthropic: !!(result.keys.ANTHROPIC_API_KEY)
           };
           setApiKeysStatus(status);
           console.log('[API Keys] Status loaded:', status);
@@ -690,9 +579,6 @@ function FAUSTApp() {
           setShowRegenerateDialog(false);
           setRegenerateFeedback('');
           console.log('[ESC] Closed Regenerate dialog');
-        } else if (characterModalState.isOpen) {
-          closeCharacterModal();
-          console.log('[ESC] Closed Character Modal');
         } else if (showCharacterSheet) {
           setShowCharacterSheet(false);
           console.log('[ESC] Closed Character Sheet');
@@ -717,9 +603,6 @@ function FAUSTApp() {
         } else if (showProjectSettings) {
           setShowProjectSettings(false);
           console.log('[ESC] Closed Project Settings');
-        } else if (showSettings) {
-          setShowSettings(false);
-          console.log('[ESC] Closed Settings');
         } else if (showVersionHistory) {
           setShowVersionHistory(false);
           console.log('[ESC] Closed Version History');
@@ -761,7 +644,6 @@ function FAUSTApp() {
     showFindDialog,
     showReplaceDialog,
     showRegenerateDialog,
-    characterModalState,
     showCharacterSheet,
     showLocationSheet,
     showThreadSheet,
@@ -769,7 +651,6 @@ function FAUSTApp() {
     showCharacterBuilder,
     showCastPlanDialog,
     showProjectSettings,
-    showSettings,
     showVersionHistory,
     showVersionComparison,
     showRecentFilesMenu,
@@ -983,6 +864,12 @@ function FAUSTApp() {
     setInspectorCollapsed(false);
     setInspectorTab('ai');
   };
+
+  // A yes/no question that does not freeze the window (window.confirm() does).
+  // Resolves with true or false.
+  const askConfirm = (title, message, confirmLabel, cancelLabel) => new Promise((resolve) => {
+    setConfirmRequest({ title, message, confirmLabel, cancelLabel, resolve });
+  });
 
   // In-app replacement for window.prompt(), which Electron does not provide.
   // Resolves with the text, or null if the dialog is cancelled.
@@ -1199,16 +1086,6 @@ function FAUSTApp() {
     setShowBookmarksPanel(false);
   };
 
-  const renameBookmark = (bookmarkId, newName) => {
-    setProject(prev => ({
-      ...prev,
-      bookmarks: (prev.bookmarks || []).map(b =>
-        b.id === bookmarkId ? { ...b, name: newName } : b
-      )
-    }));
-    setUnsavedChanges(true);
-  };
-
   // Simple diff algorithm for text comparison
   const computeTextDiff = (oldText, newText) => {
     const oldWords = (oldText || '').split(/(\s+)/);
@@ -1266,7 +1143,7 @@ function FAUSTApp() {
       name: name || `Snapshot ${new Date().toLocaleString('fi-FI')}`,
       description: description,
       created: new Date().toISOString(),
-      totalWords: project.targets.currentTotal,
+      totalWords: totalWords,
       chapterCount: project.structure.length,
       // Deep copy of structure with content
       structure: JSON.parse(JSON.stringify(project.structure))
@@ -1360,30 +1237,6 @@ function FAUSTApp() {
     if (activeCollectionId === collectionId) {
       setActiveCollectionId(null);
     }
-    setUnsavedChanges(true);
-  };
-
-  const addChapterToCollection = (collectionId, chapterId) => {
-    setProject(prev => ({
-      ...prev,
-      collections: (prev.collections || []).map(c =>
-        c.id === collectionId && c.type === 'manual'
-          ? { ...c, chapterIds: [...new Set([...c.chapterIds, chapterId])] }
-          : c
-      )
-    }));
-    setUnsavedChanges(true);
-  };
-
-  const removeChapterFromCollection = (collectionId, chapterId) => {
-    setProject(prev => ({
-      ...prev,
-      collections: (prev.collections || []).map(c =>
-        c.id === collectionId && c.type === 'manual'
-          ? { ...c, chapterIds: c.chapterIds.filter(id => id !== chapterId) }
-          : c
-      )
-    }));
     setUnsavedChanges(true);
   };
 
@@ -1827,41 +1680,6 @@ function FAUSTApp() {
     console.log('[Chapter] New chapter added:', newChapter.id);
   };
 
-  // Add new folder (for organizing chapters)
-  const addFolder = () => {
-    const newFolder = createDocument('folder', 'Uusi kansio');
-
-    setProject(prev => ({
-      ...prev,
-      structure: [...prev.structure, newFolder]
-    }));
-
-    setUnsavedChanges(true);
-    console.log('[Folder] New folder added:', newFolder.id);
-  };
-
-  // Add scene to chapter
-  const addScene = (parentChapterId) => {
-    const parent = project.structure.find(ch => ch.id === parentChapterId);
-    if (!parent) return;
-
-    const newSceneNumber = (parent.children?.length || 0) + 1;
-    const newScene = createDocument('scene', `Kohtaus ${newSceneNumber}`, parentChapterId);
-
-    setProject(prev => ({
-      ...prev,
-      structure: prev.structure.map(ch =>
-        ch.id === parentChapterId
-          ? { ...ch, children: [...(ch.children || []), newScene] }
-          : ch
-      )
-    }));
-
-    setActiveChapterId(newScene.id);
-    setUnsavedChanges(true);
-    console.log('[Scene] New scene added to chapter:', parentChapterId);
-  };
-
   // Delete chapter
   const deleteChapter = (chapterId) => {
     if (project.structure.length === 1) {
@@ -1935,30 +1753,6 @@ function FAUSTApp() {
     console.log('[AI Mode] Changed to:', modeName);
   };
 
-  // Change AI provider
-  const setAIProvider = (providerName) => {
-    setProject(prev => ({
-      ...prev,
-      ai: {
-        ...prev.ai,
-        provider: providerName
-      }
-    }));
-    setUnsavedChanges(true);
-    console.log('[AI Provider] Changed to:', providerName);
-  };
-
-  // Toggle API key input for provider
-  const toggleApiKeyInput = (providerName) => {
-    if (showApiKeyInput === providerName) {
-      setShowApiKeyInput(null);
-      setApiKeyInputValue('');
-    } else {
-      setShowApiKeyInput(providerName);
-      setApiKeyInputValue('');
-    }
-  };
-
   // Save API key
   const saveApiKey = async (providerName, apiKey) => {
     if (!window.electronAPI) {
@@ -1966,13 +1760,9 @@ function FAUSTApp() {
       return;
     }
 
+    // Other models are reached through Cherry Studio (see AIProviderSettings)
     const keyMap = {
-      anthropic: 'ANTHROPIC_API_KEY',
-      openai: 'OPENAI_API_KEY',
-      deepseek: 'DEEPSEEK_API_KEY',
-      grok: 'GROK_API_KEY',
-      gemini: 'GEMINI_API_KEY',
-      cursor: 'CURSOR_API_KEY'
+      anthropic: 'ANTHROPIC_API_KEY'
     };
 
     try {
@@ -1991,7 +1781,6 @@ function FAUSTApp() {
 
       if (result.success) {
         console.log('[API Key] Saved for:', providerName);
-        setShowApiKeyInput(null);
         setApiKeyInputValue('');
 
         // Update status
@@ -2889,92 +2678,6 @@ Return ONLY valid JSON:
     }
   };
 
-  // API Settings - Handler functions
-  const updateApiKey = (provider, key) => {
-    setProject(prev => ({
-      ...prev,
-      apiConfig: {
-        ...prev.apiConfig,
-        [provider]: {
-          ...prev.apiConfig[provider],
-          apiKey: key
-        },
-        isConfigured: key.trim().length > 0
-      }
-    }));
-    setUnsavedChanges(true);
-    setApiTestResult(null); // Clear previous test result
-    console.log('[API] Updated key for:', provider);
-  };
-
-  const setActiveApiProvider = (provider) => {
-    setProject(prev => ({
-      ...prev,
-      apiConfig: {
-        ...prev.apiConfig,
-        provider
-      }
-    }));
-    setUnsavedChanges(true);
-    console.log('[API] Active provider changed to:', provider);
-  };
-
-  const testApiConnection = async () => {
-    const provider = project.apiConfig.provider;
-    const config = project.apiConfig[provider];
-
-    if (!config.apiKey || config.apiKey.trim().length === 0) {
-      setApiTestResult({
-        success: false,
-        message: 'API-avain puuttuu. Syötä avain ensin.'
-      });
-      return;
-    }
-
-    setApiTestResult({ success: null, message: 'Testataan yhteyttä...' });
-
-    try {
-      // Test with a simple prompt
-      const testPrompt = 'Respond with exactly: "API connection successful"';
-
-      if (!window.electronAPI) {
-        setApiTestResult({
-          success: false,
-          message: 'Electron API ei saatavilla'
-        });
-        return;
-      }
-
-      const result = await callAIWithMode(testPrompt);
-
-      if (result.success) {
-        setProject(prev => ({
-          ...prev,
-          apiConfig: {
-            ...prev.apiConfig,
-            lastTested: new Date().toISOString(),
-            isConfigured: true
-          }
-        }));
-
-        setApiTestResult({
-          success: true,
-          message: `✓ Yhteys toimii! Model: ${config.model}`
-        });
-      } else {
-        setApiTestResult({
-          success: false,
-          message: `Virhe: ${result.error || 'Tuntematon virhe'}`
-        });
-      }
-    } catch (error) {
-      setApiTestResult({
-        success: false,
-        message: `Yhteysvirhe: ${error.message}`
-      });
-    }
-  };
-
   // Character Builder - Handler functions
   const startCharacterBuilder = (characterType) => {
     const typeIndex = project.castPlan.characterTypes.indexOf(characterType);
@@ -3554,166 +3257,6 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     console.log('[Annotation] Deleted:', annotationId);
   };
 
-  // AI Chat - Send message (text or voice)
-  const sendAiChatMessage = async (message, forceEdit = false) => {
-    if (!message || !message.trim()) return;
-    if (!window.electronAPI) {
-      console.error('[AI Chat] Electron API not available');
-      return;
-    }
-
-    const userMessage = message.trim();
-
-    // Add user message to history
-    setAiChatHistory(prev => [...prev, { role: 'user', content: userMessage }]);
-    setAiChatInput('');
-
-    // Check if user wants to edit text (keywords or forceEdit flag)
-    const editKeywords = /muokkaa|kirjoita uudelleen|paranna|muuta|korjaa|rewrite|edit|improve/i;
-    const wantsToEdit = forceEdit || editKeywords.test(userMessage);
-
-    // If editing and has selected text, use edit mode
-    if (wantsToEdit && (textSelection?.text || activeChapter?.content)) {
-      await editTextFromChat(userMessage);
-      return;
-    }
-
-    // Otherwise, respond as assistant
-    const currentMode = getCurrentMode();
-    const prompt = `You are FAUST AI, an intelligent writing assistant helping a Finnish author.
-
-CONTEXT:
-- Project: ${project.title}
-- Current chapter: ${activeChapter.title}
-- AI Mode: ${project.ai.currentMode} (${currentMode.useCase})
-- Words written: ${project.targets.currentTotal} / ${project.targets.totalWords}
-
-USER QUESTION:
-${userMessage}
-
-Respond helpfully and concisely. If the question is about the current chapter, you can reference it. Keep responses focused and actionable.`;
-
-    try {
-      console.log('[AI Chat] Sending message...');
-      setAiChatVoiceState('processing');
-
-      const result = await callAIWithMode(prompt);
-
-      if (result.success) {
-        console.log('[AI Chat] Response received');
-        setAiChatHistory(prev => [...prev, { role: 'assistant', content: result.data.trim() }]);
-        setAiChatVoiceState('idle');
-      } else {
-        console.error('[AI Chat] AI error:', result.error);
-        setAiChatHistory(prev => [...prev, { role: 'error', content: 'Virhe: ' + result.error }]);
-        setAiChatVoiceState('error');
-      }
-    } catch (error) {
-      console.error('[AI Chat] Exception:', error);
-      setAiChatHistory(prev => [...prev, { role: 'error', content: 'Virhe: ' + error.message }]);
-      setAiChatVoiceState('error');
-    }
-  };
-
-  // AI Chat - Edit text based on chat instruction
-  const editTextFromChat = async (instruction) => {
-    const targetText = textSelection?.text || activeChapter?.content;
-    if (!targetText) {
-      setAiChatHistory(prev => [...prev, { role: 'error', content: 'Ei tekstiä muokattavaksi. Valitse teksti tai varmista että luvussa on sisältöä.' }]);
-      return;
-    }
-
-    if (!window.electronAPI) {
-      console.error('[AI Chat Edit] Electron API not available');
-      setAiChatHistory(prev => [...prev, { role: 'error', content: 'Electron API ei saatavilla' }]);
-      return;
-    }
-
-    const currentMode = getCurrentMode();
-    const prompt = `ORIGINAL TEXT:
-${targetText}
-
-USER INSTRUCTION:
-"${instruction}"
-
-TASK:
-Rewrite the text following the instruction. Keep the story context and language consistent.
-${currentMode.systemPrompt}
-
-Return ONLY the rewritten text, no explanations.`;
-
-    try {
-      console.log('[AI Chat Edit] Processing...');
-      setAiChatVoiceState('processing');
-
-      const result = await callAIWithMode(prompt);
-
-      if (result.success) {
-        console.log('[AI Chat Edit] AI response received');
-        const revised = result.data.trim();
-
-        // Show diff view
-        setVoiceDiffView({
-          original: targetText,
-          revised: revised,
-          instruction: instruction
-        });
-
-        setAiChatHistory(prev => [...prev, {
-          role: 'assistant',
-          content: `✅ Muokattu ${textSelection?.text ? 'valittu teksti' : 'koko luku'}. Katso diff-näkymä editorissa.`
-        }]);
-        setAiChatVoiceState('idle');
-      } else {
-        console.error('[AI Chat Edit] AI error:', result.error);
-        setAiChatHistory(prev => [...prev, { role: 'error', content: 'Virhe: ' + result.error }]);
-        setAiChatVoiceState('error');
-      }
-    } catch (error) {
-      console.error('[AI Chat Edit] Exception:', error);
-      setAiChatHistory(prev => [...prev, { role: 'error', content: 'Virhe: ' + error.message }]);
-      setAiChatVoiceState('error');
-    }
-  };
-
-  // AI Chat - Voice input
-  const handleAiChatVoice = async () => {
-    if (!voiceInputRef.current) {
-      alert('Äänisyöte ei ole käytettävissä tässä selaimessa.');
-      return;
-    }
-
-    try {
-      setAiChatVoiceState('listening');
-      console.log('[AI Chat Voice] Listening...');
-
-      const result = await voiceInputRef.current.listen();
-
-      if (result && result.transcript) {
-        console.log('[AI Chat Voice] Heard:', result.transcript);
-
-        if (result.confidence < 0.5) {
-          const confirmed = confirm(
-            `Kuulin: "${result.transcript}"\n\n` +
-            `Luotettavuus alhainen (${Math.round(result.confidence * 100)}%). Jatketaanko?`
-          );
-          if (!confirmed) {
-            setAiChatVoiceState('idle');
-            return;
-          }
-        }
-
-        // Send voice message to AI
-        await sendAiChatMessage(result.transcript);
-      }
-    } catch (error) {
-      console.error('[AI Chat Voice] Error:', error);
-      alert(error.message);
-      setAiChatVoiceState('error');
-      setTimeout(() => setAiChatVoiceState('idle'), 2000);
-    }
-  };
-
   // AI Assistant Panel - Send message with model selection
   const sendAiAssistantMessage = async () => {
     if (!aiChatInput.trim()) return;
@@ -3749,7 +3292,7 @@ PROJECT CONTEXT:
 - Title: ${project.title}
 - Current chapter: ${activeChapter.title}
 - AI Mode: ${project.ai.currentMode} (${currentMode.useCase})
-- Progress: ${project.targets.currentTotal} / ${project.targets.totalWords} words
+- Progress: ${totalWords} / ${project.targets.totalWords} words
 
 ${memoryContext ? `RECENT DECISIONS & DIRECTIONS:\n${memoryContext}\n` : ''}
 ${contextPrompt}`;
@@ -4128,9 +3671,13 @@ ${contextPrompt}`;
       }
 
       const when = new Date(recovery.savedAt).toLocaleString('fi-FI');
-      const restore = confirm(
-        `Edellinen istunto päättyi kesken. Projektista "${data.title}" on tallentamaton versio (${when}).\n\nPalautetaanko se?`
+      const restore = await askConfirm(
+        'Palautetaanko tallentamaton työ?',
+        `Edellinen istunto päättyi kesken. Projektista "${data.title}" on tallentamaton versio (${when}).`,
+        'Palauta',
+        'Hylkää'
       );
+      if (cancelled) return;
 
       if (restore) {
         openProject(data, recovery.filePath || null);
@@ -4197,6 +3744,14 @@ ${contextPrompt}`;
         const request = textPrompt;
         setTextPrompt(null);
         if (request) request.resolve(value);
+      }
+    }),
+    e(ConfirmDialog, {
+      request: confirmRequest,
+      onDone: (confirmed) => {
+        const request = confirmRequest;
+        setConfirmRequest(null);
+        if (request) request.resolve(confirmed);
       }
     }),
     e(ShortcutsDialog, { open: showShortcuts, onClose: () => setShowShortcuts(false) }),
@@ -4721,17 +4276,17 @@ ${contextPrompt}`;
           }, 'LIMINAL ENGINE'),
           // AI Työkalut button removed - had no associated panel
           e('button', {
-            onClick: () => setShowSettings(true),
+            onClick: openAISettings,
+            title: 'Tekoälyn lähde, avain ja malli (⌘,)',
             style: {
-              background: project.apiConfig.isConfigured ? 'transparent' : 'var(--bronze)',
+              background: 'transparent',
               border: '1px solid var(--border-color)',
-              color: project.apiConfig.isConfigured ? 'var(--text)' : '#000',
+              color: 'var(--text)',
               padding: '4px 12px',
               borderRadius: '4px',
               cursor: 'pointer',
               fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              fontWeight: project.apiConfig.isConfigured ? 400 : 600
+              fontSize: '12px'
             }
           }, '⚙️ Asetukset')
         )
@@ -4780,7 +4335,7 @@ ${contextPrompt}`;
               borderBottom: '1px solid var(--border-color)'
             }
           },
-            e('div', null, `${project.targets.currentTotal} / ${project.targets.totalWords} sanaa`),
+            e('div', null, `${totalWords} / ${project.targets.totalWords} sanaa`),
             e('div', null, `${project.structure.length} lukua`)
           ),
 
@@ -7528,7 +7083,7 @@ ${contextPrompt}`;
             e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '13px', color: 'var(--text-2)', marginBottom: '4px' } },
               `Tavoite: ${project.targets.totalWords} sanaa`),
             e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '13px', color: 'var(--text-2)' } },
-              `Edistyminen: ${Math.round(project.targets.currentTotal / project.targets.totalWords * 100)}%`)
+              `Edistyminen: ${Math.round(totalWords / project.targets.totalWords * 100)}%`)
           ),
 
           // AI TAB
@@ -7661,7 +7216,7 @@ ${contextPrompt}`;
                   href: '#',
                   onClick: (ev) => {
                     ev.preventDefault();
-                    window.electronAPI && window.require && window.require('electron').shell.openExternal('https://console.anthropic.com/');
+                    if (window.electronAPI) window.electronAPI.openExternal('https://console.anthropic.com/');
                   },
                   style: { color: 'var(--sigil)', textDecoration: 'none' }
                 }, 'console.anthropic.com')
@@ -8603,204 +8158,6 @@ ${contextPrompt}`;
                 )
           ),
 
-          // AI Chat
-          e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'AI CHAT'),
-
-            // Chat history
-            e('div', {
-              style: {
-                maxHeight: '300px',
-                overflowY: 'auto',
-                marginBottom: '12px',
-                padding: '8px',
-                background: 'var(--bg-1)',
-                borderRadius: '4px',
-                border: '1px solid var(--border-color)'
-              }
-            },
-              aiChatMessages.length === 0
-                ? e('div', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: 'var(--text-3)',
-                      fontStyle: 'italic',
-                      textAlign: 'center',
-                      padding: '12px'
-                    }
-                  }, 'Kysy AI:lta mitä tahansa...')
-                : aiChatMessages.map((msg, idx) =>
-                    e('div', {
-                      key: idx,
-                      style: {
-                        marginBottom: '12px',
-                        padding: '8px',
-                        background: msg.role === 'user' ? 'var(--bg-2)' :
-                                   msg.role === 'error' ? 'rgba(255,68,68,0.1)' : 'transparent',
-                        borderLeft: msg.role === 'user' ? '2px solid var(--bronze)' :
-                                   msg.role === 'error' ? '2px solid #ff4444' : '2px solid var(--sigil)',
-                        borderRadius: '4px'
-                      }
-                    },
-                      e('div', {
-                        style: {
-                          fontFamily: 'IBM Plex Mono',
-                          fontSize: '10px',
-                          color: 'var(--text-3)',
-                          marginBottom: '4px',
-                          textTransform: 'uppercase'
-                        }
-                      }, msg.role === 'user' ? 'Sinä' : msg.role === 'error' ? 'Virhe' : 'FAUST AI'),
-                      e('div', {
-                        style: {
-                          fontFamily: 'IBM Plex Mono',
-                          fontSize: '12px',
-                          color: 'var(--text)',
-                          lineHeight: '1.5',
-                          whiteSpace: 'pre-wrap'
-                        }
-                      }, msg.content)
-                    )
-                  )
-            ),
-
-            // Input area
-            e('div', {
-              style: {
-                display: 'flex',
-                gap: '8px',
-                marginBottom: '8px'
-              }
-            },
-              e('input', {
-                type: 'text',
-                value: aiChatInput,
-                onChange: (ev) => setAiChatInput(ev.target.value),
-                onKeyPress: (ev) => {
-                  if (ev.key === 'Enter') {
-                    sendAiChatMessage(aiChatInput);
-                  }
-                },
-                placeholder: 'Kirjoita tai puhu...',
-                disabled: aiChatVoiceState === 'processing',
-                style: {
-                  flex: 1,
-                  padding: '8px',
-                  background: 'var(--bg-1)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  outline: 'none'
-                }
-              }),
-
-              // Voice button
-              voiceInputAvailable ? e('button', {
-                onClick: handleAiChatVoice,
-                disabled: aiChatVoiceState !== 'idle',
-                style: {
-                  padding: '8px 12px',
-                  background: aiChatVoiceState === 'listening' ? '#ff4444' :
-                             aiChatVoiceState === 'processing' ? '#ffaa00' : 'var(--bronze)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#000',
-                  cursor: aiChatVoiceState === 'idle' ? 'pointer' : 'not-allowed',
-                  fontSize: '16px',
-                  animation: aiChatVoiceState === 'listening' ? 'pulse 1s infinite' : 'none'
-                }
-              },
-                aiChatVoiceState === 'listening' ? '🔴' :
-                aiChatVoiceState === 'processing' ? '⏸️' : '🎤'
-              ) : null
-            ),
-
-            // Buttons row
-            e('div', {
-              style: {
-                display: 'flex',
-                gap: '8px'
-              }
-            },
-              // Send button
-              e('button', {
-                onClick: () => sendAiChatMessage(aiChatInput),
-                disabled: !aiChatInput.trim() || aiChatVoiceState === 'processing',
-                style: {
-                  flex: 1,
-                  padding: '8px',
-                  background: aiChatInput.trim() && aiChatVoiceState !== 'processing' ? 'var(--bronze)' : 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: aiChatInput.trim() && aiChatVoiceState !== 'processing' ? '#000' : 'var(--text-3)',
-                  cursor: aiChatInput.trim() && aiChatVoiceState !== 'processing' ? 'pointer' : 'not-allowed',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  fontWeight: 600
-                }
-              },
-                aiChatVoiceState === 'processing' ? 'Käsittelen...' : 'Lähetä'
-              ),
-
-              // Edit button (forces edit mode)
-              e('button', {
-                onClick: () => sendAiChatMessage(aiChatInput, true),
-                disabled: !aiChatInput.trim() || aiChatVoiceState === 'processing' || (!textSelection?.text && !activeChapter?.content),
-                title: textSelection?.text ? 'Muokkaa valittua tekstiä' : 'Muokkaa koko lukua',
-                style: {
-                  padding: '8px 12px',
-                  background: aiChatInput.trim() && aiChatVoiceState !== 'processing' ? 'var(--sigil)' : 'transparent',
-                  border: '1px solid var(--sigil)',
-                  borderRadius: '4px',
-                  color: aiChatInput.trim() && aiChatVoiceState !== 'processing' ? '#000' : 'var(--text-3)',
-                  cursor: aiChatInput.trim() && aiChatVoiceState !== 'processing' ? 'pointer' : 'not-allowed',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  fontWeight: 600
-                }
-              },
-                '✏️ Muokkaa'
-              )
-            )
-          ),
-
-          // AI Tools (placeholder)
-          e('div', null,
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'AI-TYÖKALUT'),
-            e('button', {
-              disabled: true,
-              style: {
-                width: '100%',
-                padding: '8px',
-                marginBottom: '8px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                color: 'var(--text-3)',
-                borderRadius: '4px',
-                cursor: 'not-allowed',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
-              }
-            }, 'Jatka kirjoitusta'),
-            e('button', {
-              disabled: true,
-              style: {
-                width: '100%',
-                padding: '8px',
-                marginBottom: '8px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                color: 'var(--text-3)',
-                borderRadius: '4px',
-                cursor: 'not-allowed',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
-              }
-            }, 'Generoi kirja')
-          )
         )
       )
     ),
@@ -8818,7 +8175,12 @@ ${contextPrompt}`;
         }
       },
         e('span', null, activeChapter.title + (unsavedChanges ? ' •' : '')),
-        e('span', null, `${activeChapter.wordCount} / ${project.targets.currentTotal} sanaa` +
+        e('span', {
+          title: `Luku: ${chapterWords} sanaa, ${chapterCharacters.withSpaces} merkkiä (${chapterCharacters.withoutSpaces} ilman välejä)\n` +
+                 `Käsikirjoitus: ${totalWords} sanaa, noin ${estimatePages(totalWords)} sivua (250 sanaa/sivu)`
+        },
+          `${chapterWords} sanaa • ${chapterCharacters.withSpaces} merkkiä` +
+          ` • yhteensä ${totalWords} sanaa, n. ${estimatePages(totalWords)} s.` +
           (currentFilePath ? ` • ${currentFilePath.split('/').pop()}` : ' • Tallentamaton'))
       )
     ),
@@ -9091,203 +8453,6 @@ ${contextPrompt}`;
             }, 'Vahvista cast →')
           )
         ) : null
-      )
-    ) : null,
-
-    // Regenerate with Feedback Dialog
-    showRegenerateDialog ? e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0,0,0,0.8)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000
-      },
-      onClick: (ev) => {
-        if (ev.target === ev.currentTarget) {
-          setShowRegenerateDialog(false);
-          setRegenerateFeedback('');
-        }
-      }
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg-primary)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '8px',
-          width: '600px',
-          maxHeight: '80vh',
-          overflow: 'auto',
-          padding: '24px'
-        }
-      },
-        e('h2', {
-          style: {
-            fontFamily: 'EB Garamond',
-            fontSize: '24px',
-            color: 'var(--text)',
-            marginBottom: '8px'
-          }
-        }, '✨ Regenerate Chapter'),
-
-        e('p', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '13px',
-            color: 'var(--text-2)',
-            marginBottom: '24px'
-          }
-        }, 'Anna palautetta nykyisestä versiosta. AI kirjoittaa luvun uudelleen palautteen perusteella.'),
-
-        // Feedback textarea
-        e('label', {
-          style: {
-            display: 'block',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px',
-            color: 'var(--text-2)',
-            marginBottom: '8px'
-          }
-        }, 'Palaute ja toiveet:'),
-
-        e('textarea', {
-          value: regenerateFeedback,
-          onChange: (ev) => setRegenerateFeedback(ev.target.value),
-          placeholder: 'Esim. "Lisää jännitystä dialogiin" tai "Lyhennä kuvauksia" tai "Vaihda näkökulma"...',
-          style: {
-            width: '100%',
-            minHeight: '120px',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '13px',
-            padding: '12px',
-            background: 'var(--bg-secondary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text)',
-            resize: 'vertical',
-            marginBottom: '16px'
-          }
-        }),
-
-        // Mode selector
-        e('label', {
-          style: {
-            display: 'block',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px',
-            color: 'var(--text-2)',
-            marginBottom: '8px'
-          }
-        }, 'Writing Mode:'),
-
-        e('div', {
-          style: {
-            display: 'flex',
-            gap: '8px',
-            marginBottom: '24px'
-          }
-        },
-          ['exploration', 'production', 'polish'].map(mode =>
-            e('button', {
-              key: mode,
-              onClick: () => setRegenerateMode(mode),
-              style: {
-                flex: 1,
-                padding: '12px',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                background: regenerateMode === mode ? 'var(--sigil)' : 'var(--bg-secondary)',
-                color: regenerateMode === mode ? 'var(--bg-primary)' : 'var(--text-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }
-            },
-              mode === 'exploration' ? '🔮 Exploration' :
-              mode === 'production' ? '✍️ Production' :
-              '✨ Polish'
-            )
-          )
-        ),
-
-        // Action buttons
-        e('div', {
-          style: {
-            display: 'flex',
-            gap: '12px',
-            justifyContent: 'flex-end'
-          }
-        },
-          e('button', {
-            onClick: () => {
-              setShowRegenerateDialog(false);
-              setRegenerateFeedback('');
-            },
-            style: {
-              padding: '10px 20px',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              background: 'var(--bg-secondary)',
-              color: 'var(--text-2)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              cursor: 'pointer'
-            }
-          }, 'Peruuta'),
-
-          e('button', {
-            onClick: async () => {
-              if (!regenerateFeedback.trim()) {
-                alert('Anna ensin palautetta!');
-                return;
-              }
-
-              if (!refinementManagerRef.current) {
-                alert('RefinementManager ei ole käytettävissä');
-                return;
-              }
-
-              try {
-                setShowRegenerateDialog(false);
-                const feedback = regenerateFeedback;
-                const mode = regenerateMode;
-                setRegenerateFeedback('');
-                setRegenerateMode('production');
-
-                // Show loading indicator
-                alert('Generating new version...');
-
-                await refinementManagerRef.current.regenerateChapter(
-                  activeChapterId,
-                  feedback,
-                  mode
-                );
-
-                alert('✅ New version created! Check the Version History panel.');
-              } catch (error) {
-                console.error('[Regenerate] Error:', error);
-                alert('Error: ' + error.message);
-              }
-            },
-            style: {
-              padding: '10px 20px',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              background: 'var(--sigil)',
-              color: 'var(--bg-primary)',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 'bold'
-            }
-          }, '⟳ Regenerate')
-        )
       )
     ) : null,
 
@@ -10275,494 +9440,6 @@ ${contextPrompt}`;
       )
     ) : null,
 
-    // Settings Dialog
-    showSettings ? e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.85)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10000
-      }
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg-1)',
-          border: '2px solid var(--bronze)',
-          borderRadius: '8px',
-          padding: '32px',
-          maxWidth: '700px',
-          width: '90%',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          position: 'relative'
-        }
-      },
-        // Header
-        e('h2', {
-          style: {
-            fontFamily: 'EB Garamond',
-            fontSize: '24px',
-            color: 'var(--text)',
-            marginBottom: '8px'
-          }
-        }, '⚙️ Asetukset'),
-
-        e('p', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px',
-            color: 'var(--text-2)',
-            marginBottom: '24px'
-          }
-        }, 'Konfiguroi FAUST AI -asetukset'),
-
-        // Close button
-        e('button', {
-          onClick: () => setShowSettings(false),
-          style: {
-            position: 'absolute',
-            top: '24px',
-            right: '24px',
-            background: 'transparent',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text-3)',
-            padding: '4px 12px',
-            cursor: 'pointer',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px'
-          }
-        }, 'Sulje'),
-
-        // Tabs
-        e('div', {
-          style: {
-            display: 'flex',
-            gap: '8px',
-            marginBottom: '24px',
-            borderBottom: '1px solid var(--border-color)',
-            paddingBottom: '12px'
-          }
-        },
-          ['api', 'general'].map(tab =>
-            e('button', {
-              key: tab,
-              onClick: () => setSettingsTab(tab),
-              style: {
-                padding: '8px 16px',
-                background: settingsTab === tab ? 'var(--bronze)' : 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: settingsTab === tab ? '#000' : 'var(--text-2)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                fontWeight: settingsTab === tab ? 600 : 400
-              }
-            }, tab === 'api' ? 'API Asetukset' : 'Yleiset')
-          )
-        ),
-
-        // API Settings Tab
-        settingsTab === 'api' ? e('div', null,
-          // API Type Selection
-          e('div', {
-            style: {
-              marginBottom: '24px'
-            }
-          },
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                marginBottom: '8px',
-                textTransform: 'uppercase'
-              }
-            }, 'API Type'),
-
-            e('div', {
-              style: {
-                display: 'flex',
-                gap: '8px'
-              }
-            },
-              ['cloud', 'local'].map(type =>
-                e('button', {
-                  key: type,
-                  onClick: () => {
-                    const newProvider = type === 'cloud' ? 'anthropic' : 'local';
-                    setActiveApiProvider(newProvider);
-                  },
-                  style: {
-                    flex: 1,
-                    padding: '12px',
-                    background: project.apiConfig.provider !== 'local' ?
-                      (type === 'cloud' ? 'var(--bg-2)' : 'transparent') :
-                      (type === 'local' ? 'var(--bg-2)' : 'transparent'),
-                    border: `2px solid ${
-                      project.apiConfig.provider !== 'local' ?
-                        (type === 'cloud' ? 'var(--bronze)' : 'var(--border-color)') :
-                        (type === 'local' ? 'var(--bronze)' : 'var(--border-color)')
-                    }`,
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '13px'
-                  }
-                },
-                  type === 'cloud' ? '☁️ Cloud API' : '🖥️ Local Server'
-                )
-              )
-            )
-          ),
-
-          // Cloud API Configuration
-          project.apiConfig.provider !== 'local' ? e('div', null,
-            // API Key
-            e('div', {
-              style: {
-                marginBottom: '16px'
-              }
-            },
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  color: 'var(--text-3)',
-                  marginBottom: '8px',
-                  textTransform: 'uppercase'
-                }
-              }, 'API Key'),
-
-              e('input', {
-                type: 'password',
-                value: project.apiConfig[project.apiConfig.provider]?.apiKey || project.apiConfig.anthropic.apiKey,
-                onChange: (ev) => updateApiKey(project.apiConfig.provider === 'local' ? 'anthropic' : project.apiConfig.provider, ev.target.value),
-                placeholder: 'sk-ant-... tai sk-... tai xai-...',
-                style: {
-                  width: '100%',
-                  padding: '12px',
-                  background: 'var(--bg-2)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '13px',
-                  outline: 'none'
-                }
-              }),
-
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-3)',
-                  marginTop: '8px',
-                  fontStyle: 'italic'
-                }
-              }, '🔑 Hanki API-avain: console.anthropic.com, platform.openai.com, x.ai, deepseek.com')
-            ),
-
-            // Model Name
-            e('div', {
-              style: {
-                marginBottom: '16px'
-              }
-            },
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  color: 'var(--text-3)',
-                  marginBottom: '8px',
-                  textTransform: 'uppercase'
-                }
-              }, 'Model Name'),
-
-              e('input', {
-                type: 'text',
-                value: project.ai?.activeModel || 'claude-3-5-sonnet-20241022',
-                onChange: (ev) => {
-                  setProject(prev => ({
-                    ...prev,
-                    ai: {
-                      ...prev.ai,
-                      activeModel: ev.target.value
-                    }
-                  }));
-                  setUnsavedChanges(true);
-                },
-                placeholder: 'claude-3-5-sonnet-20241022',
-                style: {
-                  width: '100%',
-                  padding: '12px',
-                  background: 'var(--bg-2)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '13px',
-                  outline: 'none'
-                }
-              }),
-
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-3)',
-                  marginTop: '8px',
-                  fontStyle: 'italic'
-                }
-              }, '⊳ Syötä täsmällinen mallin nimi (esim. claude-3-5-sonnet-20241022, gpt-4-turbo, grok-2-1212)')
-            ),
-
-            // Quick Select buttons
-            e('div', {
-              style: {
-                marginBottom: '24px'
-              }
-            },
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-3)',
-                  marginBottom: '8px'
-                }
-              }, 'PIKA-VALINTA:'),
-
-              e('div', {
-                style: {
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(2, 1fr)',
-                  gap: '8px'
-                }
-              },
-                [
-                  { name: 'Claude 3.5 Sonnet', model: 'claude-3-5-sonnet-20241022' },
-                  { name: 'GPT-4 Turbo', model: 'gpt-4-turbo-preview' },
-                  { name: 'Grok 2', model: 'grok-2-1212' },
-                  { name: 'DeepSeek V3', model: 'deepseek-chat' }
-                ].map(preset =>
-                  e('button', {
-                    key: preset.model,
-                    onClick: () => {
-                      setProject(prev => ({
-                        ...prev,
-                        ai: {
-                          ...prev.ai,
-                          activeModel: preset.model
-                        }
-                      }));
-                      setUnsavedChanges(true);
-                    },
-                    style: {
-                      padding: '8px',
-                      background: project.ai?.activeModel === preset.model ? 'var(--bronze)' : 'var(--bg-2)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      color: project.ai?.activeModel === preset.model ? '#000' : 'var(--text-2)',
-                      cursor: 'pointer',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      fontWeight: project.ai?.activeModel === preset.model ? 600 : 400
-                    }
-                  }, preset.name)
-                )
-              )
-            )
-          ) : null,
-
-          // Local Endpoint Configuration
-          project.apiConfig.provider === 'local' ? e('div', {
-            style: {
-              marginBottom: '24px'
-            }
-          },
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                marginBottom: '8px',
-                textTransform: 'uppercase'
-              }
-            }, 'Local Endpoint URL'),
-
-            e('input', {
-              type: 'text',
-              value: project.apiConfig.local.endpoint,
-              onChange: (ev) => {
-                setProject(prev => ({
-                  ...prev,
-                  apiConfig: {
-                    ...prev.apiConfig,
-                    local: {
-                      ...prev.apiConfig.local,
-                      endpoint: ev.target.value
-                    }
-                  }
-                }));
-                setUnsavedChanges(true);
-              },
-              placeholder: 'http://localhost:1234/v1',
-              style: {
-                width: '100%',
-                padding: '12px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                outline: 'none'
-              }
-            }),
-
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                marginTop: '8px',
-                fontStyle: 'italic'
-              }
-            }, '🖥️ Esim. Ollama, LM Studio tai muu OpenAI-yhteensopiva palvelin')
-          ) : null,
-
-          // Divider
-          e('div', {
-            style: {
-              borderTop: '1px solid var(--border-color)',
-              marginTop: '32px',
-              paddingTop: '24px'
-            }
-          }),
-
-          // Test connection button
-          e('button', {
-            onClick: testApiConnection,
-            style: {
-              width: '100%',
-              padding: '12px',
-              background: 'var(--bronze)',
-              border: 'none',
-              borderRadius: '4px',
-              color: '#000',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              fontWeight: 600,
-              marginBottom: '16px'
-            }
-          }, '⊙ Testaa yhteyttä'),
-
-          // Test result
-          apiTestResult ? e('div', {
-            style: {
-              padding: '12px',
-              background: apiTestResult.success === null ? 'var(--bg-2)' :
-                         apiTestResult.success ? 'rgba(76,175,80,0.1)' : 'rgba(239,83,80,0.1)',
-              border: `1px solid ${apiTestResult.success === null ? 'var(--border-color)' :
-                                   apiTestResult.success ? '#4CAF50' : '#EF5350'}`,
-              borderRadius: '4px',
-              marginBottom: '16px'
-            }
-          },
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: apiTestResult.success === null ? 'var(--text-2)' :
-                       apiTestResult.success ? '#4CAF50' : '#EF5350'
-              }
-            }, apiTestResult.message)
-          ) : null,
-
-          // API Usage stats
-          e('div', {
-            style: {
-              padding: '16px',
-              background: 'var(--bg-2)',
-              borderRadius: '4px',
-              border: '1px solid var(--border-color)'
-            }
-          },
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                marginBottom: '12px',
-                textTransform: 'uppercase'
-              }
-            }, 'API Käyttö'),
-
-            e('div', {
-              style: {
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px'
-              }
-            },
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  color: 'var(--text-2)'
-                }
-              }, `Pyyntöjä: ${project.ai.costTracking.requestCount}`),
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  color: 'var(--text-2)'
-                }
-              }, `Tokeneita: ${project.ai.costTracking.tokensUsed}`),
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  color: 'var(--text-2)'
-                }
-              }, `Kustannukset: ~$${project.ai.costTracking.totalSpent.toFixed(2)}`),
-              project.apiConfig.lastTested ? e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-3)',
-                  fontStyle: 'italic',
-                  marginTop: '4px'
-                }
-              }, `Viimeksi testattu: ${new Date(project.apiConfig.lastTested).toLocaleString('fi-FI')}`) : null
-            )
-          )
-        ) : null,
-
-        // General Settings Tab
-        settingsTab === 'general' ? e('div', null,
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              color: 'var(--text-2)',
-              textAlign: 'center',
-              padding: '48px'
-            }
-          }, 'Yleisiä asetuksia tulossa...')
-        ) : null
-      )
-    ) : null,
-
     // AI Assistant Panel (Cursor-style) - Slides in from right
     aiAssistantOpen && e('div', {
       className: 'liminal-engine-panel',
@@ -11197,112 +9874,132 @@ ${contextPrompt}`;
         }, 'Cmd+K to toggle • Enter to send')
         )
       ],
+    ),
 
-      // Regenerate Dialog
-      showRegenerateDialog && e('div', {
-        style: {
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10000
-        },
-        onClick: () => setShowRegenerateDialog(false)
+    // The four dialogs below used to be children of the AI assistant panel,
+    // so they only opened while that panel was open. They belong to the window.
+    // Regenerate Dialog
+    showRegenerateDialog && e('div', {
+      style: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10000
       },
-        e('div', {
-          style: {
-            background: 'var(--bg)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '8px',
-            padding: '24px',
-            maxWidth: '500px',
-            width: '90%'
-          },
-          onClick: (ev) => ev.stopPropagation()
+      onClick: () => setShowRegenerateDialog(false)
+    },
+      e('div', {
+        style: {
+          background: 'var(--bg)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '8px',
+          padding: '24px',
+          maxWidth: '500px',
+          width: '90%'
         },
-          e('h3', {
+        onClick: (ev) => ev.stopPropagation()
+      },
+        e('h3', {
+          style: {
+            fontFamily: 'EB Garamond',
+            fontSize: '20px',
+            color: 'var(--text)',
+            marginBottom: '16px'
+          }
+        }, 'Regeneroi Luku Palautteella'),
+
+        // Feedback textarea
+        e('div', { style: { marginBottom: '16px' } },
+          e('label', {
             style: {
-              fontFamily: 'EB Garamond',
-              fontSize: '20px',
-              color: 'var(--text)',
-              marginBottom: '16px'
+              display: 'block',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '11px',
+              color: 'var(--text-3)',
+              marginBottom: '8px'
             }
-          }, 'Regeneroi Luku Palautteella'),
+          }, 'Anna palaute (mitä haluat muuttaa):'),
+          e('textarea', {
+            value: regenerateFeedback,
+            onChange: (ev) => setRegenerateFeedback(ev.target.value),
+            placeholder: 'Esim: "Tee tästä dramaattisempi", "Lisää dialogia", "Pidennä jännitystä"...',
+            style: {
+              width: '100%',
+              minHeight: '100px',
+              padding: '12px',
+              background: 'var(--bg-2)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text)',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px',
+              resize: 'vertical'
+            }
+          })
+        ),
 
-          // Feedback textarea
-          e('div', { style: { marginBottom: '16px' } },
-            e('label', {
-              style: {
-                display: 'block',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                marginBottom: '8px'
-              }
-            }, 'Anna palaute (mitä haluat muuttaa):'),
-            e('textarea', {
-              value: regenerateFeedback,
-              onChange: (ev) => setRegenerateFeedback(ev.target.value),
-              placeholder: 'Esim: "Tee tästä dramaattisempi", "Lisää dialogia", "Pidennä jännitystä"...',
-              style: {
-                width: '100%',
-                minHeight: '100px',
-                padding: '12px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                resize: 'vertical'
-              }
-            })
-          ),
-
-          // Mode selector
-          e('div', { style: { marginBottom: '16px' } },
-            e('label', {
-              style: {
-                display: 'block',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                marginBottom: '8px'
-              }
-            }, 'AI Mode:'),
-            e('div', { style: { display: 'flex', gap: '4px' } },
-              ['exploration', 'production', 'polish'].map(mode =>
-                e('button', {
-                  key: mode,
-                  onClick: () => setRegenerateMode(mode),
-                  style: {
-                    flex: 1,
-                    padding: '8px',
-                    background: regenerateMode === mode ? project.ai.modes[mode].color : 'transparent',
-                    border: `1px solid ${project.ai.modes[mode].color}`,
-                    borderRadius: '4px',
-                    color: regenerateMode === mode ? '#000' : 'var(--text-2)',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '10px',
-                    fontWeight: regenerateMode === mode ? 600 : 400
-                  }
-                }, project.ai.modes[mode].name)
-              )
+        // Mode selector
+        e('div', { style: { marginBottom: '16px' } },
+          e('label', {
+            style: {
+              display: 'block',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '11px',
+              color: 'var(--text-3)',
+              marginBottom: '8px'
+            }
+          }, 'AI Mode:'),
+          e('div', { style: { display: 'flex', gap: '4px' } },
+            ['exploration', 'production', 'polish'].map(mode =>
+              e('button', {
+                key: mode,
+                onClick: () => setRegenerateMode(mode),
+                style: {
+                  flex: 1,
+                  padding: '8px',
+                  background: regenerateMode === mode ? project.ai.modes[mode].color : 'transparent',
+                  border: `1px solid ${project.ai.modes[mode].color}`,
+                  borderRadius: '4px',
+                  color: regenerateMode === mode ? '#000' : 'var(--text-2)',
+                  cursor: 'pointer',
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '10px',
+                  fontWeight: regenerateMode === mode ? 600 : 400
+                }
+              }, project.ai.modes[mode].name)
             )
-          ),
+          )
+        ),
 
-          // Buttons
-          e('div', { style: { display: 'flex', gap: '8px', justifyContent: 'space-between' } },
+        // Buttons
+        e('div', { style: { display: 'flex', gap: '8px', justifyContent: 'space-between' } },
+          e('button', {
+            onClick: () => {
+              setShowRegenerateDialog(false);
+              setShowVersionHistory(true);
+            },
+            style: {
+              padding: '8px 16px',
+              background: 'transparent',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text-2)',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px'
+            }
+          }, '📜 Versiohistoria'),
+          e('div', { style: { display: 'flex', gap: '8px' } },
             e('button', {
               onClick: () => {
                 setShowRegenerateDialog(false);
-                setShowVersionHistory(true);
+                setRegenerateFeedback('');
               },
               style: {
                 padding: '8px 16px',
@@ -11314,46 +10011,499 @@ ${contextPrompt}`;
                 fontFamily: 'IBM Plex Mono',
                 fontSize: '12px'
               }
-            }, '📜 Versiohistoria'),
-            e('div', { style: { display: 'flex', gap: '8px' } },
-              e('button', {
-                onClick: () => {
-                  setShowRegenerateDialog(false);
-                  setRegenerateFeedback('');
-                },
-                style: {
-                  padding: '8px 16px',
-                  background: 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text-2)',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px'
-                }
-              }, 'Peruuta'),
-              e('button', {
-                onClick: regenerateChapter,
-                disabled: !regenerateFeedback.trim() || isGenerating,
-                style: {
-                  padding: '8px 16px',
-                  background: !regenerateFeedback.trim() || isGenerating ? 'var(--bg-2)' : 'var(--bronze)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: !regenerateFeedback.trim() || isGenerating ? 'var(--text-3)' : '#000',
-                  cursor: !regenerateFeedback.trim() || isGenerating ? 'not-allowed' : 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  fontWeight: 600
-                }
-              }, isGenerating ? 'Generoidaan...' : 'Generoi')
-            )
+            }, 'Peruuta'),
+            e('button', {
+              onClick: regenerateChapter,
+              disabled: !regenerateFeedback.trim() || isGenerating,
+              style: {
+                padding: '8px 16px',
+                background: !regenerateFeedback.trim() || isGenerating ? 'var(--bg-2)' : 'var(--bronze)',
+                border: 'none',
+                borderRadius: '4px',
+                color: !regenerateFeedback.trim() || isGenerating ? 'var(--text-3)' : '#000',
+                cursor: !regenerateFeedback.trim() || isGenerating ? 'not-allowed' : 'pointer',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '12px',
+                fontWeight: 600
+              }
+            }, isGenerating ? 'Generoidaan...' : 'Generoi')
           )
         )
-      ),
+      )
+    ),
 
-      // Version History Dialog
-      showVersionHistory && e('div', {
+    // Version History Dialog
+    showVersionHistory && e('div', {
+      style: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10001
+      },
+      onClick: () => setShowVersionHistory(false)
+    },
+      e('div', {
+        style: {
+          background: 'var(--bg)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '8px',
+          padding: '24px',
+          maxWidth: '800px',
+          width: '90%',
+          maxHeight: '80vh',
+          overflow: 'auto'
+        },
+        onClick: (ev) => ev.stopPropagation()
+      },
+        e('h3', {
+          style: {
+            fontFamily: 'EB Garamond',
+            fontSize: '20px',
+            color: 'var(--text)',
+            marginBottom: '16px'
+          }
+        }, 'Versiohistoria - ' + activeChapter.title),
+
+        // Version list
+        activeChapter.versions && activeChapter.versions.length > 0 ?
+          activeChapter.versions.map((version, idx) =>
+            e('div', {
+              key: version.id,
+              style: {
+                background: version.id === activeChapter.currentVersion ? 'var(--bg-2)' : 'transparent',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                padding: '12px',
+                marginBottom: '12px'
+              }
+            },
+              e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' } },
+                e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                  e('span', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: 'var(--text)'
+                    }
+                  }, version.id),
+                  version.id === activeChapter.currentVersion ? e('span', {
+                    style: {
+                      fontSize: '11px',
+                      color: 'var(--bronze)',
+                      background: 'var(--bronze)' + '22',
+                      padding: '2px 8px',
+                      borderRadius: '3px',
+                      fontFamily: 'IBM Plex Mono'
+                    }
+                  }, 'Nykyinen') : null
+                ),
+                e('span', {
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px',
+                    color: 'var(--text-3)'
+                  }
+                }, new Date(version.timestamp).toLocaleString('fi-FI'))
+              ),
+
+              // Version info
+              version.generatedFrom && e('div', {
+                style: {
+                  fontSize: '11px',
+                  color: 'var(--text-2)',
+                  marginBottom: '8px',
+                  fontFamily: 'IBM Plex Mono'
+                }
+              },
+                version.generatedFrom.isRefinement && version.generatedFrom.userFeedback ?
+                  `Palaute: "${version.generatedFrom.userFeedback}"` :
+                  `Generoitu: ${version.generatedFrom.mode} (${version.generatedFrom.model})`
+              ),
+
+              // Word count
+              e('div', {
+                style: {
+                  fontSize: '11px',
+                  color: 'var(--text-3)',
+                  marginBottom: '8px',
+                  fontFamily: 'IBM Plex Mono'
+                }
+              }, `${version.wordCount || 0} sanaa`),
+
+              // Star rating
+              e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' } },
+                e('span', { style: { fontSize: '11px', color: 'var(--text-3)' } }, 'Arvio:'),
+                [1,2,3,4,5].map(star =>
+                  e('span', {
+                    key: star,
+                    onClick: () => rateVersion(version.id, star),
+                    style: {
+                      cursor: 'pointer',
+                      fontSize: '16px',
+                      color: version.userRating && star <= version.userRating ? '#FFB800' : 'var(--text-3)'
+                    }
+                  }, '★')
+                )
+              ),
+
+              // User feedback
+              version.userFeedback && e('div', {
+                style: {
+                  fontSize: '11px',
+                  color: 'var(--text-2)',
+                  marginBottom: '8px',
+                  fontFamily: 'IBM Plex Mono',
+                  fontStyle: 'italic'
+                }
+              }, `"${version.userFeedback}"`),
+
+              // Actions
+              e('div', { style: { display: 'flex', gap: '8px' } },
+                version.id !== activeChapter.currentVersion ? e('button', {
+                  onClick: () => {
+                    restoreVersion(version.id);
+                    setShowVersionHistory(false);
+                  },
+                  style: {
+                    padding: '4px 12px',
+                    background: 'var(--bronze)',
+                    border: 'none',
+                    borderRadius: '4px',
+                    color: '#000',
+                    cursor: 'pointer',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px'
+                  }
+                }, 'Palauta') : null,
+                e('button', {
+                  onClick: () => {
+                    setComparisonVersionId(version.id);
+                    setShowVersionComparison(true);
+                    setShowVersionHistory(false);
+                  },
+                  style: {
+                    padding: '4px 12px',
+                    background: 'transparent',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    cursor: 'pointer',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px'
+                  }
+                }, 'Vertaa')
+              )
+            )
+          ) :
+          e('div', {
+            style: {
+              textAlign: 'center',
+              padding: '40px',
+              color: 'var(--text-3)',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px'
+            }
+          }, 'Ei versioita'),
+
+        // Close button
+        e('div', { style: { marginTop: '16px', display: 'flex', justifyContent: 'flex-end' } },
+          e('button', {
+            onClick: () => setShowVersionHistory(false),
+            style: {
+              padding: '8px 16px',
+              background: 'transparent',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text)',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px'
+            }
+          }, 'Sulje')
+        )
+      )
+    ),
+
+    // Project Settings Dialog
+    showProjectSettings && e('div', {
+      style: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 10002
+      },
+      onClick: () => setShowProjectSettings(false)
+    },
+      e('div', {
+        style: {
+          background: 'var(--bg)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '8px',
+          padding: '32px',
+          width: '600px',
+          maxHeight: '80vh',
+          overflow: 'auto'
+        },
+        onClick: (ev) => ev.stopPropagation()
+      },
+        // Header
+        e('h2', {
+          style: {
+            fontFamily: 'EB Garamond',
+            fontSize: '24px',
+            color: 'var(--text)',
+            marginBottom: '24px',
+            borderBottom: '1px solid var(--border-color)',
+            paddingBottom: '12px'
+          }
+        }, 'Projektin asetukset'),
+
+        // Title
+        e('div', { style: { marginBottom: '20px' } },
+          e('label', {
+            htmlFor: 'project-title',
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '11px',
+              color: 'var(--text-3)',
+              display: 'block',
+              marginBottom: '6px',
+              textTransform: 'uppercase'
+            }
+          }, 'Projektin nimi'),
+          e('input', {
+            id: 'project-title',
+            name: 'projectTitle',
+            type: 'text',
+            value: project.title,
+            onChange: (ev) => {
+              setProject(prev => ({ ...prev, title: ev.target.value }));
+              setUnsavedChanges(true);
+            },
+            style: {
+              width: '100%',
+              padding: '10px',
+              background: 'var(--bg-1)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text)',
+              fontFamily: 'EB Garamond',
+              fontSize: '16px'
+            }
+          })
+        ),
+
+        // Author
+        e('div', { style: { marginBottom: '20px' } },
+          e('label', {
+            htmlFor: 'project-author',
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '11px',
+              color: 'var(--text-3)',
+              display: 'block',
+              marginBottom: '6px',
+              textTransform: 'uppercase'
+            }
+          }, 'Kirjoittaja'),
+          e('input', {
+            id: 'project-author',
+            name: 'projectAuthor',
+            type: 'text',
+            value: project.author || '',
+            onChange: (ev) => {
+              setProject(prev => ({ ...prev, author: ev.target.value }));
+              setUnsavedChanges(true);
+            },
+            style: {
+              width: '100%',
+              padding: '10px',
+              background: 'var(--bg-1)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text)',
+              fontFamily: 'EB Garamond',
+              fontSize: '16px'
+            }
+          })
+        ),
+
+        // Genre
+        e('div', { style: { marginBottom: '20px' } },
+          e('label', {
+            htmlFor: 'project-genre',
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '11px',
+              color: 'var(--text-3)',
+              display: 'block',
+              marginBottom: '6px',
+              textTransform: 'uppercase'
+            }
+          }, 'Genre'),
+          e('select', {
+            id: 'project-genre',
+            name: 'projectGenre',
+            value: project.genre || 'fiction',
+            onChange: (ev) => {
+              setProject(prev => ({ ...prev, genre: ev.target.value }));
+              setUnsavedChanges(true);
+            },
+            style: {
+              width: '100%',
+              padding: '10px',
+              background: 'var(--bg-1)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text)',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '14px'
+            }
+          },
+            e('option', { value: 'fiction' }, 'Fiktio'),
+            e('option', { value: 'fantasy' }, 'Fantasia'),
+            e('option', { value: 'scifi' }, 'Sci-fi'),
+            e('option', { value: 'mystery' }, 'Mysteeri'),
+            e('option', { value: 'thriller' }, 'Trilleri'),
+            e('option', { value: 'romance' }, 'Romanssi'),
+            e('option', { value: 'horror' }, 'Kauhu'),
+            e('option', { value: 'literary' }, 'Kaunokirjallisuus'),
+            e('option', { value: 'nonfiction' }, 'Tietokirja')
+          )
+        ),
+
+        // Target word count
+        e('div', { style: { marginBottom: '20px' } },
+          e('label', {
+            htmlFor: 'project-target-wordcount',
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '11px',
+              color: 'var(--text-3)',
+              display: 'block',
+              marginBottom: '6px',
+              textTransform: 'uppercase'
+            }
+          }, 'Tavoitesanamäärä'),
+          e('input', {
+            id: 'project-target-wordcount',
+            name: 'projectTargetWordCount',
+            type: 'number',
+            value: project.targetWordCount || 50000,
+            onChange: (ev) => {
+              setProject(prev => ({ ...prev, targetWordCount: parseInt(ev.target.value) || 0 }));
+              setUnsavedChanges(true);
+            },
+            style: {
+              width: '100%',
+              padding: '10px',
+              background: 'var(--bg-1)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text)',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '14px'
+            }
+          })
+        ),
+
+        // Language
+        e('div', { style: { marginBottom: '24px' } },
+          e('label', {
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '11px',
+              color: 'var(--text-3)',
+              display: 'block',
+              marginBottom: '6px',
+              textTransform: 'uppercase'
+            }
+          }, 'Tarinan kieli'),
+          e('select', {
+            value: project.language || 'fi',
+            onChange: (ev) => {
+              setProject(prev => ({ ...prev, language: ev.target.value }));
+              setUnsavedChanges(true);
+            },
+            style: {
+              width: '100%',
+              padding: '10px',
+              background: 'var(--bg-1)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text)',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '14px'
+            }
+          },
+            e('option', { value: 'fi' }, '🇫🇮 Suomi'),
+            e('option', { value: 'en' }, '🇬🇧 English')
+          )
+        ),
+
+        // Buttons
+        e('div', { style: { display: 'flex', gap: '12px', justifyContent: 'flex-end' } },
+          e('button', {
+            onClick: () => setShowProjectSettings(false),
+            style: {
+              padding: '10px 20px',
+              background: 'transparent',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text)',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '13px'
+            }
+          }, 'Peruuta'),
+          e('button', {
+            onClick: () => {
+              setShowProjectSettings(false);
+              if (currentFilePath) {
+                saveProject();
+              }
+            },
+            style: {
+              padding: '10px 20px',
+              background: 'var(--bronze)',
+              border: 'none',
+              borderRadius: '4px',
+              color: '#000',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '13px',
+              fontWeight: 600
+            }
+          }, 'Tallenna')
+        )
+      )
+    ),
+
+    // Version Comparison Dialog with Diff Highlighting
+    showVersionComparison && comparisonVersionId && (() => {
+      const compVersion = activeChapter.versions?.find(v => v.id === comparisonVersionId);
+      const compContent = compVersion?.content || '';
+      const currentContent = activeChapter.content || '';
+      const diffResult = computeTextDiff(compContent, currentContent);
+      const addedCount = diffResult.filter(d => d.type === 'added' && d.text.trim()).length;
+      const removedCount = diffResult.filter(d => d.type === 'removed' && d.text.trim()).length;
+      const currentWords = currentContent.split(/\s+/).filter(Boolean).length;
+      const compWords = compContent.split(/\s+/).filter(Boolean).length;
+
+      return e('div', {
         style: {
           position: 'fixed',
           top: 0,
@@ -11364,9 +10514,9 @@ ${contextPrompt}`;
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 10001
+          zIndex: 10002
         },
-        onClick: () => setShowVersionHistory(false)
+        onClick: () => setShowVersionComparison(false)
       },
         e('div', {
           style: {
@@ -11374,168 +10524,253 @@ ${contextPrompt}`;
             border: '1px solid var(--border-color)',
             borderRadius: '8px',
             padding: '24px',
-            maxWidth: '800px',
-            width: '90%',
-            maxHeight: '80vh',
-            overflow: 'auto'
+            maxWidth: '1400px',
+            width: '95%',
+            maxHeight: '90vh',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
           },
           onClick: (ev) => ev.stopPropagation()
         },
-          e('h3', {
+          // Header with stats
+          e('div', {
             style: {
-              fontFamily: 'EB Garamond',
-              fontSize: '20px',
-              color: 'var(--text)',
-              marginBottom: '16px'
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '16px',
+              paddingBottom: '12px',
+              borderBottom: '1px solid var(--border-color)'
             }
-          }, 'Versiohistoria - ' + activeChapter.title),
-
-          // Version list
-          activeChapter.versions && activeChapter.versions.length > 0 ?
-            activeChapter.versions.map((version, idx) =>
-              e('div', {
-                key: version.id,
-                style: {
-                  background: version.id === activeChapter.currentVersion ? 'var(--bg-2)' : 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  padding: '12px',
-                  marginBottom: '12px'
-                }
-              },
-                e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' } },
-                  e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
-                    e('span', {
-                      style: {
-                        fontFamily: 'IBM Plex Mono',
-                        fontSize: '14px',
-                        fontWeight: 600,
-                        color: 'var(--text)'
-                      }
-                    }, version.id),
-                    version.id === activeChapter.currentVersion ? e('span', {
-                      style: {
-                        fontSize: '11px',
-                        color: 'var(--bronze)',
-                        background: 'var(--bronze)' + '22',
-                        padding: '2px 8px',
-                        borderRadius: '3px',
-                        fontFamily: 'IBM Plex Mono'
-                      }
-                    }, 'Nykyinen') : null
-                  ),
-                  e('span', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: 'var(--text-3)'
-                    }
-                  }, new Date(version.timestamp).toLocaleString('fi-FI'))
-                ),
-
-                // Version info
-                version.generatedFrom && e('div', {
-                  style: {
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '8px',
-                    fontFamily: 'IBM Plex Mono'
-                  }
-                },
-                  version.generatedFrom.isRefinement && version.generatedFrom.userFeedback ?
-                    `Palaute: "${version.generatedFrom.userFeedback}"` :
-                    `Generoitu: ${version.generatedFrom.mode} (${version.generatedFrom.model})`
-                ),
-
-                // Word count
-                e('div', {
-                  style: {
-                    fontSize: '11px',
-                    color: 'var(--text-3)',
-                    marginBottom: '8px',
-                    fontFamily: 'IBM Plex Mono'
-                  }
-                }, `${version.wordCount || 0} sanaa`),
-
-                // Star rating
-                e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' } },
-                  e('span', { style: { fontSize: '11px', color: 'var(--text-3)' } }, 'Arvio:'),
-                  [1,2,3,4,5].map(star =>
-                    e('span', {
-                      key: star,
-                      onClick: () => rateVersion(version.id, star),
-                      style: {
-                        cursor: 'pointer',
-                        fontSize: '16px',
-                        color: version.userRating && star <= version.userRating ? '#FFB800' : 'var(--text-3)'
-                      }
-                    }, '★')
-                  )
-                ),
-
-                // User feedback
-                version.userFeedback && e('div', {
-                  style: {
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '8px',
-                    fontFamily: 'IBM Plex Mono',
-                    fontStyle: 'italic'
-                  }
-                }, `"${version.userFeedback}"`),
-
-                // Actions
-                e('div', { style: { display: 'flex', gap: '8px' } },
-                  version.id !== activeChapter.currentVersion ? e('button', {
-                    onClick: () => {
-                      restoreVersion(version.id);
-                      setShowVersionHistory(false);
-                    },
-                    style: {
-                      padding: '4px 12px',
-                      background: 'var(--bronze)',
-                      border: 'none',
-                      borderRadius: '4px',
-                      color: '#000',
-                      cursor: 'pointer',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px'
-                    }
-                  }, 'Palauta') : null,
-                  e('button', {
-                    onClick: () => {
-                      setComparisonVersionId(version.id);
-                      setShowVersionComparison(true);
-                      setShowVersionHistory(false);
-                    },
-                    style: {
-                      padding: '4px 12px',
-                      background: 'transparent',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      color: 'var(--text)',
-                      cursor: 'pointer',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px'
-                    }
-                  }, 'Vertaa')
-                )
-              )
-            ) :
+          },
+            e('h3', {
+              style: {
+                fontFamily: 'EB Garamond',
+                fontSize: '20px',
+                color: 'var(--text)',
+                margin: 0
+              }
+            }, 'Versiovertailu - ' + activeChapter.title),
             e('div', {
               style: {
-                textAlign: 'center',
-                padding: '40px',
-                color: 'var(--text-3)',
+                display: 'flex',
+                gap: '16px',
                 fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
+                fontSize: '11px'
               }
-            }, 'Ei versioita'),
+            },
+              e('span', { style: { color: '#4CAF50' } }, `+${addedCount} lisätty`),
+              e('span', { style: { color: '#f44336' } }, `-${removedCount} poistettu`),
+              e('span', { style: { color: 'var(--text-2)' } },
+                `${currentWords - compWords > 0 ? '+' : ''}${currentWords - compWords} sanaa`
+              )
+            )
+          ),
 
-          // Close button
-          e('div', { style: { marginTop: '16px', display: 'flex', justifyContent: 'flex-end' } },
+          // View mode tabs
+          e('div', {
+            style: {
+              display: 'flex',
+              gap: '8px',
+              marginBottom: '16px'
+            }
+          },
             e('button', {
-              onClick: () => setShowVersionHistory(false),
+              onClick: () => {},
+              style: {
+                padding: '6px 12px',
+                background: 'var(--bronze)',
+                border: 'none',
+                borderRadius: '4px',
+                color: '#000',
+                cursor: 'pointer',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px',
+                fontWeight: 600
+              }
+            }, '📊 Vierekkäin'),
+            e('button', {
+              onClick: () => {},
+              style: {
+                padding: '6px 12px',
+                background: 'transparent',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text)',
+                cursor: 'pointer',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px'
+              }
+            }, '🔀 Yhdistetty diff')
+          ),
+
+          // Side-by-side comparison
+          e('div', {
+            style: {
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '16px',
+              flex: 1,
+              overflow: 'hidden'
+            }
+          },
+            // Comparison version (old)
+            e('div', {
+              style: {
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden'
+              }
+            },
+              e('div', {
+                style: {
+                  padding: '12px 16px',
+                  background: 'var(--surface-2)',
+                  borderBottom: '1px solid var(--border-color)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }
+              },
+                e('h4', {
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '12px',
+                    color: 'var(--text-2)',
+                    margin: 0
+                  }
+                }, `📸 ${comparisonVersionId}`),
+                e('span', {
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px',
+                    color: 'var(--text-3)'
+                  }
+                }, `${compWords} sanaa`)
+              ),
+              e('div', {
+                style: {
+                  padding: '16px',
+                  overflow: 'auto',
+                  flex: 1,
+                  fontFamily: 'EB Garamond',
+                  fontSize: '14px',
+                  lineHeight: '1.8',
+                  color: 'var(--text)',
+                  whiteSpace: 'pre-wrap'
+                }
+              }, compContent || 'Tyhjä versio')
+            ),
+
+            // Current version (new)
+            e('div', {
+              style: {
+                border: '1px solid var(--bronze)',
+                borderRadius: '4px',
+                display: 'flex',
+                flexDirection: 'column',
+                overflow: 'hidden'
+              }
+            },
+              e('div', {
+                style: {
+                  padding: '12px 16px',
+                  background: 'var(--bronze)' + '22',
+                  borderBottom: '1px solid var(--bronze)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }
+              },
+                e('h4', {
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '12px',
+                    color: 'var(--bronze)',
+                    margin: 0
+                  }
+                }, `✏️ Nykyinen (${activeChapter.currentVersion})`),
+                e('span', {
+                  style: {
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px',
+                    color: 'var(--text-3)'
+                  }
+                }, `${currentWords} sanaa`)
+              ),
+              e('div', {
+                style: {
+                  padding: '16px',
+                  overflow: 'auto',
+                  flex: 1,
+                  fontFamily: 'EB Garamond',
+                  fontSize: '14px',
+                  lineHeight: '1.8'
+                }
+              },
+                // Render diff with highlighting
+                ...diffResult.map((part, idx) => {
+                  if (part.type === 'same') {
+                    return e('span', { key: idx, style: { color: 'var(--text)' } }, part.text);
+                  } else if (part.type === 'added') {
+                    return e('span', {
+                      key: idx,
+                      style: {
+                        background: '#4CAF5033',
+                        color: '#4CAF50',
+                        borderRadius: '2px'
+                      }
+                    }, part.text);
+                  } else if (part.type === 'removed') {
+                    return e('span', {
+                      key: idx,
+                      style: {
+                        background: '#f4433633',
+                        color: '#f44336',
+                        textDecoration: 'line-through',
+                        borderRadius: '2px'
+                      }
+                    }, part.text);
+                  }
+                  return null;
+                })
+              )
+            )
+          ),
+
+          // Actions
+          e('div', {
+            style: {
+              marginTop: '16px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center'
+            }
+          },
+            e('button', {
+              onClick: () => {
+                if (confirm('Palauta tämä versio? Nykyinen sisältö korvataan.')) {
+                  restoreVersion(comparisonVersionId);
+                  setShowVersionComparison(false);
+                }
+              },
+              style: {
+                padding: '8px 16px',
+                background: 'var(--bronze)',
+                border: 'none',
+                borderRadius: '4px',
+                color: '#000',
+                cursor: 'pointer',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '12px',
+                fontWeight: 600
+              }
+            }, '⏪ Palauta tämä versio'),
+            e('button', {
+              onClick: () => setShowVersionComparison(false),
               style: {
                 padding: '8px 16px',
                 background: 'transparent',
@@ -11549,564 +10784,8 @@ ${contextPrompt}`;
             }, 'Sulje')
           )
         )
-      ),
-
-      // Project Settings Dialog
-      showProjectSettings && e('div', {
-        style: {
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10002
-        },
-        onClick: () => setShowProjectSettings(false)
-      },
-        e('div', {
-          style: {
-            background: 'var(--bg)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '8px',
-            padding: '32px',
-            width: '600px',
-            maxHeight: '80vh',
-            overflow: 'auto'
-          },
-          onClick: (ev) => ev.stopPropagation()
-        },
-          // Header
-          e('h2', {
-            style: {
-              fontFamily: 'EB Garamond',
-              fontSize: '24px',
-              color: 'var(--text)',
-              marginBottom: '24px',
-              borderBottom: '1px solid var(--border-color)',
-              paddingBottom: '12px'
-            }
-          }, 'Projektin asetukset'),
-
-          // Title
-          e('div', { style: { marginBottom: '20px' } },
-            e('label', {
-              htmlFor: 'project-title',
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                display: 'block',
-                marginBottom: '6px',
-                textTransform: 'uppercase'
-              }
-            }, 'Projektin nimi'),
-            e('input', {
-              id: 'project-title',
-              name: 'projectTitle',
-              type: 'text',
-              value: project.title,
-              onChange: (ev) => {
-                setProject(prev => ({ ...prev, title: ev.target.value }));
-                setUnsavedChanges(true);
-              },
-              style: {
-                width: '100%',
-                padding: '10px',
-                background: 'var(--bg-1)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'EB Garamond',
-                fontSize: '16px'
-              }
-            })
-          ),
-
-          // Author
-          e('div', { style: { marginBottom: '20px' } },
-            e('label', {
-              htmlFor: 'project-author',
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                display: 'block',
-                marginBottom: '6px',
-                textTransform: 'uppercase'
-              }
-            }, 'Kirjoittaja'),
-            e('input', {
-              id: 'project-author',
-              name: 'projectAuthor',
-              type: 'text',
-              value: project.author || '',
-              onChange: (ev) => {
-                setProject(prev => ({ ...prev, author: ev.target.value }));
-                setUnsavedChanges(true);
-              },
-              style: {
-                width: '100%',
-                padding: '10px',
-                background: 'var(--bg-1)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'EB Garamond',
-                fontSize: '16px'
-              }
-            })
-          ),
-
-          // Genre
-          e('div', { style: { marginBottom: '20px' } },
-            e('label', {
-              htmlFor: 'project-genre',
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                display: 'block',
-                marginBottom: '6px',
-                textTransform: 'uppercase'
-              }
-            }, 'Genre'),
-            e('select', {
-              id: 'project-genre',
-              name: 'projectGenre',
-              value: project.genre || 'fiction',
-              onChange: (ev) => {
-                setProject(prev => ({ ...prev, genre: ev.target.value }));
-                setUnsavedChanges(true);
-              },
-              style: {
-                width: '100%',
-                padding: '10px',
-                background: 'var(--bg-1)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '14px'
-              }
-            },
-              e('option', { value: 'fiction' }, 'Fiktio'),
-              e('option', { value: 'fantasy' }, 'Fantasia'),
-              e('option', { value: 'scifi' }, 'Sci-fi'),
-              e('option', { value: 'mystery' }, 'Mysteeri'),
-              e('option', { value: 'thriller' }, 'Trilleri'),
-              e('option', { value: 'romance' }, 'Romanssi'),
-              e('option', { value: 'horror' }, 'Kauhu'),
-              e('option', { value: 'literary' }, 'Kaunokirjallisuus'),
-              e('option', { value: 'nonfiction' }, 'Tietokirja')
-            )
-          ),
-
-          // Target word count
-          e('div', { style: { marginBottom: '20px' } },
-            e('label', {
-              htmlFor: 'project-target-wordcount',
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                display: 'block',
-                marginBottom: '6px',
-                textTransform: 'uppercase'
-              }
-            }, 'Tavoitesanamäärä'),
-            e('input', {
-              id: 'project-target-wordcount',
-              name: 'projectTargetWordCount',
-              type: 'number',
-              value: project.targetWordCount || 50000,
-              onChange: (ev) => {
-                setProject(prev => ({ ...prev, targetWordCount: parseInt(ev.target.value) || 0 }));
-                setUnsavedChanges(true);
-              },
-              style: {
-                width: '100%',
-                padding: '10px',
-                background: 'var(--bg-1)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '14px'
-              }
-            })
-          ),
-
-          // Language
-          e('div', { style: { marginBottom: '24px' } },
-            e('label', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                display: 'block',
-                marginBottom: '6px',
-                textTransform: 'uppercase'
-              }
-            }, 'Tarinan kieli'),
-            e('select', {
-              value: project.language || 'fi',
-              onChange: (ev) => {
-                setProject(prev => ({ ...prev, language: ev.target.value }));
-                setUnsavedChanges(true);
-              },
-              style: {
-                width: '100%',
-                padding: '10px',
-                background: 'var(--bg-1)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '14px'
-              }
-            },
-              e('option', { value: 'fi' }, '🇫🇮 Suomi'),
-              e('option', { value: 'en' }, '🇬🇧 English')
-            )
-          ),
-
-          // Buttons
-          e('div', { style: { display: 'flex', gap: '12px', justifyContent: 'flex-end' } },
-            e('button', {
-              onClick: () => setShowProjectSettings(false),
-              style: {
-                padding: '10px 20px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px'
-              }
-            }, 'Peruuta'),
-            e('button', {
-              onClick: () => {
-                setShowProjectSettings(false);
-                if (currentFilePath) {
-                  saveProject();
-                }
-              },
-              style: {
-                padding: '10px 20px',
-                background: 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: '#000',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                fontWeight: 600
-              }
-            }, 'Tallenna')
-          )
-        )
-      ),
-
-      // Version Comparison Dialog with Diff Highlighting
-      showVersionComparison && comparisonVersionId && (() => {
-        const compVersion = activeChapter.versions?.find(v => v.id === comparisonVersionId);
-        const compContent = compVersion?.content || '';
-        const currentContent = activeChapter.content || '';
-        const diffResult = computeTextDiff(compContent, currentContent);
-        const addedCount = diffResult.filter(d => d.type === 'added' && d.text.trim()).length;
-        const removedCount = diffResult.filter(d => d.type === 'removed' && d.text.trim()).length;
-        const currentWords = currentContent.split(/\s+/).filter(Boolean).length;
-        const compWords = compContent.split(/\s+/).filter(Boolean).length;
-
-        return e('div', {
-          style: {
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10002
-          },
-          onClick: () => setShowVersionComparison(false)
-        },
-          e('div', {
-            style: {
-              background: 'var(--bg)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '8px',
-              padding: '24px',
-              maxWidth: '1400px',
-              width: '95%',
-              maxHeight: '90vh',
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column'
-            },
-            onClick: (ev) => ev.stopPropagation()
-          },
-            // Header with stats
-            e('div', {
-              style: {
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '16px',
-                paddingBottom: '12px',
-                borderBottom: '1px solid var(--border-color)'
-              }
-            },
-              e('h3', {
-                style: {
-                  fontFamily: 'EB Garamond',
-                  fontSize: '20px',
-                  color: 'var(--text)',
-                  margin: 0
-                }
-              }, 'Versiovertailu - ' + activeChapter.title),
-              e('div', {
-                style: {
-                  display: 'flex',
-                  gap: '16px',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px'
-                }
-              },
-                e('span', { style: { color: '#4CAF50' } }, `+${addedCount} lisätty`),
-                e('span', { style: { color: '#f44336' } }, `-${removedCount} poistettu`),
-                e('span', { style: { color: 'var(--text-2)' } },
-                  `${currentWords - compWords > 0 ? '+' : ''}${currentWords - compWords} sanaa`
-                )
-              )
-            ),
-
-            // View mode tabs
-            e('div', {
-              style: {
-                display: 'flex',
-                gap: '8px',
-                marginBottom: '16px'
-              }
-            },
-              e('button', {
-                onClick: () => {},
-                style: {
-                  padding: '6px 12px',
-                  background: 'var(--bronze)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#000',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  fontWeight: 600
-                }
-              }, '📊 Vierekkäin'),
-              e('button', {
-                onClick: () => {},
-                style: {
-                  padding: '6px 12px',
-                  background: 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px'
-                }
-              }, '🔀 Yhdistetty diff')
-            ),
-
-            // Side-by-side comparison
-            e('div', {
-              style: {
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '16px',
-                flex: 1,
-                overflow: 'hidden'
-              }
-            },
-              // Comparison version (old)
-              e('div', {
-                style: {
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden'
-                }
-              },
-                e('div', {
-                  style: {
-                    padding: '12px 16px',
-                    background: 'var(--surface-2)',
-                    borderBottom: '1px solid var(--border-color)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }
-                },
-                  e('h4', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '12px',
-                      color: 'var(--text-2)',
-                      margin: 0
-                    }
-                  }, `📸 ${comparisonVersionId}`),
-                  e('span', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: 'var(--text-3)'
-                    }
-                  }, `${compWords} sanaa`)
-                ),
-                e('div', {
-                  style: {
-                    padding: '16px',
-                    overflow: 'auto',
-                    flex: 1,
-                    fontFamily: 'EB Garamond',
-                    fontSize: '14px',
-                    lineHeight: '1.8',
-                    color: 'var(--text)',
-                    whiteSpace: 'pre-wrap'
-                  }
-                }, compContent || 'Tyhjä versio')
-              ),
-
-              // Current version (new)
-              e('div', {
-                style: {
-                  border: '1px solid var(--bronze)',
-                  borderRadius: '4px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  overflow: 'hidden'
-                }
-              },
-                e('div', {
-                  style: {
-                    padding: '12px 16px',
-                    background: 'var(--bronze)' + '22',
-                    borderBottom: '1px solid var(--bronze)',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }
-                },
-                  e('h4', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '12px',
-                      color: 'var(--bronze)',
-                      margin: 0
-                    }
-                  }, `✏️ Nykyinen (${activeChapter.currentVersion})`),
-                  e('span', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: 'var(--text-3)'
-                    }
-                  }, `${currentWords} sanaa`)
-                ),
-                e('div', {
-                  style: {
-                    padding: '16px',
-                    overflow: 'auto',
-                    flex: 1,
-                    fontFamily: 'EB Garamond',
-                    fontSize: '14px',
-                    lineHeight: '1.8'
-                  }
-                },
-                  // Render diff with highlighting
-                  ...diffResult.map((part, idx) => {
-                    if (part.type === 'same') {
-                      return e('span', { key: idx, style: { color: 'var(--text)' } }, part.text);
-                    } else if (part.type === 'added') {
-                      return e('span', {
-                        key: idx,
-                        style: {
-                          background: '#4CAF5033',
-                          color: '#4CAF50',
-                          borderRadius: '2px'
-                        }
-                      }, part.text);
-                    } else if (part.type === 'removed') {
-                      return e('span', {
-                        key: idx,
-                        style: {
-                          background: '#f4433633',
-                          color: '#f44336',
-                          textDecoration: 'line-through',
-                          borderRadius: '2px'
-                        }
-                      }, part.text);
-                    }
-                    return null;
-                  })
-                )
-              )
-            ),
-
-            // Actions
-            e('div', {
-              style: {
-                marginTop: '16px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }
-            },
-              e('button', {
-                onClick: () => {
-                  if (confirm('Palauta tämä versio? Nykyinen sisältö korvataan.')) {
-                    restoreVersion(comparisonVersionId);
-                    setShowVersionComparison(false);
-                  }
-                },
-                style: {
-                  padding: '8px 16px',
-                  background: 'var(--bronze)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#000',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  fontWeight: 600
-                }
-              }, '⏪ Palauta tämä versio'),
-              e('button', {
-                onClick: () => setShowVersionComparison(false),
-                style: {
-                  padding: '8px 16px',
-                  background: 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px'
-                }
-              }, 'Sulje')
-            )
-          )
-        );
-      })()
-    ),
+      );
+    })(),
 
     // CharacterSheet Modal (View/Edit Characters)
     showCharacterSheet && e('div', {
@@ -13680,7 +12359,7 @@ ${contextPrompt}`;
       onInsertText: (text) => {
         if (activeChapter) {
           const newContent = (activeChapter.content || '') + '\n\n' + text;
-          handleTextChange(newContent);
+          updateChapterContent(newContent);
         }
       }
     }),

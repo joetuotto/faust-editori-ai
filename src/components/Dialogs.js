@@ -371,3 +371,44 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
     )
   );
 }
+
+/**
+ * A yes/no question inside the app window. Unlike window.confirm() it does
+ * not freeze the app while it waits.
+ *
+ * @param {{ request: null | { title: string, message?: string, confirmLabel?: string, cancelLabel?: string }, onDone: (confirmed: boolean) => void }} props
+ */
+export function ConfirmDialog({ request, onDone }) {
+  const confirmRef = useRef(null);
+
+  useEffect(() => {
+    if (!request) return;
+    const timer = setTimeout(() => confirmRef.current && confirmRef.current.focus(), 0);
+    const onKeyDown = (ev) => {
+      if (ev.key === 'Escape') {
+        ev.stopPropagation();
+        onDone(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
+  }, [request]);
+
+  if (!request) return null;
+
+  return e('div', { style: overlayStyle },
+    e('div', { role: 'alertdialog', 'aria-modal': 'true', 'aria-label': request.title, style: { ...panelStyle, width: '460px' } },
+      e('div', { style: { fontFamily: 'EB Garamond', fontSize: '19px', fontWeight: 600, marginBottom: '10px' } }, request.title),
+      request.message && e('div', {
+        style: { fontFamily: 'EB Garamond', fontSize: '15px', lineHeight: '1.5', whiteSpace: 'pre-line' }
+      }, request.message),
+      e('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '18px' } },
+        e('button', { onClick: () => onDone(false), style: buttonStyle(false) }, request.cancelLabel || 'Peruuta'),
+        e('button', { ref: confirmRef, onClick: () => onDone(true), style: buttonStyle(true) }, request.confirmLabel || 'OK')
+      )
+    )
+  );
+}
