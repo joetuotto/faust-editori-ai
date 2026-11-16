@@ -10,37 +10,13 @@
 
 const { createElement: e, useState, useEffect, useRef } = React;
 
-const overlayStyle = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(0, 0, 0, 0.5)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 10000
-};
-
-const panelStyle = {
-  background: 'var(--bg-1, var(--bg))',
-  color: 'var(--text)',
-  border: '1px solid var(--border-color)',
-  borderRadius: '8px',
-  boxShadow: '0 12px 40px rgba(0, 0, 0, 0.4)',
-  padding: '20px',
-  maxWidth: '90vw'
-};
-
-const buttonStyle = (primary) => ({
-  padding: '8px 16px',
-  background: primary ? 'var(--sigil, var(--bronze))' : 'transparent',
-  border: `1px solid ${primary ? 'var(--sigil, var(--bronze))' : 'var(--border-color)'}`,
-  borderRadius: '4px',
-  color: primary ? '#000' : 'var(--text)',
-  cursor: 'pointer',
-  fontFamily: 'IBM Plex Mono',
-  fontSize: '12px',
-  fontWeight: primary ? 600 : 400
-});
+// Frame pass (styles/faust-components.css, sections 3 and 9): the scrim, the panel and the
+// buttons are classes; what is inside a panel keeps its inline layout until the structure pass.
+// Prompt and confirm open above every modal (--top); shortcuts and export are ordinary dialogs.
+const SCRIM = 'faust-scrim';
+const SCRIM_TOP = 'faust-scrim faust-scrim--top';
+const panelClass = (size) => `faust-dialog faust-dialog--${size} faust-dialog--plain`;
+const buttonClass = (primary) => (primary ? 'faust-btn faust-btn--lg faust-btn--primary' : 'faust-btn faust-btn--lg');
 
 /**
  * @param {{ request: null | { title: string, defaultValue?: string, placeholder?: string }, onDone: (value: string|null) => void }} props
@@ -78,10 +54,10 @@ export function TextPromptDialog({ request, onDone }) {
   };
 
   return e('div', {
-    style: overlayStyle,
+    className: SCRIM_TOP,
     onMouseDown: (ev) => { if (ev.target === ev.currentTarget) onDone(null); }
   },
-    e('div', { role: 'dialog', 'aria-modal': 'true', 'aria-label': request.title, style: { ...panelStyle, width: '420px' } },
+    e('div', { role: 'dialog', 'aria-modal': 'true', 'aria-label': request.title, className: panelClass('sm') },
       e('div', {
         style: { fontFamily: 'EB Garamond', fontSize: '17px', marginBottom: '12px', whiteSpace: 'pre-line' }
       }, request.title),
@@ -105,64 +81,66 @@ export function TextPromptDialog({ request, onDone }) {
         }
       }),
       e('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' } },
-        e('button', { onClick: () => onDone(null), style: buttonStyle(false) }, 'Peruuta'),
-        e('button', { onClick: () => onDone(value), style: buttonStyle(true) }, 'OK')
+        e('button', { onClick: () => onDone(null), className: buttonClass(false) }, 'Peruuta'),
+        e('button', { onClick: () => onDone(value), className: buttonClass(true) }, 'OK')
       )
     )
   );
 }
 
 const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || '');
-const MOD = isMac ? '⌘' : 'Ctrl+';
-const SHIFT = isMac ? '⇧' : 'Shift+';
-const ALT = isMac ? '⌥' : 'Alt+';
+const MOD = isMac ? '⌘' : 'Ctrl';
+const SHIFT = isMac ? '⇧' : 'Shift';
+const ALT = isMac ? '⌥' : 'Alt';
 
-// Kept next to the menu definition in electron.js: change both together
+// Kept next to the menu definition in electron.js: change both together.
+// An item is [command, alternatives]; an alternative is the list of its keys, one keycap each.
 const SHORTCUT_GROUPS = [
   {
     title: 'Tiedosto',
     items: [
-      ['Uusi projekti', `${MOD}N`],
-      ['Avaa', `${MOD}O`],
-      ['Tallenna', `${MOD}S`],
-      ['Tallenna nimellä', `${SHIFT}${MOD}S`],
-      ['Vie', `${MOD}E`],
-      ['Tulosta', `${MOD}P`]
+      ['Uusi projekti', [[MOD, 'N']]],
+      ['Avaa', [[MOD, 'O']]],
+      ['Tallenna', [[MOD, 'S']]],
+      ['Tallenna nimellä', [[SHIFT, MOD, 'S']]],
+      ['Vie', [[MOD, 'E']]],
+      ['Tulosta', [[MOD, 'P']]]
     ]
   },
   {
     title: 'Muokkaa',
     items: [
-      ['Kumoa', `${MOD}Z`],
-      ['Tee uudelleen', `${SHIFT}${MOD}Z`],
-      ['Etsi', `${MOD}F`],
-      ['Etsi seuraava / edellinen', `${MOD}G / ${SHIFT}${MOD}G`],
-      ['Etsi ja korvaa', `${ALT}${MOD}F`]
+      ['Kumoa', [[MOD, 'Z']]],
+      ['Tee uudelleen', [[SHIFT, MOD, 'Z']]],
+      ['Etsi', [[MOD, 'F']]],
+      ['Etsi seuraava / edellinen', [[MOD, 'G'], [SHIFT, MOD, 'G']]],
+      ['Etsi ja korvaa', [[ALT, MOD, 'F']]]
     ]
   },
   {
     title: 'Muotoile',
     items: [
-      ['Lihavointi', `${MOD}B`],
-      ['Kursivointi', `${MOD}I`],
-      ['Alleviivaus', `${MOD}U`],
-      ['Yliviivaus', `${SHIFT}${MOD}X`],
-      ['Otsikko 1 / 2 / 3', `${ALT}${MOD}1 / 2 / 3`],
-      ['Leipäteksti', `${ALT}${MOD}0`],
-      ['Luettelo / numeroitu luettelo', `${SHIFT}${MOD}8 / ${SHIFT}${MOD}7`],
-      ['Isoiksi / pieniksi kirjaimiksi', `${SHIFT}${MOD}U / ${SHIFT}${MOD}L`]
+      ['Lihavointi', [[MOD, 'B']]],
+      ['Kursivointi', [[MOD, 'I']]],
+      ['Alleviivaus', [[MOD, 'U']]],
+      ['Yliviivaus', [[SHIFT, MOD, 'X']]],
+      ['Otsikko 1 / 2 / 3', [[ALT, MOD, '1'], ['2'], ['3']]],
+      ['Leipäteksti', [[ALT, MOD, '0']]],
+      ['Luettelo / numeroitu luettelo', [[SHIFT, MOD, '8'], [SHIFT, MOD, '7']]],
+      ['Isoiksi / pieniksi kirjaimiksi', [[SHIFT, MOD, 'U'], [SHIFT, MOD, 'L']]]
     ]
   },
   {
     title: 'Näytä',
     items: [
-      ['Sivupalkki', `${MOD}1`],
-      ['Inspector', `${MOD}2`],
-      ['AI-avustaja', `${MOD}K`],
-      ['Keskittymistila', `${SHIFT}${MOD}F`],
-      ['Suurenna / pienennä / todellinen koko', `${MOD}+ / ${MOD}- / ${MOD}0`],
-      ['Vaihda teema', `${SHIFT}${MOD}D`],
-      ['Uusi luku', `${SHIFT}${MOD}N`]
+      ['Sivupalkki', [[MOD, '1']]],
+      ['Inspector', [[MOD, '2']]],
+      ['AI-avustaja', [[MOD, 'K']]],
+      ['Keskittymistila', [[SHIFT, MOD, 'F']]],
+      // the modifier once, as on the heading row: three full combinations do not fit the column
+      ['Suurenna / pienennä / todellinen koko', [[MOD, '+'], ['-'], ['0']]],
+      ['Vaihda teema', [[SHIFT, MOD, 'D']]],
+      ['Uusi luku', [[SHIFT, MOD, 'N']]]
     ]
   }
 ];
@@ -186,32 +164,35 @@ export function ShortcutsDialog({ open, onClose }) {
   if (!open) return null;
 
   return e('div', {
-    style: overlayStyle,
+    className: SCRIM,
     onMouseDown: (ev) => { if (ev.target === ev.currentTarget) onClose(); }
   },
     e('div', {
       role: 'dialog',
       'aria-modal': 'true',
       'aria-label': 'Pikanäppäimet',
-      style: { ...panelStyle, width: '640px', maxHeight: '80vh', overflowY: 'auto' }
+      className: panelClass('lg'),
+      style: { '--dialog-w': '800px' }
     },
       e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' } },
         e('div', { style: { fontFamily: 'EB Garamond', fontSize: '20px', fontWeight: 600 } }, 'Pikanäppäimet'),
-        e('button', { onClick: onClose, style: buttonStyle(false) }, 'Sulje')
+        e('button', { onClick: onClose, className: buttonClass(false) }, 'Sulje')
       ),
-      e('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px 32px' } },
+      // Two columns of rows: the command in serif, each key a keycap, an alternative as a further group
+      e('div', { className: 'faust-shortcuts' },
         SHORTCUT_GROUPS.map(group =>
-          e('div', { key: group.title },
-            e('div', {
-              style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', textTransform: 'uppercase', marginBottom: '8px' }
-            }, group.title),
-            group.items.map(([label, keys]) =>
-              e('div', {
-                key: label,
-                style: { display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '3px 0', fontSize: '13px' }
-              },
-                e('span', { style: { fontFamily: 'EB Garamond', fontSize: '15px' } }, label),
-                e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', whiteSpace: 'nowrap' } }, keys)
+          e('div', { key: group.title, style: { marginBottom: 'var(--sp-4)' } },
+            e('div', { className: 'faust-section__title', style: { marginBottom: 'var(--sp-1)' } }, group.title),
+            group.items.map(([label, alternatives]) =>
+              e('div', { key: label, className: 'faust-shortcut' },
+                e('span', null, label),
+                e('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 'var(--sp-2)', flex: 'none' } },
+                  alternatives.map((keys, index) =>
+                    e('span', { key: index, className: 'faust-shortcut__keys' },
+                      keys.map((key, position) => e('kbd', { key: position, className: 'faust-kbd' }, key))
+                    )
+                  )
+                )
               )
             )
           )
@@ -307,14 +288,14 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
   );
 
   return e('div', {
-    style: overlayStyle,
+    className: SCRIM,
     onMouseDown: (ev) => { if (ev.target === ev.currentTarget) onClose(); }
   },
     e('div', {
       role: 'dialog',
       'aria-modal': 'true',
       'aria-label': 'Vie käsikirjoitus',
-      style: { ...panelStyle, width: '520px', maxHeight: '85vh', overflowY: 'auto' }
+      className: panelClass('md')
     },
       e('div', { style: { fontFamily: 'EB Garamond', fontSize: '20px', fontWeight: 600 } }, 'Vie käsikirjoitus'),
 
@@ -361,11 +342,11 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
       }, message.text),
 
       e('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '18px' } },
-        e('button', { onClick: onClose, style: buttonStyle(false) }, 'Sulje'),
+        e('button', { onClick: onClose, className: buttonClass(false) }, 'Sulje'),
         e('button', {
           onClick: runExport,
           disabled: !canExport,
-          style: { ...buttonStyle(true), opacity: canExport ? 1 : 0.5, cursor: canExport ? 'pointer' : 'not-allowed' }
+          className: buttonClass(true)
         }, busy ? 'Viedään...' : 'Vie...')
       )
     )
@@ -399,15 +380,15 @@ export function ConfirmDialog({ request, onDone }) {
 
   if (!request) return null;
 
-  return e('div', { style: overlayStyle },
-    e('div', { role: 'alertdialog', 'aria-modal': 'true', 'aria-label': request.title, style: { ...panelStyle, width: '460px' } },
+  return e('div', { className: SCRIM_TOP },
+    e('div', { role: 'alertdialog', 'aria-modal': 'true', 'aria-label': request.title, className: panelClass('sm') },
       e('div', { style: { fontFamily: 'EB Garamond', fontSize: '19px', fontWeight: 600, marginBottom: '10px' } }, request.title),
       request.message && e('div', {
         style: { fontFamily: 'EB Garamond', fontSize: '15px', lineHeight: '1.5', whiteSpace: 'pre-line' }
       }, request.message),
       e('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '18px' } },
-        e('button', { onClick: () => onDone(false), style: buttonStyle(false) }, request.cancelLabel || 'Peruuta'),
-        e('button', { ref: confirmRef, onClick: () => onDone(true), style: buttonStyle(true) }, request.confirmLabel || 'OK')
+        e('button', { onClick: () => onDone(false), className: buttonClass(false) }, request.cancelLabel || 'Peruuta'),
+        e('button', { ref: confirmRef, onClick: () => onDone(true), className: buttonClass(true) }, request.confirmLabel || 'OK')
       )
     )
   );
