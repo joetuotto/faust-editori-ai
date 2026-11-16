@@ -11,9 +11,16 @@
   const { createElement: e, useState, useEffect } = React;
 
   // Access constants from window (loaded from constants.js)
-  const LOCATION_TYPES = window.CONSTANTS?.LOCATION_TYPES || ['Kaupunki', 'Luonto', 'Sisätila', 'Muu'];
-  const LOCATION_ATMOSPHERES = window.CONSTANTS?.LOCATION_ATMOSPHERES || ['Rauhallinen', 'Jännittävä', 'Synkkä', 'Valoisa'];
-  const LOCATION_IMPORTANCE = window.CONSTANTS?.LOCATION_IMPORTANCE || ['Tärkeä', 'Keskitärkeä', 'Vähäinen'];
+
+  // Option lists come from window.CONSTANTS as { value, label } objects, or as
+  // plain strings in the fallback. Rendering the object itself as an <option>
+  // child throws and took the whole window down.
+  const toOptions = (items) => (items || []).map(item => (
+    typeof item === 'string' ? { value: item, label: item } : item
+  ));
+  const LOCATION_TYPES = toOptions(window.CONSTANTS?.LOCATION_TYPES || ['Kaupunki', 'Luonto', 'Sisätila', 'Muu']);
+  const LOCATION_ATMOSPHERES = toOptions(window.CONSTANTS?.LOCATION_ATMOSPHERES || ['Rauhallinen', 'Jännittävä', 'Synkkä', 'Valoisa']);
+  const LOCATION_IMPORTANCE = toOptions(window.CONSTANTS?.LOCATION_IMPORTANCE || ['Tärkeä', 'Keskitärkeä', 'Vähäinen']);
   const VALIDATION_RULES = window.CONSTANTS?.VALIDATION_RULES || {
     LOCATION_NAME_MAX_LENGTH: 100,
     DESCRIPTION_MAX_LENGTH: 5000
@@ -31,10 +38,10 @@
 
     const [formData, setFormData] = useState({
       name: '',
-      type: LOCATION_TYPES[0],
+      type: LOCATION_TYPES[0].value,
       description: '',
-      atmosphere: LOCATION_ATMOSPHERES[0],
-      importance: LOCATION_IMPORTANCE[0],
+      atmosphere: LOCATION_ATMOSPHERES[0].value,
+      importance: LOCATION_IMPORTANCE[0].value,
       associatedCharacters: [],
       historicalContext: '',
       sensoryDetails: {
@@ -55,10 +62,10 @@
       if (location) {
         setFormData({
           name: location.name || '',
-          type: location.type || LOCATION_TYPES[0],
+          type: location.type || LOCATION_TYPES[0].value,
           description: location.description || '',
-          atmosphere: location.atmosphere || LOCATION_ATMOSPHERES[0],
-          importance: location.importance || LOCATION_IMPORTANCE[0],
+          atmosphere: location.atmosphere || LOCATION_ATMOSPHERES[0].value,
+          importance: location.importance || LOCATION_IMPORTANCE[0].value,
           associatedCharacters: location.associatedCharacters || [],
           historicalContext: location.historicalContext || '',
           sensoryDetails: {
@@ -375,8 +382,8 @@
                     fontSize: '14px'
                   }
                 },
-                  LOCATION_TYPES.map(type =>
-                    e('option', { key: type, value: type }, type)
+                  LOCATION_TYPES.map(option =>
+                    e('option', { key: option.value, value: option.value }, option.label)
                   )
                 )
               ),
@@ -407,8 +414,8 @@
                     fontSize: '14px'
                   }
                 },
-                  LOCATION_ATMOSPHERES.map(atmosphere =>
-                    e('option', { key: atmosphere, value: atmosphere }, atmosphere)
+                  LOCATION_ATMOSPHERES.map(option =>
+                    e('option', { key: option.value, value: option.value }, option.label)
                   )
                 )
               ),
@@ -439,8 +446,8 @@
                     fontSize: '14px'
                   }
                 },
-                  LOCATION_IMPORTANCE.map(importance =>
-                    e('option', { key: importance, value: importance }, importance)
+                  LOCATION_IMPORTANCE.map(option =>
+                    e('option', { key: option.value, value: option.value }, option.label)
                   )
                 )
               )

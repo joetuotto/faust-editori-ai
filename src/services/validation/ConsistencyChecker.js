@@ -21,6 +21,9 @@ class ConsistencyChecker {
   async runFullCheck() {
     const errors = [];
     const annotations = [];
+    // AI calls that failed during this run. An empty result with failures is
+    // "could not check", not "no contradictions".
+    this.failures = [];
 
     try {
       // Run all checks in parallel
@@ -312,6 +315,7 @@ If no contradictions found, return: {"contradictions": []}`;
       } else if (result?.text) {
         responseData = result.text;
       } else {
+        (this.failures = this.failures || []).push(`${character.name}: ${result?.error || 'malli ei vastannut'}`);
         return [];
       }
 
@@ -334,6 +338,7 @@ If no contradictions found, return: {"contradictions": []}`;
 
     } catch (error) {
       console.error('[ConsistencyChecker] Character check error:', error);
+      (this.failures = this.failures || []).push(`${character.name}: ${error.message}`);
       return [];
     }
   }

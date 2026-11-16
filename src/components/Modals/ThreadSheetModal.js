@@ -11,9 +11,16 @@
   const { createElement: e, useState, useEffect } = React;
 
   // Access constants from window (loaded from constants.js)
-  const THREAD_TYPES = window.CONSTANTS?.THREAD_TYPES || ['Pääjuoni', 'Sivujuoni', 'Hahmon kehitys'];
-  const THREAD_STATUS = window.CONSTANTS?.THREAD_STATUS || ['Aktiivinen', 'Odottaa', 'Ratkaistu'];
-  const THREAD_PRIORITY = window.CONSTANTS?.THREAD_PRIORITY || ['Korkea', 'Keskitaso', 'Matala'];
+
+  // Option lists come from window.CONSTANTS as { value, label } objects, or as
+  // plain strings in the fallback. Rendering the object itself as an <option>
+  // child throws and took the whole window down.
+  const toOptions = (items) => (items || []).map(item => (
+    typeof item === 'string' ? { value: item, label: item } : item
+  ));
+  const THREAD_TYPES = toOptions(window.CONSTANTS?.THREAD_TYPES || ['Pääjuoni', 'Sivujuoni', 'Hahmon kehitys']);
+  const THREAD_STATUS = toOptions(window.CONSTANTS?.THREAD_STATUS || ['Aktiivinen', 'Odottaa', 'Ratkaistu']);
+  const THREAD_PRIORITY = toOptions(window.CONSTANTS?.THREAD_PRIORITY || ['Korkea', 'Keskitaso', 'Matala']);
   const VALIDATION_RULES = window.CONSTANTS?.VALIDATION_RULES || {
     DESCRIPTION_MAX_LENGTH: 5000
   };
@@ -30,9 +37,9 @@
 
     const [formData, setFormData] = useState({
       name: '',
-      type: THREAD_TYPES[0],
-      status: THREAD_STATUS[0],
-      priority: THREAD_PRIORITY[0],
+      type: THREAD_TYPES[0].value,
+      status: THREAD_STATUS[0].value,
+      priority: THREAD_PRIORITY[0].value,
       description: '',
       relatedCharacters: [],
       relatedLocations: [],
@@ -51,9 +58,9 @@
       if (thread) {
         setFormData({
           name: thread.name || '',
-          type: thread.type || THREAD_TYPES[0],
-          status: thread.status || THREAD_STATUS[0],
-          priority: thread.priority || THREAD_PRIORITY[0],
+          type: thread.type || THREAD_TYPES[0].value,
+          status: thread.status || THREAD_STATUS[0].value,
+          priority: thread.priority || THREAD_PRIORITY[0].value,
           description: thread.description || '',
           relatedCharacters: thread.relatedCharacters || [],
           relatedLocations: thread.relatedLocations || [],
@@ -370,8 +377,8 @@
                     fontSize: '14px'
                   }
                 },
-                  THREAD_TYPES.map(type =>
-                    e('option', { key: type, value: type }, type)
+                  THREAD_TYPES.map(option =>
+                    e('option', { key: option.value, value: option.value }, option.label)
                   )
                 )
               ),
@@ -402,8 +409,8 @@
                     fontSize: '14px'
                   }
                 },
-                  THREAD_STATUS.map(status =>
-                    e('option', { key: status, value: status }, status)
+                  THREAD_STATUS.map(option =>
+                    e('option', { key: option.value, value: option.value }, option.label)
                   )
                 )
               ),
@@ -434,8 +441,8 @@
                     fontSize: '14px'
                   }
                 },
-                  THREAD_PRIORITY.map(priority =>
-                    e('option', { key: priority, value: priority }, priority)
+                  THREAD_PRIORITY.map(option =>
+                    e('option', { key: option.value, value: option.value }, option.label)
                   )
                 )
               )

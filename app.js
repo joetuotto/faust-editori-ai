@@ -6,6 +6,7 @@
 
 import { AIProviderSettings } from './src/components/AIProviderSettings.js';
 import { FaustEditor } from './src/components/FaustEditor.js';
+import { ErrorBoundary } from './src/components/ErrorBoundary.js';
 import { TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog } from './src/components/Dialogs.js';
 import {
   countWords, countCharacters, countProjectWords, estimatePages,
@@ -460,6 +461,7 @@ function FAUSTApp() {
   const [characterSheetMode, setCharacterSheetMode] = useState('list'); // 'list', 'view', 'edit'
   const [showFindDialog, setShowFindDialog] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
+  const [, setAiUsageTick] = useState(0); // bumps a re-render when AI usage totals change
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [textPrompt, setTextPrompt] = useState(null); // open text question, see askText
   const [confirmRequest, setConfirmRequest] = useState(null); // open yes/no question, see askConfirm
@@ -481,6 +483,7 @@ function FAUSTApp() {
   const editorRef = useRef(null);
   const liveContentRef = useRef({ chapterId: null, content: '' }); // see updateChapterContent
   const projectRef = useRef(null);            // the project of the latest render, for timers and async saves
+  const callAIRef = useRef(null);             // the callAIWithMode of the latest render, for long-lived services
   const menuHandlerRef = useRef(null);        // see the menu handler
   const lastSearchRef = useRef('');           // the term the current search results belong to
   const panelsBeforeFocusRef = useRef(null);  // panel visibility to restore after focus mode
@@ -504,6 +507,16 @@ function FAUSTApp() {
   // it current between renders, because fast typing can outrun React state.
   liveContentRef.current = { chapterId: activeChapter?.id, content: activeChapter?.content || '' };
   projectRef.current = project;
+
+  // The active chapter id must always name a chapter that exists. After a
+  // delete, a snapshot restore or a jump to an old bookmark it could point at
+  // nothing: the editor then showed the first chapter while edits were written
+  // to the missing id and silently lost.
+  useEffect(() => {
+    if (project.structure.length > 0 && !project.structure.some(ch => ch.id === activeChapterId)) {
+      setActiveChapterId(project.structure[0].id);
+    }
+  }, [project.structure, activeChapterId]);
 
   // Counts are computed from the text on every render: a stored total goes stale
   const totalWords = countProjectWords(project.structure);
@@ -775,7 +788,7 @@ function FAUSTApp() {
     if (!skipHistory && commandManagerRef.current && window.UpdateContentCommand) {
       const command = new window.UpdateContentCommand(
         setProject,
-        activeChapterId,
+        activeChapter.id,
         oldContent,
         newContent
       );
@@ -786,7 +799,7 @@ function FAUSTApp() {
       setProject(prev => ({
         ...prev,
         structure: prev.structure.map(ch =>
-          ch.id === activeChapterId
+          ch.id === activeChapter.id
             ? { ...ch, content: newContent, wordCount: words.length }
             : ch
         )
@@ -1195,12 +1208,17 @@ function FAUSTApp() {
       return;
     }
 
+    // Keep a way back: the state being replaced becomes a snapshot of its own
+    createSnapshot(`Ennen palautusta: ${snapshot.name}`, 'Automaattinen tilannekuva ennen palautusta');
+
     // Restore structure from snapshot
     setProject(prev => ({
       ...prev,
       structure: JSON.parse(JSON.stringify(snapshot.structure)),
       modified: new Date().toISOString()
     }));
+    // Undo steps refer to chapters as they were before the restore
+    if (commandManagerRef.current) commandManagerRef.current.clear();
     setUnsavedChanges(true);
     setShowSnapshotsPanel(false);
     console.log('[Snapshots] Restored:', snapshot.name);
@@ -1711,15 +1729,18 @@ function FAUSTApp() {
     if (!confirmed) return;
 
     const deletedIndex = project.structure.findIndex(ch => ch.id === chapterId);
+    const remaining = project.structure.filter(ch => ch.id !== chapterId);
 
     setProject(prev => ({
       ...prev,
       structure: prev.structure.filter(ch => ch.id !== chapterId)
     }));
 
-    // Switch to previous chapter or first chapter
-    const newActiveId = project.structure[Math.max(0, deletedIndex - 1)]?.id || project.structure[0]?.id;
-    setActiveChapterId(newActiveId);
+    // If the open chapter was deleted, open its neighbour. The id must come
+    // from the chapters that are left, never from the list before the delete.
+    if (chapterId === activeChapterId && remaining.length > 0) {
+      setActiveChapterId((remaining[Math.max(0, deletedIndex - 1)] || remaining[0]).id);
+    }
     setUnsavedChanges(true);
     console.log('[Chapter] Deleted:', chapterId);
   };
@@ -1830,7 +1851,11 @@ function FAUSTApp() {
       throw new Error('Electron API not available');
     }
 
-    const mode = getCurrentMode();
+    // Read the project at call time through the ref. This function is also held
+    // by long-lived AI services, and a project captured in a closure would be
+    // the one from the render in which the service was created.
+    const current = projectRef.current || project;
+    const mode = current.ai.modes[current.ai.currentMode] || current.ai.modes.production;
 
     // Build full prompt with mode's system prompt
     const fullPrompt = mode.systemPrompt
@@ -1842,10 +1867,10 @@ function FAUSTApp() {
       prompt: fullPrompt,
       temperature: options.temperature ?? mode.temperature,
       max_tokens: options.max_tokens ?? mode.maxTokens,
-      model: options.model ?? project.ai.model
+      model: options.model ?? current.ai.model
     };
 
-    console.log(`[AI Mode] Using ${project.ai.currentMode} mode (temp: ${apiParams.temperature})`);
+    console.log(`[AI Mode] Using ${current.ai.currentMode} mode (temp: ${apiParams.temperature})`);
 
     // Call Claude API
     const response = await window.electronAPI.claudeAPI(apiParams);
@@ -1873,8 +1898,10 @@ function FAUSTApp() {
 
         console.log(`[CostOptimizer] Request: $${trackingInfo.cost.toFixed(4)}, Total: $${trackingInfo.runningTotal.toFixed(2)}`);
 
-        // Trigger re-render to update UI
-        setProject({ ...project });
+        // Refresh the usage display. (This used to be setProject({ ...project }),
+        // which put back the project as it was when the request started, or, for
+        // the AI services, as it was at start-up: an empty project.)
+        setAiUsageTick(tick => tick + 1);
       } catch (err) {
         console.error('[CostOptimizer] Tracking failed:', err);
       }
@@ -1882,6 +1909,11 @@ function FAUSTApp() {
 
     return response;
   };
+
+  // Long-lived services call through this ref, so they always reach the
+  // callAIWithMode of the latest render
+  callAIRef.current = callAIWithMode;
+  const callAIStable = (...args) => callAIRef.current(...args);
 
   // AI Cast Analysis
   const analyzeCast = async (characterTypes) => {
@@ -2543,7 +2575,11 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
         setConsistencyErrors(result.errors);
         console.log('[Consistency] Found', result.errors.length, 'issues');
 
-        if (result.errors.length === 0) {
+        const failures = consistencyCheckerRef.current.failures || [];
+        if (failures.length > 0) {
+          alert(`Tarkistus jäi kesken: ${failures.length} tekoälykutsua epäonnistui, joten tulos ei ole täydellinen.\n\n` +
+            failures.slice(0, 5).join('\n'));
+        } else if (result.errors.length === 0) {
           alert('✅ Ei ristiriitoja havaittu!');
         }
       } else {
@@ -3554,7 +3590,7 @@ ${contextPrompt}`;
                 project,
                 costOptimizerRef.current,
                 continuityTrackerRef.current,
-                callAIWithMode // Pass AI mode-aware function
+                callAIStable // AI mode-aware call, always the current one
               );
               console.log('[AI] BatchProcessor initialized with AI Writing Modes');
             }
@@ -3563,7 +3599,7 @@ ${contextPrompt}`;
             refinementManagerRef.current = new window.RefinementManager(
               project,
               setProject,
-              callAIWithMode
+              callAIStable
             );
             console.log('[AI] RefinementManager initialized');
 
@@ -3576,7 +3612,7 @@ ${contextPrompt}`;
               consistencyCheckerRef.current = new window.ConsistencyChecker(
                 project,
                 window.electronAPI,
-                callAIWithMode  // Pass AI mode-aware function
+                callAIStable  // AI mode-aware call, always the current one
               );
               console.log('[AI] ConsistencyChecker initialized with AI Writing Modes');
             }
@@ -3617,7 +3653,7 @@ ${contextPrompt}`;
     if (consistencyCheckerRef.current) {
       consistencyCheckerRef.current.project = project;
       consistencyCheckerRef.current.electronAPI = window.electronAPI;
-      consistencyCheckerRef.current.callAIWithMode = callAIWithMode;
+      consistencyCheckerRef.current.callAIWithMode = callAIStable;
     }
   }, [project]);
 
@@ -6511,7 +6547,7 @@ ${contextPrompt}`;
       ),
 
       // Right inspector (hidden by default)
-      showInspector && e('div', { className: inspectorCollapsed ? 'faust-inspector collapsed' : 'faust-inspector visible' },
+      e(ErrorBoundary, { label: 'Inspector', onDismiss: () => setShowInspector(false) }, showInspector && e('div', { className: inspectorCollapsed ? 'faust-inspector collapsed' : 'faust-inspector visible' },
         // Collapse button (always visible on right edge)
         e('button', {
           onClick: () => setInspectorCollapsed(!inspectorCollapsed),
@@ -8180,7 +8216,7 @@ ${contextPrompt}`;
           ),
 
         )
-      )
+      ))
     ),
 
     // Footer / Status bar
@@ -8207,7 +8243,7 @@ ${contextPrompt}`;
     ),
 
     // Cast Planning Dialog
-    showCastPlanDialog ? e('div', {
+    e(ErrorBoundary, { label: 'Hahmokaartin suunnittelu', onDismiss: () => setShowCastPlanDialog(false) }, showCastPlanDialog ? e('div', {
       style: {
         position: 'fixed',
         top: 0,
@@ -8475,10 +8511,10 @@ ${contextPrompt}`;
           )
         ) : null
       )
-    ) : null,
+    ) : null),
 
     // Character Builder Dialog
-    showCharacterBuilder ? e('div', {
+    e(ErrorBoundary, { label: 'Hahmorakentaja', onDismiss: () => setShowCharacterBuilder(false) }, showCharacterBuilder ? e('div', {
       style: {
         position: 'fixed',
         top: 0,
@@ -9459,10 +9495,10 @@ ${contextPrompt}`;
   )
 ) : null
       )
-    ) : null,
+    ) : null),
 
     // AI Assistant Panel (Cursor-style) - Slides in from right
-    aiAssistantOpen && e('div', {
+    e(ErrorBoundary, { label: 'AI-avustaja', onDismiss: () => setAiAssistantOpen(false) }, aiAssistantOpen && e('div', {
       className: 'liminal-engine-panel',
       style: {
         position: 'fixed',
@@ -9895,12 +9931,12 @@ ${contextPrompt}`;
         }, 'Cmd+K to toggle • Enter to send')
         )
       ],
-    ),
+    )),
 
     // The four dialogs below used to be children of the AI assistant panel,
     // so they only opened while that panel was open. They belong to the window.
     // Regenerate Dialog
-    showRegenerateDialog && e('div', {
+    e(ErrorBoundary, { label: 'Uudelleengenerointi', onDismiss: () => setShowRegenerateDialog(false) }, showRegenerateDialog && e('div', {
       style: {
         position: 'fixed',
         top: 0,
@@ -10051,10 +10087,10 @@ ${contextPrompt}`;
           )
         )
       )
-    ),
+    )),
 
     // Version History Dialog
-    showVersionHistory && e('div', {
+    e(ErrorBoundary, { label: 'Versiohistoria', onDismiss: () => setShowVersionHistory(false) }, showVersionHistory && e('div', {
       style: {
         position: 'fixed',
         top: 0,
@@ -10250,10 +10286,10 @@ ${contextPrompt}`;
           }, 'Sulje')
         )
       )
-    ),
+    )),
 
     // Project Settings Dialog
-    showProjectSettings && e('div', {
+    e(ErrorBoundary, { label: 'Projektin asetukset', onDismiss: () => setShowProjectSettings(false) }, showProjectSettings && e('div', {
       style: {
         position: 'fixed',
         top: 0,
@@ -10511,10 +10547,10 @@ ${contextPrompt}`;
           }, 'Tallenna')
         )
       )
-    ),
+    )),
 
     // Version Comparison Dialog with Diff Highlighting
-    showVersionComparison && comparisonVersionId && (() => {
+    e(ErrorBoundary, { label: 'Versioiden vertailu', onDismiss: () => setShowVersionComparison(false) }, showVersionComparison && comparisonVersionId && (() => {
       const compVersion = activeChapter.versions?.find(v => v.id === comparisonVersionId);
       const compContent = compVersion?.content || '';
       const currentContent = activeChapter.content || '';
@@ -10806,10 +10842,10 @@ ${contextPrompt}`;
           )
         )
       );
-    })(),
+    })()),
 
     // CharacterSheet Modal (View/Edit Characters)
-    showCharacterSheet && e('div', {
+    e(ErrorBoundary, { label: 'Hahmot', onDismiss: () => setShowCharacterSheet(false) }, showCharacterSheet && e('div', {
       style: {
         position: 'fixed',
         top: 0,
@@ -11074,10 +11110,10 @@ ${contextPrompt}`;
           )
         )
       )
-    ),
+    )),
 
     // LocationSheet Modal (List View)
-    showLocationSheet && e('div', {
+    e(ErrorBoundary, { label: 'Paikat', onDismiss: () => setShowLocationSheet(false) }, showLocationSheet && e('div', {
       style: {
         position: 'fixed',
         top: 0,
@@ -11176,10 +11212,10 @@ ${contextPrompt}`;
           )
         )
       )
-    ),
+    )),
 
     // LocationSheet Form Modal (Create/Edit/View) - External Component
-    showLocationFormModal && window.LocationSheetModal && e(window.LocationSheetModal, {
+    e(ErrorBoundary, { label: 'Paikan tiedot', onDismiss: () => setShowLocationFormModal(false) }, showLocationFormModal && window.LocationSheetModal && e(window.LocationSheetModal, {
       isOpen: showLocationFormModal,
       onClose: () => {
         setShowLocationFormModal(false);
@@ -11189,10 +11225,10 @@ ${contextPrompt}`;
       locations: Object.values(project.continuity?.locations || {}),
       onSave: handleLocationSave,
       mode: locationFormMode
-    }),
+    })),
 
     // ThreadSheet Modal (Plot Threads List View)
-    showThreadSheet && e('div', {
+    e(ErrorBoundary, { label: 'Juonilangat', onDismiss: () => setShowThreadSheet(false) }, showThreadSheet && e('div', {
       style: {
         position: 'fixed',
         top: 0,
@@ -11296,10 +11332,10 @@ ${contextPrompt}`;
           )
         )
       )
-    ),
+    )),
 
     // ThreadSheet Form Modal (Create/Edit/View) - External Component
-    showThreadFormModal && window.ThreadSheetModal && e(window.ThreadSheetModal, {
+    e(ErrorBoundary, { label: 'Juonilangan tiedot', onDismiss: () => setShowThreadFormModal(false) }, showThreadFormModal && window.ThreadSheetModal && e(window.ThreadSheetModal, {
       isOpen: showThreadFormModal,
       onClose: () => {
         setShowThreadFormModal(false);
@@ -11309,18 +11345,18 @@ ${contextPrompt}`;
       threads: project.plotThreads || [],
       onSave: handleThreadSave,
       mode: threadFormMode
-    }),
+    })),
 
     // ChapterSheet Modal (Edit Chapter Details)
-    showChapterSheetModal && window.ChapterSheetModal && e(window.ChapterSheetModal, {
+    e(ErrorBoundary, { label: 'Luvun tiedot', onDismiss: () => setShowChapterSheetModal(false) }, showChapterSheetModal && window.ChapterSheetModal && e(window.ChapterSheetModal, {
       chapter: activeChapter,
       mode: 'edit',
       onSave: handleChapterSheetSave,
       onClose: () => setShowChapterSheetModal(false)
-    }),
+    })),
 
     // Timeline View Modal
-    showTimelineView && e('div', {
+    e(ErrorBoundary, { label: 'Aikajana', onDismiss: () => setShowTimelineView(false) }, showTimelineView && e('div', {
       style: {
         position: 'fixed',
         top: 0,
@@ -11639,10 +11675,10 @@ ${contextPrompt}`;
           }, 'Ei vielä lukuja. Luo ensimmäinen luku aloittaaksesi.')
         )
       )
-    ),
+    )),
 
     // Research Folder Modal
-    showResearchFolder && e('div', {
+    e(ErrorBoundary, { label: 'Tutkimuskansio', onDismiss: () => setShowResearchFolder(false) }, showResearchFolder && e('div', {
       style: {
         position: 'fixed',
         top: 0,
@@ -11965,10 +12001,10 @@ ${contextPrompt}`;
           }, 'Lisää muistiinpanoja, linkkejä tai kuvia projektiisi.')
         )
       )
-    ),
+    )),
 
     // Hybrid Writing Flow Dialog (Continue/Expand/Rewrite/Scene)
-    showContinueDialog && e('div', {
+    e(ErrorBoundary, { label: 'Jatka kirjoittamista', onDismiss: () => setShowContinueDialog(false) }, showContinueDialog && e('div', {
       style: {
         position: 'fixed',
         top: 0,
@@ -12369,21 +12405,24 @@ ${contextPrompt}`;
           )
         )
       )
-    ),
+    )),
 
     // Claude Chat Component
-    window.ClaudeChat && e(window.ClaudeChat, {
+    e(ErrorBoundary, { label: 'Chat', onDismiss: () => setClaudeChatOpen(false) }, window.ClaudeChat && e(window.ClaudeChat, {
       project: project,
       activeChapter: activeChapter,
       isOpen: claudeChatOpen,
       onClose: () => setClaudeChatOpen(false),
       onInsertText: (text) => {
         if (activeChapter) {
-          const newContent = (activeChapter.content || '') + '\n\n' + text;
-          updateChapterContent(newContent);
+          // The text as the editor has it now, not as it was at the last render
+          const base = liveContentRef.current.chapterId === activeChapter.id
+            ? liveContentRef.current.content
+            : (activeChapter.content || '');
+          updateChapterContent(base + (base.trim() ? '\n\n' : '') + text);
         }
       }
-    }),
+    })),
 
     // Claude Chat Toggle Button (floating)
     !claudeChatOpen && e('button', {
@@ -12421,7 +12460,7 @@ ${contextPrompt}`;
 
 // Mount the app
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(e(FAUSTApp));
+root.render(e(ErrorBoundary, { label: 'FAUST', root: true }, e(FAUSTApp)));
 
 console.log('[FAUST] Simple app loaded ✨');
 console.log('[FAUST] VERSION: 2025-10-22-23:40 - LIMINAL ENGINE ADDED');

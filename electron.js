@@ -1081,7 +1081,8 @@ ipcMain.handle('claude-api', async (event, promptOrOptions) => {
     const prompt = typeof promptOrOptions === 'string' ? promptOrOptions : promptOrOptions.prompt;
     const model = typeof promptOrOptions === 'object' ? promptOrOptions.model : null;
     const temperature = typeof promptOrOptions === 'object' ? promptOrOptions.temperature : 0.7;
-    const maxTokens = typeof promptOrOptions === 'object' ? promptOrOptions.max_tokens : 2000;
+    // The Messages API requires max_tokens: callers that pass an object without it get the default too
+    const maxTokens = (typeof promptOrOptions === 'object' && promptOrOptions.max_tokens) || 2000;
 
     // Claude directly, or the model selected in Cherry Studio's gateway
     const anthropic = getClaudeClient();

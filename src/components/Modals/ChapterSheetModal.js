@@ -11,8 +11,15 @@
   const { createElement: e, useState, useEffect } = React;
 
   // Access constants from window (loaded from constants.js)
-  const CHAPTER_STATUS = window.CONSTANTS?.CHAPTER_STATUS || ['Suunniteltu', 'Keskeneräinen', 'Valmis'];
-  const POV_TYPES = window.CONSTANTS?.POV_TYPES || ['Ensimmäinen persoona', 'Kolmas persoona', 'Toiseen persoonaan'];
+
+  // Option lists come from window.CONSTANTS as { value, label } objects, or as
+  // plain strings in the fallback. Rendering the object itself as an <option>
+  // child throws.
+  const toOptions = (items) => (items || []).map(item => (
+    typeof item === 'string' ? { value: item, label: item } : item
+  ));
+  const CHAPTER_STATUS = toOptions(window.CONSTANTS?.CHAPTER_STATUS || ['Suunniteltu', 'Keskeneräinen', 'Valmis']);
+  const POV_TYPES = toOptions(window.CONSTANTS?.POV_TYPES || ['Ensimmäinen persoona', 'Kolmas persoona', 'Toiseen persoonaan']);
   const VALIDATION_RULES = window.CONSTANTS?.VALIDATION_RULES || {
     DESCRIPTION_MAX_LENGTH: 5000
   };
@@ -30,9 +37,9 @@
     const [formData, setFormData] = useState({
       title: '',
       number: '',
-      status: CHAPTER_STATUS[0],
+      status: CHAPTER_STATUS[0].value,
       pov: '',
-      povType: POV_TYPES[0],
+      povType: POV_TYPES[0].value,
       location: '',
       wordCountTarget: '',
       actualWordCount: 0,
@@ -54,9 +61,9 @@
         setFormData({
           title: chapter.title || '',
           number: chapter.number || '',
-          status: chapter.status || CHAPTER_STATUS[0],
+          status: chapter.status || CHAPTER_STATUS[0].value,
           pov: chapter.pov || '',
-          povType: chapter.povType || POV_TYPES[0],
+          povType: chapter.povType || POV_TYPES[0].value,
           location: chapter.location || '',
           wordCountTarget: chapter.wordCountTarget || '',
           actualWordCount: chapter.actualWordCount || 0,
@@ -416,8 +423,8 @@
                     fontSize: '14px'
                   }
                 },
-                  CHAPTER_STATUS.map(status =>
-                    e('option', { key: status, value: status }, status)
+                  CHAPTER_STATUS.map(option =>
+                    e('option', { key: option.value, value: option.value }, option.label)
                   )
                 )
               )
@@ -496,8 +503,8 @@
                     fontSize: '14px'
                   }
                 },
-                  POV_TYPES.map(type =>
-                    e('option', { key: type, value: type }, type)
+                  POV_TYPES.map(option =>
+                    e('option', { key: option.value, value: option.value }, option.label)
                   )
                 )
               ),
