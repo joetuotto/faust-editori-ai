@@ -164,6 +164,35 @@
   user-select: text;
 }
 
+/* Focus mode: only the text */
+.faust-focus-mode .faust-header,
+.faust-focus-mode .faust-footer,
+.faust-focus-mode .formatting-toolbar {
+  display: none;
+}
+
+.faust-focus-exit {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 500;
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border-color, rgba(128,128,128,0.3));
+  border-radius: 4px;
+  color: var(--text-3, rgba(128,128,128,0.8));
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.25;
+  transition: opacity 0.2s ease;
+  -webkit-app-region: no-drag;
+}
+
+.faust-focus-exit:hover {
+  opacity: 1;
+}
+
 /* Footer/status bar */
 .faust-footer {
   height: 28px;

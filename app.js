@@ -6,6 +6,13 @@
 
 import { AIProviderSettings } from './src/components/AIProviderSettings.js';
 import { FaustEditor } from './src/components/FaustEditor.js';
+import { TextPromptDialog, ShortcutsDialog, ExportDialog } from './src/components/Dialogs.js';
+import {
+  countWords, countCharacters, countProjectWords, estimatePages,
+  toggleInline, setHeading, toggleLinePrefix, insertText, transformSelection,
+  trimSpaces, collapseEmptyLines,
+  buildSearchPattern, findMatches, replaceAllMatches
+} from './src/editor/textTools.js';
 
 const { createElement: e, useState, useEffect, useRef } = React;
 
@@ -103,14 +110,6 @@ const createDefaultProject = () => ({
 
   // Collections - dynamic chapter groupings
   collections: [],  // [{id, name, type, filter, chapterIds, color}]
-
-  // Export presets - saved export configurations
-  exportPresets: [
-    { id: 'preset-kindle', name: 'Kindle (MOBI)', format: 'mobi', includeMetadata: true, includeSynopsis: false, includeToc: true },
-    { id: 'preset-epub', name: 'eBook (EPUB)', format: 'epub', includeMetadata: true, includeSynopsis: false, includeToc: true },
-    { id: 'preset-pdf', name: 'PDF (tulostus)', format: 'pdf', includeMetadata: true, includeSynopsis: false, includeToc: true },
-    { id: 'preset-sample', name: 'Lukunäyte (3 lukua)', format: 'pdf', includeMetadata: true, includeSynopsis: true, includeToc: false, chapterLimit: 3 }
-  ],
 
   // Cast planning (Phase 1 of Character Archetype Builder)
   castPlan: {
@@ -445,52 +444,6 @@ function FAUSTApp() {
     console.log('[ThreadSheet] Thread saved:', threadData.name);
   };
 
-  // Handler to export from modal
-  const handleExportFromModal = async (exportData) => {
-    if (!window.electronAPI) {
-      throw new Error('Electron API ei ole käytettävissä');
-    }
-
-    console.log('[Export] Processing export:', exportData);
-
-    // Handle different formats
-    if (exportData.format === 'epub') {
-      const result = await window.electronAPI.exportEPUB({
-        metadata: exportData.metadata,
-        chapters: exportData.chapters
-      });
-      if (!result.success) {
-        throw new Error(result.error || 'EPUB-vienti epäonnistui');
-      }
-      return result;
-    } else if (exportData.format === 'mobi') {
-      const result = await window.electronAPI.exportMOBI({
-        metadata: exportData.metadata,
-        chapters: exportData.chapters
-      });
-      if (!result.success) {
-        throw new Error(result.error || 'MOBI-vienti epäonnistui');
-      }
-      return result;
-    } else {
-      // TXT, DOCX, PDF
-      const result = await window.electronAPI.exportFullProject({
-        project: {
-          ...project,
-          structure: exportData.chapters.map(ch => ({
-            title: ch.title,
-            content: ch.content
-          }))
-        },
-        format: exportData.format
-      });
-      if (!result.success) {
-        throw new Error(result.error || `${exportData.format.toUpperCase()}-vienti epäonnistui`);
-      }
-      return result;
-    }
-  };
-
   // Refinement state
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [regenerateFeedback, setRegenerateFeedback] = useState('');
@@ -599,6 +552,9 @@ function FAUSTApp() {
 
   // Find & Replace state
   const [showFindDialog, setShowFindDialog] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [textPrompt, setTextPrompt] = useState(null); // open text question, see askText
   const [showReplaceDialog, setShowReplaceDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [replaceTerm, setReplaceTerm] = useState('');
@@ -616,11 +572,11 @@ function FAUSTApp() {
 
   const editorRef = useRef(null);
   const liveContentRef = useRef({ chapterId: null, content: '' }); // see updateChapterContent
-  const autosaveTimerRef = useRef(null);
-  const [autosaveRetryCount, setAutosaveRetryCount] = useState(0);
-  const [isOffline, setIsOffline] = useState(false);
+  const projectRef = useRef(null);            // the project of the latest render, for timers and async saves
+  const menuHandlerRef = useRef(null);        // see the menu handler
+  const lastSearchRef = useRef('');           // the term the current search results belong to
+  const panelsBeforeFocusRef = useRef(null);  // panel visibility to restore after focus mode
   const [autosaveError, setAutosaveError] = useState(null);
-  const backupTimerRef = useRef(null);
   const voiceInputRef = useRef(null);
   const historyTimerRef = useRef(null); // Debounce timer for history
 
@@ -640,6 +596,7 @@ function FAUSTApp() {
   // Content of the active chapter as of this render. updateChapterContent keeps
   // it current between renders, because fast typing can outrun React state.
   liveContentRef.current = { chapterId: activeChapter?.id, content: activeChapter?.content || '' };
+  projectRef.current = project;
   const activeChapterIndex = project.structure.findIndex(ch => ch.id === activeChapterId);
 
   // Get split view chapter (if enabled)
@@ -821,171 +778,81 @@ function FAUSTApp() {
     voiceState
   ]);
 
-  // Listen to menu events
+  // Menu events. The IPC listener is registered once, so it calls through a
+  // ref that always holds the handler of the latest render. A handler captured
+  // at mount would keep seeing the first render's empty project.
+  menuHandlerRef.current = (action, arg) => {
+    switch (action) {
+      // File
+      case 'new-project': newProject(); break;
+      case 'open-project': loadProject(); break;
+      case 'save-project': saveProject(); break;
+      case 'save-project-as': saveProject({ saveAs: true }); break;
+      case 'save-and-close': saveAndClose(); break;
+      case 'import-document': importDocument(); break;
+      case 'show-export': setShowExportModal(true); break;
+      case 'print': printManuscript(); break;
+
+      // Edit
+      case 'undo': undo(); break;
+      case 'redo': redo(); break;
+      case 'show-find':
+        setShowFindDialog(true);
+        setShowReplaceDialog(false);
+        break;
+      case 'find-next': findNext(); break;
+      case 'find-previous': findPrevious(); break;
+      case 'show-find-replace':
+        setShowFindDialog(true);
+        setShowReplaceDialog(true);
+        break;
+
+      // Format
+      case 'format-bold': formatBold(); break;
+      case 'format-italic': formatItalic(); break;
+      case 'format-underline': formatUnderline(); break;
+      case 'format-strikethrough': formatStrikethrough(); break;
+      case 'format-heading': formatHeading(arg || 0); break;
+      case 'format-quote': formatQuote(); break;
+      case 'format-list': formatList(); break;
+      case 'format-numbered-list': formatNumberedList(); break;
+      case 'text-uppercase': transformSelectedText(text => text.toUpperCase()); break;
+      case 'text-lowercase': transformSelectedText(text => text.toLowerCase()); break;
+      case 'text-trim-spaces': transformChapterText(trimSpaces); break;
+      case 'text-remove-empty-lines': transformChapterText(collapseEmptyLines); break;
+
+      // Insert
+      case 'new-chapter': addChapter(); break;
+      case 'insert-text': insertAtCursor(arg); break;
+
+      // View
+      case 'toggle-sidebar': setSidebarCollapsed(prev => !prev); break;
+      case 'toggle-inspector': setShowInspector(prev => !prev); break;
+      case 'toggle-ai-panel': setAiAssistantOpen(prev => !prev); break;
+      case 'toggle-focus-mode': toggleFocusMode(); break;
+      case 'toggle-typewriter': setTypewriterMode(prev => !prev); break;
+      case 'zoom-in': changeZoom(10); break;
+      case 'zoom-out': changeZoom(-10); break;
+      case 'zoom-reset': setEditorZoom('100'); break;
+      case 'toggle-theme': setIsDarkMode(prev => !prev); break;
+      case 'show-timeline': setShowTimelineView(true); break;
+      case 'show-research': setShowResearchFolder(true); break;
+
+      // Settings and help
+      case 'show-settings': openAISettings(); break;
+      case 'show-project-settings': setShowProjectSettings(true); break;
+      case 'show-shortcuts': setShowShortcuts(true); break;
+
+      default:
+        console.warn('[Menu] Unhandled action:', action);
+    }
+  };
+
   useEffect(() => {
     if (!window.electronAPI || !window.electronAPI.onMenuAction) return;
 
-    window.electronAPI.onMenuAction((event, arg) => {
-      console.log('[Menu Event]', event, arg);
-
-      switch (event) {
-        // Edit menu
-        case 'undo':
-          undo();
-          break;
-        case 'redo':
-          redo();
-          break;
-        case 'show-find':
-          setShowFindDialog(true);
-          setShowReplaceDialog(false);
-          break;
-        case 'find-next':
-          findNext();
-          break;
-        case 'show-find-replace':
-          setShowFindDialog(true);
-          setShowReplaceDialog(true);
-          break;
-
-        // Format menu
-        case 'format-bold':
-          formatBold();
-          break;
-        case 'format-italic':
-          formatItalic();
-          break;
-        case 'format-underline':
-          formatUnderline();
-          break;
-        case 'format-heading':
-          formatHeading(arg || 1);
-          break;
-        case 'format-quote':
-          formatQuote();
-          break;
-        case 'format-list':
-          formatList();
-          break;
-
-        // File menu
-        case 'new-project':
-          newProject();
-          break;
-        case 'save-project-trigger':
-          saveProject();
-          break;
-        case 'load-project-data':
-          if (arg) {
-            setProject(arg);
-            setActiveChapterId(arg.structure[0]?.id || 'chapter-1');
-            setUnsavedChanges(false);
-          }
-          break;
-
-        // Export menu - Open Export Modal
-        case 'export-trigger':
-        case 'export-pdf-trigger':
-        case 'export-epub-trigger':
-        case 'export-mobi-trigger':
-          setShowExportModal(true);
-          break;
-
-        // View menu
-        case 'toggle-sidebar':
-          setSidebarCollapsed(prev => !prev);
-          break;
-        case 'toggle-inspector':
-          setInspectorCollapsed(prev => !prev);
-          break;
-        case 'toggle-ai-panel':
-          setAiAssistantOpen(prev => !prev);
-          break;
-        case 'show-timeline':
-          setShowTimelineView(true);
-          break;
-        case 'show-research':
-          setShowResearchFolder(true);
-          break;
-
-        // Settings menu
-        case 'show-settings':
-          setShowProjectSettings(true);
-          break;
-
-        // Insert menu
-        case 'new-chapter':
-          addNewChapter();
-          break;
-        case 'insert-text':
-          if (arg && editorRef.current) {
-            const textarea = editorRef.current;
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const content = textarea.value;
-            const newContent = content.substring(0, start) + arg + content.substring(end);
-            updateChapterContent(newContent);
-          }
-          break;
-
-        // Text menu
-        case 'text-uppercase':
-          if (editorRef.current) {
-            const textarea = editorRef.current;
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            if (start !== end) {
-              const content = textarea.value;
-              const selected = content.substring(start, end);
-              const newContent = content.substring(0, start) + selected.toUpperCase() + content.substring(end);
-              updateChapterContent(newContent);
-            }
-          }
-          break;
-        case 'text-lowercase':
-          if (editorRef.current) {
-            const textarea = editorRef.current;
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            if (start !== end) {
-              const content = textarea.value;
-              const selected = content.substring(start, end);
-              const newContent = content.substring(0, start) + selected.toLowerCase() + content.substring(end);
-              updateChapterContent(newContent);
-            }
-          }
-          break;
-        case 'text-trim-spaces':
-          if (activeChapter?.content) {
-            const trimmed = activeChapter.content.replace(/  +/g, ' ').replace(/\n /g, '\n');
-            updateChapterContent(trimmed);
-          }
-          break;
-        case 'text-remove-empty-lines':
-          if (activeChapter?.content) {
-            const cleaned = activeChapter.content.replace(/\n\s*\n\s*\n/g, '\n\n');
-            updateChapterContent(cleaned);
-          }
-          break;
-
-        // UI Preferences changed from menu
-        case 'ui-prefs-changed':
-          if (arg) {
-            console.log('[UI Prefs] Updated from menu:', arg);
-            // Note: theme is handled by electron menu directly via window.setTheme
-            if (typeof arg.inspectorVisible === 'boolean') {
-              setInspectorCollapsed(!arg.inspectorVisible);
-            }
-            if (typeof arg.aiPanelVisible === 'boolean') {
-              setAiAssistantOpen(arg.aiPanelVisible);
-            }
-            // Add more UI prefs as needed
-          }
-          break;
-
-        default:
-          console.log('[Menu Event] Unhandled:', event);
-      }
+    window.electronAPI.onMenuAction((action, arg) => {
+      if (menuHandlerRef.current) menuHandlerRef.current(action, arg);
     });
   }, []);
 
@@ -1028,324 +895,227 @@ function FAUSTApp() {
     setUnsavedChanges(true);
   };
 
-  // Text formatting functions (Markdown-based)
-  const applyFormatting = (prefix, suffix = prefix) => {
-    if (!editorRef.current) return;
+  // ---------------------------------------------------------------------
+  // Text formatting. The text carries Markdown-style markers; the logic is in
+  // src/editor/textTools.js. Every change goes through applyEdit, so it lands
+  // in the undo history and the selection ends up where the user expects.
+  // ---------------------------------------------------------------------
 
-    const textarea = editorRef.current;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selectedText = textarea.value.substring(start, end);
-    const content = textarea.value;
+  // Run a textTools function on the editor's text and selection
+  const applyEdit = (edit) => {
+    const editor = editorRef.current;
+    if (!editor) return;
 
-    // If text is selected, wrap it with formatting
-    if (start !== end) {
-      const before = content.substring(0, start);
-      const after = content.substring(end);
-      const newContent = before + prefix + selectedText + suffix + after;
-
-      updateChapterContent(newContent);
-
-      // Restore selection
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start + prefix.length, end + prefix.length);
-      }, 0);
-    }
-  };
-
-  const formatBold = () => applyFormatting('**');
-  const formatItalic = () => applyFormatting('*');
-  const formatUnderline = () => applyFormatting('__');
-
-  const formatHeading = (level) => {
-    if (!editorRef.current) return;
-
-    const textarea = editorRef.current;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const content = textarea.value;
-
-    // Find the start of the current line
-    let lineStart = start;
-    while (lineStart > 0 && content[lineStart - 1] !== '\n') {
-      lineStart--;
+    const result = edit(editor.value, editor.selectionStart, editor.selectionEnd);
+    if (!result) {
+      editor.focus();
+      return;
     }
 
-    // Find the end of the current line
-    let lineEnd = end;
-    while (lineEnd < content.length && content[lineEnd] !== '\n') {
-      lineEnd++;
-    }
-
-    const line = content.substring(lineStart, lineEnd);
-    const prefix = '#'.repeat(level) + ' ';
-
-    // Check if line already has heading markers
-    const headingMatch = line.match(/^#+\s/);
-    let newLine;
-
-    if (headingMatch) {
-      // Replace existing heading level or remove if same level
-      if (headingMatch[0] === prefix) {
-        newLine = line.replace(/^#+\s/, '');
-      } else {
-        newLine = line.replace(/^#+\s/, prefix);
-      }
-    } else {
-      // Add heading marker
-      newLine = prefix + line;
-    }
-
-    const before = content.substring(0, lineStart);
-    const after = content.substring(lineEnd);
-    const newContent = before + newLine + after;
-
-    updateChapterContent(newContent);
-
-    // Restore cursor position
+    updateChapterContent(result.text);
+    // The editor picks the new text up on the next render: select after that
     setTimeout(() => {
-      textarea.focus();
-      const newPos = lineStart + newLine.length;
-      textarea.setSelectionRange(newPos, newPos);
+      if (!editorRef.current) return;
+      editorRef.current.focus();
+      editorRef.current.setSelectionRange(result.selStart, result.selEnd);
     }, 0);
   };
 
-  const formatQuote = () => {
-    if (!editorRef.current) return;
+  const formatBold = () => applyEdit((text, start, end) => toggleInline(text, start, end, '**'));
+  const formatItalic = () => applyEdit((text, start, end) => toggleInline(text, start, end, '_'));
+  const formatUnderline = () => applyEdit((text, start, end) => toggleInline(text, start, end, '<u>', '</u>'));
+  const formatStrikethrough = () => applyEdit((text, start, end) => toggleInline(text, start, end, '~~'));
 
-    const textarea = editorRef.current;
-    const start = textarea.selectionStart;
-    const content = textarea.value;
+  // level 0 turns the line back into body text
+  const formatHeading = (level) => applyEdit((text, start, end) => setHeading(text, start, end, level));
+  const formatQuote = () => applyEdit((text, start, end) => toggleLinePrefix(text, start, end, 'quote'));
+  const formatList = () => applyEdit((text, start, end) => toggleLinePrefix(text, start, end, 'bullet'));
+  const formatNumberedList = () => applyEdit((text, start, end) => toggleLinePrefix(text, start, end, 'numbered'));
 
-    // Find the start of the current line
-    let lineStart = start;
-    while (lineStart > 0 && content[lineStart - 1] !== '\n') {
-      lineStart--;
-    }
+  // Insert text at the cursor, replacing the selection
+  const insertAtCursor = (insert) => applyEdit((text, start, end) => insertText(text, start, end, insert));
 
-    const before = content.substring(0, lineStart);
-    const after = content.substring(lineStart);
+  // Apply a function to the selected text
+  const transformSelectedText = (transform) => applyEdit((text, start, end) => transformSelection(text, start, end, transform));
 
-    // Check if line already starts with >
-    if (after.startsWith('> ')) {
-      // Remove quote marker
-      updateChapterContent(before + after.substring(2));
+  // Apply a function to the whole chapter, keeping the cursor roughly in place
+  const transformChapterText = (transform) => applyEdit((text, start) => {
+    const next = transform(text);
+    if (next === text) return null;
+    const cursor = Math.min(start, next.length);
+    return { text: next, selStart: cursor, selEnd: cursor };
+  });
+
+  // A note to self in the text: [TODO: ...]
+  const insertTodo = () => applyEdit((text, start, end) => {
+    const selected = text.slice(Math.min(start, end), Math.max(start, end));
+    const from = Math.min(start, end);
+    const note = `[TODO: ${selected}]`;
+    const cursor = selected ? from + note.length : from + '[TODO: '.length;
+    return { text: text.slice(0, from) + note + text.slice(Math.max(start, end)), selStart: cursor, selEnd: cursor };
+  });
+
+  // Editor zoom in steps (the Inspector's Zoom control shows the same value)
+  const changeZoom = (delta) => {
+    setEditorZoom(prev => String(Math.max(50, Math.min(200, (parseInt(prev, 10) || 100) + delta))));
+  };
+
+  // Focus mode: only the text. Leaving it brings the panels back as they were.
+  const toggleFocusMode = () => {
+    if (!focusMode) {
+      panelsBeforeFocusRef.current = { sidebarCollapsed, showInspector, aiAssistantOpen };
+      setSidebarCollapsed(true);
+      setShowInspector(false);
+      setAiAssistantOpen(false);
+      setFocusMode(true);
     } else {
-      // Add quote marker
-      updateChapterContent(before + '> ' + after);
+      const before = panelsBeforeFocusRef.current || {};
+      setSidebarCollapsed(!!before.sidebarCollapsed);
+      setShowInspector(!!before.showInspector);
+      setAiAssistantOpen(!!before.aiAssistantOpen);
+      setFocusMode(false);
     }
   };
 
-  const formatList = () => {
-    if (!editorRef.current) return;
-
-    const textarea = editorRef.current;
-    const start = textarea.selectionStart;
-    const content = textarea.value;
-
-    // Find the start of the current line
-    let lineStart = start;
-    while (lineStart > 0 && content[lineStart - 1] !== '\n') {
-      lineStart--;
-    }
-
-    const before = content.substring(0, lineStart);
-    const after = content.substring(lineStart);
-
-    // Check if line already starts with list marker
-    if (after.match(/^[-*]\s/)) {
-      // Remove list marker
-      updateChapterContent(before + after.replace(/^[-*]\s/, ''));
-    } else {
-      // Add list marker
-      updateChapterContent(before + '- ' + after);
-    }
+  // AI source, keys and model live in the Inspector's AI tab
+  const openAISettings = () => {
+    setShowInspector(true);
+    setInspectorCollapsed(false);
+    setInspectorTab('ai');
   };
 
-  // Undo/Redo - Command Pattern
-  const undo = () => {
-    if (!commandManagerRef.current) {
-      console.log('[Undo] CommandManager not initialized');
+  // In-app replacement for window.prompt(), which Electron does not provide.
+  // Resolves with the text, or null if the dialog is cancelled.
+  const askText = (title, defaultValue = '', placeholder = '') => new Promise((resolve) => {
+    setTextPrompt({ title, defaultValue, placeholder, resolve });
+  });
+
+  // Undo/Redo. In an ordinary text field (titles, notes, search) the field's
+  // own undo applies; everywhere else the project history does.
+  const runHistory = (direction) => {
+    const active = document.activeElement;
+    const inManuscript = active && active.closest && active.closest('.faust-editor-host');
+    if (active && !inManuscript && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+      document.execCommand(direction);
       return;
     }
 
-    const success = commandManagerRef.current.undo();
-    if (success) {
-      setUnsavedChanges(true);
-      const info = commandManagerRef.current.getInfo();
-      console.log('[Undo] Success. Undo stack:', info.undoCount, 'Redo stack:', info.redoCount);
+    const manager = commandManagerRef.current;
+    if (!manager) return;
+
+    // Show the chapter the step belongs to, so the change is never invisible
+    const stack = direction === 'undo' ? manager.undoStack : manager.redoStack;
+    const step = stack[stack.length - 1];
+    if (step && step.chapterId && step.chapterId !== activeChapterId &&
+        project.structure.some(ch => ch.id === step.chapterId)) {
+      setActiveChapterId(step.chapterId);
     }
+
+    const done = direction === 'undo' ? manager.undo() : manager.redo();
+    if (done) setUnsavedChanges(true);
   };
 
-  const redo = () => {
-    if (!commandManagerRef.current) {
-      console.log('[Redo] CommandManager not initialized');
-      return;
+  const undo = () => runHistory('undo');
+  const redo = () => runHistory('redo');
+
+  // ---------------------------------------------------------------------
+  // Find & Replace. Matching is in src/editor/textTools.js.
+  // ---------------------------------------------------------------------
+  const searchOptions = () => ({ caseSensitive, wholeWord: matchWholeWord, regex: useRegex });
+
+  // A chapter's text as the search should see it: the open chapter as the
+  // editor has it right now, the others from the project
+  const chapterText = (chapter) => (
+    chapter.id === activeChapter?.id && liveContentRef.current.chapterId === chapter.id
+      ? liveContentRef.current.content
+      : (chapter.content || '')
+  );
+
+  const snippet = (text, start, end, radius) =>
+    text.substring(Math.max(0, start - radius), Math.min(text.length, end + radius));
+
+  // All matches for a term with the current options and scope
+  const collectSearchResults = (term) => {
+    const options = searchOptions();
+    const results = [];
+
+    const chapters = searchInAllChapters ? project.structure : [activeChapter];
+    chapters.forEach(chapter => {
+      if (!chapter) return;
+      const content = chapterText(chapter);
+      findMatches(content, term, options).forEach(match => {
+        results.push({
+          ...match,
+          context: snippet(content, match.start, match.end, 50),
+          chapterId: chapter.id,
+          chapterTitle: chapter.title || 'Nimetön luku'
+        });
+      });
+    });
+
+    // Global search also looks at characters, locations and plot threads
+    if (searchGlobally) {
+      const searchItems = (items, type, fields) => {
+        (items || []).forEach(item => {
+          const searchable = fields.map(field => item[field]).filter(Boolean).join(' ');
+          findMatches(searchable, term, options).forEach(match => {
+            results.push({
+              ...match,
+              type,
+              context: snippet(searchable, match.start, match.end, 30),
+              itemId: item.id,
+              itemName: item.name,
+              chapterId: null,
+              chapterTitle: null
+            });
+          });
+        });
+      };
+
+      searchItems(project.characters, 'character', ['name', 'description', 'background', 'occupation', 'notes']);
+      searchItems(project.locations, 'location', ['name', 'description', 'historicalContext', 'notes']);
+      searchItems(project.plotThreads, 'thread', ['name', 'description', 'resolution', 'notes']);
     }
 
-    const success = commandManagerRef.current.redo();
-    if (success) {
-      setUnsavedChanges(true);
-      const info = commandManagerRef.current.getInfo();
-      console.log('[Redo] Success. Undo stack:', info.undoCount, 'Redo stack:', info.redoCount);
-    }
+    return results;
   };
 
-  // Find & Replace functions
   const performSearch = (term = searchTerm) => {
+    // Also used directly as an event handler: an event is not a search term
+    if (typeof term !== 'string') term = searchTerm;
+
     if (!term) {
       setSearchResults([]);
       setCurrentSearchIndex(-1);
       return;
     }
 
-    // Add to search history
-    addToSearchHistory(term);
-
-    const results = [];
-    let searchPattern;
-
-    try {
-      // Build regex based on options
-      const flags = caseSensitive ? 'g' : 'gi';
-      let pattern;
-
-      if (useRegex) {
-        // Use term as raw regex
-        pattern = term;
-      } else {
-        // Escape special chars, optionally add word boundaries
-        pattern = matchWholeWord ? `\\b${escapeRegex(term)}\\b` : escapeRegex(term);
-      }
-
-      searchPattern = new RegExp(pattern, flags);
-
-      // Search in all chapters or just active chapter
-      const chaptersToSearch = searchInAllChapters ? project.structure : [activeChapter];
-
-      chaptersToSearch.forEach(chapter => {
-        if (!chapter || !chapter.content) return;
-
-        const content = chapter.content;
-        let match;
-        const regex = new RegExp(pattern, flags); // Create new regex for each chapter
-
-        while ((match = regex.exec(content)) !== null) {
-          // Get context (50 chars before and after)
-          const contextStart = Math.max(0, match.index - 50);
-          const contextEnd = Math.min(content.length, match.index + match[0].length + 50);
-          const context = content.substring(contextStart, contextEnd);
-
-          results.push({
-            start: match.index,
-            end: match.index + match[0].length,
-            text: match[0],
-            context: context,
-            chapterId: chapter.id,
-            chapterTitle: chapter.title || 'Nimetön luku'
-          });
-        }
-      });
-
-      // If global search enabled, also search in characters, locations, and plot threads
-      if (searchGlobally) {
-        // Search in characters
-        (project.characters || []).forEach(char => {
-          const searchableText = [
-            char.name,
-            char.description,
-            char.background,
-            char.occupation,
-            char.notes
-          ].filter(Boolean).join(' ');
-
-          let match;
-          const regex = new RegExp(pattern, flags);
-          while ((match = regex.exec(searchableText)) !== null) {
-            results.push({
-              type: 'character',
-              start: match.index,
-              end: match.index + match[0].length,
-              text: match[0],
-              context: searchableText.substring(Math.max(0, match.index - 30), match.index + match[0].length + 30),
-              itemId: char.id,
-              itemName: char.name,
-              chapterId: null,
-              chapterTitle: null
-            });
-          }
-        });
-
-        // Search in locations
-        (project.locations || []).forEach(loc => {
-          const searchableText = [
-            loc.name,
-            loc.description,
-            loc.historicalContext,
-            loc.notes
-          ].filter(Boolean).join(' ');
-
-          let match;
-          const regex = new RegExp(pattern, flags);
-          while ((match = regex.exec(searchableText)) !== null) {
-            results.push({
-              type: 'location',
-              start: match.index,
-              end: match.index + match[0].length,
-              text: match[0],
-              context: searchableText.substring(Math.max(0, match.index - 30), match.index + match[0].length + 30),
-              itemId: loc.id,
-              itemName: loc.name,
-              chapterId: null,
-              chapterTitle: null
-            });
-          }
-        });
-
-        // Search in plot threads
-        (project.plotThreads || []).forEach(thread => {
-          const searchableText = [
-            thread.name,
-            thread.description,
-            thread.resolution,
-            thread.notes
-          ].filter(Boolean).join(' ');
-
-          let match;
-          const regex = new RegExp(pattern, flags);
-          while ((match = regex.exec(searchableText)) !== null) {
-            results.push({
-              type: 'thread',
-              start: match.index,
-              end: match.index + match[0].length,
-              text: match[0],
-              context: searchableText.substring(Math.max(0, match.index - 30), match.index + match[0].length + 30),
-              itemId: thread.id,
-              itemName: thread.name,
-              chapterId: null,
-              chapterTitle: null
-            });
-          }
-        });
-      }
-
-      setSearchResults(results);
-      setCurrentSearchIndex(results.length > 0 ? 0 : -1);
-
-      console.log('[Find] Found', results.length, 'matches for:', term,
-        searchGlobally ? '(global)' : searchInAllChapters ? '(all chapters)' : '(current chapter)');
-
-      // Highlight first result
-      if (results.length > 0) {
-        jumpToResult(0);
-      }
-    } catch (error) {
-      console.error('[Find] Search error:', error);
+    if (!buildSearchPattern(term, searchOptions())) {
       setSearchResults([]);
       setCurrentSearchIndex(-1);
-      alert(`Hakuvirhe: ${error.message}\n\nTarkista regex-syntaksi.`);
+      alert('Hakulauseke ei ole kelvollinen. Tarkista regex-syntaksi.');
+      return;
     }
+
+    addToSearchHistory(term);
+
+    const results = collectSearchResults(term);
+    lastSearchRef.current = term;
+
+    // Start from the first match at or after the cursor in the open chapter
+    let first = 0;
+    if (editorRef.current && activeChapter) {
+      const cursor = editorRef.current.selectionStart;
+      const ahead = results.findIndex(r => r.chapterId === activeChapter.id && r.start >= cursor);
+      if (ahead !== -1) first = ahead;
+    }
+
+    setSearchResults(results);
+    setCurrentSearchIndex(results.length > 0 ? first : -1);
+    if (results.length > 0) showResult(results[first]);
+
+    console.log('[Find] Found', results.length, 'matches for:', term,
+      searchGlobally ? '(global)' : searchInAllChapters ? '(all chapters)' : '(current chapter)');
   };
 
   // Add to search history
@@ -1358,21 +1128,16 @@ function FAUSTApp() {
     });
   };
 
-  // Jump to specific search result
-  const jumpToResult = (index) => {
-    if (index < 0 || index >= searchResults.length) return;
+  // Bring a search result into view. Matches in characters, locations and
+  // threads have no place in the manuscript, so there is nothing to show.
+  // The match highlight itself comes from the effect near the end of the component.
+  const showResult = (result) => {
+    if (!result || !result.chapterId) return;
 
-    const result = searchResults[index];
-
-    // Switch to the chapter if needed
     if (result.chapterId !== activeChapterId) {
       setActiveChapterId(result.chapterId);
-      // Wait for chapter to load
-      setTimeout(() => {
-        highlightResult(result);
-      }, 100);
-    } else {
-      highlightResult(result);
+    } else if (editorRef.current) {
+      editorRef.current.scrollToPos(result.start);
     }
   };
 
@@ -1655,79 +1420,115 @@ function FAUSTApp() {
     return [];
   };
 
-  // Highlight a search result in editor
-  const highlightResult = (result) => {
-    if (editorRef.current) {
-      editorRef.current.focus();
-      editorRef.current.setSelectionRange(result.start, result.end);
-      editorRef.current.scrollToPos(result.start);
+  const stepSearch = (direction) => {
+    if (searchResults.length === 0) {
+      if (searchTerm) performSearch();
+      return;
+    }
+
+    const count = searchResults.length;
+    const index = (currentSearchIndex + direction + count) % count;
+    setCurrentSearchIndex(index);
+    showResult(searchResults[index]);
+  };
+
+  const findNext = () => stepSearch(1);
+  const findPrevious = () => stepSearch(-1);
+
+  // Enter in the search field: search, or step if this term was just searched
+  const handleSearchEnter = (backwards) => {
+    if (searchResults.length > 0 && lastSearchRef.current === searchTerm) {
+      stepSearch(backwards ? -1 : 1);
+    } else {
+      performSearch();
     }
   };
 
-  const escapeRegex = (str) => {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Change any chapter's text through the undo history
+  const setChapterText = (chapterId, oldContent, newContent) => {
+    if (oldContent === newContent) return;
+
+    if (chapterId === activeChapter?.id) {
+      updateChapterContent(newContent);
+      return;
+    }
+
+    if (commandManagerRef.current && window.UpdateContentCommand) {
+      commandManagerRef.current.execute(
+        new window.UpdateContentCommand(setProject, chapterId, oldContent, newContent)
+      );
+    } else {
+      setProject(prev => ({
+        ...prev,
+        structure: prev.structure.map(ch =>
+          ch.id === chapterId ? { ...ch, content: newContent, wordCount: countWords(newContent) } : ch
+        )
+      }));
+    }
+    setUnsavedChanges(true);
   };
 
-  const findNext = () => {
-    if (searchResults.length === 0) {
+  const replaceCurrent = () => {
+    const result = searchResults[currentSearchIndex];
+    if (!result || !result.chapterId || !activeChapter) return;
+
+    // Replace only what is on screen: open the chapter first
+    if (result.chapterId !== activeChapter.id) {
+      showResult(result);
+      return;
+    }
+
+    const content = chapterText(activeChapter);
+
+    // The text may have changed since the search: never replace something else
+    if (content.slice(result.start, result.end) !== result.text) {
       performSearch();
       return;
     }
 
-    const nextIndex = (currentSearchIndex + 1) % searchResults.length;
-    setCurrentSearchIndex(nextIndex);
-    jumpToResult(nextIndex);
+    updateChapterContent(content.slice(0, result.start) + replaceTerm + content.slice(result.end));
 
-    console.log('[Find] Jump to result', nextIndex + 1, 'of', searchResults.length);
+    // Search again in the new text and go on from the replaced spot
+    const results = collectSearchResults(lastSearchRef.current || searchTerm);
+    const after = result.start + replaceTerm.length;
+    const next = Math.max(0, results.findIndex(r => r.chapterId === result.chapterId && r.start >= after));
+
+    setSearchResults(results);
+    setCurrentSearchIndex(results.length > 0 ? next : -1);
+    if (results.length > 0) showResult(results[next]);
   };
 
-  const findPrevious = () => {
-    if (searchResults.length === 0) return;
-
-    const prevIndex = currentSearchIndex - 1 < 0 ? searchResults.length - 1 : currentSearchIndex - 1;
-    setCurrentSearchIndex(prevIndex);
-    jumpToResult(prevIndex);
-
-    console.log('[Find] Jump to result', prevIndex + 1, 'of', searchResults.length);
-  };
-
-  const replaceCurrent = () => {
-    if (currentSearchIndex < 0 || currentSearchIndex >= searchResults.length) return;
-
-    const result = searchResults[currentSearchIndex];
-    const content = activeChapter.content;
-    const newContent = content.substring(0, result.start) + replaceTerm + content.substring(result.end);
-
-    updateChapterContent(newContent);
-
-    // Re-search with updated content
-    setTimeout(() => {
-      performSearch();
-    }, 100);
-
-    console.log('[Replace] Replaced match', currentSearchIndex + 1);
-  };
-
+  // Replace every match in the searched chapters. Each chapter is its own undo step.
   const replaceAll = () => {
-    if (searchResults.length === 0) return;
+    const term = lastSearchRef.current || searchTerm;
+    if (!term) return;
 
-    let content = activeChapter.content;
-    let offset = 0;
+    const options = searchOptions();
+    const chapters = (searchInAllChapters ? project.structure : [activeChapter]).filter(Boolean);
+    const changes = [];
+    let total = 0;
 
-    // Replace all occurrences from end to start (to maintain positions)
-    const sortedResults = [...searchResults].sort((a, b) => b.start - a.start);
-
-    sortedResults.forEach(result => {
-      content = content.substring(0, result.start) + replaceTerm + content.substring(result.end);
+    chapters.forEach(chapter => {
+      const content = chapterText(chapter);
+      const replaced = replaceAllMatches(content, term, replaceTerm, options);
+      if (replaced.count > 0) {
+        changes.push({ chapter, content, text: replaced.text });
+        total += replaced.count;
+      }
     });
 
-    updateChapterContent(content);
+    if (total === 0) return;
 
-    const count = searchResults.length;
+    if (changes.length > 1 &&
+        !confirm(`Korvataanko ${total} osumaa ${changes.length} luvussa?`)) {
+      return;
+    }
+
+    changes.forEach(change => setChapterText(change.chapter.id, change.content, change.text));
+
     setSearchResults([]);
     setCurrentSearchIndex(-1);
-
-    console.log('[Replace All] Replaced', count, 'matches');
+    console.log('[Replace All] Replaced', total, 'matches in', changes.length, 'chapters');
   };
 
   const closeFindDialog = () => {
@@ -1754,39 +1555,115 @@ function FAUSTApp() {
     });
   };
 
-  const saveProject = async () => {
+  // ---------------------------------------------------------------------
+  // Project files
+  // ---------------------------------------------------------------------
+
+  // Make sure a loaded file has everything the UI expects.
+  // Returns null if the data is not a FAUST project.
+  const normalizeProject = (data) => {
+    if (!data || !Array.isArray(data.structure)) return null;
+
+    const defaults = createDefaultProject();
+    return {
+      ...defaults,
+      ...data,
+      targets: { ...defaults.targets, ...(data.targets || {}) },
+      ai: {
+        ...defaults.ai,
+        ...(data.ai || {}),
+        modes: { ...defaults.ai.modes, ...((data.ai && data.ai.modes) || {}) }
+      },
+      structure: data.structure.length > 0 ? data.structure : defaults.structure
+    };
+  };
+
+  // Replace the open project (New, Open, Recent, recovery)
+  const openProject = (data, filePath) => {
+    setProject(data);
+    setCurrentFilePath(filePath || null);
+    setActiveChapterId(data.structure[0]?.id || 'chapter-1');
+    setUnsavedChanges(false);
+    setSearchResults([]);
+    setCurrentSearchIndex(-1);
+    // The undo history belongs to the project that was open
+    if (commandManagerRef.current) commandManagerRef.current.clear();
+  };
+
+  // Save. Writes to the project's file; asks for a name only when there is
+  // none yet or for Save As. Returns true once the project is on disk.
+  const saveProject = async ({ saveAs = false } = {}) => {
     if (!window.electronAPI) {
       console.error('[Save] Electron API not available');
-      return;
+      return false;
     }
+
+    const saving = project;
 
     try {
       setSavingState('saving');
-      const result = await window.electronAPI.saveProject(project);
+      const result = await window.electronAPI.saveProject(saving, { filePath: currentFilePath, saveAs });
+
       if (result.success) {
         setCurrentFilePath(result.path);
-        setUnsavedChanges(false);
+        // Typing during the save keeps the project marked as changed
+        if (projectRef.current === saving) {
+          setUnsavedChanges(false);
+          window.electronAPI.clearBackup();
+        }
         setSavingState('saved');
-        addToRecentFiles(result.path, project.title);
+        addToRecentFiles(result.path, saving.title);
         console.log('[Save] Project saved:', result.path);
-
-        // Clear 'saved' state after 2 seconds
-        setTimeout(() => {
-          setSavingState('idle');
-        }, 2000);
-      } else {
-        setSavingState('error');
-        setTimeout(() => {
-          setSavingState('idle');
-        }, 3000);
+        setTimeout(() => setSavingState('idle'), 2000);
+        return true;
       }
+
+      if (result.canceled) {
+        setSavingState('idle');
+        return false;
+      }
+
+      throw new Error(result.error || 'Tuntematon virhe');
     } catch (error) {
       console.error('[Save] Error:', error);
       setSavingState('error');
-      setTimeout(() => {
-        setSavingState('idle');
-      }, 3000);
+      alert('Tallennus epäonnistui: ' + error.message);
+      setTimeout(() => setSavingState('idle'), 3000);
+      return false;
     }
+  };
+
+  // Something is about to replace the open project: offer to save first.
+  // Returns true if it is fine to go on.
+  const confirmLeavingProject = async () => {
+    if (!unsavedChanges) return true;
+
+    const choice = await window.electronAPI.confirmUnsavedChanges();
+    if (choice === 'save') return saveProject();
+    if (choice === 'discard') {
+      window.electronAPI.clearBackup();
+      return true;
+    }
+    return false;
+  };
+
+  // The window is closing and the user chose Save
+  const saveAndClose = async () => {
+    const saved = await saveProject();
+    if (saved) window.electronAPI.confirmClose();
+    else window.electronAPI.cancelClose();
+  };
+
+  const showLoadedProject = (rawData, filePath) => {
+    const data = normalizeProject(rawData);
+    if (!data) {
+      alert('Tiedosto ei ole FAUST-projekti.');
+      return false;
+    }
+    openProject(data, filePath);
+    addToRecentFiles(filePath, data.title);
+    console.log('[Load] Project loaded:', filePath);
+    return true;
   };
 
   // Load project
@@ -1795,396 +1672,74 @@ function FAUSTApp() {
       console.error('[Load] Electron API not available');
       return;
     }
+    if (!(await confirmLeavingProject())) return;
 
-    try {
-      const result = await window.electronAPI.loadProject();
-      if (result.success) {
-        setProject(result.data);
-        setCurrentFilePath(result.filePath);
-        setActiveChapterId(result.data.structure[0]?.id || 'chapter-1');
-        setUnsavedChanges(false);
-        addToRecentFiles(result.filePath, result.data.title);
-        console.log('[Load] Project loaded:', result.filePath);
-      }
-    } catch (error) {
-      console.error('[Load] Error:', error);
+    const result = await window.electronAPI.loadProject();
+    if (result.success) {
+      showLoadedProject(result.data, result.filePath);
+    } else if (result.error) {
+      alert('Avaaminen epäonnistui: ' + result.error);
     }
   };
 
   // Load recent file
   const loadRecentFile = async (filePath) => {
     if (!window.electronAPI) return;
+    if (!(await confirmLeavingProject())) return;
 
-    try {
-      const result = await window.electronAPI.loadProjectFromPath(filePath);
-      if (result.success) {
-        setProject(result.data);
-        setCurrentFilePath(filePath);
-        setActiveChapterId(result.data.structure[0]?.id || 'chapter-1');
-        setUnsavedChanges(false);
-        addToRecentFiles(filePath, result.data.title);
-        console.log('[Load] Recent file loaded:', filePath);
-      }
-    } catch (error) {
-      console.error('[Load Recent] Error:', error);
-      // Remove from recent files if it failed to load
-      setRecentFiles(prev => {
-        const updated = prev.filter(f => f.path !== filePath);
-        localStorage.setItem('faust-recent-files', JSON.stringify(updated));
-        return updated;
-      });
-    }
+    const result = await window.electronAPI.loadProjectFromPath(filePath);
+    if (result.success && showLoadedProject(result.data, filePath)) return;
+
+    // The file is gone or unreadable: say so and drop it from the list
+    if (!result.success) alert('Tiedostoa ei voitu avata:\n' + filePath);
+    setRecentFiles(prev => {
+      const updated = prev.filter(f => f.path !== filePath);
+      localStorage.setItem('faust-recent-files', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   // New project
-  const newProject = () => {
-    if (unsavedChanges) {
-      const confirmed = confirm('Tallentamattomat muutokset katoavat. Jatketaanko?');
-      if (!confirmed) return;
-    }
-
-    setProject(createDefaultProject());
-    setCurrentFilePath(null);
-    setActiveChapterId('chapter-1');
-    setUnsavedChanges(false);
+  const newProject = async () => {
+    if (!(await confirmLeavingProject())) return;
+    openProject(createDefaultProject(), null);
     console.log('[New] New project created');
   };
 
-  // Export document (current chapter)
-  const exportDocument = async (format) => {
-    if (!window.electronAPI) {
-      console.error('[Export] Electron API not available');
+  // Import a .txt, .md or .docx file as chapters
+  const importDocument = async () => {
+    if (!window.electronAPI) return;
+
+    const result = await window.electronAPI.importDocument();
+    if (!result.success) {
+      if (result.error) alert('Tuonti epäonnistui: ' + result.error);
       return;
     }
 
-    if (!activeChapter) {
-      alert('Ei aktiivista lukua vietäväksi.');
-      return;
-    }
+    const imported = result.chapters.map(chapter => {
+      const doc = createDocument('chapter', chapter.title);
+      return { ...doc, content: chapter.content, wordCount: countWords(chapter.content) };
+    });
+    if (imported.length === 0) return;
 
-    try {
-      const result = await window.electronAPI.exportDocument({
-        content: activeChapter.content,
-        title: activeChapter.title,
-        format: format
-      });
+    // An untouched new project is replaced; otherwise the chapters are added to the end
+    const pristine = !currentFilePath && project.structure.length === 1 &&
+      !(project.structure[0].content || '').trim() && project.title === 'Nimetön projekti';
 
-      if (result.success) {
-        console.log('[Export] Document exported:', result.path);
-      } else {
-        alert('Vienti epäonnistui: ' + (result.error || 'Tuntematon virhe'));
-      }
-    } catch (error) {
-      console.error('[Export] Error:', error);
-      alert('Vienti epäonnistui: ' + error.message);
-    }
+    setProject(prev => pristine
+      ? { ...prev, title: result.title || prev.title, structure: imported }
+      : { ...prev, structure: [...prev.structure, ...imported] });
+    setActiveChapterId(imported[0].id);
+    setUnsavedChanges(true);
+    console.log('[Import]', imported.length, 'chapters from', result.filePath);
   };
 
-  // Export full project (all chapters)
-  const exportFullProject = async (format) => {
-    if (!window.electronAPI) {
-      console.error('[Export] Electron API not available');
-      return;
-    }
-
-    try {
-      const result = await window.electronAPI.exportFullProject({
-        project: project,
-        format: format
-      });
-
-      if (result.success) {
-        console.log('[Export] Full project exported:', result.path);
-      } else {
-        alert('Vienti epäonnistui: ' + (result.error || 'Tuntematon virhe'));
-      }
-    } catch (error) {
-      console.error('[Export] Error:', error);
-      alert('Vienti epäonnistui: ' + error.message);
-    }
-  };
-
-  // Export EPUB
-  const exportEPUB = async () => {
-    if (!window.electronAPI) {
-      console.error('[Export EPUB] Electron API not available');
-      return;
-    }
-
-    try {
-      const today = new Date().toLocaleDateString('fi-FI', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-
-      // Prepare EPUB metadata
-      const metadata = {
-        title: project.title,
-        author: project.author || 'Unknown Author',
-        language: project.language || 'fi',
-        date: today,
-        description: project.synopsis || '',
-        publisher: project.author || 'Self-published'
-      };
-
-      // Prepare chapters
-      const chapters = project.structure
-        .filter(ch => ch.content && ch.content.trim())
-        .map((ch, idx) => ({
-          id: `chapter-${idx + 1}`,
-          title: ch.title,
-          content: ch.content
-        }));
-
-      if (chapters.length === 0) {
-        alert('Ei vietäviä lukuja. Lisää sisältöä ensin.');
-        return;
-      }
-
-      console.log(`[Export EPUB] Exporting ${chapters.length} chapters...`);
-
-      const result = await window.electronAPI.exportEPUB({
-        metadata,
-        chapters
-      });
-
-      if (result.success) {
-        console.log('[Export EPUB] Success:', result.path);
-      } else {
-        alert('EPUB-vienti epäonnistui: ' + (result.error || 'Tuntematon virhe'));
-      }
-    } catch (error) {
-      console.error('[Export EPUB] Error:', error);
-      alert('EPUB-vienti epäonnistui: ' + error.message);
-    }
-  };
-
-  // Export MOBI (Kindle format)
-  const exportMOBI = async () => {
-    if (!window.electronAPI) {
-      console.error('[Export MOBI] Electron API not available');
-      return;
-    }
-
-    try {
-      const today = new Date().toLocaleDateString('fi-FI', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-
-      // Prepare MOBI metadata
-      const metadata = {
-        title: project.title,
-        author: project.author || 'Unknown Author',
-        language: project.language || 'fi',
-        date: today,
-        description: project.synopsis || '',
-        publisher: project.author || 'Self-published'
-      };
-
-      // Prepare chapters
-      const chapters = project.structure
-        .filter(ch => ch.content && ch.content.trim())
-        .map((ch, idx) => ({
-          id: `chapter-${idx + 1}`,
-          title: ch.title,
-          content: ch.content
-        }));
-
-      if (chapters.length === 0) {
-        alert('Ei vietäviä lukuja. Lisää sisältöä ensin.');
-        return;
-      }
-
-      console.log(`[Export MOBI] Exporting ${chapters.length} chapters...`);
-
-      const result = await window.electronAPI.exportMOBI({
-        metadata,
-        chapters
-      });
-
-      if (result.success) {
-        console.log('[Export MOBI] Success:', result.path);
-      } else {
-        alert('MOBI-vienti epäonnistui: ' + (result.error || 'Tuntematon virhe'));
-      }
-    } catch (error) {
-      console.error('[Export MOBI] Error:', error);
-      alert('MOBI-vienti epäonnistui: ' + error.message);
-    }
-  };
-
-  // Export PDF
-  const exportPDF = async () => {
-    if (!window.electronAPI) {
-      console.error('[Export PDF] Electron API not available');
-      return;
-    }
-
-    try {
-      const today = new Date().toLocaleDateString('fi-FI', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-
-      // Generate HTML from all chapters with enhanced formatting
-      let html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="author" content="${project.author || 'Unknown'}">
-  <meta name="description" content="${project.title}">
-  <title>${project.title}</title>
-  <style>
-    @page {
-      size: A4;
-      margin: 2.5cm 2cm;
-      @bottom-center {
-        content: counter(page);
-        font-family: 'EB Garamond', Georgia, serif;
-        font-size: 10pt;
-        color: #666;
-      }
-    }
-
-    body {
-      font-family: 'EB Garamond', Georgia, serif;
-      font-size: 12pt;
-      line-height: 1.8;
-      color: #1a1a1a;
-      text-align: justify;
-      hyphens: auto;
-    }
-
-    /* Title page */
-    .title-page {
-      height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      text-align: center;
-      page-break-after: always;
-    }
-
-    .title-page h1 {
-      font-size: 36pt;
-      margin-bottom: 40px;
-      font-weight: normal;
-      letter-spacing: 2px;
-    }
-
-    .title-page .author {
-      font-size: 18pt;
-      margin-top: 60px;
-      font-style: italic;
-    }
-
-    .title-page .date {
-      font-size: 11pt;
-      margin-top: 20px;
-      color: #666;
-    }
-
-    /* Chapter styling */
-    .chapter {
-      page-break-before: always;
-    }
-
-    .chapter:first-of-type {
-      page-break-before: avoid;
-    }
-
-    h1.chapter-title {
-      font-size: 24pt;
-      margin-top: 80px;
-      margin-bottom: 40px;
-      text-align: center;
-      font-weight: normal;
-      letter-spacing: 1px;
-    }
-
-    p {
-      margin: 0 0 12px 0;
-      text-indent: 24px;
-    }
-
-    p:first-of-type {
-      text-indent: 0;
-    }
-
-    /* Improve typography */
-    p {
-      text-rendering: optimizeLegibility;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    /* Better quote marks */
-    q {
-      quotes: "'" "'" """ """;
-    }
-
-    /* Widow/orphan control */
-    p {
-      orphans: 3;
-      widows: 3;
-    }
-  </style>
-</head>
-<body>
-  <!-- Title Page -->
-  <div class="title-page">
-    <h1>${project.title}</h1>
-    ${project.author ? `<div class="author">${project.author}</div>` : ''}
-    <div class="date">${today}</div>
-  </div>
-
-  <!-- Chapters -->
-`;
-
-      // Add chapters with enhanced formatting
-      project.structure.forEach((chapter, index) => {
-        if (chapter.content) {
-          html += `  <div class="chapter">\n`;
-          html += `    <h1 class="chapter-title">${chapter.title}</h1>\n`;
-
-          // Split content into paragraphs and improve typography
-          const paragraphs = chapter.content.split('\n\n').filter(p => p.trim());
-          paragraphs.forEach(p => {
-            // Improve typography: replace straight quotes, em dashes, ellipses
-            let formatted = p
-              .replace(/\n/g, ' ')
-              .replace(/"/g, '\u201C')  // Left double quote
-              .replace(/'/g, '\u2019')   // Right single quote (apostrophe)
-              .replace(/--/g, '\u2014')  // Em dash
-              .replace(/\.\.\./g, '\u2026')  // Ellipsis
-              .trim();
-
-            html += `    <p>${formatted}</p>\n`;
-          });
-
-          html += `  </div>\n`;
-        }
-      });
-
-      html += `</body>\n</html>`;
-
-      const result = await window.electronAPI.exportPDF({
-        html: html,
-        title: project.title
-      });
-
-      if (result.success) {
-        console.log('[Export PDF] Success:', result.path);
-      } else {
-        alert('PDF-vienti epäonnistui: ' + (result.error || 'Tuntematon virhe'));
-      }
-    } catch (error) {
-      console.error('[Export PDF] Error:', error);
-      alert('PDF-vienti epäonnistui: ' + error.message);
+  // Print the whole manuscript through the system print dialog
+  const printManuscript = async () => {
+    if (!window.electronAPI) return;
+    const result = await window.electronAPI.printManuscript({ project });
+    if (!result.success && result.error) {
+      alert('Tulostus epäonnistui: ' + result.error);
     }
   };
 
@@ -2192,7 +1747,7 @@ function FAUSTApp() {
   const createDocument = (type, title, parentId = null) => {
     const timestamp = new Date().toISOString();
     return {
-      id: `${type}-${Date.now()}`,
+      id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       type,
       title,
       order: 0,
@@ -4503,195 +4058,161 @@ ${contextPrompt}`;
     }
   }, [project]);
 
-  // Online/Offline detection
+  // Autosave: a project that has a file is written every 30 seconds while it
+  // has unsaved changes. (A timer restarted by every keystroke would never
+  // fire for someone who keeps writing.)
   useEffect(() => {
-    const handleOnline = () => {
-      setIsOffline(false);
-      console.log('[Network] Back online');
-      // If there were unsaved changes while offline, try to save now
-      if (unsavedChanges && autosaveRetryCount > 0) {
-        setAutosaveRetryCount(0);
-        console.log('[Autosave] Retrying save after coming back online');
+    if (!unsavedChanges || !currentFilePath || !window.electronAPI) return;
+
+    const autosave = async () => {
+      const saving = projectRef.current;
+      try {
+        setSavingState('saving');
+        const result = await window.electronAPI.autosaveProject({
+          projectData: saving,
+          filePath: currentFilePath
+        });
+        if (!result.success) throw new Error(result.error || 'Autosave failed');
+
+        // Typing during the save keeps the project marked as changed
+        if (projectRef.current === saving) {
+          setUnsavedChanges(false);
+          window.electronAPI.clearBackup();
+        }
+        setAutosaveError(null);
+        setSavingState('saved');
+        setTimeout(() => setSavingState('idle'), 2000);
+      } catch (error) {
+        // The interval tries again in 30 seconds; the recovery copy covers the gap
+        console.error('[Autosave] Error:', error);
+        setAutosaveError('Automaattitallennus epäonnistui - tallenna itse (⌘S)');
+        setSavingState('error');
       }
     };
 
-    const handleOffline = () => {
-      setIsOffline(true);
-      console.log('[Network] Offline detected');
-      setAutosaveError('Offline - tallennus odotetaan yhteyttä');
-    };
+    const timer = setInterval(autosave, 30000);
+    return () => clearInterval(timer);
+  }, [unsavedChanges, currentFilePath]);
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    // Initial check
-    setIsOffline(!navigator.onLine);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [unsavedChanges, autosaveRetryCount]);
-
-  // Enhanced autosave with retry logic and offline detection
+  // Recovery copy: while there are unsaved changes, a copy is kept outside
+  // the project file. Saving removes it; after a crash it is offered at start.
   useEffect(() => {
-    if (!unsavedChanges || !currentFilePath || !window.electronAPI) {
-      return;
-    }
+    if (!unsavedChanges || !window.electronAPI || !window.electronAPI.saveBackup) return;
 
-    // Clear existing timer
-    if (autosaveTimerRef.current) {
-      clearTimeout(autosaveTimerRef.current);
-    }
+    const write = () => {
+      window.electronAPI.saveBackup({ project: projectRef.current, filePath: currentFilePath });
+    };
 
-    // Function to attempt save with retry
-    const attemptSave = async (retryCount = 0) => {
-      // Check if offline
-      if (!navigator.onLine || isOffline) {
-        console.log('[Autosave] Skipping - offline');
-        setAutosaveError('Offline - tallennus odotetaan yhteyttä');
-        setSavingState('error');
+    const first = setTimeout(write, 3000);
+    const timer = setInterval(write, 20000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [unsavedChanges, currentFilePath]);
+
+  // Offer the recovery copy of an interrupted session
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      if (!window.electronAPI || !window.electronAPI.loadBackup) return;
+
+      const recovery = await window.electronAPI.loadBackup();
+      if (cancelled || !recovery.success) return;
+
+      const data = normalizeProject(recovery.project);
+      if (!data) {
+        window.electronAPI.clearBackup();
         return;
       }
 
-      try {
-        setSavingState('saving');
-        setAutosaveError(null);
+      const when = new Date(recovery.savedAt).toLocaleString('fi-FI');
+      const restore = confirm(
+        `Edellinen istunto päättyi kesken. Projektista "${data.title}" on tallentamaton versio (${when}).\n\nPalautetaanko se?`
+      );
 
-        const result = await window.electronAPI.autosaveProject({
-          projectData: project,
-          filePath: currentFilePath
-        });
-
-        if (result.success) {
-          setUnsavedChanges(false);
-          setSavingState('saved');
-          setAutosaveRetryCount(0);
-          setAutosaveError(null);
-          console.log('[Autosave] Project autosaved');
-
-          // Clear 'saved' state after 2 seconds
-          setTimeout(() => {
-            setSavingState('idle');
-          }, 2000);
-        } else {
-          throw new Error(result.error || 'Autosave failed');
-        }
-      } catch (error) {
-        console.error('[Autosave] Error (attempt ' + (retryCount + 1) + '):', error);
-
-        // Retry logic with exponential backoff
-        const maxRetries = 3;
-        if (retryCount < maxRetries) {
-          const backoffDelay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
-          console.log(`[Autosave] Retrying in ${backoffDelay}ms...`);
-
-          setAutosaveRetryCount(retryCount + 1);
-          setAutosaveError(`Tallennus epäonnistui - yritetään uudelleen (${retryCount + 1}/${maxRetries})`);
-
-          setTimeout(() => {
-            attemptSave(retryCount + 1);
-          }, backoffDelay);
-        } else {
-          // Max retries reached
-          console.error('[Autosave] Max retries reached');
-          setAutosaveError('Automaattitallennus epäonnistui - tallenna manuaalisesti');
-          setSavingState('error');
-          setAutosaveRetryCount(0);
-
-          // Keep error visible longer
-          setTimeout(() => {
-            setSavingState('idle');
-          }, 5000);
-        }
+      if (restore) {
+        openProject(data, recovery.filePath || null);
+        setUnsavedChanges(true);
+      } else {
+        window.electronAPI.clearBackup();
       }
-    };
+    })();
 
-    // Set autosave timer (30 seconds)
-    autosaveTimerRef.current = setTimeout(() => {
-      attemptSave(0);
-    }, 30000);
+    return () => { cancelled = true; };
+  }, []);
 
-    return () => {
-      if (autosaveTimerRef.current) {
-        clearTimeout(autosaveTimerRef.current);
-      }
-    };
-  }, [unsavedChanges, currentFilePath, project, isOffline]);
-
-  // Auto-backup (every 5 minutes)
+  // Tell the main process about unsaved changes: it asks before the window closes
   useEffect(() => {
-    if (!currentFilePath || !window.electronAPI) {
+    if (window.electronAPI && window.electronAPI.setDirty) {
+      window.electronAPI.setDirty(unsavedChanges);
+    }
+  }, [unsavedChanges]);
+
+  // Mark the search matches in the editor and keep the current one in view.
+  // Focus stays in the search field, so Enter keeps stepping through matches.
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || !editor.setHighlights) return;
+
+    if (!showFindDialog || searchResults.length === 0 || !activeChapter) {
+      editor.clearHighlights();
       return;
     }
 
-    // Clear existing timer
-    if (backupTimerRef.current) {
-      clearInterval(backupTimerRef.current);
+    const inChapter = searchResults.filter(result => result.chapterId === activeChapter.id);
+    const current = searchResults[currentSearchIndex];
+    editor.setHighlights(inChapter, inChapter.indexOf(current));
+
+    if (current && current.chapterId === activeChapter.id) {
+      editor.scrollToPos(current.start);
     }
+  }, [searchResults, currentSearchIndex, activeChapterId, showFindDialog]);
 
-    // Set new timer (5 minutes = 300000ms)
-    backupTimerRef.current = setInterval(async () => {
-      try {
-        const result = await window.electronAPI.saveBackup({
-          projectData: project,
-          filePath: currentFilePath
-        });
-
-        if (result.success) {
-          console.log('[Auto-backup] Backup created:', result.backupPath);
-        }
-      } catch (error) {
-        console.error('[Auto-backup] Error:', error);
-      }
-    }, 300000);
-
-    return () => {
-      if (backupTimerRef.current) {
-        clearInterval(backupTimerRef.current);
-      }
-    };
-  }, [currentFilePath, project]);
-
-  // Keyboard shortcuts
+  // Editing while results are shown moves the text under them: search again
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Cmd+S = Save
-      if (e.metaKey && e.key === 's') {
-        e.preventDefault();
-        saveProject();
-      }
-      // Cmd+O = Open
-      if (e.metaKey && e.key === 'o') {
-        e.preventDefault();
-        loadProject();
-      }
-      // Cmd+N = New Project
-      if (e.metaKey && e.key === 'n') {
-        e.preventDefault();
-        newProject();
-      }
-      // Cmd+I = Toggle Inspector
-      if (e.metaKey && e.key === 'i') {
-        e.preventDefault();
-        setShowInspector(prev => !prev);
-      }
-      // Cmd+Shift+D = Toggle Theme
-      if (e.metaKey && e.shiftKey && e.key === 'd') {
-        e.preventDefault();
-        setIsDarkMode(prev => !prev);
-      }
-      // Cmd+K = Toggle AI Assistant
-      if (e.metaKey && e.key === 'k') {
-        e.preventDefault();
-        setAiAssistantOpen(prev => !prev);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [project, unsavedChanges, currentFilePath, aiAssistantOpen]);
+    if (!showFindDialog || !lastSearchRef.current || searchResults.length === 0) return;
 
-  return e('div', { className: 'faust-app' },
+    const timer = setTimeout(() => {
+      const results = collectSearchResults(lastSearchRef.current);
+      setSearchResults(results);
+      setCurrentSearchIndex(index => (
+        results.length === 0 ? -1 : Math.min(Math.max(index, 0), results.length - 1)
+      ));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [activeChapter?.content]);
+
+  // Chapters as the export dialog lists them
+  const exportableChapters = project.structure
+    .filter(chapter => (chapter.content || '').trim())
+    .map(chapter => ({ id: chapter.id, title: chapter.title || 'Nimetön luku', words: countWords(chapter.content) }));
+
+  return e('div', { className: focusMode ? 'faust-app faust-focus-mode' : 'faust-app' },
+    // Dialogs that can appear over anything else
+    e(TextPromptDialog, {
+      request: textPrompt,
+      onDone: (value) => {
+        const request = textPrompt;
+        setTextPrompt(null);
+        if (request) request.resolve(value);
+      }
+    }),
+    e(ShortcutsDialog, { open: showShortcuts, onClose: () => setShowShortcuts(false) }),
+    e(ExportDialog, {
+      open: showExportModal,
+      onClose: () => setShowExportModal(false),
+      chapters: exportableChapters,
+      activeChapterId: activeChapter ? activeChapter.id : null,
+      onExport: ({ format, chapterIds }) => window.electronAPI.exportManuscript({ project, format, chapterIds })
+    }),
+    focusMode && e('button', {
+      className: 'faust-focus-exit',
+      onClick: toggleFocusMode,
+      title: 'Poistu keskittymistilasta (⇧⌘F)'
+    }, 'Poistu keskittymistilasta'),
+
     // Header
     e('div', { className: 'faust-header' },
       e('div', { style: { padding: '16px', paddingLeft: '80px', color: 'var(--text)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
@@ -4718,32 +4239,28 @@ ${contextPrompt}`;
               project.title + (unsavedChanges ? ' •' : '')),
 
             // Autosave indicator with error details
-            (savingState !== 'idle' || isOffline) && e('span', {
+            savingState !== 'idle' && e('span', {
+              title: autosaveError || '',
               style: {
                 fontFamily: 'IBM Plex Mono',
                 fontSize: '10px',
                 padding: '2px 8px',
                 borderRadius: '3px',
-                background: isOffline ? 'rgba(158, 158, 158, 0.2)' :
-                           savingState === 'saving' ? 'rgba(255, 193, 7, 0.2)' :
+                background: savingState === 'saving' ? 'rgba(255, 193, 7, 0.2)' :
                            savingState === 'saved' ? 'rgba(76, 175, 80, 0.2)' :
                            'rgba(244, 67, 54, 0.2)',
-                color: isOffline ? '#999' :
-                       savingState === 'saving' ? '#FFA726' :
+                color: savingState === 'saving' ? '#FFA726' :
                        savingState === 'saved' ? '#66BB6A' :
                        '#EF5350',
-                border: `1px solid ${isOffline ? '#999' :
-                                      savingState === 'saving' ? '#FFA726' :
+                border: `1px solid ${savingState === 'saving' ? '#FFA726' :
                                       savingState === 'saved' ? '#66BB6A' :
                                       '#EF5350'}`,
                 display: 'flex',
                 alignItems: 'center',
                 gap: '4px',
-                cursor: autosaveError ? 'help' : 'default',
-                title: autosaveError || ''
+                cursor: autosaveError ? 'help' : 'default'
               }
             },
-              isOffline ? '📡 Offline' :
               savingState === 'saving' ? '💾 Tallennetaan...' :
               savingState === 'saved' ? '✓ Tallennettu' :
               autosaveError ? `✗ ${autosaveError}` : '✗ Virhe'
@@ -4968,10 +4485,10 @@ ${contextPrompt}`;
 
               // Create new snapshot button
               e('button', {
-                onClick: () => {
-                  const name = prompt('Snapshotin nimi:', `Ennen muokkausta ${new Date().toLocaleDateString('fi-FI')}`);
+                onClick: async () => {
+                  const name = await askText('Snapshotin nimi:', `Ennen muokkausta ${new Date().toLocaleDateString('fi-FI')}`);
                   if (name !== null) {
-                    const desc = prompt('Kuvaus (valinnainen):', '');
+                    const desc = await askText('Kuvaus (valinnainen):', '');
                     createSnapshot(name, desc || '');
                   }
                 },
@@ -5389,22 +4906,22 @@ ${contextPrompt}`;
                 }
               }, 'Kokoelmat'),
               e('button', {
-                onClick: () => {
-                  const name = prompt('Kokoelman nimi:');
+                onClick: async () => {
+                  const name = await askText('Kokoelman nimi:');
                   if (name) {
-                    const typeChoice = prompt('Tyyppi:\n1 = Manuaalinen\n2 = Status (draft/revised/final)\n3 = Hahmo (nimen mukaan)\n4 = Haku (tekstin mukaan)', '1');
+                    const typeChoice = await askText('Tyyppi:\n1 = Manuaalinen\n2 = Status (draft/revised/final)\n3 = Hahmo (nimen mukaan)\n4 = Haku (tekstin mukaan)', '1');
                     let type = 'manual';
                     let filter = null;
 
                     if (typeChoice === '2') {
                       type = 'status';
-                      filter = prompt('Status (draft, revised, final):', 'draft');
+                      filter = await askText('Status (draft, revised, final):', 'draft');
                     } else if (typeChoice === '3') {
                       type = 'character';
-                      filter = prompt('Hahmon nimi:');
+                      filter = await askText('Hahmon nimi:');
                     } else if (typeChoice === '4') {
                       type = 'search';
-                      filter = prompt('Hakusana:');
+                      filter = await askText('Hakusana:');
                     }
 
                     createCollection(name, type, filter);
@@ -6361,11 +5878,12 @@ ${contextPrompt}`;
                 height: '100%'
               }
             },
-              // Formatting toolbar
+              // Formatting toolbar. The buttons call the same functions as the Muotoile menu.
               e('div', {
                 className: 'formatting-toolbar',
                 style: {
                   display: 'flex',
+                  flexWrap: 'wrap',
                   gap: '4px',
                   padding: '8px 12px',
                   background: 'var(--bg-2)',
@@ -6374,298 +5892,61 @@ ${contextPrompt}`;
                   marginBottom: '8px'
                 }
               },
-                // Bold button
-                e('button', {
-                  onClick: () => {
-                    if (!editorRef.current) return;
-                    const textarea = editorRef.current;
-                    const start = textarea.selectionStart;
-                    const end = textarea.selectionEnd;
-                    const text = textarea.value;
-                    const selectedText = text.substring(start, end);
-                    if (selectedText) {
-                      const newText = text.substring(0, start) + '**' + selectedText + '**' + text.substring(end);
-                      updateChapterContent(newText);
-                      setTimeout(() => {
-                        textarea.focus();
-                        textarea.setSelectionRange(start + 2, end + 2);
-                      }, 0);
-                    }
+                ...[
+                  { label: 'B', title: 'Lihavointi (⌘B)', onClick: formatBold, style: { fontFamily: 'EB Garamond', fontSize: '14px', fontWeight: 'bold' } },
+                  { label: 'I', title: 'Kursivointi (⌘I)', onClick: formatItalic, style: { fontFamily: 'EB Garamond', fontSize: '14px', fontStyle: 'italic' } },
+                  { label: 'U', title: 'Alleviivaus (⌘U)', onClick: formatUnderline, style: { fontFamily: 'EB Garamond', fontSize: '14px', textDecoration: 'underline' } },
+                  { label: 'S', title: 'Yliviivaus (⇧⌘X)', onClick: formatStrikethrough, style: { fontFamily: 'EB Garamond', fontSize: '14px', textDecoration: 'line-through' } },
+                  null,
+                  { label: 'H1', title: 'Otsikko 1 (⌥⌘1)', onClick: () => formatHeading(1) },
+                  { label: 'H2', title: 'Otsikko 2 (⌥⌘2)', onClick: () => formatHeading(2) },
+                  { label: 'H3', title: 'Otsikko 3 (⌥⌘3)', onClick: () => formatHeading(3) },
+                  null,
+                  { label: '❝', title: 'Lainaus', onClick: formatQuote, style: { fontSize: '14px' } },
+                  { label: '•', title: 'Luettelo (⇧⌘8)', onClick: formatList, style: { fontSize: '14px' } },
+                  { label: '1.', title: 'Numeroitu luettelo (⇧⌘7)', onClick: formatNumberedList },
+                  { label: '***', title: 'Kohtauksen vaihto', onClick: () => insertAtCursor('\n\n* * *\n\n') },
+                  null,
+                  { label: 'TODO', title: 'Lisää TODO-merkintä', onClick: insertTodo, style: { color: 'var(--bronze)' } },
+                  null,
+                  {
+                    label: '🔖+',
+                    title: 'Lisää kirjanmerkki nykyiseen kohtaan',
+                    onClick: async () => {
+                      const name = await askText('Kirjanmerkin nimi:', `Kirjanmerkki ${(project.bookmarks || []).length + 1}`);
+                      if (name !== null) addBookmark(name);
+                    },
+                    style: { color: 'var(--gold)', fontSize: '12px' }
                   },
-                  title: 'Lihavointi (Cmd+B) - Lisää **teksti**',
-                  style: {
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                    fontFamily: 'EB Garamond',
-                    fontSize: '14px',
-                    fontWeight: 'bold'
+                  {
+                    label: `🔖 ${(project.bookmarks || []).length}`,
+                    title: `Näytä kirjanmerkit (${(project.bookmarks || []).length})`,
+                    onClick: () => setShowBookmarksPanel(prev => !prev),
+                    active: showBookmarksPanel
                   }
-                }, 'B'),
-
-                // Italic button
-                e('button', {
-                  onClick: () => {
-                    if (!editorRef.current) return;
-                    const textarea = editorRef.current;
-                    const start = textarea.selectionStart;
-                    const end = textarea.selectionEnd;
-                    const text = textarea.value;
-                    const selectedText = text.substring(start, end);
-                    if (selectedText) {
-                      const newText = text.substring(0, start) + '_' + selectedText + '_' + text.substring(end);
-                      updateChapterContent(newText);
-                      setTimeout(() => {
-                        textarea.focus();
-                        textarea.setSelectionRange(start + 1, end + 1);
-                      }, 0);
-                    }
-                  },
-                  title: 'Kursiivi (Cmd+I) - Lisää _teksti_',
-                  style: {
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                    fontFamily: 'EB Garamond',
-                    fontSize: '14px',
-                    fontStyle: 'italic'
-                  }
-                }, 'I'),
-
-                // Strikethrough button
-                e('button', {
-                  onClick: () => {
-                    if (!editorRef.current) return;
-                    const textarea = editorRef.current;
-                    const start = textarea.selectionStart;
-                    const end = textarea.selectionEnd;
-                    const text = textarea.value;
-                    const selectedText = text.substring(start, end);
-                    if (selectedText) {
-                      const newText = text.substring(0, start) + '~~' + selectedText + '~~' + text.substring(end);
-                      updateChapterContent(newText);
-                      setTimeout(() => {
-                        textarea.focus();
-                        textarea.setSelectionRange(start + 2, end + 2);
-                      }, 0);
-                    }
-                  },
-                  title: 'Yliviivaus - Lisää ~~teksti~~',
-                  style: {
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                    fontFamily: 'EB Garamond',
-                    fontSize: '14px',
-                    textDecoration: 'line-through'
-                  }
-                }, 'S'),
-
-                // Separator
-                e('div', { style: { width: '1px', background: 'var(--border-color)', margin: '0 4px' } }),
-
-                // Heading 1
-                e('button', {
-                  onClick: () => {
-                    if (!editorRef.current) return;
-                    const textarea = editorRef.current;
-                    const start = textarea.selectionStart;
-                    const text = textarea.value;
-                    // Find start of line
-                    let lineStart = start;
-                    while (lineStart > 0 && text[lineStart - 1] !== '\n') lineStart--;
-                    const newText = text.substring(0, lineStart) + '# ' + text.substring(lineStart);
-                    updateChapterContent(newText);
-                    setTimeout(() => {
-                      textarea.focus();
-                      textarea.setSelectionRange(start + 2, start + 2);
-                    }, 0);
-                  },
-                  title: 'Otsikko 1 - Lisää # rivin alkuun',
-                  style: {
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    padding: '4px 8px',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px'
-                  }
-                }, 'H1'),
-
-                // Heading 2
-                e('button', {
-                  onClick: () => {
-                    if (!editorRef.current) return;
-                    const textarea = editorRef.current;
-                    const start = textarea.selectionStart;
-                    const text = textarea.value;
-                    let lineStart = start;
-                    while (lineStart > 0 && text[lineStart - 1] !== '\n') lineStart--;
-                    const newText = text.substring(0, lineStart) + '## ' + text.substring(lineStart);
-                    updateChapterContent(newText);
-                    setTimeout(() => {
-                      textarea.focus();
-                      textarea.setSelectionRange(start + 3, start + 3);
-                    }, 0);
-                  },
-                  title: 'Otsikko 2 - Lisää ## rivin alkuun',
-                  style: {
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    padding: '4px 8px',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px'
-                  }
-                }, 'H2'),
-
-                // Separator
-                e('div', { style: { width: '1px', background: 'var(--border-color)', margin: '0 4px' } }),
-
-                // Quote
-                e('button', {
-                  onClick: () => {
-                    if (!editorRef.current) return;
-                    const textarea = editorRef.current;
-                    const start = textarea.selectionStart;
-                    const text = textarea.value;
-                    let lineStart = start;
-                    while (lineStart > 0 && text[lineStart - 1] !== '\n') lineStart--;
-                    const newText = text.substring(0, lineStart) + '> ' + text.substring(lineStart);
-                    updateChapterContent(newText);
-                    setTimeout(() => {
-                      textarea.focus();
-                      textarea.setSelectionRange(start + 2, start + 2);
-                    }, 0);
-                  },
-                  title: 'Lainaus - Lisää > rivin alkuun',
-                  style: {
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                    fontFamily: 'EB Garamond',
-                    fontSize: '14px'
-                  }
-                }, '❝'),
-
-                // Scene break
-                e('button', {
-                  onClick: () => {
-                    if (!editorRef.current) return;
-                    const textarea = editorRef.current;
-                    const start = textarea.selectionStart;
-                    const text = textarea.value;
-                    const sceneBreak = '\n\n* * *\n\n';
-                    const newText = text.substring(0, start) + sceneBreak + text.substring(start);
-                    updateChapterContent(newText);
-                    setTimeout(() => {
-                      textarea.focus();
-                      textarea.setSelectionRange(start + sceneBreak.length, start + sceneBreak.length);
-                    }, 0);
-                  },
-                  title: 'Kohtauksen vaihto - Lisää * * *',
-                  style: {
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px'
-                  }
-                }, '***'),
-
-                // Separator
-                e('div', { style: { width: '1px', background: 'var(--border-color)', margin: '0 4px' } }),
-
-                // Comment/Note marker
-                e('button', {
-                  onClick: () => {
-                    if (!editorRef.current) return;
-                    const textarea = editorRef.current;
-                    const start = textarea.selectionStart;
-                    const end = textarea.selectionEnd;
-                    const text = textarea.value;
-                    const selectedText = text.substring(start, end);
-                    const comment = selectedText ? `[TODO: ${selectedText}]` : '[TODO: ]';
-                    const newText = text.substring(0, start) + comment + text.substring(end);
-                    updateChapterContent(newText);
-                    setTimeout(() => {
-                      textarea.focus();
-                      const cursorPos = selectedText ? start + comment.length : start + 7;
-                      textarea.setSelectionRange(cursorPos, cursorPos);
-                    }, 0);
-                  },
-                  title: 'Lisää TODO-merkintä',
-                  style: {
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--bronze)',
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px'
-                  }
-                }, 'TODO'),
-
-                // Separator
-                e('div', { style: { width: '1px', background: 'var(--border-color)', margin: '0 4px' } }),
-
-                // Add bookmark button
-                e('button', {
-                  onClick: () => {
-                    const name = prompt('Kirjanmerkin nimi:', `Kirjanmerkki ${(project.bookmarks || []).length + 1}`);
-                    if (name !== null) {
-                      addBookmark(name);
-                    }
-                  },
-                  title: 'Lisää kirjanmerkki nykyiseen kohtaan',
-                  style: {
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--gold)',
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px'
-                  }
-                }, '🔖+'),
-
-                // Show bookmarks panel button
-                e('button', {
-                  onClick: () => setShowBookmarksPanel(prev => !prev),
-                  title: `Näytä kirjanmerkit (${(project.bookmarks || []).length})`,
-                  style: {
-                    background: showBookmarksPanel ? 'var(--bronze)' : 'transparent',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: showBookmarksPanel ? '#000' : 'var(--text)',
-                    padding: '4px 10px',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    fontWeight: showBookmarksPanel ? 600 : 400
-                  }
-                }, `🔖 ${(project.bookmarks || []).length}`)
+                ].map((item, index) => item === null
+                  ? e('div', { key: `separator-${index}`, style: { width: '1px', background: 'var(--border-color)', margin: '0 4px' } })
+                  : e('button', {
+                      key: item.title,
+                      onClick: item.onClick,
+                      // Pressing a button must not take the selection out of the text
+                      onMouseDown: (ev) => ev.preventDefault(),
+                      title: item.title,
+                      'aria-label': item.title,
+                      style: {
+                        background: item.active ? 'var(--bronze)' : 'transparent',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        color: item.active ? '#000' : 'var(--text)',
+                        padding: '4px 10px',
+                        cursor: 'pointer',
+                        fontFamily: 'IBM Plex Mono',
+                        fontSize: '11px',
+                        fontWeight: item.active ? 600 : 400,
+                        ...item.style
+                      }
+                    }, item.label)
+                )
               ),
 
               // Bookmarks panel (floating)
@@ -6905,7 +6186,7 @@ ${contextPrompt}`;
               value: searchTerm,
               onChange: (ev) => setSearchTerm(ev.target.value),
               onKeyDown: (ev) => {
-                if (ev.key === 'Enter') performSearch();
+                if (ev.key === 'Enter') handleSearchEnter(ev.shiftKey);
                 if (ev.key === 'Escape') closeFindDialog();
               },
               placeholder: 'Hae...',
@@ -7083,7 +6364,7 @@ ${contextPrompt}`;
             ) : null,
             e('div', { style: { display: 'flex', gap: '4px', flexWrap: 'wrap' } },
               e('button', {
-                onClick: performSearch,
+                onClick: () => performSearch(),
                 style: {
                   padding: '6px 12px',
                   background: 'var(--bronze)',
@@ -7095,6 +6376,20 @@ ${contextPrompt}`;
                   fontSize: '11px'
                 }
               }, 'Etsi'),
+              e('button', {
+                onClick: findPrevious,
+                disabled: searchResults.length === 0,
+                style: {
+                  padding: '6px 12px',
+                  background: searchResults.length === 0 ? 'var(--bg-2)' : 'transparent',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text)',
+                  cursor: searchResults.length === 0 ? 'not-allowed' : 'pointer',
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '11px'
+                }
+              }, 'Edellinen'),
               e('button', {
                 onClick: findNext,
                 disabled: searchResults.length === 0,
@@ -8862,10 +8157,10 @@ ${contextPrompt}`;
 
                   // Rate button
                   e('button', {
-                    onClick: () => {
-                      const rating = parseInt(prompt('Arvostele versio (1-5 tähteä):'));
+                    onClick: async () => {
+                      const rating = parseInt(await askText('Arvostele versio (1-5 tähteä):'));
                       if (rating >= 1 && rating <= 5) {
-                        const feedback = prompt('Vapaaehtoinen palaute:');
+                        const feedback = await askText('Vapaaehtoinen palaute:');
                         rateVersion(version.id, rating, feedback);
                       }
                     },
@@ -13716,8 +13011,8 @@ ${contextPrompt}`;
           }
         },
           e('button', {
-            onClick: () => {
-              const title = prompt('Muistiinpanon otsikko:');
+            onClick: async () => {
+              const title = await askText('Muistiinpanon otsikko:');
               if (title) {
                 const newItem = {
                   id: `research-${Date.now()}`,
@@ -13746,10 +13041,10 @@ ${contextPrompt}`;
             }
           }, '+ Muistiinpano'),
           e('button', {
-            onClick: () => {
-              const url = prompt('URL-osoite:');
+            onClick: async () => {
+              const url = await askText('URL-osoite:');
               if (url) {
-                const title = prompt('Otsikko (valinnainen):') || url;
+                const title = await askText('Otsikko (valinnainen):') || url;
                 const newItem = {
                   id: `research-${Date.now()}`,
                   type: 'link',
@@ -13776,9 +13071,9 @@ ${contextPrompt}`;
             }
           }, '+ Linkki'),
           e('button', {
-            onClick: () => {
-              const title = prompt('Kuvan/tiedoston kuvaus:');
-              const path = prompt('Tiedostopolku tai URL:');
+            onClick: async () => {
+              const title = await askText('Kuvan/tiedoston kuvaus:');
+              const path = await askText('Tiedostopolku tai URL:');
               if (title && path) {
                 const newItem = {
                   id: `research-${Date.now()}`,
@@ -13971,30 +13266,6 @@ ${contextPrompt}`;
         )
       )
     ),
-
-    // Export Modal (Interactive Export Dialog)
-    showExportModal && window.ExportModal && e(window.ExportModal, {
-      isOpen: showExportModal,
-      onClose: () => setShowExportModal(false),
-      project: project,
-      activeChapter: activeChapter,
-      onExport: handleExportFromModal,
-      exportPresets: project.exportPresets || [],
-      onSavePreset: (preset) => {
-        setProject(prev => ({
-          ...prev,
-          exportPresets: [...(prev.exportPresets || []), { ...preset, id: `preset-${Date.now()}` }]
-        }));
-        setUnsavedChanges(true);
-      },
-      onDeletePreset: (presetId) => {
-        setProject(prev => ({
-          ...prev,
-          exportPresets: (prev.exportPresets || []).filter(p => p.id !== presetId)
-        }));
-        setUnsavedChanges(true);
-      }
-    }),
 
     // Hybrid Writing Flow Dialog (Continue/Expand/Rewrite/Scene)
     showContinueDialog && e('div', {

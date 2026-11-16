@@ -2,23 +2,35 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 // Turvallinen IPC-yhteys Reactille
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Project operations
-  saveProject: (data) => ipcRenderer.invoke('save-project', data),
+  // Project files
+  // saveProject(data, { filePath, saveAs }): writes to filePath without asking;
+  // shows the save dialog when there is no path or saveAs is true
+  saveProject: (data, options) => ipcRenderer.invoke('save-project', data, options),
   loadProject: () => ipcRenderer.invoke('load-project'),
   loadProjectFromPath: (filePath) => ipcRenderer.invoke('load-project-from-path', filePath),
   autosaveProject: (data) => ipcRenderer.invoke('autosave-project', data),
-  
-  // Export operations
-  exportDocument: (data) => ipcRenderer.invoke('export-document', data),
-  exportFullProject: (data) => ipcRenderer.invoke('export-full-project', data),
-  exportPDF: (data) => ipcRenderer.invoke('export-pdf', data),
-  exportEPUB: (data) => ipcRenderer.invoke('export-epub', data),
-  exportMOBI: (data) => ipcRenderer.invoke('export-mobi', data),
 
-  // Claude AI API (exclusive provider for FAUST)
+  // Unsaved changes: the main process asks before the window closes
+  setDirty: (dirty) => ipcRenderer.send('project:set-dirty', !!dirty),
+  confirmUnsavedChanges: () => ipcRenderer.invoke('dialog:unsaved-changes'), // 'save' | 'discard' | 'cancel'
+  confirmClose: () => ipcRenderer.send('project:close-confirmed'),
+  cancelClose: () => ipcRenderer.send('project:close-cancelled'),
+
+  // Recovery copy of unsaved work
+  saveBackup: (payload) => ipcRenderer.invoke('save-backup', payload),
+  loadBackup: () => ipcRenderer.invoke('load-backup'),
+  clearBackup: () => ipcRenderer.invoke('clear-backup'),
+
+  // Export, print, import (see utils/manuscript.js)
+  exportManuscript: (payload) => ipcRenderer.invoke('export-manuscript', payload),
+  printManuscript: (payload) => ipcRenderer.invoke('print-manuscript', payload),
+  importDocument: () => ipcRenderer.invoke('import-document'),
+
+  // AI calls. Go to Claude or to the model selected in Cherry Studio,
+  // depending on the provider setting (see aiGetProvider).
   claudeAPI: (prompt) => ipcRenderer.invoke('claude-api', prompt),
 
-  // Claude Streaming API - Real-time responses
+  // Streaming: real-time responses
   claudeAPIStream: (options) => {
     return new Promise((resolve, reject) => {
       const chunkHandler = (_event, chunk) => {
@@ -51,7 +63,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     });
   },
 
-  // Claude Extended Thinking API - Deep analysis mode
+  // Extended thinking: deep analysis mode
   claudeAPIThinking: (options) => {
     return new Promise((resolve, reject) => {
       const chunkHandler = (_event, chunk) => {
@@ -86,11 +98,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     });
   },
 
-  // AI Modules - Story Generation & Continuity
-  aiGenerateChapter: (params) => ipcRenderer.invoke('ai:generate-chapter', params),
-  aiCheckContinuity: (params) => ipcRenderer.invoke('ai:check-continuity', params),
-  aiBatchProcess: (params) => ipcRenderer.invoke('ai:batch-process', params),
-
   // AI provider: Claude (Anthropic) or Cherry Studio gateway
   aiGetProvider: () => ipcRenderer.invoke('ai:get-provider'),
   aiSetProvider: (settings) => ipcRenderer.invoke('ai:set-provider', settings),
@@ -100,61 +107,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // API Key management
   loadApiKeys: () => ipcRenderer.invoke('load-api-keys'),
   saveApiKeys: (keys) => ipcRenderer.invoke('save-api-keys', keys),
-  saveBackup: (project) => ipcRenderer.invoke('save-backup', project),
-  loadBackup: () => ipcRenderer.invoke('load-backup'),
-
-  // v1.4.1: UI Preferences
-  getUiPrefs: () => ipcRenderer.invoke('ui:get-prefs'),
-  setUiPrefs: (prefs) => ipcRenderer.invoke('ui:set-prefs', prefs),
-  onUiPrefsChanged: (callback) => {
-    ipcRenderer.on('ui-prefs-changed', (_event, prefs) => callback(prefs));
-  },
 
   // Chat Memory Log (Liminal Engine)
   loadChatMemory: () => ipcRenderer.invoke('chat:load-memory'),
   saveChatMemory: (entry) => ipcRenderer.invoke('chat:save-memory', entry),
 
-  // Batch Progress Listener
-  onBatchProgress: (callback) => {
-    const handler = (_event, progress) => callback(progress);
-    ipcRenderer.on('batch-progress', handler);
-    // Return cleanup function
-    return () => ipcRenderer.removeListener('batch-progress', handler);
-  },
+  // Open a web page in the system browser (https only, checked in the main process)
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
-  // v1.4.1: Spec Runner (internal testing)
-  runSpec: (scenario) => ipcRenderer.invoke('spec:run', scenario),
-  sendSpecResult: (payload) => ipcRenderer.send('spec:done', payload),
-  onSpecStart: (callback) => {
-    ipcRenderer.on('spec:start', (_event, data) => callback(data));
-  },
-  
-  // Menu actions (listening)
+  // Menu actions: one channel, callback(action, argument)
   onMenuAction: (callback) => {
-    const events = [
-      // File menu
-      'new-project', 'save-project-trigger', 'save-project-as-trigger',
-      'export-trigger', 'export-pdf-trigger', 'export-epub-trigger', 'export-mobi-trigger', 'load-project-data',
-      // Edit menu
-      'undo', 'redo', 'show-find', 'find-next', 'show-find-replace',
-      // View menu
-      'toggle-sidebar', 'toggle-inspector', 'toggle-ai-panel', 'toggle-focus-mode',
-      'show-timeline', 'show-research',
-      // Insert menu
-      'new-chapter', 'insert-text',
-      // Text menu
-      'text-uppercase', 'text-lowercase', 'text-trim-spaces', 'text-remove-empty-lines',
-      // Tools menu
-      'show-target-settings', 'spell-check', 'show-project-stats', 'show-settings',
-      // Help menu
-      'show-help', 'show-shortcuts', 'show-about', 'show-settings',
-      // v1.4.1: UI prefs
-      'ui-prefs-changed'
-    ];
-    
-    events.forEach(event => {
-      ipcRenderer.on(event, (_, arg) => callback(event, arg));
-    });
+    ipcRenderer.on('menu-action', (_event, action, arg) => callback(action, arg));
   }
 });
 

@@ -1,5 +1,5 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage } = require('electron');
-const { convertToRTF, convertToHTML, convertToDocx } = require("./utils/documentConverters");
+const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, shell } = require('electron');
+const manuscript = require('./utils/manuscript');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -8,18 +8,6 @@ require('dotenv').config();
 
 // Claude AI Client (exclusive AI provider for FAUST v2.0)
 const Anthropic = require('@anthropic-ai/sdk');
-
-// AI Modules (loaded lazily to avoid circular dependencies)
-let StoryContinuityTracker, BatchProcessor, HybridWritingFlow, CostOptimizer;
-
-function loadAIModules() {
-  if (!StoryContinuityTracker) {
-    StoryContinuityTracker = require('./modules/StoryContinuityTracker');
-    BatchProcessor = require('./modules/BatchProcessor');
-    HybridWritingFlow = require('./modules/HybridWritingFlow');
-    CostOptimizer = require('./modules/CostOptimizer');
-  }
-}
 
 // Global config (now encrypted)
 let apiConfig = {};
@@ -204,14 +192,10 @@ function describeAIError(error) {
   return message;
 }
 
-// --- v1.4.1: UI Prefs (persist theme/layout/modes) ---
+// --- UI prefs kept by the main process ---
+// Theme, panels and editor settings live in the renderer (localStorage).
 let uiPrefs = {
-  theme: 'NOX',            // 'NOX' | 'DEIS'
-  newLayout: false,        // v1.4.0 feature flag
-  focusMode: false,
-  zenMode: false,
-  inspectorVisible: false,  // default from Faust spec
-  aiPanelVisible: false
+  spellCheck: true
 };
 
 let uiPrefsPath = null;
@@ -254,7 +238,25 @@ async function withTimeout(promise, ms = 30000) {
 
 let mainWindow;
 
+// Unsaved-changes state reported by the renderer. Guards window close and quit.
+let rendererDirty = false;
+let quitRequested = false;
+
+// Send to the renderer if the window still exists (on macOS the app outlives its window)
+function sendToRenderer(channel, ...args) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, ...args);
+  }
+}
+
+// Menu items talk to the renderer through one channel: (action, argument)
+function menuAction(action, arg) {
+  sendToRenderer('menu-action', action, arg);
+}
+
 function createWindow() {
+  rendererDirty = false;
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -264,7 +266,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,           // v1.4.1: Enhanced security
-      spellcheck: false,
+      spellcheck: true,        // switched on and off at runtime, see setSpellCheck()
       preload: path.join(__dirname, 'preload.js')
     },
     titleBarStyle: 'hiddenInset',
@@ -274,414 +276,323 @@ function createWindow() {
 
   // Load production app
   mainWindow.loadFile(path.join(__dirname, 'dist', 'index.html'));
-  
+
+  // The window only ever shows the app: a file dropped on it or a link must not navigate away
+  mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
+  setSpellCheck(uiPrefs.spellCheck !== false);
+  attachContextMenu(mainWindow);
+  attachCloseGuard(mainWindow);
+
   // Luo valikko
   createMenu();
 }
 
-// Luo macOS/Word-tyylinen valikko
+function setSpellCheck(enabled) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.session.setSpellCheckerEnabled(enabled);
+  }
+}
+
+// Right-click menu: spelling suggestions and the standard edit commands
+function attachContextMenu(win) {
+  win.webContents.on('context-menu', (_event, params) => {
+    const template = [];
+
+    if (params.misspelledWord) {
+      const suggestions = params.dictionarySuggestions.slice(0, 6);
+      for (const suggestion of suggestions) {
+        template.push({
+          label: suggestion,
+          click: () => win.webContents.replaceMisspelling(suggestion)
+        });
+      }
+      if (suggestions.length === 0) {
+        template.push({ label: 'Ei ehdotuksia', enabled: false });
+      }
+      template.push(
+        { type: 'separator' },
+        {
+          label: 'Lisää sanastoon',
+          click: () => win.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord)
+        },
+        { type: 'separator' }
+      );
+    }
+
+    if (params.isEditable) {
+      template.push(
+        { label: 'Leikkaa', role: 'cut', enabled: params.editFlags.canCut },
+        { label: 'Kopioi', role: 'copy', enabled: params.editFlags.canCopy },
+        { label: 'Liitä', role: 'paste', enabled: params.editFlags.canPaste },
+        { type: 'separator' },
+        { label: 'Valitse kaikki', role: 'selectAll' }
+      );
+    } else if (params.selectionText) {
+      template.push({ label: 'Kopioi', role: 'copy' });
+    }
+
+    if (template.length > 0) {
+      Menu.buildFromTemplate(template).popup({ window: win });
+    }
+  });
+}
+
+const UNSAVED_DIALOG = {
+  type: 'warning',
+  message: 'Projektissa on tallentamattomia muutoksia.',
+  detail: 'Jos et tallenna, viimeisimmät muutokset menetetään.',
+  buttons: ['Tallenna', 'Älä tallenna', 'Kumoa'],
+  defaultId: 0,
+  cancelId: 2
+};
+
+// Ask before a window with unsaved changes closes (also covers Cmd+Q)
+function attachCloseGuard(win) {
+  win.on('close', (event) => {
+    if (!rendererDirty) return;
+
+    event.preventDefault();
+    const choice = dialog.showMessageBoxSync(win, UNSAVED_DIALOG);
+
+    if (choice === 0) {
+      // The renderer saves (asking for a file name if there is none) and
+      // answers with project:close-confirmed or project:close-cancelled
+      win.webContents.send('menu-action', 'save-and-close');
+    } else if (choice === 1) {
+      rendererDirty = false;
+      win.close();
+    } else {
+      quitRequested = false;
+    }
+  });
+
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null;
+  });
+}
+
+app.on('before-quit', () => {
+  quitRequested = true;
+});
+
+ipcMain.on('project:set-dirty', (_event, dirty) => {
+  rendererDirty = !!dirty;
+});
+
+ipcMain.on('project:close-confirmed', () => {
+  rendererDirty = false;
+  if (quitRequested) {
+    app.quit();
+  } else if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.close();
+  }
+});
+
+ipcMain.on('project:close-cancelled', () => {
+  quitRequested = false;
+});
+
+// Save / Don't save / Cancel, for New and Open in the renderer
+ipcMain.handle('dialog:unsaved-changes', async () => {
+  const { response } = await dialog.showMessageBox(mainWindow, UNSAVED_DIALOG);
+  return ['save', 'discard', 'cancel'][response] || 'cancel';
+});
+
+// Application menu. Every item either uses a native role or sends one action
+// to the renderer (see the menu handler in app.js); nothing here is a stub.
 function createMenu() {
   const isMac = process.platform === 'darwin';
-  
+  const item = (label, action, accelerator, arg) => ({
+    label,
+    accelerator,
+    click: () => menuAction(action, arg)
+  });
+  const separator = { type: 'separator' };
+  const insertText = (label, text) => ({ label, click: () => menuAction('insert-text', text) });
+
   const template = [
-    // App Menu (macOS)
+    // App menu (macOS)
     ...(isMac ? [{
       label: app.name,
       submenu: [
         { label: `Tietoja - ${app.name}`, role: 'about' },
-        { type: 'separator' },
-        { 
-          label: 'Asetukset...',
-          accelerator: 'CmdOrCtrl+,',
-          click: () => mainWindow.webContents.send('show-settings')
-        },
-        { type: 'separator' },
+        separator,
+        item('Asetukset...', 'show-settings', 'CmdOrCtrl+,'),
+        separator,
         { label: 'Piilota', role: 'hide' },
         { label: 'Piilota muut', role: 'hideOthers' },
         { label: 'Näytä kaikki', role: 'unhide' },
-        { type: 'separator' },
+        separator,
         { label: 'Lopeta', role: 'quit' }
       ]
     }] : []),
-    
-    // File Menu
+
     {
       label: 'Tiedosto',
       submenu: [
-        {
-          label: 'Uusi projekti',
-          accelerator: 'CmdOrCtrl+N',
-          click: () => mainWindow.webContents.send('new-project')
-        },
-        {
-          label: 'Avaa projekti...',
-          accelerator: 'CmdOrCtrl+O',
-          click: async () => {
-            const result = await loadProject();
-            if (result.success) {
-              mainWindow.webContents.send('load-project-data', result.data);
-            }
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Tallenna',
-          accelerator: 'CmdOrCtrl+S',
-          click: () => mainWindow.webContents.send('save-project-trigger')
-        },
-        {
-          label: 'Tallenna nimellä...',
-          accelerator: 'CmdOrCtrl+Shift+S',
-          click: () => mainWindow.webContents.send('save-project-as-trigger')
-        },
-        { type: 'separator' },
-        {
-          label: 'Vie',
-          submenu: [
-            {
-              label: 'Vie tekstitiedostona (.txt)',
-              click: () => mainWindow.webContents.send('export-trigger', 'txt')
-            },
-            {
-              label: 'Vie Markdown (.md)',
-              click: () => mainWindow.webContents.send('export-trigger', 'md')
-            },
-            {
-              label: 'Vie HTML',
-              click: () => mainWindow.webContents.send('export-trigger', 'html')
-            },
-            {
-              label: 'Vie RTF',
-              click: () => mainWindow.webContents.send('export-trigger', 'rtf')
-            },
-            { type: 'separator' },
-            {
-              label: 'Vie PDF...',
-              accelerator: 'CmdOrCtrl+P',
-              click: () => mainWindow.webContents.send('export-pdf-trigger')
-            },
-            {
-              label: 'Vie EPUB...',
-              click: () => mainWindow.webContents.send('export-epub-trigger')
-            },
-            {
-              label: 'Vie MOBI (Kindle)...',
-              click: () => mainWindow.webContents.send('export-mobi-trigger')
-            }
-          ]
-        },
-        { type: 'separator' },
-        {
-          label: 'Sulje ikkuna',
-          accelerator: 'CmdOrCtrl+W',
-          role: 'close'
-        }
+        item('Uusi projekti', 'new-project', 'CmdOrCtrl+N'),
+        item('Avaa...', 'open-project', 'CmdOrCtrl+O'),
+        separator,
+        item('Tallenna', 'save-project', 'CmdOrCtrl+S'),
+        item('Tallenna nimellä...', 'save-project-as', 'CmdOrCtrl+Shift+S'),
+        separator,
+        item('Tuo tekstiä...', 'import-document'),
+        item('Vie...', 'show-export', 'CmdOrCtrl+E'),
+        item('Tulosta...', 'print', 'CmdOrCtrl+P'),
+        separator,
+        { label: 'Sulje ikkuna', accelerator: 'CmdOrCtrl+W', role: 'close' },
+        ...(isMac ? [] : [
+          separator,
+          item('Asetukset...', 'show-settings', 'CmdOrCtrl+,'),
+          { label: 'Lopeta', role: 'quit' }
+        ])
       ]
     },
-    
-    // Edit Menu
+
     {
       label: 'Muokkaa',
       submenu: [
-        {
-          label: 'Kumoa',
-          accelerator: 'CmdOrCtrl+Z',
-          click: () => mainWindow.webContents.send('undo')
-        },
-        {
-          label: 'Tee uudelleen',
-          accelerator: 'CmdOrCtrl+Shift+Z',
-          click: () => mainWindow.webContents.send('redo')
-        },
-        { type: 'separator' },
+        item('Kumoa', 'undo', 'CmdOrCtrl+Z'),
+        item('Tee uudelleen', 'redo', 'CmdOrCtrl+Shift+Z'),
+        separator,
         { label: 'Leikkaa', role: 'cut' },
         { label: 'Kopioi', role: 'copy' },
         { label: 'Liitä', role: 'paste' },
         { label: 'Valitse kaikki', role: 'selectAll' },
-        { type: 'separator' },
-        {
-          label: 'Etsi...',
-          accelerator: 'CmdOrCtrl+F',
-          click: () => mainWindow.webContents.send('show-find')
-        },
-        {
-          label: 'Etsi seuraava',
-          accelerator: 'CmdOrCtrl+G',
-          click: () => mainWindow.webContents.send('find-next')
-        },
-        {
-          label: 'Etsi ja korvaa...',
-          accelerator: 'CmdOrCtrl+Alt+F',
-          click: () => mainWindow.webContents.send('show-find-replace')
-        }
+        separator,
+        item('Etsi...', 'show-find', 'CmdOrCtrl+F'),
+        item('Etsi seuraava', 'find-next', 'CmdOrCtrl+G'),
+        item('Etsi edellinen', 'find-previous', 'CmdOrCtrl+Shift+G'),
+        item('Etsi ja korvaa...', 'show-find-replace', 'CmdOrCtrl+Alt+F')
       ]
     },
-    
-    // View Menu (v1.4.1: synced with uiPrefs)
+
     {
-      label: 'Näytä',
+      label: 'Muotoile',
       submenu: [
-        // Paneelit
-        {
-          label: 'Sivupalkki',
-          accelerator: 'CmdOrCtrl+1',
-          type: 'checkbox',
-          checked: true,
-          click: () => mainWindow.webContents.send('toggle-sidebar')
-        },
-        {
-          label: 'Inspector',
-          accelerator: 'CmdOrCtrl+2',
-          type: 'checkbox',
-          checked: !!uiPrefs?.inspectorVisible,
-          click: () => mainWindow.webContents.send('toggle-inspector')
-        },
-        {
-          label: 'AI-paneeli',
-          accelerator: 'CmdOrCtrl+3',
-          type: 'checkbox',
-          checked: !!uiPrefs?.aiPanelVisible,
-          click: () => mainWindow.webContents.send('toggle-ai-panel')
-        },
-        { type: 'separator' },
-        // Kirjoitustilat
-        {
-          label: 'Focus Mode',
-          accelerator: 'CmdOrCtrl+Shift+F',
-          type: 'checkbox',
-          checked: uiPrefs.focusMode,
-          click: async (item) => {
-            await saveUiPrefs({
-              focusMode: item.checked,
-              zenMode: item.checked ? false : uiPrefs.zenMode
-            });
-            mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
-          }
-        },
-        {
-          label: 'Zen Mode',
-          accelerator: 'CmdOrCtrl+Shift+Z',
-          type: 'checkbox',
-          checked: uiPrefs.zenMode,
-          click: async (item) => {
-            await saveUiPrefs({
-              zenMode: item.checked,
-              focusMode: item.checked ? false : uiPrefs.focusMode
-            });
-            mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
-          }
-        },
-        { type: 'separator' },
-        // Projektin näkymät
-        {
-          label: 'Aikajana',
-          accelerator: 'CmdOrCtrl+Shift+T',
-          click: () => mainWindow.webContents.send('show-timeline')
-        },
-        {
-          label: 'Tutkimuskansio',
-          accelerator: 'CmdOrCtrl+Shift+R',
-          click: () => mainWindow.webContents.send('show-research')
-        },
-        { type: 'separator' },
-        // Ulkoasu
-        {
-          label: 'Teema',
-          submenu: [
-            {
-              label: 'NOX (tumma)',
-              type: 'radio',
-              checked: uiPrefs.theme === 'NOX',
-              click: async () => {
-                await saveUiPrefs({ theme: 'NOX' });
-                mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
-              }
-            },
-            {
-              label: 'DEIS (valoisa)',
-              type: 'radio',
-              checked: uiPrefs.theme === 'DEIS',
-              click: async () => {
-                await saveUiPrefs({ theme: 'DEIS' });
-                mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
-              }
-            }
-          ]
-        },
-        {
-          label: 'Keskitetty layout',
-          type: 'checkbox',
-          checked: uiPrefs.newLayout,
-          click: async (item) => {
-            await saveUiPrefs({ newLayout: item.checked });
-            mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
-          }
-        },
-        { type: 'separator' },
-        {
-          label: 'Koko näyttö',
-          accelerator: isMac ? 'Ctrl+Command+F' : 'F11',
-          role: 'togglefullscreen'
-        },
-        { type: 'separator' },
-        {
-          label: 'Kehittäjätyökalut',
-          accelerator: isMac ? 'Alt+Command+I' : 'Ctrl+Shift+I',
-          click: () => mainWindow.webContents.toggleDevTools()
-        }
+        item('Lihavointi', 'format-bold', 'CmdOrCtrl+B'),
+        item('Kursivointi', 'format-italic', 'CmdOrCtrl+I'),
+        item('Alleviivaus', 'format-underline', 'CmdOrCtrl+U'),
+        item('Yliviivaus', 'format-strikethrough', 'CmdOrCtrl+Shift+X'),
+        separator,
+        item('Otsikko 1', 'format-heading', 'CmdOrCtrl+Alt+1', 1),
+        item('Otsikko 2', 'format-heading', 'CmdOrCtrl+Alt+2', 2),
+        item('Otsikko 3', 'format-heading', 'CmdOrCtrl+Alt+3', 3),
+        item('Leipäteksti', 'format-heading', 'CmdOrCtrl+Alt+0', 0),
+        separator,
+        item('Lainaus', 'format-quote'),
+        item('Luettelo', 'format-list', 'CmdOrCtrl+Shift+8'),
+        item('Numeroitu luettelo', 'format-numbered-list', 'CmdOrCtrl+Shift+7'),
+        separator,
+        item('Isoiksi kirjaimiksi', 'text-uppercase', 'CmdOrCtrl+Shift+U'),
+        item('Pieniksi kirjaimiksi', 'text-lowercase', 'CmdOrCtrl+Shift+L'),
+        item('Poista ylimääräiset välit', 'text-trim-spaces'),
+        item('Poista tyhjät rivit', 'text-remove-empty-lines')
       ]
     },
-    
-    // Insert Menu
+
     {
       label: 'Lisää',
       submenu: [
-        {
-          label: 'Uusi luku',
-          accelerator: 'CmdOrCtrl+N',
-          click: () => mainWindow.webContents.send('new-chapter')
-        },
-        { type: 'separator' },
+        item('Uusi luku', 'new-chapter', 'CmdOrCtrl+Shift+N'),
+        separator,
         {
           label: 'Päivämäärä',
-          click: () => {
-            const now = new Date();
-            const dateStr = now.toLocaleDateString('fi-FI');
-            mainWindow.webContents.send('insert-text', dateStr);
-          }
+          click: () => menuAction('insert-text', new Date().toLocaleDateString('fi-FI'))
         },
+        insertText('Kohtauksen erotin', '\n\n* * *\n\n'),
+        separator,
         {
-          label: 'Kohtauksen erotin',
-          click: () => {
-            mainWindow.webContents.send('insert-text', '\n\n* * *\n\n');
-          }
+          label: 'Erikoismerkki',
+          submenu: [
+            insertText('Ajatusviiva –', '–'),
+            insertText('Pitkä ajatusviiva —', '—'),
+            insertText('Kolme pistettä …', '…'),
+            insertText('Lainausmerkit ””', '”'),
+            insertText('Kulmalainausmerkit »»', '»'),
+            insertText('Sitova välilyönti', ' ')
+          ]
         }
       ]
     },
-    
-    // Text Menu (replaces Format - FAUST uses plain text)
+
     {
-      label: 'Teksti',
+      label: 'Näytä',
       submenu: [
+        item('Sivupalkki', 'toggle-sidebar', 'CmdOrCtrl+1'),
+        item('Inspector', 'toggle-inspector', 'CmdOrCtrl+2'),
+        item('AI-avustaja', 'toggle-ai-panel', 'CmdOrCtrl+K'),
+        separator,
+        item('Keskittymistila', 'toggle-focus-mode', 'CmdOrCtrl+Shift+F'),
+        item('Kirjoituskonetila', 'toggle-typewriter'),
+        separator,
+        item('Suurenna', 'zoom-in', 'CmdOrCtrl+Plus'),
+        item('Pienennä', 'zoom-out', 'CmdOrCtrl+-'),
+        item('Todellinen koko', 'zoom-reset', 'CmdOrCtrl+0'),
+        separator,
+        item('Vaihda teema (NOX / DEIS)', 'toggle-theme', 'CmdOrCtrl+Shift+D'),
+        separator,
+        item('Aikajana', 'show-timeline', 'CmdOrCtrl+Shift+T'),
+        item('Tutkimuskansio', 'show-research', 'CmdOrCtrl+Shift+R'),
+        separator,
+        { label: 'Koko näyttö', accelerator: isMac ? 'Ctrl+Command+F' : 'F11', role: 'togglefullscreen' },
         {
-          label: 'Muunna isoiksi kirjaimiksi',
-          accelerator: 'CmdOrCtrl+Shift+U',
-          click: () => mainWindow.webContents.send('text-uppercase')
-        },
-        {
-          label: 'Muunna pieniksi kirjaimiksi',
-          accelerator: 'CmdOrCtrl+Shift+L',
-          click: () => mainWindow.webContents.send('text-lowercase')
-        },
-        { type: 'separator' },
-        {
-          label: 'Poista ylimääräiset välit',
-          click: () => mainWindow.webContents.send('text-trim-spaces')
-        },
-        {
-          label: 'Poista tyhjät rivit',
-          click: () => mainWindow.webContents.send('text-remove-empty-lines')
+          label: 'Kehittäjätyökalut',
+          accelerator: isMac ? 'Alt+Command+I' : 'Ctrl+Shift+I',
+          click: () => mainWindow && mainWindow.webContents.toggleDevTools()
         }
       ]
     },
-    
-    // Tools Menu
+
     {
       label: 'Työkalut',
       submenu: [
         {
-          label: 'Projektin tilastot',
-          accelerator: 'CmdOrCtrl+Shift+S',
-          click: () => mainWindow.webContents.send('show-project-stats')
-        },
-        {
-          label: 'Kirjoitustavoitteet...',
-          accelerator: 'CmdOrCtrl+Shift+G',
-          click: () => mainWindow.webContents.send('show-target-settings')
-        },
-        { type: 'separator' },
-        {
           label: 'Oikoluku',
-          click: () => mainWindow.webContents.send('spell-check')
+          type: 'checkbox',
+          checked: uiPrefs.spellCheck !== false,
+          click: async (menuItem) => {
+            await saveUiPrefs({ spellCheck: menuItem.checked });
+            setSpellCheck(menuItem.checked);
+          }
         },
-        { type: 'separator' },
-        {
-          label: 'Asetukset...',
-          accelerator: 'CmdOrCtrl+,',
-          click: () => mainWindow.webContents.send('show-settings')
-        }
+        separator,
+        item('Projektin asetukset ja tavoitteet...', 'show-project-settings')
       ]
     },
-    
-    // Window Menu
+
     {
       label: 'Ikkuna',
       submenu: [
         { label: 'Pienennä', role: 'minimize' },
         { label: 'Suurenna', role: 'zoom' },
         ...(isMac ? [
-          { type: 'separator' },
-          { label: 'Tuo etualalle', role: 'front' },
-          { type: 'separator' },
-          { label: 'Ikkuna', role: 'window' }
+          separator,
+          { label: 'Tuo etualalle', role: 'front' }
         ] : [
           { label: 'Sulje', role: 'close' }
         ])
       ]
     },
-    
-    // Help Menu
+
     {
-      label: 'Apua',
+      label: 'Ohje',
       submenu: [
-        {
-          label: 'Dokumentaatio',
-          click: () => mainWindow.webContents.send('show-help')
-        },
-        {
-          label: 'Pikaohjeet',
-          accelerator: 'CmdOrCtrl+?',
-          click: () => mainWindow.webContents.send('show-shortcuts')
-        },
-        { type: 'separator' },
-        {
-          label: 'Ilmoita ongelmasta',
-          click: () => {
-            require('electron').shell.openExternal('https://github.com/yourusername/kirjoitusstudio/issues');
-          }
-        },
-        ...(!isMac ? [
-          { type: 'separator' },
-          {
-            label: 'Tietoja',
-            click: () => mainWindow.webContents.send('show-about')
-          }
-        ] : [])
+        item('Pikanäppäimet', 'show-shortcuts')
       ]
     }
   ];
-  
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// Helper: Load project
-async function loadProject() {
-  try {
-    const { filePaths } = await dialog.showOpenDialog(mainWindow, {
-      title: 'Avaa projekti',
-      filters: [{ name: 'Kirjoitusstudio projektit', extensions: ['json'] }],
-      properties: ['openFile']
-    });
-
-    if (filePaths && filePaths[0]) {
-      const data = await fs.readFile(filePaths[0], 'utf-8');
-      return { success: true, data: JSON.parse(data) };
-    }
-    return { success: false };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
+// Write a file so that a crash mid-write cannot leave a truncated project
+async function writeFileAtomic(filePath, text) {
+  const tempPath = `${filePath}.tmp-${process.pid}`;
+  await fs.writeFile(tempPath, text, 'utf-8');
+  await fs.rename(tempPath, filePath);
 }
 
 app.whenReady().then(async () => {
@@ -703,29 +614,36 @@ app.on('window-all-closed', () => {
 });
 
 // Tallenna projekti (.faust format)
-ipcMain.handle('save-project', async (event, projectData) => {
+// options.filePath: write there without asking. Without it (or with
+// options.saveAs) the save dialog is shown.
+ipcMain.handle('save-project', async (event, projectData, options = {}) => {
   try {
-    const { filePath } = await dialog.showSaveDialog(mainWindow, {
-      title: 'Tallenna projekti',
-      defaultPath: `${projectData.title || 'projekti'}.faust`,
-      filters: [
-        { name: 'FAUST projektit', extensions: ['faust'] },
-        { name: 'JSON (legacy)', extensions: ['json'] }
-      ]
-    });
+    let filePath = options.saveAs ? null : options.filePath;
 
-    if (filePath) {
-      // Add metadata
-      const dataWithMeta = {
-        ...projectData,
-        modified: new Date().toISOString(),
-        version: '2.0'  // FAUST v2.0 format
-      };
-
-      await fs.writeFile(filePath, JSON.stringify(dataWithMeta, null, 2), 'utf-8');
-      return { success: true, path: filePath };
+    if (!filePath) {
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: 'Tallenna projekti',
+        defaultPath: options.filePath || `${projectData.title || 'projekti'}.faust`,
+        filters: [
+          { name: 'FAUST projektit', extensions: ['faust'] },
+          { name: 'JSON (legacy)', extensions: ['json'] }
+        ]
+      });
+      filePath = result.filePath;
     }
-    return { success: false };
+
+    if (!filePath) {
+      return { success: false, canceled: true };
+    }
+
+    const dataWithMeta = {
+      ...projectData,
+      modified: new Date().toISOString(),
+      version: '2.0'  // FAUST v2.0 format
+    };
+
+    await writeFileAtomic(filePath, JSON.stringify(dataWithMeta, null, 2));
+    return { success: true, path: filePath };
   } catch (error) {
     console.error('[Save Project] Error:', error);
     return { success: false, error: error.message };
@@ -795,7 +713,7 @@ ipcMain.handle('autosave-project', async (event, { projectData, filePath }) => {
       modified: new Date().toISOString()
     };
 
-    await fs.writeFile(filePath, JSON.stringify(dataWithMeta, null, 2), 'utf-8');
+    await writeFileAtomic(filePath, JSON.stringify(dataWithMeta, null, 2));
     return { success: true, path: filePath };
   } catch (error) {
     console.error('[Autosave] Error:', error);
@@ -803,368 +721,149 @@ ipcMain.handle('autosave-project', async (event, { projectData, filePath }) => {
   }
 });
 
-// Vie dokumentti
-ipcMain.handle('export-document', async (event, { content, title, format }) => {
-  try {
-    const filters = {
-      txt: { name: 'Tekstitiedosto', extensions: ['txt'] },
-      md: { name: 'Markdown', extensions: ['md'] },
-      rtf: { name: 'Rich Text Format', extensions: ['rtf'] },
-      html: { name: 'HTML', extensions: ['html'] },
-      docx: { name: 'Word Document', extensions: ['docx'] }
-    };
+// ============================================
+// EXPORT, PRINT, IMPORT (conversion lives in utils/manuscript.js)
+// ============================================
 
+const EXPORT_FORMATS = {
+  txt: { name: 'Tekstitiedosto', extension: 'txt' },
+  md: { name: 'Markdown', extension: 'md' },
+  html: { name: 'HTML', extension: 'html' },
+  rtf: { name: 'Rich Text Format', extension: 'rtf' },
+  docx: { name: 'Word-asiakirja', extension: 'docx' },
+  pdf: { name: 'PDF', extension: 'pdf' },
+  epub: { name: 'EPUB-e-kirja', extension: 'epub' }
+};
+
+function safeFileName(name) {
+  return String(name || 'kasikirjoitus').replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, ' ').trim() || 'kasikirjoitus';
+}
+
+// Load HTML into a hidden window (through a temp file, so a whole novel fits)
+// and hand the window to `use`
+async function withHiddenPage(html, use) {
+  const tempPath = path.join(app.getPath('temp'), `faust-${process.pid}-${Date.now()}.html`);
+  await fs.writeFile(tempPath, html, 'utf-8');
+
+  const page = new BrowserWindow({
+    show: false,
+    webPreferences: { sandbox: true, javascript: false }
+  });
+
+  try {
+    await page.loadFile(tempPath);
+    return await use(page);
+  } finally {
+    if (!page.isDestroyed()) page.destroy();
+    fs.unlink(tempPath).catch(() => {});
+  }
+}
+
+const PDF_FOOTER = '<div style="width:100%;text-align:center;font-family:Georgia,serif;font-size:9px;color:#555;"><span class="pageNumber"></span></div>';
+
+// Export the whole project, or only the chapters listed in chapterIds
+ipcMain.handle('export-manuscript', async (_event, { project, format, chapterIds = null } = {}) => {
+  try {
+    const target = EXPORT_FORMATS[format];
+    if (!target) {
+      return { success: false, error: `Tuntematon vientimuoto: ${format}` };
+    }
+
+    const book = manuscript.buildManuscript(project, { chapterIds });
+    if (book.chapters.length === 0) {
+      return { success: false, error: 'Projektissa ei ole vietävää tekstiä.' };
+    }
+
+    const baseName = safeFileName(book.single ? book.chapters[0].title : book.title);
     const { filePath } = await dialog.showSaveDialog(mainWindow, {
-      title: 'Vie dokumentti',
-      defaultPath: `${title}.${format}`,
-      filters: [filters[format]]
+      title: 'Vie',
+      defaultPath: `${baseName}.${target.extension}`,
+      filters: [{ name: target.name, extensions: [target.extension] }]
     });
 
-    if (!filePath) return { success: false };
-
-    if (format === 'docx') {
-      const buffer = await convertToDocx(content, title);
-      await fs.writeFile(filePath, buffer);
-    } else {
-      let fileContent = content;
-
-      if (format === 'rtf') {
-        fileContent = convertToRTF(content);
-      } else if (format === 'html') {
-        fileContent = convertToHTML(content, title);
-      }
-
-      await fs.writeFile(filePath, fileContent, 'utf-8');
+    if (!filePath) {
+      return { success: false, canceled: true };
     }
+
+    let data;
+    switch (format) {
+      case 'txt': data = manuscript.toPlainText(book); break;
+      case 'md': data = manuscript.toMarkdown(book); break;
+      case 'html': data = manuscript.toHTML(book); break;
+      case 'rtf': data = manuscript.toRTF(book); break;
+      case 'docx': data = await manuscript.toDocx(book); break;
+      case 'epub': data = await manuscript.toEPUB(book); break;
+      case 'pdf':
+        data = await withHiddenPage(manuscript.toHTML(book), (page) => page.webContents.printToPDF({
+          pageSize: 'A4',
+          printBackground: true,
+          displayHeaderFooter: true,
+          headerTemplate: '<span></span>',
+          footerTemplate: PDF_FOOTER,
+          margins: { top: 1, bottom: 1, left: 1, right: 1 } // inches
+        }));
+        break;
+    }
+
+    await fs.writeFile(filePath, data);
+    console.log('[Export]', format, '->', filePath);
     return { success: true, path: filePath };
   } catch (error) {
+    console.error('[Export] Error:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Vie koko projekti
-ipcMain.handle('export-full-project', async (event, { project, format }) => {
+// Print the whole project, or only the chapters listed in chapterIds, through the system print dialog
+ipcMain.handle('print-manuscript', async (_event, { project, chapterIds = null } = {}) => {
   try {
-    const filters = {
-      txt: { name: 'Tekstitiedosto', extensions: ['txt'] },
-      md: { name: 'Markdown', extensions: ['md'] },
-      rtf: { name: 'Rich Text Format', extensions: ['rtf'] },
-      html: { name: 'HTML', extensions: ['html'] }
-    };
-
-    const { filePath } = await dialog.showSaveDialog(mainWindow, {
-      title: 'Vie koko projekti',
-      defaultPath: `${project.title}.${format}`,
-      filters: [filters[format]]
-    });
-
-    if (!filePath) return { success: false };
-
-    let fullContent = '';
-
-    const collectContent = (items, level = 0) => {
-      items.forEach(item => {
-        if (item.type === 'chapter' && item.content) {
-          if (format === 'md') {
-            fullContent += `${'#'.repeat(level + 1)} ${item.title}\n\n${item.content}\n\n`;
-          } else if (format === 'html') {
-            fullContent += `<h${level + 1}>${item.title}</h${level + 1}>\n${item.content.split('\n').map(p => `<p>${p}</p>`).join('\n')}\n\n`;
-          } else {
-            fullContent += `${item.title}\n${'='.repeat(item.title.length)}\n\n${item.content}\n\n`;
-          }
-        }
-        if (item.children) {
-          collectContent(item.children, level + 1);
-        }
-      });
-    };
-
-    collectContent(project.items);
-
-    let fileContent = fullContent;
-
-    if (format === 'rtf') {
-      fileContent = convertToRTF(fullContent);
-    } else if (format === 'html') {
-      fileContent = convertToHTML(fullContent, project.title);
+    const book = manuscript.buildManuscript(project, { chapterIds });
+    if (book.chapters.length === 0) {
+      return { success: false, error: 'Projektissa ei ole tulostettavaa tekstiä.' };
     }
 
-    await fs.writeFile(filePath, fileContent, 'utf-8');
-    return { success: true, path: filePath };
+    return await withHiddenPage(manuscript.toHTML(book), (page) => new Promise((resolve) => {
+      page.webContents.print({ printBackground: true }, (success, failureReason) => {
+        if (success) resolve({ success: true });
+        else if (/cancel/i.test(failureReason || '')) resolve({ success: false, canceled: true });
+        else resolve({ success: false, error: failureReason || 'Tulostus epäonnistui' });
+      });
+    }));
   } catch (error) {
+    console.error('[Print] Error:', error);
     return { success: false, error: error.message };
   }
 });
 
-// Vie PDF (v1.4.1: improved cleanup & pageRanges)
-ipcMain.handle('export-pdf', async (event, { html, title }) => {
-  let pdfWindow;
+// Read a .txt, .md or .docx file as chapters
+ipcMain.handle('import-document', async () => {
   try {
-    const { filePath } = await dialog.showSaveDialog(mainWindow, {
-      title: 'Vie PDF',
-      defaultPath: `${title}.pdf`,
-      filters: [{ name: 'PDF', extensions: ['pdf'] }]
+    const { filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Tuo tekstiä',
+      filters: [{ name: 'Tekstit ja Word-asiakirjat', extensions: ['txt', 'md', 'markdown', 'docx'] }],
+      properties: ['openFile']
     });
 
-    if (!filePath) return { success: false };
-
-    pdfWindow = new BrowserWindow({ show: false });
-    await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-
-    const pdfData = await pdfWindow.webContents.printToPDF({
-      printBackground: true,
-      pageSize: 'A4',
-      margins: {
-        top: 2,
-        bottom: 2,
-        left: 2,
-        right: 2
-      },
-      pageRanges: '1-'  // v1.4.1: deterministic output
-    });
-
-    await fs.writeFile(filePath, pdfData);
-    
-    // v1.4.1: Safe cleanup
-    if (pdfWindow && !pdfWindow.isDestroyed()) {
-      pdfWindow.close();
+    if (!filePaths || !filePaths[0]) {
+      return { success: false, canceled: true };
     }
 
-    return { success: true, path: filePath };
+    const buffer = await fs.readFile(filePaths[0]);
+    const imported = await manuscript.importDocument(buffer, filePaths[0]);
+    return { success: true, filePath: filePaths[0], ...imported };
   } catch (error) {
-    console.error('[PDF Export] Error:', error);
-    // v1.4.1: Cleanup on error
-    if (pdfWindow && !pdfWindow.isDestroyed()) {
-      pdfWindow.close();
-    }
-    return { 
-      success: false, 
-      error: error.message,
-      errorTitle: 'PDF-vienti epäonnistui',
-      errorHint: 'Tarkista että tiedostopolku on kirjoitettavissa.'
-    };
-  }
-});
-
-// Export EPUB (Simple HTML-based version)
-ipcMain.handle('export-epub', async (event, { metadata, chapters }) => {
-  try {
-    const { filePath } = await dialog.showSaveDialog(mainWindow, {
-      title: 'Vie EPUB',
-      defaultPath: `${metadata.title}.epub`,
-      filters: [{ name: 'EPUB E-Book', extensions: ['epub'] }]
-    });
-
-    if (!filePath) return { success: false };
-
-    // Generate simple HTML-based EPUB content
-    let html = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${metadata.language}">
-<head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-  <title>${metadata.title}</title>
-  <meta name="author" content="${metadata.author}"/>
-  <meta name="generator" content="FAUST Writer"/>
-  <style type="text/css">
-    body {
-      font-family: Georgia, "Times New Roman", serif;
-      font-size: 1.1em;
-      line-height: 1.6;
-      text-align: justify;
-      margin: 2em;
-    }
-    h1.title-page {
-      font-size: 2.5em;
-      text-align: center;
-      margin: 4em 0 2em 0;
-      page-break-after: always;
-    }
-    .author {
-      text-align: center;
-      font-size: 1.3em;
-      font-style: italic;
-      margin-bottom: 4em;
-    }
-    h1.chapter {
-      font-size: 1.8em;
-      text-align: center;
-      margin: 3em 0 2em 0;
-      page-break-before: always;
-    }
-    p {
-      margin: 0.8em 0;
-      text-indent: 1.5em;
-    }
-    p:first-of-type {
-      text-indent: 0;
-    }
-  </style>
-</head>
-<body>
-  <h1 class="title-page">${metadata.title}</h1>
-  <p class="author">${metadata.author}</p>
-`;
-
-    // Add chapters
-    chapters.forEach(chapter => {
-      html += `\n  <h1 class="chapter">${chapter.title}</h1>\n`;
-
-      // Split content into paragraphs
-      const paragraphs = chapter.content.split('\n\n').filter(p => p.trim());
-      paragraphs.forEach(p => {
-        const formatted = p.replace(/\n/g, ' ').trim();
-        html += `  <p>${formatted}</p>\n`;
-      });
-    });
-
-    html += `</body>\n</html>`;
-
-    // Write file (Note: This is a simplified EPUB - a single HTML file)
-    // A proper EPUB would require ZIP packaging with container.xml, content.opf, etc.
-    // This MVP version can be opened in most e-readers or converted with Calibre
-    await fs.writeFile(filePath, html, 'utf-8');
-
-    console.log('[EPUB Export] Created simple EPUB at:', filePath);
-    return { success: true, path: filePath };
-
-  } catch (error) {
-    console.error('[EPUB Export] Error:', error);
-    return {
-      success: false,
-      error: error.message,
-      errorTitle: 'EPUB-vienti epäonnistui',
-      errorHint: 'Tarkista että tiedostopolku on kirjoitettavissa.'
-    };
-  }
-});
-
-// MOBI Export (Kindle format)
-ipcMain.handle('export-mobi', async (event, { metadata, chapters }) => {
-  try {
-    const { filePath } = await dialog.showSaveDialog(mainWindow, {
-      title: 'Vie MOBI (Kindle)',
-      defaultPath: `${metadata.title}.mobi`,
-      filters: [{ name: 'Kindle E-Book', extensions: ['mobi'] }]
-    });
-
-    if (!filePath) return { success: false };
-
-    // Generate simple HTML-based MOBI content
-    // MOBI format is similar to EPUB - this MVP version works with most Kindle readers
-    // and can be converted to proper MOBI format with Amazon Kindle Previewer or Calibre
-    let html = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
-<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${metadata.language}">
-<head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-  <title>${metadata.title}</title>
-  <meta name="author" content="${metadata.author}"/>
-  <meta name="generator" content="FAUST Writer"/>
-  <style type="text/css">
-    body {
-      font-family: Georgia, "Times New Roman", serif;
-      font-size: 1.1em;
-      line-height: 1.6;
-      text-align: justify;
-      margin: 2em;
-    }
-    h1.title-page {
-      font-size: 2.5em;
-      text-align: center;
-      margin: 4em 0 2em 0;
-      page-break-after: always;
-    }
-    .author {
-      text-align: center;
-      font-size: 1.3em;
-      font-style: italic;
-      margin-bottom: 4em;
-    }
-    h1.chapter {
-      font-size: 1.8em;
-      text-align: center;
-      margin: 3em 0 2em 0;
-      page-break-before: always;
-    }
-    p {
-      margin: 0.8em 0;
-      text-indent: 1.5em;
-    }
-    p:first-of-type {
-      text-indent: 0;
-    }
-  </style>
-</head>
-<body>
-  <h1 class="title-page">${metadata.title}</h1>
-  <p class="author">${metadata.author}</p>
-`;
-
-    // Add chapters
-    chapters.forEach(chapter => {
-      html += `\n  <h1 class="chapter">${chapter.title}</h1>\n`;
-
-      // Split content into paragraphs
-      const paragraphs = chapter.content.split('\n\n').filter(p => p.trim());
-      paragraphs.forEach(p => {
-        const formatted = p.replace(/\n/g, ' ').trim();
-        html += `  <p>${formatted}</p>\n`;
-      });
-    });
-
-    html += `</body>\n</html>`;
-
-    // Write file (Note: This is a simplified MOBI - a single HTML file)
-    // A proper MOBI would require Amazon's KindleGen or similar tool
-    // This MVP version can be opened in Kindle apps or converted with Calibre
-    await fs.writeFile(filePath, html, 'utf-8');
-
-    console.log('[MOBI Export] Created simple MOBI at:', filePath);
-    return { success: true, path: filePath };
-
-  } catch (error) {
-    console.error('[MOBI Export] Error:', error);
-    return {
-      success: false,
-      error: error.message,
-      errorTitle: 'MOBI-vienti epäonnistui',
-      errorHint: 'Tarkista että tiedostopolku on kirjoitettavissa.'
-    };
-  }
-});
-
-// Document conversion functions are now imported from utils/documentConverters.js
-
-// Web Search API
-ipcMain.handle('web-search', async (event, query) => {
-  try {
-    // Käytetään yksinkertaista mock-hakua kehitykseen
-    // Todellisessa toteutuksessa käyttäisi jotain web search API:ta
-    const mockResults = {
-      facts: {
-        history: `Mock-historian tiedot paikasta: ${query}`,
-        architecture: ["betoni", "lasi", "moderni"],
-        features: ["metroasema", "kauppakeskus", "liikennekeskus"],
-        atmosphere: ["vilkas", "kiireinen", "urbaani"]
-      },
-      visual: {
-        colors_day: ["harmaa", "valkoinen", "sininen"],
-        colors_night: ["musta", "neon", "keltainen"],
-        lighting: ["keinovalot", "liikennevalot", "neon"],
-        textures: ["sileä betoni", "lasi", "asfaltti"]
-      },
-      writing_tips: [
-        "Käytä betonin tekstuuria symbolina kylmyydestä",
-        "Neonvalot voivat luoda klaustrofobisen tunnelman",
-        "Väkijoukon äänet korostavat yksinäisyyttä"
-      ]
-    };
-
-    return { success: true, data: mockResults };
-  } catch (error) {
+    console.error('[Import] Error:', error);
     return { success: false, error: error.message };
   }
+});
+
+// Open a web page in the system browser. Only https links.
+ipcMain.handle('open-external', async (_event, url) => {
+  if (typeof url !== 'string' || !/^https:\/\//i.test(url)) {
+    return { success: false };
+  }
+  await shell.openExternal(url);
+  return { success: true };
 });
 
 // Load API Keys
@@ -1270,11 +969,6 @@ ipcMain.handle('ai:test-provider', async () => {
   }
 });
 
-// v1.4.1: UI Preferences IPC
-ipcMain.handle('ui:get-prefs', async () => {
-  return { success: true, data: uiPrefs };
-});
-
 // Chat Memory Log (Liminal Engine context persistence)
 const getChatLogPath = () => {
   return path.join(app.getPath('userData'), 'liminal-memory.json');
@@ -1337,56 +1031,45 @@ ipcMain.handle('chat:save-memory', async (_event, entry) => {
   }
 });
 
-ipcMain.handle('ui:set-prefs', async (_event, next) => {
+// Recovery copy of unsaved work. Written while the project has unsaved
+// changes, removed when it is saved or deliberately discarded, and offered
+// on the next start if it is still there (crash, power loss, force quit).
+function getRecoveryPath() {
+  return path.join(app.getPath('userData'), 'recovery.json');
+}
+
+ipcMain.handle('save-backup', async (event, { project, filePath = null } = {}) => {
   try {
-    await saveUiPrefs(next);
-    // Notify renderer of changes
-    mainWindow?.webContents.send('ui-prefs-changed', uiPrefs);
-    return { success: true, data: uiPrefs };
+    if (!project) return { success: false, error: 'No project' };
+    const recovery = { savedAt: new Date().toISOString(), filePath, project };
+    await writeFileAtomic(getRecoveryPath(), JSON.stringify(recovery));
+    return { success: true };
   } catch (error) {
-    console.error('[UI Prefs] Save error:', error);
+    console.error('[Recovery] Save error:', error);
     return { success: false, error: error.message };
   }
 });
 
-// v1.4.1: Spec Runner (internal end-to-end test)
-ipcMain.handle('spec:run', async (_event, scenario = 'default') => {
-  console.log(`[Spec Runner] Starting scenario: ${scenario}`);
-  return new Promise((resolve) => {
-    const id = Date.now();
-    const timeout = setTimeout(() => {
-      console.error('[Spec Runner] Timeout after 45s');
-      resolve({ ok: false, error: 'spec-timeout', id, scenario });
-    }, 45000);
-
-    function onDone(_ev, payload) {
-      if (payload?.id !== id) return;
-      clearTimeout(timeout);
-      mainWindow.webContents.removeListener('spec:done', onDone);
-      console.log('[Spec Runner] Completed:', payload.result);
-      resolve(payload.result);
-    }
-
-    mainWindow.webContents.on('spec:done', onDone);
-    mainWindow.webContents.send('spec:start', { id, scenario });
-  });
-});
-
-// After save-api-keys
-ipcMain.handle('save-backup', async (event, project) => {
-  const backupPath = path.join(app.getPath('userData'), 'backup.json');
-  await fs.writeFile(backupPath, JSON.stringify(project, null, 2), 'utf-8');
-  return { success: true };
-});
-
 ipcMain.handle('load-backup', async () => {
   try {
-    const backupPath = path.join(app.getPath('userData'), 'backup.json');
-    const data = await fs.readFile(backupPath, 'utf-8');
-    return { success: true, data: JSON.parse(data) };
+    const data = await fs.readFile(getRecoveryPath(), 'utf-8');
+    const recovery = JSON.parse(data);
+    if (!recovery || !recovery.project || !Array.isArray(recovery.project.structure)) {
+      return { success: false };
+    }
+    return { success: true, ...recovery };
   } catch (error) {
     return { success: false };
   }
+});
+
+ipcMain.handle('clear-backup', async () => {
+  try {
+    await fs.unlink(getRecoveryPath());
+  } catch (error) {
+    // Nothing to remove
+  }
+  return { success: true };
 });
 
 // Claude API (Anthropic SDK - REAL IMPLEMENTATION)
@@ -1573,239 +1256,3 @@ ipcMain.handle('claude-api-thinking', async (event, options) => {
 // NOTE: Other AI providers (OpenAI, Grok, DeepSeek, Gemini) removed in v2.0.
 // Models other than Claude are reached through the Cherry Studio gateway
 // (see getClaudeClient above), not through separate provider handlers.
-
-// Add after export handlers or before AI APIs
-ipcMain.on('show-context-menu', async (event, { x, y, selection, isEditable }) => {
-  const { Menu } = require('electron');
-  const template = [
-    {
-      label: 'Kopioi',
-      accelerator: 'CmdOrCtrl+C',
-      click: () => {
-        // Renderer handles copy
-      }
-    },
-    {
-      label: 'Liitä',
-      accelerator: 'CmdOrCtrl+V',
-      click: () => {
-        // Renderer handles paste
-      }
-    },
-    { type: 'separator' },
-    {
-      label: 'AI-ehdotus valitulle tekstille',
-      enabled: !!selection,
-      click: () => {
-        mainWindow.webContents.send('ai-suggest', selection);
-      }
-    },
-    {
-      label: 'Etsi',
-      click: () => {
-        mainWindow.webContents.send('show-find');
-      }
-    },
-    { type: 'separator' },
-    {
-      label: 'Lisää kommentti',
-      click: () => {
-        mainWindow.webContents.send('insert-comment');
-      }
-    },
-    {
-      label: 'Lisää muistiinpano',
-      click: () => {
-        mainWindow.webContents.send('insert-note');
-      }
-    }
-  ];
-  const menu = Menu.buildFromTemplate(template);
-  menu.popup({ window: mainWindow, x, y });
-});
-
-// ============================================
-// AI MODULES - Story Generation & Continuity
-// ============================================
-
-// getClaudeClient() is defined near the top of this file (AI PROVIDER section)
-
-// Generate chapter content with Claude AI
-ipcMain.handle('ai:generate-chapter', async (event, { chapterId, project, mode = 'production' }) => {
-  try {
-    // Load AI modules lazily
-    loadAIModules();
-
-    console.log('[AI Generate] Chapter:', chapterId, 'Mode:', mode);
-
-    // Get Claude client
-    const claudeClient = getClaudeClient();
-
-    // Configure modules
-    StoryContinuityTracker.configure({
-      deepseekClient: null,
-      getProject: () => project
-    });
-
-    HybridWritingFlow.configure({
-      claudeClient: claudeClient,
-      getProject: () => project
-    });
-
-    // Get chapter
-    const chapter = project.structure.find(ch => ch.id === chapterId);
-    if (!chapter) {
-      return { success: false, error: 'Chapter not found' };
-    }
-
-    // Get mode settings
-    const modeConfig = project.ai?.modes?.[mode] || project.ai?.modes?.production || {
-      temperature: 0.7,
-      maxTokens: 4096,
-      systemPrompt: 'Write coherently following the outline and story consistency.'
-    };
-
-    // Check continuity before writing
-    const continuityCheck = await StoryContinuityTracker.checkContinuityBeforeWriting(
-      chapter.order,
-      chapter.synopsis || 'No synopsis provided'
-    );
-
-    // Build prompt
-    const prompt = `You are writing Chapter ${chapter.order + 1}: "${chapter.title}"
-
-PROJECT INFO:
-- Title: ${project.title}
-- Genre: ${project.genre}
-- Target: ${project.targets.totalWords} words
-
-CHAPTER BRIEF:
-${chapter.synopsis || 'No synopsis provided'}
-
-CONTINUITY CONTEXT:
-${continuityCheck.suggestions?.join('\n') || 'No specific continuity requirements'}
-
-INSTRUCTIONS:
-${modeConfig.systemPrompt}
-
-Write the chapter content (aim for ${Math.floor(project.targets.totalWords / project.structure.length)} words).
-
-Return ONLY the chapter text, no meta-commentary.`;
-
-    console.log('[AI Generate] Calling Claude API...');
-
-    // Generate with Claude
-    const modelName = project.ai?.model || 'claude-sonnet-4-20250514';
-    const message = await claudeClient.messages.create({
-      model: modelName,
-      max_tokens: modeConfig.maxTokens,
-      temperature: modeConfig.temperature,
-      messages: [{ role: 'user', content: prompt }]
-    });
-
-    const generatedContent = messageText(message);
-    const usage = message.usage;
-
-    // Update continuity tracker
-    await StoryContinuityTracker.updateMemory(chapter.order, generatedContent);
-
-    console.log('[AI Generate] Success! Generated', generatedContent.length, 'characters');
-
-    return {
-      success: true,
-      content: generatedContent,
-      wordCount: generatedContent.trim().split(/\s+/).length,
-      usage,
-      continuityCheck
-    };
-
-  } catch (error) {
-    console.error('[AI Generate] Error:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// Check continuity for a chapter
-ipcMain.handle('ai:check-continuity', async (event, { chapterId, content, project }) => {
-  try {
-    console.log('[AI Continuity] Checking chapter:', chapterId);
-
-    StoryContinuityTracker.configure({
-      deepseekClient: null,
-      getProject: () => project
-    });
-
-    const chapter = project.structure.find(ch => ch.id === chapterId);
-    if (!chapter) {
-      return { success: false, error: 'Chapter not found' };
-    }
-
-    const result = await StoryContinuityTracker.checkContinuityBeforeWriting(
-      chapter.order,
-      content || chapter.content
-    );
-
-    return { success: true, ...result };
-
-  } catch (error) {
-    console.error('[AI Continuity] Error:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// Batch process multiple chapters with Claude
-ipcMain.handle('ai:batch-process', async (event, { project, operation = 'continuityCheck', options = {} }) => {
-  try {
-    console.log('[AI Batch] Starting:', operation);
-
-    const claudeClient = getClaudeClient();
-
-    // Configure modules
-    StoryContinuityTracker.configure({
-      deepseekClient: null,
-      getProject: () => project
-    });
-
-    BatchProcessor.configure({
-      getProject: () => project,
-      setProject: () => {}, // Read-only for now
-      onProgress: (progress) => {
-        console.log('[AI Batch] Progress:', progress);
-        // Send progress to renderer
-        event.sender.send('batch-progress', {
-          current: progress.current || 0,
-          total: progress.total || 0,
-          chapter: progress.chapter || '',
-          message: progress.message || `Käsitellään ${progress.current}/${progress.total}...`,
-          percentage: progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0
-        });
-      }
-    });
-
-    HybridWritingFlow.configure({
-      claudeClient: claudeClient,
-      getProject: () => project
-    });
-
-    const result = await BatchProcessor.processFullNovel({
-      operation,
-      ...options
-    });
-
-    console.log('[AI Batch] Complete:', result.processed, 'chapters');
-
-    return { success: true, ...result };
-
-  } catch (error) {
-    console.error('[AI Batch] Error:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// Export functions for testing
-// Note: Exports commented out as this is the main Electron process file
-// module.exports = {
-//   convertToRTF,
-//   convertToHTML,
-//   convertToDocx
-// };
