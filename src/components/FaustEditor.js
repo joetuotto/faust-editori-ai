@@ -147,7 +147,8 @@ const editorTheme = EditorView.theme({
     cursor: 'text'
   },
   '.cm-line': {
-    padding: '0',
+    // Each line is a paragraph: the gap below it is the paragraph spacing
+    padding: '0 0 var(--fe-para-gap, 0px) 0',
     textAlign: 'var(--fe-align, left)'
   },
   '.cm-placeholder': {
@@ -375,7 +376,7 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
     });
   }, [value]);
 
-  const { paddingTop, paddingBottom, paddingLeft, textAlign, ...wrapperStyle } = style || {};
+  const { paddingTop, paddingBottom, paddingLeft, textAlign, paragraphGap, ...wrapperStyle } = style || {};
 
   return e('div', {
     className: ['faust-editor-host', className].filter(Boolean).join(' '),
@@ -389,7 +390,8 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
       '--fe-pad-top': paddingTop || '0px',
       '--fe-pad-bottom': paddingBottom || '0px',
       '--fe-pad-left': paddingLeft || '0px',
-      '--fe-align': textAlign || 'left'
+      '--fe-align': textAlign || 'left',
+      '--fe-para-gap': paragraphGap || '0px'
     }
   },
     e('div', { ref: hostRef, style: { position: 'absolute', inset: 0 } })

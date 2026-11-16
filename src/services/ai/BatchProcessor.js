@@ -141,21 +141,21 @@ class BatchProcessor {
             max_tokens: modeConfig.maxTokens || 4096
           });
         } else if (provider === 'openai') {
-          result = await this.electronAPI.openaiAPI({
+          result = await this.electronAPI.claudeAPI({
             prompt: `${modeConfig.systemPrompt}\n\n${prompt}`,
             model: modelName,
             temperature: modeConfig.temperature || 0.7,
             max_tokens: modeConfig.maxTokens || 4096
           });
         } else if (provider === 'grok') {
-          result = await this.electronAPI.grokAPI({
+          result = await this.electronAPI.claudeAPI({
             prompt: `${modeConfig.systemPrompt}\n\n${prompt}`,
             model: modelName,
             temperature: modeConfig.temperature || 0.7,
             max_tokens: modeConfig.maxTokens || 4096
           });
         } else if (provider === 'deepseek') {
-          result = await this.electronAPI.deepseekAPI({
+          result = await this.electronAPI.claudeAPI({
             prompt: `${modeConfig.systemPrompt}\n\n${prompt}`,
             options: {
               model: modelName,

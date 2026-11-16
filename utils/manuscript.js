@@ -202,13 +202,18 @@ function toMarkdown(manuscript) {
     if (manuscript.author) parts.push(`*${manuscript.author}*`, '');
   }
 
+  // Chapter titles take one heading level (two with a book title above them),
+  // so headings inside the text move down by as much
+  const chapterLevel = manuscript.single ? 1 : 2;
+
   for (const chapter of manuscript.chapters) {
-    parts.push(`${manuscript.single ? '#' : '##'} ${chapter.title}`, '');
+    parts.push(`${'#'.repeat(chapterLevel)} ${chapter.title}`, '');
     // Chapter text already is Markdown; only make sure paragraphs are separated
     const body = String(chapter.content || '')
       .replace(/\r\n?/g, '\n')
       .split('\n')
       .filter(line => line.trim())
+      .map(line => line.replace(/^(#{1,6})(?=\s)/, (marks) => '#'.repeat(Math.min(6, marks.length + chapterLevel))))
       .join('\n\n');
     parts.push(body, '');
   }
@@ -671,34 +676,79 @@ function fileTitle(fileName) {
 }
 
 /**
- * Split text into chapters at its top-level headings.
- * Text before the first heading becomes a chapter named after the file.
+ * Split text into chapters at its headings.
+ *
+ * - Chapters start at the highest heading level the text uses.
+ * - A single top-level heading at the very start, followed by several
+ *   headings one level down, is the book title, not a chapter.
+ * - With a title, one short line before the first chapter is the author.
+ * - Any other text before the first heading becomes a chapter of its own.
+ *
+ * @param {string} text
+ * @param {string} fileName - used for the title when the text has none
+ * @param {{ title?: string }} [known] - a title found elsewhere (e.g. a Word title style)
+ * @returns {{ title: string, author: string, chapters: Array<{ title: string, content: string }> }}
  */
-function splitIntoChapters(text, fileName) {
-  const lines = String(text || '').replace(/^﻿/, '').replace(/\r\n?/g, '\n').split('\n');
-  const levels = lines.map(line => (/^(#{1,6})\s+\S/.exec(line) || [])[1]).filter(Boolean).map(marks => marks.length);
-  const splitLevel = levels.length > 0 ? Math.min(...levels) : null;
-  const headingPattern = splitLevel ? new RegExp(`^#{${splitLevel}}\\s+(.+?)\\s*$`) : null;
+function splitIntoChapters(text, fileName, known = {}) {
+  let lines = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n');
+  const headingLevel = (line) => ((/^(#{1,6})\s+\S/.exec(line) || [])[1] || '').length;
 
-  const chapters = [];
-  let current = { title: fileTitle(fileName), lines: [] };
+  let title = known.title || '';
+  let levels = lines.map(headingLevel).filter(Boolean);
+  let splitLevel = levels.length > 0 ? Math.min(...levels) : 0;
+
+  // "# Book title" + several "## Chapter" headings: the first one is the title
+  if (!title && splitLevel > 0) {
+    const firstFilled = lines.findIndex(line => line.trim());
+    const deeper = levels.filter(level => level > splitLevel);
+    const nextLevel = deeper.length > 0 ? Math.min(...deeper) : 0;
+    const isOnlyTop = levels.filter(level => level === splitLevel).length === 1;
+
+    if (isOnlyTop && firstFilled !== -1 && headingLevel(lines[firstFilled]) === splitLevel &&
+        nextLevel > 0 && deeper.filter(level => level === nextLevel).length >= 2) {
+      title = lines[firstFilled].replace(/^#+\s+/, '').trim();
+      lines = lines.slice(firstFilled + 1);
+      splitLevel = nextLevel;
+    }
+  }
+
+  const headingPattern = splitLevel ? new RegExp(`^#{${splitLevel}}\\s+(.+?)\\s*$`) : null;
+  const sections = [];
+  let current = { title: null, lines: [] };
 
   for (const line of lines) {
     const match = headingPattern && headingPattern.exec(line);
     if (match) {
-      if (current.lines.some(l => l.trim())) chapters.push(current);
+      sections.push(current);
       current = { title: match[1], lines: [] };
     } else {
       current.lines.push(line);
     }
   }
-  if (current.lines.some(l => l.trim()) || chapters.length === 0) chapters.push(current);
+  sections.push(current);
+
+  // Text before the first heading
+  const lead = sections.shift();
+  const leadLines = lead.lines.filter(line => line.trim());
+  let author = '';
+
+  if (title && sections.length > 0 && leadLines.length === 1 && leadLines[0].trim().split(/\s+/).length <= 8) {
+    author = leadLines[0].trim().replace(/^[*_]+|[*_]+$/g, '');
+  } else if (leadLines.length > 0 || sections.length === 0) {
+    sections.unshift({ title: title && sections.length > 0 ? 'Alkusivut' : fileTitle(fileName), lines: lead.lines });
+  }
 
   return {
-    title: fileTitle(fileName),
-    chapters: chapters.map(chapter => ({
-      title: chapter.title,
-      content: chapter.lines.join('\n').replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n').trimEnd()
+    title: title || fileTitle(fileName),
+    author,
+    chapters: sections.map(section => ({
+      title: section.title,
+      // Headings inside a chapter start from level 1 again
+      content: section.lines
+        .map(line => line.replace(/^(#{2,6})(?=\s)/, (marks) => (
+          marks.length > splitLevel ? '#'.repeat(marks.length - splitLevel) : marks
+        )))
+        .join('\n').replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n').trimEnd()
     }))
   };
 }
@@ -735,10 +785,12 @@ function wrapRun(text, format) {
 }
 
 /**
- * Read a .docx into FAUST's Markdown-style text.
- * Keeps headings, bold, italic, underline, strikethrough and line breaks.
+ * Read a .docx: its title (Word's "Title" style) and its text as FAUST's
+ * Markdown-style text. Keeps headings, bold, italic, underline,
+ * strikethrough and line breaks.
+ * @returns {Promise<{ title: string, markdown: string }>}
  */
-async function docxToMarkdown(buffer) {
+async function readDocx(buffer) {
   const zip = await JSZip.loadAsync(buffer);
   const documentFile = zip.file('word/document.xml');
   if (!documentFile) throw new Error('Tiedosto ei ole kelvollinen Word-asiakirja.');
@@ -748,18 +800,39 @@ async function docxToMarkdown(buffer) {
   const stylesXml = stylesFile ? await stylesFile.async('string') : '';
 
   // styleId -> heading level. Word localises style ids ("Otsikko1") but the
-  // style name stays "heading 1", so read the name.
+  // style name stays "heading 1", so read the name. The "Title" style is the
+  // name of the whole document.
   const headingLevels = {};
+  const titleStyles = new Set(['Title']);
   for (const style of stylesXml.match(/<w:style\b[\s\S]*?<\/w:style>/g) || []) {
     const id = /w:styleId="([^"]+)"/.exec(style);
     const name = /<w:name w:val="([^"]+)"/.exec(style);
     if (!id || !name) continue;
     const heading = /^heading (\d)$/i.exec(name[1]);
     if (heading) headingLevels[id[1]] = parseInt(heading[1], 10);
-    else if (/^title$/i.test(name[1])) headingLevels[id[1]] = 1;
+    else if (/^title$/i.test(name[1])) titleStyles.add(id[1]);
+  }
+
+  // Lists: numId -> 'bullet' or 'numbered', read from word/numbering.xml
+  const numberingFile = zip.file('word/numbering.xml');
+  const numberingXml = numberingFile ? await numberingFile.async('string') : '';
+  const abstractFormats = {};
+  for (const abstract of numberingXml.match(/<w:abstractNum\b[\s\S]*?<\/w:abstractNum>/g) || []) {
+    const id = /w:abstractNumId="([^"]+)"/.exec(abstract);
+    const format = /<w:numFmt w:val="([^"]+)"/.exec(abstract); // level 0 comes first
+    if (id) abstractFormats[id[1]] = format && format[1] !== 'bullet' ? 'numbered' : 'bullet';
+  }
+  const listKinds = {};
+  for (const num of numberingXml.match(/<w:num\b[\s\S]*?<\/w:num>/g) || []) {
+    const id = /w:numId="([^"]+)"/.exec(num);
+    const abstractId = /<w:abstractNumId w:val="([^"]+)"/.exec(num);
+    if (id && abstractId) listKinds[id[1]] = abstractFormats[abstractId[1]] || 'bullet';
   }
 
   const lines = [];
+  let title = '';
+  let listNumber = 0;
+  let lastListId = null;
 
   for (const paragraph of documentXml.match(/<w:p\b[\s\S]*?<\/w:p>/g) || []) {
     const styleId = (/<w:pStyle w:val="([^"]+)"/.exec(paragraph) || [])[1];
@@ -800,16 +873,35 @@ async function docxToMarkdown(buffer) {
       .map(piece => wrapRun(piece.text, level ? { ...piece.format, bold: false } : piece.format))
       .join('');
 
+    const listId = (/<w:numPr>[\s\S]*?<w:numId w:val="([^"]+)"/.exec(paragraph) || [])[1];
+    const isListItem = !!listId && listId !== '0' && !level;
+    if (!isListItem || listId !== lastListId) listNumber = 0;
+    lastListId = isListItem ? listId : null;
+
     if (!text.trim()) {
       lines.push('');
+    } else if (styleId && titleStyles.has(styleId) && !title) {
+      title = text.replace(/[*_~]|<\/?u>/g, '').trim();
     } else if (level) {
       lines.push(`${'#'.repeat(Math.min(level, 6))} ${text.trim()}`);
+    } else if (isListItem) {
+      listNumber += 1;
+      const marker = listKinds[listId] === 'numbered' ? `${listNumber}.` : '-';
+      lines.push(`${marker} ${text.trim().replace(/\n/g, ' ')}`);
     } else {
       lines.push(...text.split('\n'));
     }
   }
 
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { title, markdown: lines.join('\n').replace(/\n{3,}/g, '\n\n').trim() };
+}
+
+/**
+ * Read a .docx into FAUST's Markdown-style text (the document title, if the
+ * file has one, is left out: see readDocx).
+ */
+async function docxToMarkdown(buffer) {
+  return (await readDocx(buffer)).markdown;
 }
 
 /**
@@ -822,7 +914,8 @@ async function importDocument(buffer, fileName) {
   const type = (extension || '').toLowerCase();
 
   if (type === 'docx') {
-    return splitIntoChapters(await docxToMarkdown(buffer), fileName);
+    const { title, markdown } = await readDocx(buffer);
+    return splitIntoChapters(markdown, fileName, { title });
   }
   if (['txt', 'md', 'markdown', 'text'].includes(type)) {
     return splitIntoChapters(buffer.toString('utf-8'), fileName);

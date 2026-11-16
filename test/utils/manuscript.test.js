@@ -195,15 +195,18 @@ describe('docx', () => {
     expect(markdown).toContain('<u>alleviivaus</u>');
     expect(markdown).toContain('~~poisto~~');
     expect(markdown).toContain('Sisäkkäinen kohtaus {aaltosulkeet} \\ kenoviiva.');
+    // Lists come back as lists
+    expect(markdown).toContain('- yksi\n- kaksi');
+    expect(markdown).toContain('1. eka\n2. toka');
   });
 
   test('import splits a Word file into chapters at its headings', async () => {
     const buffer = await toDocx(buildManuscript(project));
     const imported = await importDocument(buffer, '/tmp/Käsikirjoitus.docx');
-    expect(imported.title).toBe('Käsikirjoitus');
-    expect(imported.chapters.map(c => c.title)).toEqual(
-      expect.arrayContaining(['Ensimmäinen luku', 'Kohtaus', 'Toinen luku'])
-    );
+    // The Word title and the author line are metadata, not chapters
+    expect(imported.title).toBe(project.title);
+    expect(imported.author).toBe(project.author);
+    expect(imported.chapters.map(c => c.title)).toEqual(['Ensimmäinen luku', 'Kohtaus', 'Toinen luku']);
     const second = imported.chapters.find(c => c.title === 'Toinen luku');
     expect(second.content).toBe('Yksi rivi.\nToinen rivi.');
   });
@@ -258,9 +261,36 @@ describe('import', () => {
     const result = splitIntoChapters('Esipuhe.\n\n# Yksi\nA\n\n## Ali\nB\n\n# Kaksi\nC\n', 'kirja.md');
     expect(result.chapters).toEqual([
       { title: 'kirja', content: 'Esipuhe.' },
-      { title: 'Yksi', content: 'A\n\n## Ali\nB' },
+      { title: 'Yksi', content: 'A\n\n# Ali\nB' },
       { title: 'Kaksi', content: 'C' }
     ]);
+  });
+
+  test('a single top heading followed by chapter headings is the book title', () => {
+    const result = splitIntoChapters('# Sateen kirja\n\n*Aino Älvä*\n\n## Eka\nA\n\n## Toka\nB\n', 'tiedosto.md');
+    expect(result.title).toBe('Sateen kirja');
+    expect(result.author).toBe('Aino Älvä');
+    expect(result.chapters).toEqual([
+      { title: 'Eka', content: 'A' },
+      { title: 'Toka', content: 'B' }
+    ]);
+  });
+
+  test('longer text before the first chapter is kept as its own chapter', () => {
+    const result = splitIntoChapters('# Kirja\n\nTämä on esipuhe, jossa on selvästi enemmän kuin muutama sana tekstiä.\n\n## Eka\nA\n\n## Toka\nB', 'x.md');
+    expect(result.title).toBe('Kirja');
+    expect(result.author).toBe('');
+    expect(result.chapters.map(c => c.title)).toEqual(['Alkusivut', 'Eka', 'Toka']);
+  });
+
+  test('exporting to Markdown and importing it back gives the same chapters', () => {
+    const back = splitIntoChapters(toMarkdown(buildManuscript(project)), 'x.md');
+    expect(back.title).toBe(project.title);
+    expect(back.author).toBe(project.author);
+    expect(back.chapters.map(c => c.title)).toEqual(['Ensimmäinen luku', 'Kohtaus', 'Toinen luku']);
+    // The heading inside the first chapter comes back at its original level
+    expect(back.chapters[0].content).toContain('\n## Väliotsikko\n');
+    expect(toMarkdown(buildManuscript(project))).toContain('#### Väliotsikko');
   });
 
   test('uses the highest heading level that exists', () => {
@@ -271,6 +301,7 @@ describe('import', () => {
   test('text without headings becomes one chapter named after the file', () => {
     const result = splitIntoChapters('﻿Pelkkää tekstiä.\r\nToinen rivi.', '/polku/Novelli.txt');
     expect(result.chapters).toEqual([{ title: 'Novelli', content: 'Pelkkää tekstiä.\nToinen rivi.' }]);
+    expect(result.title).toBe('Novelli');
   });
 
   test('importDocument reads text files and rejects unknown formats', async () => {

@@ -77,11 +77,11 @@ Return ONLY valid JSON in this format:
       if (provider === 'anthropic') {
         result = await electronAPI.claudeAPI({ prompt, model: modelName });
       } else if (provider === 'openai') {
-        result = await electronAPI.openaiAPI({ prompt, model: modelName });
+        result = await electronAPI.claudeAPI({ prompt, model: modelName });
       } else if (provider === 'grok') {
-        result = await electronAPI.grokAPI({ prompt, model: modelName });
+        result = await electronAPI.claudeAPI({ prompt, model: modelName });
       } else if (provider === 'deepseek') {
-        result = await electronAPI.deepseekAPI({ prompt, model: modelName });
+        result = await electronAPI.claudeAPI({ prompt, model: modelName });
       }
 
       if (!result.success) {

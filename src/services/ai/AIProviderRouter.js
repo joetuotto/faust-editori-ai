@@ -1,6 +1,6 @@
 /**
  * FAUST - Global AI Provider Router
- * Routes AI API calls to the correct provider backend via Electron IPC.
+ * Sends AI calls to the main process, which talks to Claude or to Cherry Studio.
  */
 (function(window) {
   'use strict';
@@ -24,25 +24,10 @@
       max_tokens
     };
 
-    console.log(`[AI Provider] Calling ${provider} API with model: ${model || 'default'}`);
-
-    switch (provider) {
-      case 'anthropic':
-        return await window.electronAPI.claudeAPI(apiParams);
-      case 'openai':
-        return await window.electronAPI.openaiAPI(apiParams);
-      case 'grok':
-        return await window.electronAPI.grokAPI(apiParams);
-      case 'deepseek':
-        return await window.electronAPI.deepseekAPI(apiParams);
-      case 'gemini':
-        return await window.electronAPI.geminiAPI(apiParams);
-      case 'cursor':
-        return await window.electronAPI.cursorAPI(apiParams);
-      default:
-        console.warn(`[AI Provider] Unknown provider: ${provider}, falling back to Anthropic`);
-        return await window.electronAPI.claudeAPI(apiParams);
-    }
+    // One path for every call. The main process decides whether it goes to
+    // Claude or to the model selected in Cherry Studio (Inspector → AI →
+    // Tekoälyn lähde). `provider` is accepted for old project files and ignored.
+    return await window.electronAPI.claudeAPI(apiParams);
   }
 
   window.callAIProvider = callAIProvider;

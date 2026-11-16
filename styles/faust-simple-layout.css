@@ -168,7 +168,8 @@
 .faust-focus-mode .faust-header,
 .faust-focus-mode .faust-footer,
 .faust-focus-mode .formatting-toolbar {
-  display: none;
+  /* !important: the toolbar sets display inline */
+  display: none !important;
 }
 
 .faust-focus-exit {

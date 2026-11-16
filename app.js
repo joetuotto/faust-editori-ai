@@ -373,11 +373,31 @@ function FAUSTApp() {
   const [aiChatVoiceState, setAiChatVoiceState] = useState('idle');
 
   // Scrivener-style editor controls
-  const [editorFont, setEditorFont] = useState('EB Garamond');
-  const [textAlign, setTextAlign] = useState('left');
-  const [lineSpacing, setLineSpacing] = useState('1.8');
-  const [editorZoom, setEditorZoom] = useState('100');
-  const [paragraphSpacing, setParagraphSpacing] = useState('1.5');
+  // How the manuscript looks in the editor. Remembered between sessions.
+  const storedEditorSetting = (key, fallback) => {
+    try {
+      return localStorage.getItem(`faust-editor-${key}`) || fallback;
+    } catch (error) {
+      return fallback;
+    }
+  };
+  const [editorFont, setEditorFont] = useState(() => storedEditorSetting('font', 'EB Garamond'));
+  const [textAlign, setTextAlign] = useState(() => storedEditorSetting('align', 'left'));
+  const [lineSpacing, setLineSpacing] = useState(() => storedEditorSetting('line-spacing', '1.8'));
+  const [editorZoom, setEditorZoom] = useState(() => storedEditorSetting('zoom', '100'));
+  const [paragraphSpacing, setParagraphSpacing] = useState(() => storedEditorSetting('paragraph-spacing', '1.5'));
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('faust-editor-font', editorFont);
+      localStorage.setItem('faust-editor-align', textAlign);
+      localStorage.setItem('faust-editor-line-spacing', lineSpacing);
+      localStorage.setItem('faust-editor-zoom', editorZoom);
+      localStorage.setItem('faust-editor-paragraph-spacing', paragraphSpacing);
+    } catch (error) {
+      // Storage unavailable: the settings simply last for this session
+    }
+  }, [editorFont, textAlign, lineSpacing, editorZoom, paragraphSpacing]);
   const [aiChatProcessing, setAiChatProcessing] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState(null); // { original, revised, applied }
   const [chatMemory, setChatMemory] = useState({ entries: [], lastUpdated: null });
@@ -1580,7 +1600,7 @@ function FAUSTApp() {
       !(project.structure[0].content || '').trim() && project.title === 'Nimetön projekti';
 
     setProject(prev => pristine
-      ? { ...prev, title: result.title || prev.title, structure: imported }
+      ? { ...prev, title: result.title || prev.title, author: prev.author || result.author || '', structure: imported }
       : { ...prev, structure: [...prev.structure, ...imported] });
     setActiveChapterId(imported[0].id);
     setUnsavedChanges(true);
@@ -5645,9 +5665,11 @@ ${contextPrompt}`;
                   fontSize: `${18 * (parseInt(editorZoom) / 100)}px`,
                   lineHeight: lineSpacing,
                   textAlign: textAlign,
+                  // Space after every paragraph: 1.0 = none, 1.5 = 0.4 em, 2.0 = 0.8 em
+                  paragraphGap: `${Math.max(0, (parseFloat(paragraphSpacing) || 1) - 1) * 0.8}em`,
                   // Typewriter mode needs room above the first and below the last line
                   paddingTop: typewriterMode ? '40vh' : undefined,
-                  paddingBottom: typewriterMode ? '50vh' : `${parseFloat(paragraphSpacing) * 16}px`,
+                  paddingBottom: typewriterMode ? '50vh' : '30vh',
                   paddingLeft: '60px' // room for the annotation margin
                 }
               })
@@ -6653,11 +6675,10 @@ ${contextPrompt}`;
                   fontSize: '12px'
                 }
               },
-                e('option', { value: '80' }, '80%'),
-                e('option', { value: '90' }, '90%'),
-                e('option', { value: '100' }, '100% (oletus)'),
-                e('option', { value: '110' }, '110%'),
-                e('option', { value: '120' }, '120%')
+                // The menu zooms in steps of 10 (⌘+ / ⌘-): always list the current value
+                ...Array.from(new Set(['70', '80', '90', '100', '110', '120', '130', '150', '175', '200', editorZoom]))
+                  .sort((a, b) => parseInt(a, 10) - parseInt(b, 10))
+                  .map(value => e('option', { key: value, value }, value === '100' ? '100% (oletus)' : `${value}%`))
               )
             ),
 

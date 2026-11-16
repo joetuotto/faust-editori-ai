@@ -293,11 +293,11 @@ If no contradictions found, return: {"contradictions": []}`;
         if (provider === 'anthropic') {
           result = await this.electronAPI.claudeAPI({ prompt, model: modelName, temperature: 0.3 });
         } else if (provider === 'openai') {
-          result = await this.electronAPI.openaiAPI({ prompt, model: modelName, temperature: 0.3 });
+          result = await this.electronAPI.claudeAPI({ prompt, model: modelName, temperature: 0.3 });
         } else if (provider === 'grok') {
-          result = await this.electronAPI.grokAPI({ prompt, model: modelName, temperature: 0.3 });
+          result = await this.electronAPI.claudeAPI({ prompt, model: modelName, temperature: 0.3 });
         } else if (provider === 'deepseek') {
-          result = await this.electronAPI.deepseekAPI({ prompt, model: modelName, temperature: 0.3 });
+          result = await this.electronAPI.claudeAPI({ prompt, model: modelName, temperature: 0.3 });
         }
       }
 
