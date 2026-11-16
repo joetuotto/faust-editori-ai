@@ -203,31 +203,18 @@ class HybridWritingFlow {
   }
 
   /**
-   * Call AI with appropriate provider
+   * Call Claude AI
    */
   async callAI(prompt, mode = null) {
     if (!this.electronAPI) {
       throw new Error('Electron API not available');
     }
 
-    const provider = this.project.ai.provider || 'anthropic';
-    const modelName = this.project.ai.models?.[provider];
-
-    let result;
-    if (provider === 'anthropic') {
-      result = await this.electronAPI.claudeAPI({ prompt, model: modelName });
-    } else if (provider === 'openai') {
-      result = await this.electronAPI.openaiAPI({ prompt, model: modelName });
-    } else if (provider === 'grok') {
-      result = await this.electronAPI.grokAPI({ prompt, model: modelName });
-    } else if (provider === 'deepseek') {
-      result = await this.electronAPI.deepseekAPI({ prompt, model: modelName });
-    } else {
-      throw new Error(`Unknown provider: ${provider}`);
-    }
+    const modelName = this.project.ai?.model || 'claude-sonnet-4-20250514';
+    const result = await this.electronAPI.claudeAPI({ prompt, model: modelName });
 
     if (!result?.success) {
-      throw new Error(result?.error || 'AI generation failed');
+      throw new Error(result?.error || 'Claude AI generation failed');
     }
 
     return {

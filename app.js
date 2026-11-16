@@ -245,6 +245,31 @@ function FAUSTApp() {
     return saved ? saved === 'NOX' : true;
   });
   const [showInspector, setShowInspector] = useState(false);
+
+  // Typewriter Mode - keeps active line centered
+  const [typewriterMode, setTypewriterMode] = useState(() => {
+    const saved = localStorage.getItem('faust-typewriter-mode');
+    return saved === 'true';
+  });
+
+  // Writing Goals per Session
+  const [sessionGoal, setSessionGoal] = useState(() => {
+    const saved = localStorage.getItem('faust-session-goal');
+    return saved ? parseInt(saved) : 500; // Default 500 words per session
+  });
+  const [sessionStartWords, setSessionStartWords] = useState(0);
+  const [sessionStartTime, setSessionStartTime] = useState(null);
+  const [showWritingGoalsPanel, setShowWritingGoalsPanel] = useState(false);
+
+  // Timeline View state
+  const [showTimelineView, setShowTimelineView] = useState(false);
+
+  // Research Folder state
+  const [showResearchFolder, setShowResearchFolder] = useState(false);
+  const [researchItems, setResearchItems] = useState(() => {
+    // Load from project or initialize empty
+    return [];
+  });
   const [showCastPlanDialog, setShowCastPlanDialog] = useState(false);
   const [castPlanStep, setCastPlanStep] = useState(1); // 1=input, 2=AI analysis, 3=review
   const [showCharacterBuilder, setShowCharacterBuilder] = useState(false);
@@ -868,6 +893,12 @@ function FAUSTApp() {
         case 'toggle-ai-panel':
           setAiAssistantOpen(prev => !prev);
           break;
+        case 'show-timeline':
+          setShowTimelineView(true);
+          break;
+        case 'show-research':
+          setShowResearchFolder(true);
+          break;
 
         // Settings menu
         case 'show-settings':
@@ -886,6 +917,46 @@ function FAUSTApp() {
             const content = textarea.value;
             const newContent = content.substring(0, start) + arg + content.substring(end);
             updateChapterContent(newContent);
+          }
+          break;
+
+        // Text menu
+        case 'text-uppercase':
+          if (editorRef.current) {
+            const textarea = editorRef.current;
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            if (start !== end) {
+              const content = textarea.value;
+              const selected = content.substring(start, end);
+              const newContent = content.substring(0, start) + selected.toUpperCase() + content.substring(end);
+              updateChapterContent(newContent);
+            }
+          }
+          break;
+        case 'text-lowercase':
+          if (editorRef.current) {
+            const textarea = editorRef.current;
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            if (start !== end) {
+              const content = textarea.value;
+              const selected = content.substring(start, end);
+              const newContent = content.substring(0, start) + selected.toLowerCase() + content.substring(end);
+              updateChapterContent(newContent);
+            }
+          }
+          break;
+        case 'text-trim-spaces':
+          if (activeChapter?.content) {
+            const trimmed = activeChapter.content.replace(/  +/g, ' ').replace(/\n /g, '\n');
+            updateChapterContent(trimmed);
+          }
+          break;
+        case 'text-remove-empty-lines':
+          if (activeChapter?.content) {
+            const cleaned = activeChapter.content.replace(/\n\s*\n\s*\n/g, '\n\n');
+            updateChapterContent(cleaned);
           }
           break;
 
@@ -2410,33 +2481,8 @@ function FAUSTApp() {
 
     console.log(`[AI Mode] Using ${project.ai.currentMode} mode (temp: ${apiParams.temperature})`);
 
-    // Call AI API based on provider
-    const provider = project.ai.provider || 'anthropic';
-    let response;
-
-    switch (provider) {
-      case 'anthropic':
-        response = await window.electronAPI.claudeAPI(apiParams);
-        break;
-      case 'openai':
-        response = await window.electronAPI.openaiAPI(apiParams);
-        break;
-      case 'grok':
-        response = await window.electronAPI.grokAPI(apiParams);
-        break;
-      case 'deepseek':
-        response = await window.electronAPI.deepseekAPI(apiParams);
-        break;
-      case 'gemini':
-        response = await window.electronAPI.geminiAPI(apiParams);
-        break;
-      case 'cursor':
-        response = await window.electronAPI.cursorAPI(apiParams);
-        break;
-      default:
-        console.warn(`[AI] Unknown provider: ${provider}, falling back to Anthropic`);
-        response = await window.electronAPI.claudeAPI(apiParams);
-    }
+    // Call Claude API
+    const response = await window.electronAPI.claudeAPI(apiParams);
 
     // Track cost with CostOptimizer
     if (costOptimizerRef.current) {
@@ -2453,7 +2499,7 @@ function FAUSTApp() {
         }
 
         const trackingInfo = costOptimizerRef.current.trackRequest(
-          project.ai.provider || 'anthropic',
+          'anthropic',
           apiParams.model,
           fullPrompt,
           outputText
@@ -2802,8 +2848,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
               timestamp: new Date().toISOString(),
               generatedFrom: {
                 mode: project.ai.currentMode,
-                model: result.model || project.ai.models[project.ai.provider],
-                provider: project.ai.provider,
+                model: result.model || project.ai?.model || 'claude-sonnet-4-20250514',
                 prompt: result.prompt || 'Chapter generation',
                 basedOn: ch.versions?.length > 0 ? ch.versions[ch.versions.length - 1].id : null
               },
@@ -2942,8 +2987,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
               timestamp: new Date().toISOString(),
               generatedFrom: {
                 mode: project.ai.currentMode,
-                model: result.model || project.ai.models[project.ai.provider],
-                provider: project.ai.provider,
+                model: result.model || project.ai?.model || 'claude-sonnet-4-20250514',
                 prompt: result.prompt || `Batch generation - Chapter ${idx + 1}`,
                 basedOn: ch.versions?.length > 0 ? ch.versions[ch.versions.length - 1].id : null,
                 batchGeneration: true
@@ -3797,6 +3841,76 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     }
   };
 
+  // Typewriter Mode - scroll to keep cursor centered
+  const handleTypewriterScroll = () => {
+    if (!typewriterMode || !editorRef.current) return;
+
+    const textarea = editorRef.current;
+    const cursorPosition = textarea.selectionStart;
+    const textBeforeCursor = textarea.value.substring(0, cursorPosition);
+    const linesBefore = textBeforeCursor.split('\n').length;
+
+    // Calculate line height (approximate)
+    const computedStyle = window.getComputedStyle(textarea);
+    const fontSize = parseFloat(computedStyle.fontSize);
+    const lineHeight = parseFloat(computedStyle.lineHeight) || fontSize * 1.5;
+
+    // Calculate cursor Y position
+    const cursorY = linesBefore * lineHeight;
+
+    // Scroll to center the cursor
+    const viewportHeight = textarea.clientHeight;
+    const targetScroll = cursorY - (viewportHeight / 2);
+
+    textarea.scrollTop = Math.max(0, targetScroll);
+  };
+
+  // Initialize session when component mounts or project loads
+  useEffect(() => {
+    if (!sessionStartTime && project.structure) {
+      const totalWords = project.structure.reduce((sum, ch) => {
+        return sum + (ch.content ? ch.content.split(/\s+/).filter(Boolean).length : 0);
+      }, 0);
+      setSessionStartWords(totalWords);
+      setSessionStartTime(new Date());
+      console.log('[Session] Started with', totalWords, 'words');
+    }
+  }, [project.structure, sessionStartTime]);
+
+  // Calculate session progress
+  const getSessionProgress = () => {
+    if (!project.structure) return { written: 0, goal: sessionGoal, percentage: 0 };
+
+    const currentWords = project.structure.reduce((sum, ch) => {
+      return sum + (ch.content ? ch.content.split(/\s+/).filter(Boolean).length : 0);
+    }, 0);
+
+    const written = Math.max(0, currentWords - sessionStartWords);
+    const percentage = Math.min(100, Math.round((written / sessionGoal) * 100));
+
+    return { written, goal: sessionGoal, percentage, currentWords };
+  };
+
+  // Reset session
+  const resetSession = () => {
+    const totalWords = project.structure.reduce((sum, ch) => {
+      return sum + (ch.content ? ch.content.split(/\s+/).filter(Boolean).length : 0);
+    }, 0);
+    setSessionStartWords(totalWords);
+    setSessionStartTime(new Date());
+    console.log('[Session] Reset with', totalWords, 'words');
+  };
+
+  // Save typewriter mode preference
+  useEffect(() => {
+    localStorage.setItem('faust-typewriter-mode', typewriterMode.toString());
+  }, [typewriterMode]);
+
+  // Save session goal preference
+  useEffect(() => {
+    localStorage.setItem('faust-session-goal', sessionGoal.toString());
+  }, [sessionGoal]);
+
   // Editor dimensions tracking for AnnotationMargin
   const [editorDimensions, setEditorDimensions] = useState({
     scrollTop: 0,
@@ -4108,24 +4222,9 @@ ${memoryContext ? `RECENT DECISIONS & DIRECTIONS:\n${memoryContext}\n` : ''}
 ${contextPrompt}`;
 
     try {
-      // Get selected provider and model
-      const provider = project.ai.provider || 'anthropic';
-      const modelName = project.ai.models?.[provider] ||
-        (provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
-         provider === 'openai' ? 'gpt-4-turbo-preview' :
-         provider === 'grok' ? 'grok-2-1212' : 'deepseek-chat');
-
-      let result;
-      // Call appropriate API based on provider
-      if (provider === 'anthropic') {
-        result = await window.electronAPI.claudeAPI({ prompt: fullPrompt, model: modelName });
-      } else if (provider === 'openai') {
-        result = await window.electronAPI.openaiAPI({ prompt: fullPrompt, model: modelName });
-      } else if (provider === 'grok') {
-        result = await window.electronAPI.grokAPI({ prompt: fullPrompt, model: modelName });
-      } else if (provider === 'deepseek') {
-        result = await window.electronAPI.deepseekAPI({ prompt: fullPrompt, model: modelName });
-      }
+      // Call Claude API
+      const modelName = project.ai?.model || 'claude-sonnet-4-20250514';
+      const result = await window.electronAPI.claudeAPI({ prompt: fullPrompt, model: modelName });
 
       if (result?.success) {
         const responseText = result.data.trim();
@@ -5387,9 +5486,9 @@ ${contextPrompt}`;
                       },
                         e('span', {
                           style: { fontSize: '12px' }
-                        }, collection.type === 'manual' ? '📁' :
-                           collection.type === 'status' ? '📋' :
-                           collection.type === 'character' ? '👤' : '🔍'),
+                        }, collection.type === 'manual' ? '⬡' :
+                           collection.type === 'status' ? '◐' :
+                           collection.type === 'character' ? '☉' : '⊙'),
                         e('span', {
                           style: {
                             fontFamily: 'IBM Plex Mono',
@@ -5456,6 +5555,68 @@ ${contextPrompt}`;
                     )
                   );
                 })
+          ),
+
+          // Tools section - Timeline & Research
+          e('div', {
+            style: {
+              marginTop: '16px',
+              paddingTop: '16px',
+              borderTop: '1px solid var(--border-color)'
+            }
+          },
+            e('div', {
+              style: {
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px',
+                color: 'var(--text-3)',
+                textTransform: 'uppercase',
+                marginBottom: '8px'
+              }
+            }, 'Työkalut'),
+
+            // Timeline View button
+            e('button', {
+              onClick: () => setShowTimelineView(true),
+              style: {
+                width: '100%',
+                padding: '8px 12px',
+                marginBottom: '6px',
+                background: 'transparent',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text-2)',
+                cursor: 'pointer',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '12px',
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s'
+              }
+            }, '☽ Aikajana'),
+
+            // Research Folder button
+            e('button', {
+              onClick: () => setShowResearchFolder(true),
+              style: {
+                width: '100%',
+                padding: '8px 12px',
+                background: 'transparent',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                color: 'var(--text-2)',
+                cursor: 'pointer',
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '12px',
+                textAlign: 'left',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                transition: 'all 0.2s'
+              }
+            }, '⚗ Tutkimus')
           )
         )
       ),
@@ -6635,7 +6796,7 @@ ${contextPrompt}`;
                             color: 'var(--text-3)',
                             marginTop: '4px'
                           }
-                        }, `📖 ${bookmark.chapterTitle || 'Nimetön luku'}`),
+                        }, `⬡ ${bookmark.chapterTitle || 'Nimetön luku'}`),
                         bookmark.context && e('div', {
                           style: {
                             fontFamily: 'EB Garamond',
@@ -6652,14 +6813,29 @@ ${contextPrompt}`;
                     )
               ),
 
-              // Textarea
+              // Textarea with Typewriter Mode support
               e('textarea', {
                 ref: editorRef,
                 className: 'faust-textarea',
                 value: activeChapter.content,
-                onChange: (ev) => updateChapterContent(ev.target.value),
+                onChange: (ev) => {
+                  updateChapterContent(ev.target.value);
+                  if (typewriterMode) {
+                    setTimeout(handleTypewriterScroll, 10);
+                  }
+                },
                 onMouseUp: handleTextSelection,
-                onKeyUp: handleTextSelection,
+                onKeyUp: (ev) => {
+                  handleTextSelection();
+                  if (typewriterMode && (ev.key === 'Enter' || ev.key === 'ArrowUp' || ev.key === 'ArrowDown')) {
+                    handleTypewriterScroll();
+                  }
+                },
+                onClick: () => {
+                  if (typewriterMode) {
+                    setTimeout(handleTypewriterScroll, 10);
+                  }
+                },
                 placeholder: 'Aloita kirjoittaminen...',
                 style: {
                   flex: 1,
@@ -6668,7 +6844,9 @@ ${contextPrompt}`;
                   lineHeight: lineSpacing,
                   textAlign: textAlign,
                   paddingBottom: `${parseFloat(paragraphSpacing) * 16}px`,
-                  paddingLeft: '60px' // Add left padding for annotation margin
+                  paddingLeft: '60px', // Add left padding for annotation margin
+                  paddingTop: typewriterMode ? '40vh' : undefined, // Extra top padding for typewriter mode
+                  scrollBehavior: typewriterMode ? 'smooth' : undefined
                 }
               })
             ) // Close editor container with formatting toolbar
@@ -6923,9 +7101,9 @@ ${contextPrompt}`;
                 e('div', { style: { fontSize: '10px', color: 'var(--text-3)', marginTop: '2px' } },
                   (() => {
                     const result = searchResults[currentSearchIndex];
-                    const typeIcon = result.type === 'character' ? '👤' :
-                                     result.type === 'location' ? '📍' :
-                                     result.type === 'thread' ? '🧵' : '📖';
+                    const typeIcon = result.type === 'character' ? '☉' :
+                                     result.type === 'location' ? '♁' :
+                                     result.type === 'thread' ? '∞' : '⬡';
                     const typeName = result.type === 'character' ? result.itemName :
                                      result.type === 'location' ? result.itemName :
                                      result.type === 'thread' ? result.itemName :
@@ -7095,7 +7273,7 @@ ${contextPrompt}`;
                       justifyContent: 'space-between'
                     }
                   },
-                    e('span', null, '📄 ALKUPERÄINEN'),
+                    e('span', null, '← ALKUPERÄINEN'),
                     e('span', null, `${origWords} sanaa`)
                   ),
                   e('div', {
@@ -7668,7 +7846,7 @@ ${contextPrompt}`;
             ),
 
             // Paragraph spacing
-            e('div', { style: { marginBottom: '8px' } },
+            e('div', { style: { marginBottom: '16px' } },
               e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'Kappaleväli:'),
               e('select', {
                 value: paragraphSpacing,
@@ -7688,6 +7866,189 @@ ${contextPrompt}`;
                 e('option', { value: '1.5' }, 'Keskisuuri (oletus)'),
                 e('option', { value: '2.0' }, 'Suuri')
               )
+            ),
+
+            // Typewriter Mode toggle
+            e('div', {
+              style: {
+                marginBottom: '16px',
+                padding: '12px',
+                background: typewriterMode ? 'var(--sigil)' + '22' : 'var(--bg-2)',
+                border: `1px solid ${typewriterMode ? 'var(--sigil)' : 'var(--border-color)'}`,
+                borderRadius: '4px'
+              }
+            },
+              e('div', {
+                style: {
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }
+              },
+                e('div', null,
+                  e('div', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '11px',
+                      color: typewriterMode ? 'var(--sigil)' : 'var(--text)',
+                      fontWeight: 600
+                    }
+                  }, '⌨️ Typewriter Mode'),
+                  e('div', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '9px',
+                      color: 'var(--text-3)',
+                      marginTop: '2px'
+                    }
+                  }, 'Pitää kursorin keskellä ruutua')
+                ),
+                e('button', {
+                  onClick: () => setTypewriterMode(!typewriterMode),
+                  style: {
+                    padding: '4px 12px',
+                    background: typewriterMode ? 'var(--sigil)' : 'transparent',
+                    border: `1px solid ${typewriterMode ? 'var(--sigil)' : 'var(--border-color)'}`,
+                    borderRadius: '4px',
+                    color: typewriterMode ? '#000' : 'var(--text-2)',
+                    cursor: 'pointer',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '10px',
+                    fontWeight: 600
+                  }
+                }, typewriterMode ? 'ON' : 'OFF')
+              )
+            ),
+
+            // Writing Goals Section
+            e('div', {
+              style: {
+                padding: '12px',
+                background: 'var(--bg-2)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px'
+              }
+            },
+              e('div', {
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '11px',
+                  color: 'var(--text-3)',
+                  marginBottom: '8px',
+                  textTransform: 'uppercase'
+                }
+              }, '📊 Kirjoitustavoite'),
+
+              // Progress bar
+              (() => {
+                const progress = getSessionProgress();
+                return e('div', null,
+                  // Progress bar container
+                  e('div', {
+                    style: {
+                      width: '100%',
+                      height: '8px',
+                      background: 'var(--surface-2)',
+                      borderRadius: '4px',
+                      overflow: 'hidden',
+                      marginBottom: '8px'
+                    }
+                  },
+                    e('div', {
+                      style: {
+                        width: `${progress.percentage}%`,
+                        height: '100%',
+                        background: progress.percentage >= 100 ? '#4CAF50' : 'var(--bronze)',
+                        borderRadius: '4px',
+                        transition: 'width 0.3s ease'
+                      }
+                    })
+                  ),
+
+                  // Stats
+                  e('div', {
+                    style: {
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '11px',
+                      marginBottom: '8px'
+                    }
+                  },
+                    e('span', { style: { color: progress.percentage >= 100 ? '#4CAF50' : 'var(--bronze)', fontWeight: 600 } },
+                      `${progress.written} / ${progress.goal}`),
+                    e('span', { style: { color: 'var(--text-2)' } },
+                      `${progress.percentage}%`)
+                  ),
+
+                  // Goal completed message
+                  progress.percentage >= 100 && e('div', {
+                    style: {
+                      padding: '6px 8px',
+                      background: '#4CAF5022',
+                      border: '1px solid #4CAF50',
+                      borderRadius: '4px',
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '10px',
+                      color: '#4CAF50',
+                      textAlign: 'center',
+                      marginBottom: '8px'
+                    }
+                  }, '✓ Tavoite saavutettu!'),
+
+                  // Goal setter
+                  e('div', {
+                    style: {
+                      display: 'flex',
+                      gap: '8px',
+                      alignItems: 'center'
+                    }
+                  },
+                    e('label', {
+                      style: {
+                        fontFamily: 'IBM Plex Mono',
+                        fontSize: '10px',
+                        color: 'var(--text-3)'
+                      }
+                    }, 'Tavoite:'),
+                    e('select', {
+                      value: sessionGoal,
+                      onChange: (ev) => setSessionGoal(parseInt(ev.target.value)),
+                      style: {
+                        flex: 1,
+                        padding: '4px 6px',
+                        background: 'var(--bg)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        color: 'var(--text)',
+                        fontFamily: 'IBM Plex Mono',
+                        fontSize: '10px'
+                      }
+                    },
+                      e('option', { value: '250' }, '250 sanaa'),
+                      e('option', { value: '500' }, '500 sanaa'),
+                      e('option', { value: '750' }, '750 sanaa'),
+                      e('option', { value: '1000' }, '1000 sanaa'),
+                      e('option', { value: '1500' }, '1500 sanaa'),
+                      e('option', { value: '2000' }, '2000 sanaa')
+                    ),
+                    e('button', {
+                      onClick: resetSession,
+                      title: 'Nollaa istunto',
+                      style: {
+                        padding: '4px 8px',
+                        background: 'transparent',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '4px',
+                        color: 'var(--text-2)',
+                        cursor: 'pointer',
+                        fontFamily: 'IBM Plex Mono',
+                        fontSize: '10px'
+                      }
+                    }, '↺')
+                  )
+                );
+              })()
             )
           ),
 
@@ -7720,10 +8081,10 @@ ${contextPrompt}`;
                   fontSize: '12px'
                 }
               },
-                e('option', { value: 'plan' }, '📋 Plan'),
-                e('option', { value: 'draft' }, '✍️ Draft'),
-                e('option', { value: 'revision' }, '🔄 Revision'),
-                e('option', { value: 'final' }, '✅ Final')
+                e('option', { value: 'plan' }, '○ Plan'),
+                e('option', { value: 'draft' }, '◐ Draft'),
+                e('option', { value: 'revision' }, '◑ Revision'),
+                e('option', { value: 'final' }, '● Final')
               )
             ),
 
@@ -7968,236 +8329,112 @@ ${contextPrompt}`;
               'AI jatkaa kirjoittamista tekstisi lopusta')
           ),
 
-          // AI Provider
+          // Claude API Key
           e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'AI PROVIDER'),
+            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'CLAUDE API'),
 
-            // Provider selector buttons with API key input
-            e('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '8px' } },
-              ['anthropic', 'openai', 'deepseek', 'grok'].map(providerName => {
-                const labels = {
-                  anthropic: 'Claude (Anthropic)',
-                  openai: 'GPT-4 (OpenAI)',
-                  deepseek: 'DeepSeek',
-                  grok: 'Grok (xAI)'
-                };
-                const isActive = (project.ai.provider || 'anthropic') === providerName;
-                const showInput = showApiKeyInput === providerName;
-
-                const hasKey = apiKeysStatus[providerName];
-
-                return e('div', { key: providerName, style: { display: 'flex', flexDirection: 'column', gap: '4px' } },
-                  // Provider button (click to select AND open API input)
-                  e('button', {
-                    onClick: () => {
-                      setAIProvider(providerName);
-                      toggleApiKeyInput(providerName);
-                    },
-                    style: {
-                      width: '100%',
-                      padding: '8px 12px',
-                      background: isActive ? 'var(--sigil)' : 'transparent',
-                      border: `1px solid ${isActive ? 'var(--sigil)' : 'var(--border-color)'}`,
-                      borderRadius: '4px',
-                      color: isActive ? '#000' : 'var(--text-2)',
-                      cursor: 'pointer',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      fontWeight: isActive ? 600 : 400,
-                      textAlign: 'left',
-                      transition: 'all 0.2s',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }
-                  },
-                    e('span', null, labels[providerName]),
-                    e('span', { style: { fontSize: '14px' } },
-                      hasKey ? '✅' : '❌'
-                    )
-                  ),
-
-                  // API key input (shown when clicked)
-                  showInput && e('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px', padding: '8px', background: 'var(--bg-2)', borderRadius: '4px', border: '1px solid var(--border-color)' } },
-                    e('input', {
-                      type: 'password',
-                      placeholder: 'API-avain...',
-                      value: apiKeyInputValue,
-                      onChange: (ev) => setApiKeyInputValue(ev.target.value),
-                      style: {
-                        padding: '6px 8px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '4px',
-                        color: 'var(--text)',
-                        fontFamily: 'IBM Plex Mono',
-                        fontSize: '11px'
-                      }
-                    }),
-                    e('div', { style: { display: 'flex', gap: '4px' } },
-                      e('button', {
-                        onClick: () => saveApiKey(providerName, apiKeyInputValue),
-                        disabled: !apiKeyInputValue.trim(),
-                        style: {
-                          flex: 1,
-                          padding: '4px 8px',
-                          background: apiKeyInputValue.trim() ? 'var(--sigil)' : 'var(--bg-2)',
-                          border: '1px solid var(--sigil)',
-                          borderRadius: '4px',
-                          color: apiKeyInputValue.trim() ? '#000' : 'var(--text-3)',
-                          cursor: apiKeyInputValue.trim() ? 'pointer' : 'not-allowed',
-                          fontFamily: 'IBM Plex Mono',
-                          fontSize: '10px',
-                          fontWeight: 600
-                        }
-                      }, 'Tallenna'),
-                      e('button', {
-                        onClick: () => toggleApiKeyInput(providerName),
-                        style: {
-                          padding: '4px 8px',
-                          background: 'transparent',
-                          border: '1px solid var(--border-color)',
-                          borderRadius: '4px',
-                          color: 'var(--text-2)',
-                          cursor: 'pointer',
-                          fontFamily: 'IBM Plex Mono',
-                          fontSize: '10px'
-                        }
-                      }, 'Peruuta')
-                    )
-                  )
-                );
-              })
+            // Claude info box
+            e('div', { style: {
+              marginBottom: '12px',
+              padding: '10px',
+              background: 'rgba(139, 92, 246, 0.1)',
+              borderRadius: '6px',
+              border: '1px solid rgba(139, 92, 246, 0.3)'
+            } },
+              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--sigil)', fontWeight: 600, marginBottom: '4px' } },
+                '⚗ Claude by Anthropic'),
+              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-2)', lineHeight: '1.4' } },
+                'FAUST käyttää Claude AI:ta kaikissa kirjoitustoiminnoissa. Claude on optimoitu luovaan kirjoittamiseen ja tarinan jatkuvuuden ymmärtämiseen.')
             ),
 
-            // Current provider info
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', fontStyle: 'italic' } },
-              'Oletusprovider kaikille toiminnoille'),
+            // API Key input
+            e('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
+              e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+                e('input', {
+                  type: 'password',
+                  placeholder: 'Claude API -avain (sk-ant-...)',
+                  value: apiKeyInputValue,
+                  onChange: (ev) => setApiKeyInputValue(ev.target.value),
+                  style: {
+                    flex: 1,
+                    padding: '8px 12px',
+                    background: 'var(--bg)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px'
+                  }
+                }),
+                e('button', {
+                  onClick: () => saveApiKey('anthropic', apiKeyInputValue),
+                  disabled: !apiKeyInputValue.trim(),
+                  style: {
+                    padding: '8px 16px',
+                    background: apiKeyInputValue.trim() ? 'var(--sigil)' : 'var(--bg-2)',
+                    border: '1px solid var(--sigil)',
+                    borderRadius: '4px',
+                    color: apiKeyInputValue.trim() ? '#000' : 'var(--text-3)',
+                    cursor: apiKeyInputValue.trim() ? 'pointer' : 'not-allowed',
+                    fontFamily: 'IBM Plex Mono',
+                    fontSize: '11px',
+                    fontWeight: 600
+                  }
+                }, 'Tallenna')
+              ),
 
-            // Advanced: Per-function providers
-            e('details', { style: { marginTop: '12px' } },
-              e('summary', {
+              // Status indicator
+              e('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
+                e('span', { style: { fontSize: '12px' } }, apiKeysStatus.anthropic ? '◉' : '○'),
+                e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: apiKeysStatus.anthropic ? 'var(--sigil)' : 'var(--text-3)' } },
+                  apiKeysStatus.anthropic ? 'API-avain asetettu' : 'API-avain puuttuu')
+              ),
+
+              // Link to get API key
+              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } },
+                'Hanki API-avain: ',
+                e('a', {
+                  href: '#',
+                  onClick: (ev) => {
+                    ev.preventDefault();
+                    window.electronAPI && window.require && window.require('electron').shell.openExternal('https://console.anthropic.com/');
+                  },
+                  style: { color: 'var(--sigil)', textDecoration: 'none' }
+                }, 'console.anthropic.com')
+              )
+            ),
+
+            // Model selector
+            e('div', { style: { marginTop: '12px' } },
+              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginBottom: '4px' } }, 'Malli:'),
+              e('select', {
+                value: project.ai?.model || 'claude-sonnet-4-20250514',
+                onChange: (ev) => {
+                  setProject(prev => ({
+                    ...prev,
+                    ai: {
+                      ...prev.ai,
+                      model: ev.target.value
+                    }
+                  }));
+                  setUnsavedChanges(true);
+                },
                 style: {
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'var(--bg)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  color: 'var(--text)',
                   fontFamily: 'IBM Plex Mono',
-                  fontSize: '10px',
-                  color: 'var(--sigil)',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                  marginBottom: '8px'
+                  fontSize: '11px'
                 }
-              }, '▸ Toimintokohtaiset providerit'),
-
-              e('div', { style: { marginTop: '8px', padding: '8px', background: 'var(--bg-2)', borderRadius: '4px', border: '1px solid var(--border-color)' } },
-                // Generation provider
-                e('div', { style: { marginBottom: '8px' } },
-                  e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginBottom: '4px' } }, 'Luku-generointi:'),
-                  e('select', {
-                    value: project.ai.providers?.generation || 'anthropic',
-                    onChange: (ev) => {
-                      setProject(prev => ({
-                        ...prev,
-                        ai: {
-                          ...prev.ai,
-                          providers: {
-                            ...prev.ai.providers,
-                            generation: ev.target.value
-                          }
-                        }
-                      }));
-                      setUnsavedChanges(true);
-                    },
-                    style: {
-                      width: '100%',
-                      padding: '4px 8px',
-                      background: 'var(--bg)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      color: 'var(--text)',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px'
-                    }
-                  },
-                    e('option', { value: 'anthropic' }, 'Claude (Anthropic)'),
-                    e('option', { value: 'openai' }, 'GPT-4 (OpenAI)'),
-                    e('option', { value: 'deepseek' }, 'DeepSeek'),
-                    e('option', { value: 'grok' }, 'Grok (xAI)')
-                  )
-                ),
-
-                // Continuity provider
-                e('div', { style: { marginBottom: '8px' } },
-                  e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginBottom: '4px' } }, 'Jatkuvuustarkistus:'),
-                  e('select', {
-                    value: project.ai.providers?.continuity || 'anthropic',
-                    onChange: (ev) => {
-                      setProject(prev => ({
-                        ...prev,
-                        ai: {
-                          ...prev.ai,
-                          providers: {
-                            ...prev.ai.providers,
-                            continuity: ev.target.value
-                          }
-                        }
-                      }));
-                      setUnsavedChanges(true);
-                    },
-                    style: {
-                      width: '100%',
-                      padding: '4px 8px',
-                      background: 'var(--bg)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      color: 'var(--text)',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px'
-                    }
-                  },
-                    e('option', { value: 'anthropic' }, 'Claude (Anthropic)'),
-                    e('option', { value: 'openai' }, 'GPT-4 (OpenAI)'),
-                    e('option', { value: 'deepseek' }, 'DeepSeek'),
-                    e('option', { value: 'grok' }, 'Grok (xAI)')
-                  )
-                ),
-
-                // Analysis provider
-                e('div', { style: { marginBottom: '0' } },
-                  e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginBottom: '4px' } }, 'Laatuanalyysi:'),
-                  e('select', {
-                    value: project.ai.providers?.analysis || 'anthropic',
-                    onChange: (ev) => {
-                      setProject(prev => ({
-                        ...prev,
-                        ai: {
-                          ...prev.ai,
-                          providers: {
-                            ...prev.ai.providers,
-                            analysis: ev.target.value
-                          }
-                        }
-                      }));
-                      setUnsavedChanges(true);
-                    },
-                    style: {
-                      width: '100%',
-                      padding: '4px 8px',
-                      background: 'var(--bg)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      color: 'var(--text)',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px'
-                    }
-                  },
-                    e('option', { value: 'anthropic' }, 'Claude (Anthropic)'),
-                    e('option', { value: 'openai' }, 'GPT-4 (OpenAI)'),
-                    e('option', { value: 'deepseek' }, 'DeepSeek'),
-                    e('option', { value: 'grok' }, 'Grok (xAI)')
-                  )
-                ),
-
-                e('div', { style: { marginTop: '8px', fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-3)', fontStyle: 'italic' } },
-                  '💡 Voit käyttää eri malleja eri toiminnoille (esim. DeepSeek generointi, Claude jatkuvuus)')
+              },
+                e('option', { value: 'claude-sonnet-4-20250514' }, 'Claude Sonnet 4 (suositeltu)'),
+                e('option', { value: 'claude-3-5-sonnet-20241022' }, 'Claude 3.5 Sonnet'),
+                e('option', { value: 'claude-3-5-haiku-20241022' }, 'Claude 3.5 Haiku (nopea)'),
+                e('option', { value: 'claude-opus-4-20250514' }, 'Claude Opus 4 (tehokas)'),
+                e('option', { value: 'claude-opus-4-5-20250514' }, 'Claude Opus 4.5 (uusin)')
               )
             )
           ),
@@ -8210,7 +8447,7 @@ ${contextPrompt}`;
             costOptimizerRef.current && e('div', { style: { marginBottom: '12px', padding: '8px', background: 'var(--bg-2)', borderRadius: '4px', border: '1px solid var(--border-color)' } },
               e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginBottom: '4px' } }, 'KUSTANNUSARVIO'),
               e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-2)' } },
-                `Provider: ${project.ai.provider || 'anthropic'}`),
+                `Malli: ${project.ai?.model || 'Claude Sonnet 4'}`),
               e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-2)' } },
                 `Luvut: ${project.structure.length}`),
               e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--sigil)', marginTop: '4px', fontWeight: 600 } },
@@ -8238,7 +8475,7 @@ ${contextPrompt}`;
                 fontWeight: 600,
                 opacity: isGenerating || !batchProcessorRef.current ? 0.5 : 1
               }
-            }, isGenerating ? '⏳ Generoidaan...' : '🚀 Generoi Kaikki Luvut'),
+            }, isGenerating ? '◌ Generoidaan...' : '⊛ Generoi Kaikki Luvut'),
 
             // Total cost tracking
             costOptimizerRef.current && costOptimizerRef.current.getStats().totalSpent > 0 && e('div', {
@@ -8335,7 +8572,7 @@ ${contextPrompt}`;
                     userSelect: 'none',
                     marginBottom: '8px'
                   }
-                }, `▸ Kustannukset providereittain (${providers.length})`),
+                }, `⊳ Kustannukset providereittain (${providers.length})`),
 
                 e('div', { style: { marginTop: '8px' } },
                   providers.map(provider => {
@@ -8430,7 +8667,7 @@ ${contextPrompt}`;
                   fontFamily: 'IBM Plex Mono',
                   fontSize: '10px'
                 }
-              }, `📍 Locations (${Object.keys(project.continuity?.locations || {}).length})`),
+              }, `♁ Locations (${Object.keys(project.continuity?.locations || {}).length})`),
 
               (project.plotThreads || []).length > 0 && e('button', {
                 onClick: () => setShowThreadSheet(true),
@@ -8445,7 +8682,7 @@ ${contextPrompt}`;
                   fontFamily: 'IBM Plex Mono',
                   fontSize: '10px'
                 }
-              }, `🧵 Threads (${(project.plotThreads || []).length})`)
+              }, `∞ Threads (${(project.plotThreads || []).length})`)
             ),
 
             // Plot Thread Warnings (from PlotThreadTracker)
@@ -8534,7 +8771,7 @@ ${contextPrompt}`;
 
               return e('details', { style: { marginBottom: '8px' } },
                 e('summary', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--sigil)', cursor: 'pointer', userSelect: 'none', marginBottom: '8px' } },
-                  `▸ Characters (${characters.length})`),
+                  `☉ Characters (${characters.length})`),
                 e('div', { style: { marginTop: '8px', maxHeight: '200px', overflowY: 'auto' } },
                   characters.slice(0, 20).map(char => e('div', {
                     key: char.name,
@@ -8557,7 +8794,7 @@ ${contextPrompt}`;
 
               return e('details', { style: { marginBottom: '8px' } },
                 e('summary', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--sigil)', cursor: 'pointer', userSelect: 'none', marginBottom: '8px' } },
-                  `▸ Locations (${locations.length})`),
+                  `♁ Locations (${locations.length})`),
                 e('div', { style: { marginTop: '8px', maxHeight: '200px', overflowY: 'auto' } },
                   locations.slice(0, 15).map(loc => e('div', {
                     key: loc.name,
@@ -8696,7 +8933,7 @@ ${contextPrompt}`;
                 fontSize: '11px',
                 fontWeight: 600
               }
-            }, isGenerating ? '⏳ Generoidaan...' : '🔄 Generoi Uudelleen'),
+            }, isGenerating ? '◌ Generoidaan...' : '⟳ Generoi Uudelleen'),
 
             // Show more link if there are more than 5 versions
             activeChapter.versions.length > 5 && e('div', { style: { textAlign: 'center', marginTop: '8px' } },
@@ -8739,11 +8976,11 @@ ${contextPrompt}`;
 
             // Breakdown
             e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } },
-              e('div', null, `📖 ${complexity.wordCount.toLocaleString('fi-FI')} sanaa`),
-              e('div', null, `👥 ${complexity.characterCount} hahmoa`),
-              e('div', null, `📍 ${complexity.plotThreadCount} juonilankaa`),
-              e('div', null, `⏰ ${complexity.timelineCount} aikajanaa`),
-              complexity.hasNonLinear && e('div', null, `🔀 Epälineaarinen`)
+              e('div', null, `⬡ ${complexity.wordCount.toLocaleString('fi-FI')} sanaa`),
+              e('div', null, `☉ ${complexity.characterCount} hahmoa`),
+              e('div', null, `∞ ${complexity.plotThreadCount} juonilankaa`),
+              e('div', null, `☽ ${complexity.timelineCount} aikajanaa`),
+              complexity.hasNonLinear && e('div', null, `⤨ Epälineaarinen`)
             ),
 
             // Recommendation
@@ -8811,7 +9048,7 @@ ${contextPrompt}`;
                   fontSize: '9px',
                   fontWeight: 600
                 }
-              }, '🔍 Tarkista')
+              }, '⊙ Tarkista')
             ),
 
             // Show current chapter annotations count
@@ -8934,7 +9171,7 @@ ${contextPrompt}`;
                 fontSize: '11px',
                 fontWeight: 600
               }
-            }, detectingThreads ? '🔍 Analysoidaan...' : plotThreads.length > 0 ? '🔄 Päivitä Langat' : '🔍 Havaitse Juonilangat')
+            }, detectingThreads ? '◌ Analysoidaan...' : plotThreads.length > 0 ? '⟳ Päivitä Langat' : '⊙ Havaitse Juonilangat')
           ),
 
           // Consistency Check
@@ -9006,7 +9243,7 @@ ${contextPrompt}`;
                 fontSize: '11px',
                 fontWeight: 600
               }
-            }, checkingConsistency ? '🔍 Tarkistetaan...' : consistencyErrors.length > 0 ? '🔄 Tarkista Uudelleen' : '🔍 Tarkista Johdonmukaisuus')
+            }, checkingConsistency ? '◌ Tarkistetaan...' : consistencyErrors.length > 0 ? '⟳ Tarkista Uudelleen' : '⊙ Tarkista Johdonmukaisuus')
           ),
 
           // Characters
@@ -9785,7 +10022,7 @@ ${contextPrompt}`;
               cursor: 'pointer',
               fontWeight: 'bold'
             }
-          }, '🔄 Regenerate')
+          }, '⟳ Regenerate')
         )
       )
     ) : null,
@@ -9826,7 +10063,7 @@ ${contextPrompt}`;
             color: 'var(--text)',
             marginBottom: '8px'
           }
-        }, '👤 Character Archetype Builder'),
+        }, '☉ Character Archetype Builder'),
 
         e('p', {
           style: {
@@ -11021,7 +11258,7 @@ ${contextPrompt}`;
                   marginTop: '8px',
                   fontStyle: 'italic'
                 }
-              }, '📝 Syötä täsmällinen mallin nimi (esim. claude-3-5-sonnet-20241022, gpt-4-turbo, grok-2-1212)')
+              }, '⊳ Syötä täsmällinen mallin nimi (esim. claude-3-5-sonnet-20241022, gpt-4-turbo, grok-2-1212)')
             ),
 
             // Quick Select buttons
@@ -11163,7 +11400,7 @@ ${contextPrompt}`;
               fontWeight: 600,
               marginBottom: '16px'
             }
-          }, '🔍 Testaa yhteyttä'),
+          }, '⊙ Testaa yhteyttä'),
 
           // Test result
           apiTestResult ? e('div', {
@@ -11382,15 +11619,15 @@ ${contextPrompt}`;
             marginBottom: '6px',
             textTransform: 'uppercase'
           }
-        }, 'Provider'),
+        }, 'Claude-malli'),
         e('select', {
-          value: project.ai.provider || 'anthropic',
+          value: project.ai?.model || 'claude-sonnet-4-20250514',
           onChange: (ev) => {
             setProject(prev => ({
               ...prev,
               ai: {
                 ...prev.ai,
-                provider: ev.target.value
+                model: ev.target.value
               }
             }));
             setUnsavedChanges(true);
@@ -11409,10 +11646,11 @@ ${contextPrompt}`;
             marginBottom: '8px'
           }
         },
-          e('option', { value: 'anthropic' }, 'Anthropic Claude'),
-          e('option', { value: 'openai' }, 'OpenAI GPT'),
-          e('option', { value: 'grok' }, 'Grok (xAI)'),
-          e('option', { value: 'deepseek' }, 'DeepSeek')
+          e('option', { value: 'claude-sonnet-4-20250514' }, 'Claude Sonnet 4 (suositeltu)'),
+          e('option', { value: 'claude-3-5-sonnet-20241022' }, 'Claude 3.5 Sonnet'),
+          e('option', { value: 'claude-3-5-haiku-20241022' }, 'Claude 3.5 Haiku (nopea)'),
+          e('option', { value: 'claude-opus-4-20250514' }, 'Claude Opus 4 (tehokas)'),
+          e('option', { value: 'claude-opus-4-5-20250514' }, 'Claude Opus 4.5 (uusin)')
         ),
         e('div', {
           style: {
@@ -11423,28 +11661,23 @@ ${contextPrompt}`;
             textTransform: 'uppercase',
             marginTop: '4px'
           }
-        }, 'Model'),
+        }, 'Mukautettu malli (valinnainen)'),
         e('input', {
           type: 'text',
-          value: project.ai.models?.[project.ai.provider || 'anthropic'] ||
-                 (project.ai.provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' :
-                  project.ai.provider === 'openai' ? 'gpt-4-turbo-preview' :
-                  project.ai.provider === 'grok' ? 'grok-2-1212' : 'deepseek-chat'),
+          value: '',
           onChange: (ev) => {
-            const provider = project.ai.provider || 'anthropic';
-            setProject(prev => ({
-              ...prev,
-              ai: {
-                ...prev.ai,
-                models: {
-                  ...prev.ai.models,
-                  [provider]: ev.target.value
+            if (ev.target.value.trim()) {
+              setProject(prev => ({
+                ...prev,
+                ai: {
+                  ...prev.ai,
+                  model: ev.target.value.trim()
                 }
-              }
-            }));
-            setUnsavedChanges(true);
+              }));
+              setUnsavedChanges(true);
+            }
           },
-          placeholder: 'e.g. claude-opus-4-20250514',
+          placeholder: 'esim. claude-opus-4-5-20250514',
           style: {
             width: '100%',
             padding: '8px',
@@ -11534,7 +11767,7 @@ ${contextPrompt}`;
                     maxHeight: '60px',
                     overflow: 'hidden'
                   }
-                }, '📝 ' + msg.selectedText.substring(0, 100) + (msg.selectedText.length > 100 ? '...' : '')) : null,
+                }, '⌜ ' + msg.selectedText.substring(0, 100) + (msg.selectedText.length > 100 ? '...' : '')) : null,
                 e('div', {
                   style: {
                     fontFamily: 'IBM Plex Mono',
@@ -12907,7 +13140,7 @@ ${contextPrompt}`;
           position: 'relative'
         }
       },
-        e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '📍 Story Locations'),
+        e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '♁ Story Locations'),
         e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '16px' } },
           `${Object.keys(project.continuity?.locations || {}).length} locations tracked`),
 
@@ -13022,7 +13255,7 @@ ${contextPrompt}`;
           position: 'relative'
         }
       },
-        e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '🧵 Plot Threads'),
+        e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '∞ Plot Threads'),
         e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '16px' } },
           `${(project.plotThreads || []).length} threads in your story`),
 
@@ -13122,6 +13355,654 @@ ${contextPrompt}`;
       onClose: () => setShowChapterSheetModal(false)
     }),
 
+    // Timeline View Modal
+    showTimelineView && e('div', {
+      style: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.9)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999
+      },
+      onClick: () => setShowTimelineView(false)
+    },
+      e('div', {
+        style: {
+          background: 'var(--bg-1)',
+          border: '2px solid var(--bronze)',
+          borderRadius: '8px',
+          padding: '32px',
+          maxWidth: '1200px',
+          width: '95%',
+          maxHeight: '90vh',
+          overflow: 'auto',
+          position: 'relative'
+        },
+        onClick: (ev) => ev.stopPropagation()
+      },
+        // Header
+        e('div', {
+          style: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '24px',
+            paddingBottom: '16px',
+            borderBottom: '1px solid var(--border-color)'
+          }
+        },
+          e('div', null,
+            e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '4px' } }, '☽ Aikajana'),
+            e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)' } },
+              'Tarinan tapahtumat ja juonilangat kronologisesti')
+          ),
+          e('button', {
+            onClick: () => setShowTimelineView(false),
+            style: {
+              background: 'transparent',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text-3)',
+              padding: '6px 14px',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px'
+            }
+          }, '✕ Sulje')
+        ),
+
+        // Timeline visualization
+        e('div', {
+          style: {
+            position: 'relative',
+            minHeight: '400px'
+          }
+        },
+          // Chapter timeline (horizontal)
+          e('div', {
+            style: {
+              marginBottom: '32px'
+            }
+          },
+            e('div', {
+              style: {
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px',
+                color: 'var(--text-3)',
+                marginBottom: '12px',
+                textTransform: 'uppercase'
+              }
+            }, 'LUVUT'),
+
+            // Timeline bar
+            e('div', {
+              style: {
+                display: 'flex',
+                gap: '4px',
+                overflowX: 'auto',
+                paddingBottom: '12px'
+              }
+            },
+              (project.structure || []).map((chapter, idx) => {
+                const wordCount = chapter.content ? chapter.content.split(/\s+/).filter(Boolean).length : 0;
+                const statusColors = {
+                  'plan': '#9E9E9E',
+                  'draft': '#FF9800',
+                  'revision': '#2196F3',
+                  'final': '#4CAF50'
+                };
+                const statusColor = statusColors[chapter.status] || '#9E9E9E';
+
+                return e('div', {
+                  key: chapter.id,
+                  onClick: () => {
+                    setActiveChapterId(chapter.id);
+                    setShowTimelineView(false);
+                  },
+                  style: {
+                    minWidth: '120px',
+                    padding: '12px',
+                    background: chapter.id === activeChapterId ? 'var(--bronze)' + '33' : 'var(--bg-2)',
+                    border: `2px solid ${chapter.id === activeChapterId ? 'var(--bronze)' : 'var(--border-color)'}`,
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s'
+                  }
+                },
+                  e('div', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '10px',
+                      color: statusColor,
+                      marginBottom: '4px'
+                    }
+                  }, `Luku ${idx + 1}`),
+                  e('div', {
+                    style: {
+                      fontFamily: 'EB Garamond',
+                      fontSize: '13px',
+                      color: 'var(--text)',
+                      marginBottom: '4px',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }
+                  }, chapter.title || 'Nimetön'),
+                  e('div', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '9px',
+                      color: 'var(--text-3)'
+                    }
+                  }, `${wordCount} sanaa`),
+                  chapter.storyTimestamp && e('div', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '9px',
+                      color: 'var(--bronze)',
+                      marginTop: '4px'
+                    }
+                  }, `◦ ${chapter.storyTimestamp}`)
+                );
+              })
+            )
+          ),
+
+          // Plot threads timeline
+          (project.plotThreads || []).length > 0 && e('div', {
+            style: {
+              marginBottom: '32px'
+            }
+          },
+            e('div', {
+              style: {
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px',
+                color: 'var(--text-3)',
+                marginBottom: '12px',
+                textTransform: 'uppercase'
+              }
+            }, 'JUONILANGAT'),
+
+            e('div', {
+              style: {
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }
+            },
+              (project.plotThreads || []).map((thread, idx) => {
+                const chapterCount = (project.structure || []).length;
+                const introduced = thread.introduced || 0;
+                const resolved = thread.resolved !== undefined ? thread.resolved : null;
+                const startPercent = (introduced / Math.max(chapterCount, 1)) * 100;
+                const endPercent = resolved !== null ? ((resolved + 1) / Math.max(chapterCount, 1)) * 100 : 100;
+                const threadColors = {
+                  'main_plot': '#FF5722',
+                  'subplot': '#2196F3',
+                  'mystery': '#9C27B0',
+                  'character_arc': '#4CAF50'
+                };
+                const color = threadColors[thread.type] || '#FF9800';
+
+                return e('div', {
+                  key: thread.id || idx,
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px'
+                  }
+                },
+                  // Thread name
+                  e('div', {
+                    style: {
+                      width: '150px',
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '11px',
+                      color: 'var(--text)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }
+                  }, thread.name),
+
+                  // Thread timeline bar
+                  e('div', {
+                    style: {
+                      flex: 1,
+                      height: '16px',
+                      background: 'var(--bg-2)',
+                      borderRadius: '8px',
+                      position: 'relative',
+                      overflow: 'hidden'
+                    }
+                  },
+                    e('div', {
+                      style: {
+                        position: 'absolute',
+                        left: `${startPercent}%`,
+                        width: `${endPercent - startPercent}%`,
+                        height: '100%',
+                        background: color + '66',
+                        borderRadius: '8px',
+                        borderLeft: `3px solid ${color}`,
+                        borderRight: resolved !== null ? `3px solid ${color}` : 'none'
+                      }
+                    })
+                  ),
+
+                  // Status
+                  e('div', {
+                    style: {
+                      width: '80px',
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '10px',
+                      color: thread.status === 'resolved' ? '#4CAF50' : 'var(--text-2)'
+                    }
+                  }, thread.status === 'resolved' ? '✓ Ratkaistu' : '◯ Avoin')
+                );
+              })
+            )
+          ),
+
+          // Timeline events (from continuity)
+          ((project.continuity?.timeline || []).length > 0) && e('div', null,
+            e('div', {
+              style: {
+                fontFamily: 'IBM Plex Mono',
+                fontSize: '11px',
+                color: 'var(--text-3)',
+                marginBottom: '12px',
+                textTransform: 'uppercase'
+              }
+            }, '📌 Tapahtumat'),
+
+            e('div', {
+              style: {
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px'
+              }
+            },
+              (project.continuity?.timeline || []).slice(0, 20).map((event, idx) =>
+                e('div', {
+                  key: idx,
+                  style: {
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: '12px',
+                    padding: '10px 12px',
+                    background: 'var(--bg-2)',
+                    borderRadius: '4px',
+                    borderLeft: '3px solid var(--bronze)'
+                  }
+                },
+                  e('div', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '10px',
+                      color: 'var(--bronze)',
+                      minWidth: '60px'
+                    }
+                  }, `Luku ${(event.chapterIndex || 0) + 1}`),
+                  e('div', {
+                    style: {
+                      flex: 1,
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '11px',
+                      color: 'var(--text)'
+                    }
+                  }, event.event || event.description || 'Tapahtuma')
+                )
+              )
+            )
+          ),
+
+          // Empty state
+          (project.structure || []).length === 0 && e('div', {
+            style: {
+              textAlign: 'center',
+              padding: '40px',
+              color: 'var(--text-3)',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px'
+            }
+          }, 'Ei vielä lukuja. Luo ensimmäinen luku aloittaaksesi.')
+        )
+      )
+    ),
+
+    // Research Folder Modal
+    showResearchFolder && e('div', {
+      style: {
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.9)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999
+      },
+      onClick: () => setShowResearchFolder(false)
+    },
+      e('div', {
+        style: {
+          background: 'var(--bg-1)',
+          border: '2px solid var(--bronze)',
+          borderRadius: '8px',
+          padding: '32px',
+          maxWidth: '1000px',
+          width: '95%',
+          maxHeight: '90vh',
+          overflow: 'auto',
+          position: 'relative'
+        },
+        onClick: (ev) => ev.stopPropagation()
+      },
+        // Header
+        e('div', {
+          style: {
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '24px',
+            paddingBottom: '16px',
+            borderBottom: '1px solid var(--border-color)'
+          }
+        },
+          e('div', null,
+            e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '4px' } }, '⚗ Tutkimuskansio'),
+            e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)' } },
+              'Muistiinpanot, linkit ja referenssimateriaali')
+          ),
+          e('button', {
+            onClick: () => setShowResearchFolder(false),
+            style: {
+              background: 'transparent',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text-3)',
+              padding: '6px 14px',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px'
+            }
+          }, '✕ Sulje')
+        ),
+
+        // Add new item buttons
+        e('div', {
+          style: {
+            display: 'flex',
+            gap: '8px',
+            marginBottom: '24px'
+          }
+        },
+          e('button', {
+            onClick: () => {
+              const title = prompt('Muistiinpanon otsikko:');
+              if (title) {
+                const newItem = {
+                  id: `research-${Date.now()}`,
+                  type: 'note',
+                  title,
+                  content: '',
+                  created: new Date().toISOString()
+                };
+                setProject(prev => ({
+                  ...prev,
+                  research: [...(prev.research || []), newItem]
+                }));
+                setUnsavedChanges(true);
+              }
+            },
+            style: {
+              padding: '10px 16px',
+              background: 'var(--bronze)',
+              border: 'none',
+              borderRadius: '4px',
+              color: '#000',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px',
+              fontWeight: 600
+            }
+          }, '+ Muistiinpano'),
+          e('button', {
+            onClick: () => {
+              const url = prompt('URL-osoite:');
+              if (url) {
+                const title = prompt('Otsikko (valinnainen):') || url;
+                const newItem = {
+                  id: `research-${Date.now()}`,
+                  type: 'link',
+                  title,
+                  url,
+                  created: new Date().toISOString()
+                };
+                setProject(prev => ({
+                  ...prev,
+                  research: [...(prev.research || []), newItem]
+                }));
+                setUnsavedChanges(true);
+              }
+            },
+            style: {
+              padding: '10px 16px',
+              background: 'transparent',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text)',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px'
+            }
+          }, '+ Linkki'),
+          e('button', {
+            onClick: () => {
+              const title = prompt('Kuvan/tiedoston kuvaus:');
+              const path = prompt('Tiedostopolku tai URL:');
+              if (title && path) {
+                const newItem = {
+                  id: `research-${Date.now()}`,
+                  type: 'image',
+                  title,
+                  path,
+                  created: new Date().toISOString()
+                };
+                setProject(prev => ({
+                  ...prev,
+                  research: [...(prev.research || []), newItem]
+                }));
+                setUnsavedChanges(true);
+              }
+            },
+            style: {
+              padding: '10px 16px',
+              background: 'transparent',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              color: 'var(--text)',
+              cursor: 'pointer',
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px'
+            }
+          }, '+ Tiedosto')
+        ),
+
+        // Research items grid
+        (project.research || []).length > 0 ? e('div', {
+          style: {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+            gap: '16px'
+          }
+        },
+          (project.research || []).map((item, idx) => {
+            const typeIcons = { note: '⟁', link: '☿', image: '◊', pdf: '▤' };
+            const icon = typeIcons[item.type] || '•';
+
+            return e('div', {
+              key: item.id || idx,
+              style: {
+                padding: '16px',
+                background: 'var(--bg-2)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                position: 'relative'
+              }
+            },
+              // Delete button
+              e('button', {
+                onClick: () => {
+                  if (confirm('Poista tämä kohde?')) {
+                    setProject(prev => ({
+                      ...prev,
+                      research: (prev.research || []).filter(r => r.id !== item.id)
+                    }));
+                    setUnsavedChanges(true);
+                  }
+                },
+                style: {
+                  position: 'absolute',
+                  top: '8px',
+                  right: '8px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-3)',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  padding: '4px'
+                }
+              }, '×'),
+
+              // Type icon and title
+              e('div', {
+                style: {
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  marginBottom: '8px'
+                }
+              },
+                e('span', { style: { fontSize: '18px' } }, icon),
+                e('div', {
+                  style: {
+                    fontFamily: 'EB Garamond',
+                    fontSize: '15px',
+                    color: 'var(--text)',
+                    fontWeight: 500
+                  }
+                }, item.title)
+              ),
+
+              // Content based on type
+              item.type === 'note' && e('div', null,
+                e('textarea', {
+                  value: item.content || '',
+                  onChange: (ev) => {
+                    setProject(prev => ({
+                      ...prev,
+                      research: (prev.research || []).map(r =>
+                        r.id === item.id ? { ...r, content: ev.target.value } : r
+                      )
+                    }));
+                    setUnsavedChanges(true);
+                  },
+                  placeholder: 'Kirjoita muistiinpanosi...',
+                  style: {
+                    width: '100%',
+                    height: '100px',
+                    padding: '8px',
+                    background: 'var(--bg)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '4px',
+                    color: 'var(--text)',
+                    fontFamily: 'EB Garamond',
+                    fontSize: '13px',
+                    resize: 'vertical'
+                  }
+                })
+              ),
+
+              item.type === 'link' && e('a', {
+                href: item.url,
+                target: '_blank',
+                rel: 'noopener noreferrer',
+                style: {
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '11px',
+                  color: 'var(--bronze)',
+                  wordBreak: 'break-all'
+                }
+              }, item.url),
+
+              item.type === 'image' && e('div', null,
+                item.path && (item.path.startsWith('http') ?
+                  e('img', {
+                    src: item.path,
+                    alt: item.title,
+                    style: {
+                      maxWidth: '100%',
+                      maxHeight: '200px',
+                      borderRadius: '4px'
+                    }
+                  }) :
+                  e('div', {
+                    style: {
+                      fontFamily: 'IBM Plex Mono',
+                      fontSize: '11px',
+                      color: 'var(--text-2)'
+                    }
+                  }, `📁 ${item.path}`)
+                )
+              ),
+
+              // Date
+              e('div', {
+                style: {
+                  marginTop: '8px',
+                  fontFamily: 'IBM Plex Mono',
+                  fontSize: '10px',
+                  color: 'var(--text-3)'
+                }
+              }, new Date(item.created).toLocaleDateString('fi-FI'))
+            );
+          })
+        ) : e('div', {
+          style: {
+            textAlign: 'center',
+            padding: '60px 20px',
+            color: 'var(--text-3)'
+          }
+        },
+          e('div', { style: { fontSize: '48px', marginBottom: '16px', fontFamily: 'EB Garamond' } }, '⚗'),
+          e('div', {
+            style: {
+              fontFamily: 'EB Garamond',
+              fontSize: '18px',
+              color: 'var(--text-2)',
+              marginBottom: '8px'
+            }
+          }, 'Tutkimuskansio on tyhjä'),
+          e('div', {
+            style: {
+              fontFamily: 'IBM Plex Mono',
+              fontSize: '12px'
+            }
+          }, 'Lisää muistiinpanoja, linkkejä tai kuvia projektiisi.')
+        )
+      )
+    ),
+
     // Export Modal (Interactive Export Dialog)
     showExportModal && window.ExportModal && e(window.ExportModal, {
       isOpen: showExportModal,
@@ -13219,10 +14100,10 @@ ${contextPrompt}`;
         },
           ['continue', 'expand', 'rewrite', 'scene'].map(mode => {
             const labels = {
-              continue: '📝 Jatka',
-              expand: '📖 Laajenna',
-              rewrite: '🔄 Uudelleenkirjoita',
-              scene: '🎬 Luo kohtaus'
+              continue: '▶ Jatka',
+              expand: '⊕ Laajenna',
+              rewrite: '⟳ Uudelleenkirjoita',
+              scene: '◇ Luo kohtaus'
             };
             const isActive = hybridMode === mode;
             const isDisabled = mode === 'rewrite' && !textSelection?.text;
@@ -13456,7 +14337,7 @@ ${contextPrompt}`;
             fontWeight: 600,
             opacity: (continuingWriting || (hybridMode !== 'continue' && !hybridInput.trim())) ? 0.5 : 1
           }
-        }, continuingWriting ? '⏳ Generoidaan...' : '✨ Generoi'),
+        }, continuingWriting ? '◌ Generoidaan...' : '⊛ Generoi'),
 
         // Preview
         continuePreview && e('div', null,
@@ -13480,7 +14361,7 @@ ${contextPrompt}`;
               }
             },
               e('h3', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', margin: 0 } },
-                hybridMode === 'continue' ? '📝 JATKO' : hybridMode === 'expand' ? '📖 LAAJENNETTU' : hybridMode === 'rewrite' ? '🔄 UUDELLEENKIRJOITETTU' : '🎬 KOHTAUS'),
+                hybridMode === 'continue' ? '▶ JATKO' : hybridMode === 'expand' ? '⊕ LAAJENNETTU' : hybridMode === 'rewrite' ? '⟳ UUDELLEENKIRJOITETTU' : '◇ KOHTAUS'),
               e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } },
                 `${continuePreview.split(/\s+/).length} sanaa`)
             ),
@@ -13531,7 +14412,7 @@ ${contextPrompt}`;
                 fontFamily: 'IBM Plex Mono',
                 fontSize: '12px'
               }
-            }, '🔄 Generoi uudelleen'),
+            }, '⟳ Generoi uudelleen'),
             e('button', {
               onClick: rejectContinuation,
               style: {

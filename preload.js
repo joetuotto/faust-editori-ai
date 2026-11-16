@@ -15,14 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportEPUB: (data) => ipcRenderer.invoke('export-epub', data),
   exportMOBI: (data) => ipcRenderer.invoke('export-mobi', data),
 
-  // AI APIs
+  // Claude AI API (exclusive provider for FAUST)
   claudeAPI: (prompt) => ipcRenderer.invoke('claude-api', prompt),
-  openaiAPI: (prompt) => ipcRenderer.invoke('openai-api', prompt),
-  geminiAPI: (prompt) => ipcRenderer.invoke('gemini-api', prompt),
-  grokAPI: (prompt) => ipcRenderer.invoke('grok-api', prompt),
-  cursorAPI: (prompt) => ipcRenderer.invoke('cursor-api', prompt),
-  deepseekAPI: (payload) => ipcRenderer.invoke('deepseek-api', payload),
-  webSearch: (query) => ipcRenderer.invoke('web-search', query),
 
   // Claude Streaming API - Real-time responses
   claudeAPIStream: (options) => {
@@ -139,13 +133,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       'undo', 'redo', 'show-find', 'find-next', 'show-find-replace',
       // View menu
       'toggle-sidebar', 'toggle-inspector', 'toggle-ai-panel', 'toggle-focus-mode',
+      'show-timeline', 'show-research',
       // Insert menu
-      'new-chapter', 'new-scene', 'insert-comment', 'insert-note', 'insert-text',
-      // Format menu
-      'format-bold', 'format-italic', 'format-underline', 'format-heading', 
-      'format-quote', 'format-list',
+      'new-chapter', 'insert-text',
+      // Text menu
+      'text-uppercase', 'text-lowercase', 'text-trim-spaces', 'text-remove-empty-lines',
       // Tools menu
-      'show-word-count', 'show-target-settings', 'spell-check', 'show-project-stats',
+      'show-target-settings', 'spell-check', 'show-project-stats', 'show-settings',
       // Help menu
       'show-help', 'show-shortcuts', 'show-about', 'show-settings',
       // v1.4.1: UI prefs

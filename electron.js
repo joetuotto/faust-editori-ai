@@ -2,15 +2,12 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage } = require('elec
 const { convertToRTF, convertToHTML, convertToDocx } = require("./utils/documentConverters");
 const path = require('path');
 const fs = require('fs').promises;
-const https = require('https');
 
 // Load environment variables
 require('dotenv').config();
 
-// AI API Clients
-const OpenAI = require('openai');
+// Claude AI Client (exclusive AI provider for FAUST v2.0)
 const Anthropic = require('@anthropic-ai/sdk');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 // AI Modules (loaded lazily to avoid circular dependencies)
 let StoryContinuityTracker, BatchProcessor, HybridWritingFlow, CostOptimizer;
@@ -279,70 +276,99 @@ function createMenu() {
     {
       label: 'Näytä',
       submenu: [
+        // Paneelit
         {
           label: 'Sivupalkki',
-          accelerator: 'CmdOrCtrl+Shift+B',
+          accelerator: 'CmdOrCtrl+1',
           type: 'checkbox',
           checked: true,
           click: () => mainWindow.webContents.send('toggle-sidebar')
         },
         {
           label: 'Inspector',
-          accelerator: 'CmdOrCtrl+Alt+I',
+          accelerator: 'CmdOrCtrl+2',
           type: 'checkbox',
           checked: !!uiPrefs?.inspectorVisible,
           click: () => mainWindow.webContents.send('toggle-inspector')
         },
         {
-          label: 'AI-Avustajat',
-          accelerator: 'CmdOrCtrl+Alt+A',
+          label: 'AI-paneeli',
+          accelerator: 'CmdOrCtrl+3',
           type: 'checkbox',
           checked: !!uiPrefs?.aiPanelVisible,
           click: () => mainWindow.webContents.send('toggle-ai-panel')
         },
         { type: 'separator' },
-        {
-          label: 'Uusi layout (paperi keskellä)',
-          type: 'checkbox',
-          checked: uiPrefs.newLayout,
-          click: async (item) => {
-            await saveUiPrefs({ newLayout: item.checked });
-            mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
-          }
-        },
-        {
-          label: 'Teema: DEIS (valoisa)',
-          type: 'checkbox',
-          checked: uiPrefs.theme === 'DEIS',
-          click: async (item) => {
-            await saveUiPrefs({ theme: item.checked ? 'DEIS' : 'NOX' });
-            mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
-          }
-        },
-        { type: 'separator' },
+        // Kirjoitustilat
         {
           label: 'Focus Mode',
           accelerator: 'CmdOrCtrl+Shift+F',
           type: 'checkbox',
           checked: uiPrefs.focusMode,
           click: async (item) => {
-            await saveUiPrefs({ 
-              focusMode: item.checked, 
-              zenMode: item.checked ? false : uiPrefs.zenMode 
+            await saveUiPrefs({
+              focusMode: item.checked,
+              zenMode: item.checked ? false : uiPrefs.zenMode
             });
             mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
           }
         },
         {
           label: 'Zen Mode',
-          accelerator: 'CmdOrCtrl+Enter',
+          accelerator: 'CmdOrCtrl+Shift+Z',
           type: 'checkbox',
           checked: uiPrefs.zenMode,
           click: async (item) => {
-            await saveUiPrefs({ 
-              zenMode: item.checked, 
-              focusMode: item.checked ? false : uiPrefs.focusMode 
+            await saveUiPrefs({
+              zenMode: item.checked,
+              focusMode: item.checked ? false : uiPrefs.focusMode
             });
+            mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
+          }
+        },
+        { type: 'separator' },
+        // Projektin näkymät
+        {
+          label: 'Aikajana',
+          accelerator: 'CmdOrCtrl+Shift+T',
+          click: () => mainWindow.webContents.send('show-timeline')
+        },
+        {
+          label: 'Tutkimuskansio',
+          accelerator: 'CmdOrCtrl+Shift+R',
+          click: () => mainWindow.webContents.send('show-research')
+        },
+        { type: 'separator' },
+        // Ulkoasu
+        {
+          label: 'Teema',
+          submenu: [
+            {
+              label: 'NOX (tumma)',
+              type: 'radio',
+              checked: uiPrefs.theme === 'NOX',
+              click: async () => {
+                await saveUiPrefs({ theme: 'NOX' });
+                mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
+              }
+            },
+            {
+              label: 'DEIS (valoisa)',
+              type: 'radio',
+              checked: uiPrefs.theme === 'DEIS',
+              click: async () => {
+                await saveUiPrefs({ theme: 'DEIS' });
+                mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
+              }
+            }
+          ]
+        },
+        {
+          label: 'Keskitetty layout',
+          type: 'checkbox',
+          checked: uiPrefs.newLayout,
+          click: async (item) => {
+            await saveUiPrefs({ newLayout: item.checked });
             mainWindow.webContents.send('ui-prefs-changed', uiPrefs);
           }
         },
@@ -367,83 +393,49 @@ function createMenu() {
       submenu: [
         {
           label: 'Uusi luku',
-          accelerator: 'CmdOrCtrl+Alt+N',
+          accelerator: 'CmdOrCtrl+N',
           click: () => mainWindow.webContents.send('new-chapter')
         },
-        {
-          label: 'Uusi kohtaus',
-          accelerator: 'CmdOrCtrl+Alt+S',
-          click: () => mainWindow.webContents.send('new-scene')
-        },
         { type: 'separator' },
         {
-          label: 'Kommentti',
-          accelerator: 'CmdOrCtrl+Alt+C',
-          click: () => mainWindow.webContents.send('insert-comment')
-        },
-        {
-          label: 'Muistiinpano',
-          accelerator: 'CmdOrCtrl+Alt+M',
-          click: () => mainWindow.webContents.send('insert-note')
-        },
-        { type: 'separator' },
-        {
-          label: 'Päivämäärä ja aika',
-          accelerator: 'CmdOrCtrl+Alt+D',
+          label: 'Päivämäärä',
           click: () => {
             const now = new Date();
-            const dateStr = now.toLocaleDateString('fi-FI') + ' ' + now.toLocaleTimeString('fi-FI');
+            const dateStr = now.toLocaleDateString('fi-FI');
             mainWindow.webContents.send('insert-text', dateStr);
+          }
+        },
+        {
+          label: 'Kohtauksen erotin',
+          click: () => {
+            mainWindow.webContents.send('insert-text', '\n\n* * *\n\n');
           }
         }
       ]
     },
     
-    // Format Menu
+    // Text Menu (replaces Format - FAUST uses plain text)
     {
-      label: 'Muotoilu',
+      label: 'Teksti',
       submenu: [
         {
-          label: 'Lihavointi',
-          accelerator: 'CmdOrCtrl+B',
-          click: () => mainWindow.webContents.send('format-bold')
+          label: 'Muunna isoiksi kirjaimiksi',
+          accelerator: 'CmdOrCtrl+Shift+U',
+          click: () => mainWindow.webContents.send('text-uppercase')
         },
         {
-          label: 'Kursivointi',
-          accelerator: 'CmdOrCtrl+I',
-          click: () => mainWindow.webContents.send('format-italic')
-        },
-        {
-          label: 'Alleviivaus',
-          accelerator: 'CmdOrCtrl+U',
-          click: () => mainWindow.webContents.send('format-underline')
-        },
-        { type: 'separator' },
-        {
-          label: 'Otsikko 1',
-          accelerator: 'CmdOrCtrl+Alt+1',
-          click: () => mainWindow.webContents.send('format-heading', 1)
-        },
-        {
-          label: 'Otsikko 2',
-          accelerator: 'CmdOrCtrl+Alt+2',
-          click: () => mainWindow.webContents.send('format-heading', 2)
-        },
-        {
-          label: 'Otsikko 3',
-          accelerator: 'CmdOrCtrl+Alt+3',
-          click: () => mainWindow.webContents.send('format-heading', 3)
-        },
-        { type: 'separator' },
-        {
-          label: 'Lainaus',
-          accelerator: 'CmdOrCtrl+Shift+Q',
-          click: () => mainWindow.webContents.send('format-quote')
-        },
-        {
-          label: 'Luettelo',
+          label: 'Muunna pieniksi kirjaimiksi',
           accelerator: 'CmdOrCtrl+Shift+L',
-          click: () => mainWindow.webContents.send('format-list')
+          click: () => mainWindow.webContents.send('text-lowercase')
+        },
+        { type: 'separator' },
+        {
+          label: 'Poista ylimääräiset välit',
+          click: () => mainWindow.webContents.send('text-trim-spaces')
+        },
+        {
+          label: 'Poista tyhjät rivit',
+          click: () => mainWindow.webContents.send('text-remove-empty-lines')
         }
       ]
     },
@@ -453,25 +445,25 @@ function createMenu() {
       label: 'Työkalut',
       submenu: [
         {
-          label: 'Sanamäärä',
-          accelerator: 'CmdOrCtrl+Shift+W',
-          click: () => mainWindow.webContents.send('show-word-count')
+          label: 'Projektin tilastot',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: () => mainWindow.webContents.send('show-project-stats')
         },
         {
-          label: 'Tavoitteen asetus',
-          accelerator: 'CmdOrCtrl+Shift+T',
+          label: 'Kirjoitustavoitteet...',
+          accelerator: 'CmdOrCtrl+Shift+G',
           click: () => mainWindow.webContents.send('show-target-settings')
         },
         { type: 'separator' },
         {
           label: 'Oikoluku',
-          accelerator: 'CmdOrCtrl+Shift+P',
           click: () => mainWindow.webContents.send('spell-check')
         },
         { type: 'separator' },
         {
-          label: 'Projektin statistiikka',
-          click: () => mainWindow.webContents.send('show-project-stats')
+          label: 'Asetukset...',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => mainWindow.webContents.send('show-settings')
         }
       ]
     },
@@ -1390,195 +1382,8 @@ ipcMain.handle('claude-api-thinking', async (event, options) => {
   }
 });
 
-// Grok API (xAI)
-ipcMain.handle('grok-api', async (event, promptOrOptions) => {
-  try {
-    // Support both string prompt and { prompt, model, temperature, max_tokens } object
-    const prompt = typeof promptOrOptions === 'string' ? promptOrOptions : promptOrOptions.prompt;
-    const model = typeof promptOrOptions === 'object' ? promptOrOptions.model : null;
-    const temperature = typeof promptOrOptions === 'object' ? promptOrOptions.temperature : 0.7;
-    const maxTokens = typeof promptOrOptions === 'object' ? promptOrOptions.max_tokens : 2000;
-
-    let apiKey = process.env.GROK_API_KEY || apiConfig.GROK_API_KEY || 'your-grok-api-key-here';
-
-    const response = await fetch("https://api.x.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: model || "grok-2-1212",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: maxTokens,
-        temperature: temperature
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Grok API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return { success: true, data: data.choices[0].message.content };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// OpenAI API (SDK - REAL IMPLEMENTATION)
-ipcMain.handle('openai-api', async (event, promptOrOptions) => {
-  try {
-    // Support both string prompt and { prompt, model, temperature, max_tokens } object
-    const prompt = typeof promptOrOptions === 'string' ? promptOrOptions : promptOrOptions.prompt;
-    const model = typeof promptOrOptions === 'object' ? promptOrOptions.model : null;
-    const temperature = typeof promptOrOptions === 'object' ? promptOrOptions.temperature : 0.7;
-    const maxTokens = typeof promptOrOptions === 'object' ? promptOrOptions.max_tokens : 2000;
-
-    let apiKey = process.env.OPENAI_API_KEY || apiConfig.OPENAI_API_KEY;
-
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'OPENAI_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.'
-      };
-    }
-
-    const openai = new OpenAI({ apiKey });
-
-    const completion = await openai.chat.completions.create({
-      model: model || 'gpt-4-turbo-preview',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: maxTokens,
-      temperature: temperature
-    });
-
-    return {
-      success: true,
-      data: completion.choices[0].message.content,
-      usage: completion.usage
-    };
-  } catch (error) {
-    console.error('OpenAI API error:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// Google Gemini API (SDK - REAL IMPLEMENTATION)
-ipcMain.handle('gemini-api', async (event, prompt) => {
-  try {
-    let apiKey = process.env.GOOGLE_API_KEY || apiConfig.GOOGLE_API_KEY;
-    
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'GOOGLE_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.'
-      };
-    }
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
-    
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-
-    return { 
-      success: true, 
-      data: text
-    };
-  } catch (error) {
-    console.error('Gemini API error:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// Cursor API (oletetaan että tämä on custom API)
-ipcMain.handle('cursor-api', async (event, prompt) => {
-  try {
-    let apiKey = process.env.CURSOR_API_KEY || apiConfig.CURSOR_API_KEY || 'your-cursor-api-key-here';
-
-    const response = await fetch("https://api.cursor.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`
-      },
-      body: JSON.stringify({
-        model: "cursor-pro",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 2000,
-        temperature: 0.7
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Cursor API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return { success: true, data: data.choices[0].message.content };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// DeepSeek API (OpenAI-compatible)
-ipcMain.handle('deepseek-api', async (event, payload) => {
-  try {
-    let apiKey = process.env.DEEPSEEK_API_KEY || apiConfig.DEEPSEEK_API_KEY;
-    
-    if (!apiKey) {
-      return {
-        success: false,
-        error: 'DEEPSEEK_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.'
-      };
-    }
-
-    const { prompt, options = {} } = typeof payload === 'object' && payload !== null
-      ? { prompt: payload.prompt, options: payload.options || {} }
-      : { prompt: payload, options: {} };
-
-    if (!prompt || typeof prompt !== 'string') {
-      throw new Error('DeepSeek API error: invalid prompt payload');
-    }
-
-    const temperature = typeof options.temperature === 'number' ? options.temperature : 0.7;
-    const maxTokens = typeof options.max_tokens === 'number' ? options.max_tokens : 2000;
-    const topP = typeof options.top_p === 'number' ? options.top_p : 0.9;
-    const model = options.model || 'deepseek-chat';
-
-    // v1.4.1: Timeout protection
-    const response = await withTimeout(
-      fetch("https://api.deepseek.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: prompt }],
-          max_tokens: maxTokens,
-          temperature,
-          top_p: topP,
-          stream: false
-        })
-      }),
-      30000  // 30s timeout
-    );
-
-    if (!response.ok) {
-      throw new Error(`DeepSeek API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    return { success: true, data: data.choices[0].message.content, usage: data.usage };
-  } catch (error) {
-    console.error('DeepSeek API error:', error);
-    return { success: false, error: error.message };
-  }
-});
+// NOTE: Other AI providers (OpenAI, Grok, DeepSeek, Gemini) removed in v2.0
+// FAUST now uses Claude exclusively for best writing quality
 
 // Add after export handlers or before AI APIs
 ipcMain.on('show-context-menu', async (event, { x, y, selection, isEditable }) => {
@@ -1634,62 +1439,23 @@ ipcMain.on('show-context-menu', async (event, { x, y, selection, isEditable }) =
 // AI MODULES - Story Generation & Continuity
 // ============================================
 
-// Helper: Get AI client for provider
-function getAIClient(providerName) {
-  let apiKey;
-
-  if (providerName === 'openai') {
-    apiKey = process.env.OPENAI_API_KEY || apiConfig.OPENAI_API_KEY;
-    if (!apiKey) throw new Error('OpenAI API key missing');
-    return { client: new OpenAI({ apiKey }), provider: 'openai' };
-  } else if (providerName === 'grok' || providerName === 'deepseek') {
-    // Grok and DeepSeek use native https (no SDK client)
-    if (providerName === 'grok') {
-      apiKey = process.env.GROK_API_KEY || apiConfig.GROK_API_KEY;
-      if (!apiKey) throw new Error('Grok API key missing');
-    } else {
-      apiKey = process.env.DEEPSEEK_API_KEY || apiConfig.DEEPSEEK_API_KEY;
-      if (!apiKey) throw new Error('DeepSeek API key missing');
-    }
-    return { client: null, provider: providerName, apiKey };
-  } else {
-    // Default: Anthropic
-    apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error('Anthropic API key missing');
-    return { client: new Anthropic({ apiKey }), provider: 'anthropic' };
-  }
+// Helper: Get Claude API client
+function getClaudeClient() {
+  const apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('Claude API key missing. Mene Asetuksiin (Cmd+,) ja syötä avain.');
+  return new Anthropic({ apiKey });
 }
 
-// Generate chapter content with AI
-ipcMain.handle('ai:generate-chapter', async (event, { chapterId, project, mode = 'production', provider = 'anthropic' }) => {
+// Generate chapter content with Claude AI
+ipcMain.handle('ai:generate-chapter', async (event, { chapterId, project, mode = 'production' }) => {
   try {
     // Load AI modules lazily
     loadAIModules();
 
-    console.log('[AI Generate] Chapter:', chapterId, 'Mode:', mode, 'Provider:', provider);
+    console.log('[AI Generate] Chapter:', chapterId, 'Mode:', mode);
 
-    // Get API key based on provider
-    let apiKey;
-    let aiClient;
-
-    if (provider === 'openai') {
-      apiKey = process.env.OPENAI_API_KEY || apiConfig.OPENAI_API_KEY;
-      if (!apiKey) return { success: false, error: 'OpenAI API key missing' };
-      aiClient = new OpenAI({ apiKey });
-    } else if (provider === 'grok') {
-      apiKey = process.env.GROK_API_KEY || apiConfig.GROK_API_KEY;
-      if (!apiKey) return { success: false, error: 'Grok API key missing' };
-      // Grok uses fetch, not a client
-    } else if (provider === 'deepseek') {
-      apiKey = process.env.DEEPSEEK_API_KEY || apiConfig.DEEPSEEK_API_KEY;
-      if (!apiKey) return { success: false, error: 'DeepSeek API key missing' };
-      // DeepSeek uses fetch, not a client
-    } else {
-      // Default: Anthropic/Claude
-      apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
-      if (!apiKey) return { success: false, error: 'Anthropic API key missing' };
-      aiClient = new Anthropic({ apiKey });
-    }
+    // Get Claude client
+    const claudeClient = getClaudeClient();
 
     // Configure modules
     StoryContinuityTracker.configure({
@@ -1698,7 +1464,7 @@ ipcMain.handle('ai:generate-chapter', async (event, { chapterId, project, mode =
     });
 
     HybridWritingFlow.configure({
-      claudeClient: aiClient, // Works for Anthropic
+      claudeClient: claudeClient,
       getProject: () => project
     });
 
@@ -1742,189 +1508,19 @@ Write the chapter content (aim for ${Math.floor(project.targets.totalWords / pro
 
 Return ONLY the chapter text, no meta-commentary.`;
 
-    console.log('[AI Generate] Calling', provider, 'API...');
+    console.log('[AI Generate] Calling Claude API...');
 
-    // Generate with selected provider
-    let generatedContent;
-    let usage = null;
+    // Generate with Claude
+    const modelName = project.ai?.model || 'claude-sonnet-4-20250514';
+    const message = await claudeClient.messages.create({
+      model: modelName,
+      max_tokens: modeConfig.maxTokens,
+      temperature: modeConfig.temperature,
+      messages: [{ role: 'user', content: prompt }]
+    });
 
-    if (provider === 'openai') {
-      const modelName = project.ai?.models?.openai || 'gpt-4-turbo-preview';
-      const completion = await aiClient.chat.completions.create({
-        model: modelName,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: modeConfig.maxTokens,
-        temperature: modeConfig.temperature
-      });
-      generatedContent = completion.choices[0].message.content;
-      usage = completion.usage;
-
-    } else if (provider === 'grok') {
-      // Grok API using native https module for proper UTF-8 support
-      const modelName = project.ai?.models?.grok || 'grok-2-1212';
-      const requestData = {
-        model: modelName,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: modeConfig.maxTokens,
-        temperature: modeConfig.temperature
-      };
-
-      const postData = Buffer.from(JSON.stringify(requestData), 'utf-8');
-
-      const options = {
-        hostname: 'api.x.ai',
-        port: 443,
-        path: '/v1/chat/completions',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Content-Length': Buffer.byteLength(postData),
-          'Authorization': `Bearer ${apiKey}`
-        },
-        timeout: 120000  // 120 second timeout
-      };
-
-      const data = await new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          req.destroy();
-          reject(new Error('Grok API timeout after 120 seconds'));
-        }, 120000);
-
-        const req = https.request(options, (res) => {
-          let responseData = '';
-
-          res.setEncoding('utf8');
-          res.on('data', (chunk) => {
-            responseData += chunk;
-          });
-
-          res.on('end', () => {
-            clearTimeout(timeoutId);
-            if (res.statusCode >= 200 && res.statusCode < 300) {
-              try {
-                resolve(JSON.parse(responseData));
-              } catch (e) {
-                reject(new Error(`Grok API returned invalid JSON: ${e.message}`));
-              }
-            } else {
-              console.error('[Grok] API error:', res.statusCode, responseData);
-              reject(new Error(`Grok API error (${res.statusCode}): ${responseData.substring(0, 200)}`));
-            }
-          });
-        });
-
-        req.on('error', (e) => {
-          clearTimeout(timeoutId);
-          reject(new Error(`Grok API request failed: ${e.message}`));
-        });
-
-        req.on('timeout', () => {
-          req.destroy();
-          reject(new Error('Grok API connection timeout'));
-        });
-
-        req.write(postData);
-        req.end();
-      });
-
-      console.log('[Grok] Response:', data);
-
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error('Grok API returned invalid response format');
-      }
-
-      generatedContent = data.choices[0].message.content;
-      usage = data.usage;
-
-    } else if (provider === 'deepseek') {
-      // DeepSeek API using native https module for proper UTF-8 support
-      const modelName = project.ai?.models?.deepseek || 'deepseek-chat';
-      const requestData = {
-        model: modelName,
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: modeConfig.maxTokens,
-        temperature: modeConfig.temperature
-      };
-
-      const postData = Buffer.from(JSON.stringify(requestData), 'utf-8');
-
-      const options = {
-        hostname: 'api.deepseek.com',
-        port: 443,
-        path: '/v1/chat/completions',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Content-Length': Buffer.byteLength(postData),
-          'Authorization': `Bearer ${apiKey}`
-        },
-        timeout: 120000  // 120 second timeout
-      };
-
-      const data = await new Promise((resolve, reject) => {
-        const timeoutId = setTimeout(() => {
-          req.destroy();
-          reject(new Error('DeepSeek API timeout after 120 seconds'));
-        }, 120000);
-
-        const req = https.request(options, (res) => {
-          let responseData = '';
-
-          res.setEncoding('utf8');
-          res.on('data', (chunk) => {
-            responseData += chunk;
-          });
-
-          res.on('end', () => {
-            clearTimeout(timeoutId);
-            if (res.statusCode >= 200 && res.statusCode < 300) {
-              try {
-                resolve(JSON.parse(responseData));
-              } catch (e) {
-                reject(new Error(`DeepSeek API returned invalid JSON: ${e.message}`));
-              }
-            } else {
-              console.error('[DeepSeek] API error:', res.statusCode, responseData);
-              reject(new Error(`DeepSeek API error (${res.statusCode}): ${responseData.substring(0, 200)}`));
-            }
-          });
-        });
-
-        req.on('error', (e) => {
-          clearTimeout(timeoutId);
-          reject(new Error(`DeepSeek API request failed: ${e.message}`));
-        });
-
-        req.on('timeout', () => {
-          req.destroy();
-          reject(new Error('DeepSeek API connection timeout'));
-        });
-
-        req.write(postData);
-        req.end();
-      });
-
-      console.log('[DeepSeek] Response:', data);
-
-      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-        throw new Error('DeepSeek API returned invalid response format');
-      }
-
-      generatedContent = data.choices[0].message.content;
-      usage = data.usage;
-
-    } else {
-      // Anthropic/Claude
-      const modelName = project.ai?.models?.anthropic || 'claude-3-5-sonnet-20241022';
-      const message = await aiClient.messages.create({
-        model: modelName,
-        max_tokens: modeConfig.maxTokens,
-        temperature: modeConfig.temperature,
-        messages: [{ role: 'user', content: prompt }]
-      });
-      generatedContent = message.content[0].text;
-      usage = message.usage;
-    }
+    const generatedContent = message.content[0].text;
+    const usage = message.usage;
 
     // Update continuity tracker
     await StoryContinuityTracker.updateMemory(chapter.order, generatedContent);
@@ -1936,8 +1532,7 @@ Return ONLY the chapter text, no meta-commentary.`;
       content: generatedContent,
       wordCount: generatedContent.trim().split(/\s+/).length,
       usage,
-      continuityCheck,
-      provider
+      continuityCheck
     };
 
   } catch (error) {
@@ -1974,17 +1569,12 @@ ipcMain.handle('ai:check-continuity', async (event, { chapterId, content, projec
   }
 });
 
-// Batch process multiple chapters
+// Batch process multiple chapters with Claude
 ipcMain.handle('ai:batch-process', async (event, { project, operation = 'continuityCheck', options = {} }) => {
   try {
     console.log('[AI Batch] Starting:', operation);
 
-    let apiKey = process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      return { success: false, error: 'API key missing' };
-    }
-
-    const anthropic = new Anthropic({ apiKey });
+    const claudeClient = getClaudeClient();
 
     // Configure modules
     StoryContinuityTracker.configure({
@@ -2009,7 +1599,7 @@ ipcMain.handle('ai:batch-process', async (event, { project, operation = 'continu
     });
 
     HybridWritingFlow.configure({
-      claudeClient: anthropic,
+      claudeClient: claudeClient,
       getProject: () => project
     });
 
