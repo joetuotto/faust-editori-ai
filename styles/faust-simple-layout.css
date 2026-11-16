@@ -73,10 +73,8 @@
   color: var(--ink, #F0E9E1);
   position: relative;
 
-  /* Vignette effect - candlelight on parchment */
-  box-shadow:
-    inset 0 0 120px rgba(0, 0, 0, 0.12),
-    inset 0 0 60px rgba(0, 0, 0, 0.08);
+  /* Vignette: drawn once, by ::before, in the theme's own colour */
+  box-shadow: none;
 
   position: relative;
 
@@ -92,13 +90,7 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(
-    ellipse at center,
-    transparent 0%,
-    transparent 40%,
-    rgba(0, 0, 0, 0.03) 70%,
-    rgba(0, 0, 0, 0.08) 100%
-  );
+  background: radial-gradient(ellipse at 50% 45%, transparent 55%, var(--vignette) 100%);
 }
 
 /* Editor content wrapper - padding for text */
@@ -248,69 +240,6 @@
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-/* ===== IMPROVED HOVER EFFECTS ===== */
-
-/* General button hover effects */
-button {
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-button:hover:not(:disabled) {
-  filter: brightness(1.15);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-}
-
-button:active:not(:disabled) {
-  transform: translateY(0);
-  filter: brightness(0.95);
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-/* Input and select hover effects */
-input:not([type="checkbox"]):not([type="radio"]),
-select,
-textarea {
-  transition: all 0.2s ease;
-}
-
-input:hover:not(:disabled):not(:focus),
-select:hover:not(:disabled):not(:focus),
-textarea:hover:not(:disabled):not(:focus) {
-  border-color: var(--bronze, #B68B5C);
-  filter: brightness(1.05);
-}
-
-input:focus,
-select:focus,
-textarea:focus {
-  border-color: var(--sigil, #F5E6D3);
-  outline: none;
-  box-shadow: 0 0 0 2px rgba(245, 230, 211, 0.2);
-}
-
-/* Checkbox and radio hover */
-input[type="checkbox"]:hover,
-input[type="radio"]:hover {
-  cursor: pointer;
-  filter: brightness(1.2);
-}
-
-/* Link hover effects */
-a {
-  transition: all 0.2s ease;
-}
-
-a:hover {
-  filter: brightness(1.2);
-  text-decoration: underline;
 }
 
 /* Layout verified and working! */
