@@ -1,0 +1,1139 @@
+/* styles/faust-components.css : FAUST component recipes
+ *
+ * New file. Loaded after faust-tokens.css and faust-simple-layout.css; it refers to tokens
+ * only (no hex, no rgba, no pixel font size outside the token file).
+ *
+ * How it lives beside the two things it must not fight:
+ *  - faust-simple-layout.css stays in place. Every shell rule here is written on a NEW
+ *    class name or on a data attribute that only migrated markup carries (.faust-page,
+ *    .faust-panel, [data-state], .faust-statusbar ...), so an unmigrated region keeps the
+ *    layout it has today. The rules that touch today's markup are the focus-mode rule of
+ *    section 15 (meant for old and new markup alike) and section 16, "Legacy bridge",
+ *    where each rule names what it overrides and when it is deleted.
+ *    Precondition, done in the same commit (foundation step F2): the block
+ *    "IMPROVED HOVER EFFECTS" of faust-simple-layout.css (global button lift, brightness
+ *    filters, half-opacity disabled, cream focus glow) is deleted and its vignette takes
+ *    var(--vignette). Nothing here re-declares a selector of that file.
+ *  - The CodeMirror theme (src/components/FaustEditor.js) is injected after every
+ *    stylesheet with selectors of specificity (0,2,0). Editor rules here (section 14) are
+ *    written at (0,3,0) or more on purpose and restyle only what the theme object also sets:
+ *    content padding, paragraph gap, caret, placeholder, search marks, TODO mark.
+ *
+ * Three rules that hold in every section:
+ *  - Anything that opens over other content (popover, menu, tooltip) is position: fixed and
+ *    is rendered in the layer host (.faust-layer, section 10), never inside its trigger:
+ *    the format bar and the page are size containers and would trap and clip it.
+ *  - --text-3 is never set on a fill. Where a recipe puts meta text on a hover, selected or
+ *    tinted ground it steps up to --text-2 in the same section; final-work/contrast.py
+ *    fails if a rule pairs --text-3 with a fill.
+ *  - A state must survive the pointer: every pressed or selected rule has its :hover twin.
+ *
+ * Sections: 1 native chrome | 2 type roles | 3 buttons | 4 fields | 5 tabs | 6 cards, chips,
+ * rows, sections | 7 progress, spinner, empty | 8 notification, callout | 9 dialog |
+ * 10 popover, menu, tooltip | 11 marks, diff, result | 12 dock, suggestion bar, inline prompt |
+ * 13 findings, tree, import | 14 editor (CodeMirror) | 15 shell and chat | 16 legacy bridge
+ */
+
+/* ============ 1 Native chrome: scrollbars, selection, native controls ============ */
+html {
+  accent-color: var(--accent);                            /* checkbox, radio, progress */
+  scrollbar-color: var(--scrollbar-thumb) transparent;    /* standard property only: macOS overlay bars stay overlay */
+}
+/* Selected text takes the primary text colour: the selection is painted over every mark
+   ground and under every dimmer text level, and none of those pairs holds 4.5:1. */
+::selection { background: var(--selection-bg); color: var(--text); }
+:is(.cm-faust-match-current, .faust-mark--search-current)::selection,
+:is(.cm-faust-match-current, .faust-mark--search-current) *::selection { color: var(--hl-search-current-text); }
+::placeholder { color: var(--text-3); opacity: 1; }
+input[type="checkbox"], input[type="radio"] { width: 14px; height: 14px; margin: 0; flex: none; cursor: pointer; }
+input:is([type="checkbox"], [type="radio"], [type="range"]):disabled { cursor: default; }
+label:has(> input[type="checkbox"], > input[type="radio"]) { cursor: pointer; }
+/* The slider is the one native control that is redrawn: a hairline track and a ring thumb.
+   --value (a percentage) is set inline from the state, as on .faust-progress; without it
+   the track shows no filled part and the thumb alone marks the value. */
+input[type="range"] { -webkit-appearance: none; appearance: none; height: 16px; margin: 0; background: transparent; cursor: pointer; }
+input[type="range"]::-webkit-slider-runnable-track { height: 2px; border-radius: 1px; background: linear-gradient(90deg, var(--accent-line) var(--value, 0%), var(--track) var(--value, 0%)); }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 12px; height: 12px; margin-top: -5px; border-radius: 50%; background: var(--surface-raised); border: 1.5px solid var(--accent-line); }
+input[type="range"]:disabled::-webkit-slider-runnable-track { background: var(--track); }
+input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--text-disabled); }
+.faust-scroll        { overflow-y: auto; min-height: 0; scrollbar-gutter: stable; overscroll-behavior: contain; }
+.faust-scroll--page  { scrollbar-gutter: stable both-edges; }   /* a centred column stays centred when a classic bar appears */
+
+/* ============ 2 Type roles ============ */
+.faust-label   { font: var(--type-label); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-3); }   /* capitals: section titles, chips, finding kinds, result captions; nothing else */
+.faust-meta    { font: var(--type-meta); color: var(--text-3); }
+.faust-ui      { font: var(--type-ui); color: var(--text-2); }
+.faust-serif   { font: var(--type-serif); color: var(--text); }
+.faust-quote   { font: var(--type-quote); color: var(--text-2); }                    /* verbatim excerpts of the manuscript and the request line above a result */
+.faust-latin   { font: italic var(--w-serif) var(--fs-serif)/20px var(--font-serif); letter-spacing: 0; }   /* the Latin names of the sigil actions */
+.faust-prose   { font: var(--type-prose); color: var(--text); max-width: 34em; white-space: pre-wrap; overflow-wrap: break-word; }
+.faust-num     { font-variant-numeric: tabular-nums; }
+.faust-clamp-2, .faust-clamp-3 { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.faust-clamp-2 { -webkit-line-clamp: 2; }
+.faust-clamp-3 { -webkit-line-clamp: 3; }
+.faust-icon    { display: inline-block; flex: none; vertical-align: -0.15em; }
+.faust-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* ============ 3 Buttons ============
+ * Order matters where specificity is equal: base, block, quiet, icon, glyph, pressed,
+ * primary, danger, sizes, voice, disabled, busy. Primary and danger come after the
+ * chrome variants, so a primary icon button keeps its label colour, also under the pointer.
+ */
+.faust-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  height: var(--h-md); min-width: var(--h-md); padding: 0 var(--sp-3); flex: none;
+  background: transparent; color: var(--text);
+  border: var(--bw) solid var(--border); border-radius: var(--radius-sm);
+  font: var(--type-ui); white-space: nowrap; user-select: none; cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.faust-btn:not(:disabled):hover  { background: var(--fill-hover); border-color: var(--border-control); }
+.faust-btn:not(:disabled):active { background: var(--fill-active); transition-duration: var(--dur-instant); }
+/* block: a section action in a side panel; an outline with a 3:1 edge, never solid unless it is the tab's one primary */
+.faust-btn--block { width: 100%; border-color: var(--border-control); }
+/* quiet: header, toolbars, the reject side of a choice */
+.faust-btn--quiet { border-color: transparent; color: var(--text-2); }
+.faust-btn--quiet:not(:disabled):hover { border-color: transparent; color: var(--text); }
+/* icon-only: always carries aria-label */
+.faust-btn--icon { width: var(--h-md); padding: 0; border-color: transparent; color: var(--text-2); }
+.faust-btn--icon:not(:disabled):hover { border-color: transparent; color: var(--text); }
+/* letter buttons of the format bar: B I U S are set in the manuscript face */
+.faust-btn--glyph { width: var(--h-md); padding: 0; border-color: transparent; color: var(--text-2); font: var(--w-serif-title) 16px/1 var(--font-serif); }
+.faust-btn--glyph:not(:disabled):hover { border-color: transparent; color: var(--text); }
+/* pressed or open. On an outlined button in content: tint and an accent edge. */
+.faust-btn:is([aria-pressed="true"], [aria-expanded="true"], .is-selected) { background: var(--accent-tint); border-color: var(--accent-line); color: var(--text); }
+.faust-btn:is([aria-pressed="true"], [aria-expanded="true"], .is-selected):not(:disabled):is(:hover, :active) { background: var(--accent-tint-strong); border-color: var(--accent-line); color: var(--text); }
+/* In chrome (quiet, icon, glyph) a pressed toggle is a fill, not a frame; its icon takes the accent line. */
+:is(.faust-btn--quiet, .faust-btn--icon, .faust-btn--glyph):is([aria-pressed="true"], [aria-expanded="true"], .is-selected) { background: var(--fill-active); border-color: transparent; color: var(--text); }
+:is(.faust-btn--quiet, .faust-btn--icon, .faust-btn--glyph):is([aria-pressed="true"], [aria-expanded="true"], .is-selected):not(:disabled):is(:hover, :active) { background: var(--fill-active); border-color: transparent; color: var(--text); }
+:is(.faust-btn--quiet, .faust-btn--icon):is([aria-pressed="true"], [aria-expanded="true"], .is-selected) > .faust-icon { color: var(--accent-line); }
+/* primary: the one solid accent on a surface */
+.faust-btn--primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.faust-btn--primary:not(:disabled):hover  { background: var(--accent-hover);  border-color: var(--accent-hover);  color: var(--on-accent); }
+.faust-btn--primary:not(:disabled):active { background: var(--accent-active); border-color: var(--accent-active); color: var(--on-accent); }
+/* danger */
+.faust-btn--danger { color: var(--error-text); border-color: var(--error-border); }
+.faust-btn--danger:not(:disabled):hover { background: var(--error-bg); border-color: var(--error); color: var(--error-text); }
+.faust-btn--icon.faust-btn--danger { color: var(--text-3); border-color: transparent; }
+.faust-btn--icon.faust-btn--danger:not(:disabled):hover { color: var(--error-text); background: var(--error-bg); border-color: transparent; }
+.faust-btn--danger.faust-btn--primary { background: var(--danger); border-color: var(--danger); color: var(--on-danger); }
+.faust-btn--danger.faust-btn--primary:not(:disabled):is(:hover, :active) { background: var(--danger-hover); border-color: var(--danger-hover); color: var(--on-danger); }
+/* sizes */
+.faust-btn--sm { height: var(--h-sm); min-width: var(--h-sm); padding: 0 var(--sp-2); gap: var(--sp-1); font: var(--type-meta); }
+.faust-btn--lg { height: var(--h-lg); min-width: 80px; padding: 0 var(--sp-4); }
+.faust-btn--icon.faust-btn--sm { width: var(--h-sm); padding: 0; }
+.faust-btn--icon.faust-btn--lg { width: var(--h-lg); min-width: var(--h-lg); padding: 0; }
+/* voice input while listening: the same glyph, the state in colour, edge and a travelling ring */
+.faust-btn[data-state="listening"],
+.faust-btn[data-state="listening"]:not(:disabled):is(:hover, :active) { background: var(--error-bg); border-color: var(--error); color: var(--error); animation: faust-listen 1.4s ease-out infinite; }
+/* disabled: one look on every ground. Shape and label stay; nothing is dimmed twice. */
+.faust-btn:disabled, .faust-btn[aria-disabled="true"] { background: transparent; border-color: var(--rule); color: var(--text-disabled); cursor: default; }
+.faust-btn[aria-disabled="true"] { pointer-events: none; }
+.faust-btn--primary:disabled, .faust-btn--primary[aria-disabled="true"] { background: var(--fill-subtle); border-color: transparent; font-weight: var(--w-mono); }
+:is(.faust-btn--quiet, .faust-btn--icon, .faust-btn--glyph):disabled { border-color: transparent; }
+/* busy: aria-busy="true" together with disabled; reads as working, never as unavailable */
+.faust-btn[aria-busy="true"] { background: transparent; border-color: var(--accent-line); color: var(--accent-text); cursor: progress; }
+:is(.faust-btn--quiet, .faust-btn--icon)[aria-busy="true"] { border-color: transparent; }
+
+/* sigil button: the alchemical accent, used only for FAUST's own AI verbs */
+.faust-sigil-btn {
+  display: inline-grid; place-items: center; width: var(--h-lg); height: var(--h-lg); padding: 0; flex: none;
+  background: transparent; color: var(--accent-line);
+  border: var(--bw) solid transparent; border-radius: var(--radius-sm); cursor: pointer;
+  transition: background-color var(--dur-sigil) var(--ease-out), color var(--dur-sigil) var(--ease-out);
+}
+.faust-sigil-btn > .faust-icon { transition: filter var(--dur-sigil) var(--ease-out); }
+.faust-sigil-btn:not(:disabled):hover { background: var(--accent-tint); }
+.faust-sigil-btn:not(:disabled):hover > .faust-icon { filter: var(--sigil-aura); }               /* the golden aura, 200ms: light around the glyph in NOX, none in DEIS */
+.faust-sigil-btn:not(:disabled):active { animation: faust-sigil-pulse 400ms var(--ease-std); }   /* the pulse, 400ms */
+.faust-sigil-btn[aria-pressed="true"] { background: var(--fill-active); }
+/* Magnum Opus: tinted at rest, solid only while it is acted on */
+.faust-sigil-btn--primary { background: var(--accent-tint-strong); }
+.faust-sigil-btn--primary:not(:disabled):is(:hover, :focus-visible) { background: var(--accent); color: var(--on-accent); }
+.faust-sigil-btn--primary:not(:disabled):is(:hover, :focus-visible) > .faust-icon { filter: none; }
+.faust-sigil-btn:disabled { background: transparent; color: var(--text-disabled); cursor: default; }
+.faust-sigil-btn--primary:disabled { background: var(--fill-subtle); }
+.faust-sigil-btn[aria-busy="true"] { background: transparent; color: var(--accent-line); cursor: progress; }
+.faust-sigil-btn--primary[aria-busy="true"] { background: var(--accent); color: var(--on-accent); }
+.faust-sigil-btn--sm { width: var(--h-md); height: var(--h-md); }
+.faust-sigil-btn--lg { width: var(--h-xl); height: var(--h-xl); }
+:is(.faust-btn, .faust-sigil-btn) .faust-spinner { color: inherit; }
+/* the sigil bar: the four sigils as one instrument, at the right end of the format bar */
+.faust-sigilbar { display: inline-flex; align-items: center; gap: var(--sp-half); padding: 1px; flex: none; border: var(--bw) solid var(--rule); border-radius: calc(var(--radius-sm) + 2px); }
+
+/* ============ 4 Fields ============ */
+.faust-field { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.faust-field + .faust-field { margin-top: var(--sp-3); }
+.faust-dialog .faust-field + .faust-field { margin-top: var(--sp-4); }
+.faust-field__label { font: var(--type-meta); color: var(--text-2); }               /* sentence case: one step quieter than a section title */
+.faust-field__hint  { font: var(--type-meta); color: var(--text-3); }
+.faust-field__error { font: var(--type-meta); color: var(--error-text); min-height: 16px; }
+.faust-field__row   { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-1); }   /* a field's own action: the field at full width, the button right-aligned on the next line */
+
+.faust-input, .faust-textarea, .faust-select {
+  display: block; width: 100%; min-width: 0; height: var(--h-lg); padding: 0 var(--sp-3);
+  background: var(--surface-sunken); color: var(--text);
+  border: var(--bw) solid var(--border-control); border-radius: var(--radius-sm);
+  font: var(--type-input);
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+:is(.faust-input, .faust-textarea, .faust-select):not(:disabled):hover { border-color: var(--text-3); }
+:is(.faust-input, .faust-textarea, .faust-select):focus-visible { border-color: var(--focus-ring); outline: var(--bw-strong) solid var(--focus-ring); outline-offset: 0; box-shadow: none; }
+:is(.faust-input, .faust-textarea, .faust-select)[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 2px var(--error-bg); }
+:is(.faust-input, .faust-textarea, .faust-select):disabled { background: transparent; border-color: var(--rule); color: var(--text-disabled); cursor: default; }
+:is(.faust-input, .faust-textarea)[readonly] { background: transparent; border-style: dashed; }
+.faust-input--sm, .faust-select--sm { height: var(--h-md); padding: 0 var(--sp-2); font: var(--type-ui); }
+.faust-input--author, .faust-textarea--author { font: var(--type-serif); }      /* the author's words are serif */
+.faust-textarea { height: auto; min-height: 96px; padding: var(--sp-2) var(--sp-3); resize: vertical; }
+.faust-select { appearance: none; padding-right: var(--sp-6); cursor: pointer;
+  background-image: var(--select-chevron); background-repeat: no-repeat; background-position: right 10px center; background-size: 12px 12px; }
+.faust-select--sm { padding-right: 28px; background-position: right 8px center; }
+
+/* native check and radio: themed by color-scheme + accent-color, not redrawn */
+.faust-check { display: inline-flex; align-items: center; gap: var(--sp-2); min-height: var(--h-sm); font: var(--type-ui); color: var(--text-2); cursor: pointer; }
+.faust-check:hover, .faust-check:has(:checked) { color: var(--text); }
+.faust-check:has(:disabled) { color: var(--text-disabled); cursor: default; }
+.faust-check:has(:focus-visible) { color: var(--text); }
+.faust-check--serif { font: var(--type-serif); color: var(--text); align-items: baseline; }      /* a choice inside a dialog body: a sentence the application addresses to the author */
+.faust-check--serif > input { align-self: center; }
+.faust-check__hint { font: var(--type-meta); color: var(--text-3); margin-left: var(--sp-1); }
+.faust-check-group { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); }
+/* choices with hints: box, label and hint in three columns, so the hints share one left edge */
+.faust-check-group--grid { display: grid; grid-template-columns: 14px max-content minmax(0, 1fr); align-items: baseline; gap: var(--sp-2) var(--sp-2); }
+.faust-check-group--grid > .faust-check { display: contents; }
+.faust-check-group--grid .faust-check__hint { margin-left: var(--sp-2); }
+.faust-slider { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--sp-1) var(--sp-3); }
+.faust-slider > input[type="range"] { width: 100%; }
+.faust-slider__value { font: var(--type-meta); color: var(--text); font-variant-numeric: tabular-nums; min-width: 5ch; text-align: right; }
+.faust-slider:has(:disabled) .faust-slider__value { color: var(--text-disabled); }
+/* rating: five 20px buttons in a radiogroup; stars up to the value carry .is-on and are drawn filled */
+.faust-rating { display: inline-flex; }
+.faust-rating__star { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; background: none; border: 0; border-radius: var(--radius-xs); color: var(--text-3); cursor: pointer; }
+.faust-rating__star:hover { color: var(--text); }
+.faust-rating__star.is-on { color: var(--accent-line); }
+.faust-rating__star:disabled { color: var(--text-disabled); cursor: default; }
+
+/* ============ 5 Tabs and segmented control ============ */
+.faust-tabs { display: flex; gap: var(--sp-4); border-bottom: var(--bw) solid var(--rule); }
+.faust-tab {
+  padding: var(--sp-2) 0; margin-bottom: -1px; background: none; cursor: pointer;
+  border: 0; border-bottom: var(--bw-strong) solid transparent; border-radius: 0;
+  font: var(--type-ui); color: var(--text-2);                                       /* sentence case, mono 12: a tab is not a section title */
+  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.faust-tab:not(:disabled):hover { color: var(--text); }
+.faust-tab:not(:disabled):active { color: var(--text); border-bottom-color: var(--border-control); }
+.faust-tab[aria-selected="true"], .faust-tab[aria-selected="true"]:not(:disabled):active { color: var(--text); border-bottom-color: var(--accent-line); }
+.faust-tab:disabled { color: var(--text-disabled); cursor: default; }
+.faust-tab:focus-visible { outline-offset: -2px; }
+.faust-tab[aria-busy="true"]::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: var(--sp-1); border-radius: 50%; background: var(--accent-line); animation: faust-blink 1.2s steps(2, jump-none) infinite; }
+
+.faust-segmented { display: inline-flex; gap: var(--sp-half); padding: var(--sp-half); border: var(--bw) solid var(--border); border-radius: var(--radius-sm); }
+.faust-segmented--block { display: flex; }
+.faust-segmented--block > .faust-segmented__option { flex: 1 1 0; }
+.faust-segmented__option {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-1);
+  height: 22px; padding: 0 var(--sp-2); background: none; border: 0; border-radius: var(--radius-xs);
+  font: var(--type-meta); color: var(--text-2); cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.faust-segmented__option:not(:disabled):hover { background: var(--fill-hover); color: var(--text); }
+.faust-segmented__option:not(:disabled):active { background: var(--fill-active); }
+/* selected: a fill, not a frame; the icon takes the accent line; the state survives the pointer */
+.faust-segmented__option:is([aria-pressed="true"], [aria-checked="true"]),
+.faust-segmented__option:is([aria-pressed="true"], [aria-checked="true"]):not(:disabled):hover { background: var(--fill-active); color: var(--text); }
+.faust-segmented__option:is([aria-pressed="true"], [aria-checked="true"]) > .faust-icon { color: var(--accent-line); }
+.faust-segmented__option:disabled { color: var(--text-disabled); cursor: default; }
+.faust-segmented__option:disabled:is([aria-pressed="true"], [aria-checked="true"]) { background: var(--fill-subtle); box-shadow: inset 0 0 0 1px var(--text-disabled); }   /* the value of a locked control stays readable: the label and its ring share the disabled ink */
+.faust-segmented__option:disabled > .faust-icon { color: inherit; }
+
+/* ============ 6 Cards, chips, rows, sections ============ */
+/* An index card: square-cut (4px), bordered, no shadow. 8px and shadows are for layers that float. */
+.faust-card {
+  display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; padding: var(--sp-4);
+  background-color: var(--surface-raised); color: var(--text);
+  border: var(--bw) solid var(--border); border-radius: var(--radius-sm);
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.faust-card--compact { gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); background-color: var(--surface-sunken); }
+.faust-card--click { cursor: pointer; text-align: left; }
+.faust-card--click:hover { border-color: var(--border-control); }
+.faust-card--click:active { background-image: linear-gradient(var(--fill-hover), var(--fill-hover)); }
+.faust-card.is-selected { background-image: linear-gradient(var(--accent-tint), var(--accent-tint)); border-color: var(--accent-line); box-shadow: 0 0 0 1px var(--accent-line); }
+.faust-card.is-dragging { opacity: 0.5; border-style: dashed; }
+.faust-card.is-drop-target { box-shadow: inset 3px 0 0 var(--accent-line); }
+.faust-card[aria-disabled="true"] { color: var(--text-disabled); box-shadow: none; cursor: default; }
+.faust-card--stripe { background-image: linear-gradient(90deg, var(--stripe, var(--accent-line)) 0 3px, transparent 3px); padding-left: calc(var(--sp-3) + 3px); }
+.faust-card--add { align-items: center; justify-content: center; background: none; border-style: dashed; border-color: var(--border-control); color: var(--text-3); }
+.faust-card--add:hover { color: var(--text); background: var(--fill-hover); }
+.faust-card__head  { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.faust-card__title { font: var(--type-title-pop); color: var(--text); }
+.faust-card--compact .faust-card__title { font: var(--type-ui-strong); }
+.faust-card__body  { font: var(--type-serif-sm); color: var(--text-2); }            /* the synopsis: upright; italic is kept for verbatim quotation */
+.faust-card__foot  { margin-top: auto; padding-top: var(--sp-2); border-top: var(--bw) solid var(--rule); display: flex; justify-content: space-between; gap: var(--sp-2); font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.faust-card.is-selected :is(.faust-card__foot, .faust-meta, .faust-label, .faust-kv, .faust-stat) { color: var(--text-2); }
+.faust-cardgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); grid-auto-rows: minmax(168px, auto); gap: var(--sp-4); align-content: start; }
+
+.faust-chip {
+  display: inline-flex; align-items: center; gap: var(--sp-1); height: 20px; padding: 0 var(--sp-2); flex: none;
+  background: var(--fill-subtle); color: var(--text-2); border: 0; border-radius: var(--radius-sm);
+  font: var(--type-label); letter-spacing: var(--tracking-caps); text-transform: uppercase; white-space: nowrap;
+}
+.faust-chip--plain   { text-transform: none; letter-spacing: 0; font: var(--type-meta); }
+/* --chip-mark is the colour of the dot: it keeps the role when the label steps up to --text on a filled row or card */
+.faust-chip--accent  { background: var(--accent-tint); color: var(--accent-text);  --chip-mark: var(--accent-line); }
+.faust-chip--success { background: var(--success-bg);  color: var(--success-text); --chip-mark: var(--success); }
+.faust-chip--warning { background: var(--warning-bg);  color: var(--warning-text); --chip-mark: var(--warning); }
+.faust-chip--error   { background: var(--error-bg);    color: var(--error-text);   --chip-mark: var(--error); }
+.faust-chip--info    { background: var(--info-bg);     color: var(--info-text);    --chip-mark: var(--info); }
+.faust-chip--dot::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--chip-mark, currentColor); }
+.faust-chip--hollow::before { content: ""; width: 6px; height: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--chip-mark, currentColor); }
+.faust-chip--struck  { text-decoration: line-through; }                                /* a status that ended without an outcome: an abandoned thread */
+.faust-chip--count { min-width: 20px; justify-content: center; padding: 0 var(--sp-1); border-radius: var(--radius-pill); background: var(--fill-active); font: var(--w-mono-strong) var(--fs-micro)/1 var(--font-mono); letter-spacing: 0; font-variant-numeric: tabular-nums; }
+button.faust-chip { cursor: pointer; transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+button.faust-chip:not(:disabled):hover { background: var(--fill-active); color: var(--text); }
+button.faust-chip[aria-pressed="true"], button.faust-chip[aria-pressed="true"]:not(:disabled):hover { background: var(--accent-tint-strong); color: var(--text); }
+button.faust-chip:disabled { color: var(--text-disabled); cursor: default; }
+button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle); box-shadow: inset 0 0 0 1px var(--text-disabled); }
+.faust-dot { display: inline-block; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.faust-kbd { display: inline-flex; align-items: center; justify-content: center; height: 20px; min-width: 20px; padding: 0 var(--sp-1); background: var(--surface-sunken); border: var(--bw) solid var(--border); border-bottom-width: 2px; border-radius: var(--radius-sm); font: var(--type-meta); color: var(--text-2); }
+
+.faust-row {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-width: 0; min-height: var(--h-md);
+  padding: var(--sp-1) var(--sp-3); background: none; color: var(--text-2);
+  border: 0; border-radius: var(--radius-sm); font: var(--type-ui); text-align: left; cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.faust-row:hover  { background-color: var(--fill-hover); color: var(--text); }
+.faust-row:active { background-color: var(--fill-active); }
+.faust-row:is(.is-selected, [aria-current="true"], [aria-selected="true"]) {
+  color: var(--text);
+  background: linear-gradient(90deg, var(--accent-line) 0 2px, transparent 2px), linear-gradient(var(--accent-tint), var(--accent-tint));
+}
+.faust-row:focus-visible { outline-offset: -2px; }
+.faust-row:disabled, .faust-row[aria-disabled="true"] { background: none; color: var(--text-disabled); cursor: default; }
+.faust-row--two { align-items: flex-start; padding: var(--sp-2) var(--sp-3); }
+.faust-row--static { cursor: default; }
+.faust-row--static:hover, .faust-row--static:active { background: none; color: var(--text-2); }
+.faust-row__icon  { flex: none; width: 16px; color: var(--text-3); display: inline-grid; place-items: center; }
+.faust-row__text  { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-half); }
+.faust-row__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.faust-row--author .faust-row__title { font: var(--type-serif); }
+.faust-row__meta  { font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.faust-row__actions { margin-left: auto; display: flex; gap: var(--sp-half); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
+.faust-row:is(:hover, :focus-within, .is-selected) .faust-row__actions { opacity: 1; }
+/* on a hover, pressed, selected or drop fill the weakest text level steps up, so it never drops under 4.5:1 */
+.faust-row:is(:hover, :active, .is-selected, [aria-current="true"], [aria-selected="true"], .is-drop-inside) :is(.faust-row__meta, .faust-row__icon) { color: var(--text-2); }
+.faust-row--static:is(:hover, :active) :is(.faust-row__meta, .faust-row__icon) { color: var(--text-3); }
+/* a sigil or icon in a row takes the row's icon colour and turns gold only when the row is selected */
+.faust-row:is(.is-selected, [aria-current="true"], [aria-selected="true"]) .faust-row__icon { color: var(--accent-line); }
+.faust-row.is-error .faust-row__icon { color: var(--error); }
+.faust-row.is-error .faust-row__meta { color: var(--error-text); }
+.faust-row:is(:disabled, [aria-disabled="true"]) :is(.faust-row__meta, .faust-row__icon) { color: var(--text-disabled); }
+
+/* A chip on a filled container (hover, pressed, selected, drop target, selected card, hovered or
+   active finding) would stack its own tint on that fill: its label steps up to --text and the
+   tint and the dot carry the role. A disabled chip gets an opaque well instead. */
+:is(.faust-row:is(:hover, :active, .is-selected, [aria-current="true"], [aria-selected="true"], .is-drop-inside), .faust-card.is-selected, .faust-finding:is(:hover, .is-active)) .faust-chip:not(:disabled) { color: var(--text); }
+:is(.faust-row:is(:hover, :active, .is-selected, [aria-current="true"], [aria-selected="true"], .is-drop-inside), .faust-card.is-selected, .faust-finding:is(:hover, .is-active)) button.faust-chip:disabled { background: var(--surface-sunken); box-shadow: none; }
+
+.faust-section { padding: var(--sp-4) 0; border-top: var(--bw) solid var(--rule); }
+.faust-section:first-child { padding-top: 0; border-top: 0; }
+.faust-section__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-height: var(--h-sm); margin-bottom: var(--sp-2); }
+.faust-section__title { font: var(--type-label); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-2); }   /* the one caps heading of a panel: a step stronger than a field label */
+.faust-kv { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); min-height: var(--h-sm); font: var(--type-meta); color: var(--text-3); }
+.faust-kv > :last-child { font: var(--type-ui-strong); color: var(--text); font-variant-numeric: tabular-nums; text-align: right; }
+.faust-stat { display: inline-flex; align-items: baseline; gap: var(--sp-1); font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.faust-stat > b { font-weight: var(--w-mono-strong); color: var(--text); }
+.faust-stat--hero > b { font-size: 16px; }
+.faust-disclosure > summary { list-style: none; display: flex; align-items: center; gap: var(--sp-1); min-height: var(--h-sm); font: var(--type-meta); color: var(--text-2); cursor: pointer; }
+.faust-disclosure > summary::-webkit-details-marker { display: none; }
+.faust-disclosure > summary > .faust-icon { transition: transform var(--dur-fast) var(--ease-out); }
+.faust-disclosure[open] > summary > .faust-icon { transform: rotate(90deg); }
+
+/* keyboard shortcuts: two columns of rows; the command in serif, each key combination a keycap */
+.faust-shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--sp-6); }
+.faust-shortcut { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); min-height: var(--h-lg); border-bottom: var(--bw) solid var(--rule); font: var(--type-serif); color: var(--text); white-space: nowrap; }
+.faust-shortcut__keys { display: inline-flex; align-items: baseline; gap: var(--sp-1); flex: none; }
+.faust-shortcut__keys > .faust-kbd + .faust-kbd { margin-left: 0; }
+
+/* an excerpt of the manuscript that FAUST is working on (the selected text above a request) */
+.faust-excerpt { display: flex; flex-direction: column; gap: var(--sp-half); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--accent-line) 0 2px, transparent 2px), linear-gradient(var(--accent-tint), var(--accent-tint)); }
+.faust-excerpt__caption { font: var(--type-meta); color: var(--text-2); }
+.faust-excerpt__text { font: var(--type-quote); color: var(--text); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+
+/* timeline: one horizontally scrolling wrapper, one grid, so chapter cells and thread bars share the scale.
+   Columns: thread name | one per chapter (--n) | status. Row 1 holds the chapter cells. */
+.faust-timeline { overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: var(--sp-2); }
+.faust-timeline__grid { display: grid; grid-template-columns: 150px repeat(var(--n, 1), minmax(120px, 1fr)) 80px; gap: var(--sp-2); align-items: center; min-width: max-content; }
+.faust-timeline__name { position: sticky; left: 0; z-index: var(--z-raised); align-self: stretch; display: flex; align-items: center; min-width: 0; padding-right: var(--sp-2); background: var(--surface-raised); font: var(--type-serif); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.faust-timeline__bar { grid-column: calc(var(--from, 0) + 2) / calc(var(--to, 0) + 3); height: 8px; border-radius: var(--radius-pill); background: var(--thread, var(--thread-1)); }
+.faust-timeline__bar.is-open { border-top-right-radius: 0; border-bottom-right-radius: 0; }       /* not yet resolved: the bar runs on, square-cut */
+.faust-timeline__status { justify-self: end; }
+
+/* ============ 7 Progress, spinner, empty state ============ */
+.faust-progress { height: 3px; border-radius: var(--radius-xs); background: var(--track); overflow: hidden; }
+.faust-progress > i { display: block; height: 100%; width: var(--value, 0%); border-radius: inherit; background: var(--accent-line); transition: width var(--dur-slow) var(--ease-std); }
+.faust-progress--goal { height: 6px; border-radius: 3px; }
+.faust-progress.is-complete > i { background: var(--success); }
+.faust-progress.is-error > i { background: var(--error); }
+.faust-progress--indeterminate > i { width: 30%; animation: faust-slide 1.4s ease-in-out infinite; }
+.faust-spinner { display: inline-block; flex: none; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--track); border-top-color: currentColor; color: var(--accent-line); animation: faust-spin 0.9s linear infinite; }
+.faust-spinner--sm { width: 12px; height: 12px; border-width: 1.5px; }
+.faust-spinner--lg { width: 24px; height: 24px; }
+
+.faust-empty { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); max-width: 320px; margin: 0 auto; padding: var(--sp-6) var(--sp-5); text-align: center; }
+.faust-empty__icon  { color: var(--text-3); margin-bottom: var(--sp-1); }
+.faust-empty__title { font: italic var(--w-serif) 17px/24px var(--font-serif); color: var(--text-2); }
+.faust-empty__hint  { font: var(--type-meta); color: var(--text-3); }
+.faust-empty__action { margin-top: var(--sp-2); }
+.faust-empty--compact { padding: var(--sp-3) var(--sp-2); gap: var(--sp-1); }
+.faust-empty--compact .faust-empty__title { font-size: 15px; line-height: 20px; }
+.faust-empty--page { max-width: 420px; padding: var(--sp-8) var(--sp-5); }
+.faust-empty--page .faust-empty__title { font-size: 22px; line-height: 28px; }
+.faust-empty.is-error .faust-empty__icon { color: var(--error); }
+
+/* ============ 8 Notification (replaces alert) and inline message ============ */
+/* Centred on the editor pane, not on the window: the notification shares the axis of the
+   chapter title and the text. --left-col-w and --right-col-w are set on .faust-app. */
+.faust-toast-host {
+  position: fixed; z-index: var(--z-toast);
+  left: calc(var(--left-col-w) + (100vw - var(--left-col-w) - var(--right-col-w)) / 2); transform: translateX(-50%);
+  top: calc(var(--header-h) + var(--formatbar-h) + var(--sp-2));     /* under the format bar: a one-line toast fits the page's top margin */
+  width: min(440px, calc(100vw - var(--left-col-w) - var(--right-col-w) - 2 * var(--sp-4)));
+  display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-2);
+  pointer-events: none; -webkit-app-region: no-drag;
+}
+.faust-focus-mode .faust-toast-host { top: calc(28px + var(--sp-2)); }
+.faust-toast {
+  pointer-events: auto; position: relative; overflow: hidden;
+  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: start; gap: var(--sp-1) var(--sp-3);
+  padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
+  background: var(--surface-raised); color: var(--text);
+  border: var(--bw) solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-2);
+  animation: faust-drop var(--dur-fast) var(--ease-out);
+}
+.faust-toast.is-leaving { opacity: 0; transform: translateY(-6px); transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
+.faust-toast__icon   { margin-top: 3px; color: var(--text-3); }
+.faust-toast__text   { font: var(--type-serif); white-space: pre-line; overflow-wrap: anywhere; }
+.faust-toast__detail { grid-column: 2; font: var(--type-meta); color: var(--text-2); white-space: pre-line; overflow-wrap: anywhere; max-height: 40vh; overflow-y: auto; user-select: text; }
+.faust-toast__actions { grid-column: 2; display: flex; gap: var(--sp-2); margin-top: var(--sp-1); }
+.faust-toast__close  { grid-column: 3; grid-row: 1; margin-top: -1px; }
+.faust-toast--success .faust-toast__icon { color: var(--success); }
+.faust-toast--warning .faust-toast__icon { color: var(--warning); }
+.faust-toast--error   .faust-toast__icon { color: var(--error); }
+.faust-toast--info    .faust-toast__icon { color: var(--info); }
+.faust-toast--busy    .faust-toast__icon { color: var(--accent-line); }
+.faust-toast--error   { border-color: var(--error-border); }
+.faust-toast > .faust-progress { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 0; }
+
+/* Inline message. One neutral ground for every role: only the icon and the title carry the
+   hue, so a callout is never read as a selected card or a selected finding. */
+.faust-callout { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: var(--sp-1) var(--sp-2); padding: var(--sp-3); background: var(--fill-subtle); border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1px var(--rule); font: var(--type-serif-sm); color: var(--text); }
+.faust-callout__icon  { margin-top: 2px; color: var(--text-2); }
+.faust-callout__title { font: var(--type-ui-strong); color: var(--text); }
+.faust-callout__body  { grid-column: 2; }
+.faust-callout__actions { grid-column: 2; display: flex; gap: var(--sp-2); margin-top: var(--sp-1); }
+.faust-callout--hint    .faust-callout__icon  { color: var(--accent-line); }
+.faust-callout--hint    .faust-callout__title { color: var(--accent-text); }
+.faust-callout--success .faust-callout__icon  { color: var(--success); }
+.faust-callout--success .faust-callout__title { color: var(--success-text); }
+.faust-callout--warning .faust-callout__icon  { color: var(--warning); }
+.faust-callout--warning .faust-callout__title { color: var(--warning-text); }
+.faust-callout--error   { box-shadow: inset 0 0 0 1px var(--error-border); }
+.faust-callout--error   .faust-callout__icon  { color: var(--error); }
+.faust-callout--error   .faust-callout__title { color: var(--error-text); }
+.faust-callout--info    .faust-callout__icon  { color: var(--info); }
+.faust-callout--info    .faust-callout__title { color: var(--info-text); }
+
+/* ============ 9 Dialog ============ */
+/* Stacking: every dialog is z --z-modal plus the order in which it was opened. The shared
+   Dialog component writes style="z-index: calc(var(--z-modal) + N)" from a module counter;
+   during the frame pass a legacy modal keeps its place with +1 or +2 written inline. */
+.faust-scrim {
+  position: fixed; inset: 0; z-index: var(--z-modal);
+  display: grid; place-items: center; padding: var(--sp-6);
+  background: var(--scrim); -webkit-backdrop-filter: blur(var(--scrim-blur)); backdrop-filter: blur(var(--scrim-blur));
+  -webkit-app-region: no-drag;                       /* the scrim covers the draggable header */
+  animation: faust-fade var(--dur-mid) var(--ease-out);
+}
+.faust-scrim--top { z-index: var(--z-dialog); }      /* prompt and confirm only: above any modal, legacy ones included */
+.faust-scrim.is-stacked { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }   /* a dialog over a dialog: the scrim is painted once */
+.faust-dialog {
+  display: flex; flex-direction: column; overflow: hidden;
+  width: min(var(--dialog-w, 520px), 100%); max-height: 100%;
+  background: var(--surface-raised); color: var(--text);
+  border: var(--dialog-frame-w) solid var(--dialog-frame); border-radius: var(--radius-md); box-shadow: var(--shadow-3);
+  --dialog-pad: var(--sp-5);
+  animation: faust-rise var(--dur-mid) var(--ease-std);
+}
+.faust-dialog--sm { --dialog-w: 420px; }      /* confirm, prompt */
+.faust-dialog--md { --dialog-w: 520px; }      /* export, project settings */
+.faust-dialog--lg { --dialog-w: 720px;  --dialog-pad: var(--sp-6); }     /* sheets, lists, version history, continue writing; keyboard shortcuts at --dialog-w: 800px */
+.faust-dialog--xl { --dialog-w: 1120px; --dialog-pad: var(--sp-6); }     /* comparison, timeline, import preview */
+/* first migration pass: the panel keeps its single-box structure (no header/body/footer split yet) */
+.faust-dialog--plain { display: block; overflow: auto; padding: var(--dialog-pad); }
+.faust-dialog--plain > .faust-dialog__title { margin-bottom: var(--sp-4); }
+.faust-dialog__header { flex: none; display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--dialog-pad) calc(var(--dialog-pad) - var(--sp-2)) var(--sp-3) var(--dialog-pad); }
+.faust-dialog__heading { flex: 1 1 auto; min-width: 0; }
+.faust-dialog__title { display: flex; align-items: center; gap: var(--sp-3); margin: 0; font: var(--type-title-dialog); letter-spacing: 0; color: var(--text); }
+.faust-dialog__title > .faust-icon { color: var(--accent-line); }
+.faust-dialog__sub   { margin-top: var(--sp-1); font: var(--type-meta); color: var(--text-3); }
+.faust-dialog__actions { flex: none; display: flex; align-items: center; gap: var(--sp-2); }      /* header slot before the close button: the create action of a list dialog */
+.faust-dialog__body  { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding: var(--sp-1) var(--dialog-pad) var(--dialog-pad); font: var(--type-serif); }
+.faust-dialog__footer { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-3) var(--dialog-pad); border-top: var(--bw) solid var(--rule); }
+.faust-dialog__footer-start { margin-right: auto; display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
+.faust-dialog :is(.faust-dialog__header, .faust-dialog__footer) { user-select: none; }
+.faust-dialog--lg > .faust-dialog__header, .faust-dialog--xl > .faust-dialog__header { border-bottom: var(--bw) solid var(--rule); padding-bottom: var(--sp-4); }
+.faust-dialog--lg > .faust-dialog__body, .faust-dialog--xl > .faust-dialog__body { padding-top: var(--sp-4); }
+/* --flush: no padding, the body still scrolls (the version comparison: one scroller, sticky column heads).
+   --fixed: no padding and no scrolling; the content brings its own scrolling columns (the import preview).
+   Both come after the size rules above, which have the same specificity. */
+.faust-dialog > .faust-dialog__body--flush { padding: 0; }
+.faust-dialog > .faust-dialog__body--fixed { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.faust-dialog[aria-busy="true"] :is(.faust-dialog__body, .faust-dialog--plain) { cursor: progress; }
+.faust-dialog > .faust-progress { flex: none; border-radius: 0; }
+
+/* ============ 10 Popover, menu, tooltip ============ */
+/* The layer host: one plain element, the last child of .faust-app, outside every size
+   container. Popover, menu and Tooltip render into it through ReactDOM.createPortal and are
+   position: fixed; top and left are written inline from the anchor's getBoundingClientRect().
+   The host itself has no position, no z-index and no overflow, so it creates no stacking
+   context and its children stack by their own z-index tokens. */
+.faust-layer { display: contents; }
+.faust-popover {
+  position: fixed; top: 0; left: 0; z-index: var(--z-popover); display: flex; flex-direction: column; overflow: hidden;
+  width: var(--popover-w, 320px); max-width: calc(100vw - 2 * var(--sp-4));
+  max-height: min(420px, var(--popover-max-h, calc(100vh - var(--header-h) - var(--footer-h) - 2 * var(--sp-4))));   /* --popover-max-h: the room below (or above) the anchor, written inline */
+  background: var(--surface-raised); color: var(--text);
+  border: var(--bw) solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-2);
+  -webkit-app-region: no-drag;
+  animation: faust-rise var(--dur-fast) var(--ease-out);
+}
+.faust-popover--header { z-index: var(--z-dropdown); }                     /* anchored in the header */
+.faust-popover--modal  { z-index: calc(var(--z-dialog) + 10); }            /* anchored inside a dialog */
+.faust-popover__head  { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-height: 40px; padding: 0 var(--sp-2) 0 var(--sp-4); }
+.faust-popover__title { font: var(--type-title-pop); color: var(--text); }
+.faust-popover__body  { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 var(--sp-2) var(--sp-2); }
+.faust-popover__foot  { flex: none; display: flex; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-top: var(--bw) solid var(--rule); }
+
+.faust-menu { --popover-w: max-content; min-width: 200px; padding: var(--sp-1); }
+.faust-menu__item {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%; min-height: var(--h-md); padding: 0 var(--sp-3);
+  background: none; color: var(--text); border: 0; border-radius: var(--radius-sm);
+  font: var(--type-ui); text-align: left; white-space: nowrap; cursor: pointer;
+}
+.faust-menu__item:is(:hover, [data-active="true"]) { background: var(--fill-hover); }
+.faust-menu__item:active { background: var(--fill-active); }
+.faust-menu__item:focus-visible { background: var(--fill-hover); outline-offset: -2px; }       /* the ring stays; a 7 % veil alone is not a focus indicator */
+.faust-menu__item:disabled, .faust-menu__item[aria-disabled="true"] { background: none; color: var(--text-disabled); cursor: default; }
+.faust-menu__item[aria-checked="true"] > .faust-icon:first-child { color: var(--accent-line); }
+.faust-menu__item--danger { color: var(--error-text); }
+.faust-menu__item--author { font: var(--type-serif); min-height: var(--h-lg); }
+.faust-menu__shortcut { margin-left: auto; padding-left: var(--sp-5); font: var(--type-meta); color: var(--text-3); }
+.faust-menu__item:is(:hover, :active, :focus-visible, [data-active="true"]) .faust-menu__shortcut { color: var(--text-2); }
+.faust-menu__item:is(:disabled, [aria-disabled="true"]) .faust-menu__shortcut { color: var(--text-disabled); }
+.faust-menu__label { padding: var(--sp-2) var(--sp-3) var(--sp-1); font: var(--type-meta); color: var(--text-3); }      /* group label: sentence case */
+.faust-menu__sep { height: 1px; margin: var(--sp-1) 0; background: var(--rule); }
+
+.faust-tooltip {
+  position: fixed; top: 0; left: 0; z-index: var(--z-tooltip); max-width: 280px; padding: var(--sp-2) var(--sp-3);
+  background: var(--tooltip-bg); color: var(--tooltip-text);
+  border: var(--bw) solid var(--tooltip-border); border-radius: var(--radius-sm); box-shadow: var(--shadow-2);
+  font: var(--type-meta); pointer-events: none;
+  animation: faust-fade var(--dur-fast) var(--ease-out);
+}
+.faust-tooltip__title { font: italic var(--w-serif) var(--fs-serif)/20px var(--font-serif); letter-spacing: 0; }      /* the Latin name of a sigil action: the one place the interface speaks in italic Garamond */
+.faust-tooltip__kbd { margin-left: var(--sp-2); opacity: 0.7; }
+
+/* ============ 11 Marks in text: diff, suggestions, findings, search ============
+ * Every mark has its own line style, so no two are told apart by colour alone.
+ *   insertion: solid underline on a tint   deletion: strike-through   search hit: bottom rule on a tint
+ *   AI anchor: heavy dotted   story mention: fine dotted   avoid-word: dashed   TODO: mono chip
+ *   finding: wavy (error: heavy wave, note: double line)
+ * At rest a mark is its line. A ground is drawn only where it is the meaning (new text, a
+ * search hit) and under the pointer or under review (.is-active), never as an outline.
+ * Nesting: a mark sets the text colour and everything inside it inherits that colour
+ * (section 14 states this for the editor, where the syntax spans nest inside the marks).
+ */
+.faust-mark { border-radius: var(--radius-xs); -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  text-decoration-thickness: var(--mark-line); text-underline-offset: 0.2em; text-decoration-skip-ink: none; }
+.faust-mark--ins { background-color: var(--diff-ins-bg); text-decoration-line: underline; text-decoration-color: var(--diff-ins-line); }
+.faust-mark--ins.is-active { background-color: var(--diff-ins-bg-active); }
+.faust-mark--del { color: var(--text-3); text-decoration-line: line-through; text-decoration-color: var(--diff-del-line); }
+.faust-diff .faust-mark--del, .faust-mark--del:is(:hover, .is-active) { background-color: var(--diff-del-bg); color: var(--diff-del-text); }
+.faust-mark--search { background-color: var(--hl-search-bg); color: var(--ink); box-shadow: inset 0 calc(-1 * var(--mark-line)) 0 var(--hl-search-line); }
+.faust-mark--search-current { background-color: var(--hl-search-current-bg); color: var(--hl-search-current-text); box-shadow: 0 0 0 1px var(--hl-search-current-bg); }
+.faust-mark--ai { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-thickness: calc(var(--mark-line) * 2); text-decoration-color: var(--hl-ai-line); }
+.faust-mark--mention { text-decoration-line: underline; text-decoration-style: dotted; text-decoration-color: var(--border-control); }      /* a story entry named in the text: the quietest mark, a link */
+.faust-mark--mention:hover { text-decoration-color: var(--accent-line); }
+.faust-mark--ai:is(:hover, .is-active) { background-color: var(--hl-ai-bg); }
+.faust-mark--finding { text-decoration-line: underline; text-decoration-style: wavy; text-decoration-color: var(--hl-finding-line); }
+.faust-mark--finding:is(:hover, .is-active) { background-color: var(--hl-finding-bg); }
+.faust-mark--finding[data-severity="error"] { text-decoration-color: var(--hl-finding-error-line); text-decoration-thickness: calc(var(--mark-line) * 1.5); }
+.faust-mark--finding[data-severity="error"]:is(:hover, .is-active) { background-color: var(--hl-finding-error-bg); }
+.faust-mark--finding[data-severity="note"]  { text-decoration-color: var(--hl-finding-note-line); text-decoration-style: double; }
+.faust-mark--finding[data-severity="note"]:is(:hover, .is-active) { background-color: var(--hl-finding-note-bg); }
+.faust-mark--avoid { text-decoration-line: underline; text-decoration-style: dashed; text-decoration-color: var(--hl-avoid-line); }
+.faust-mark--avoid:is(:hover, .is-active) { background-color: var(--hl-avoid-bg); }
+.faust-mark--todo { padding: 0.1em 0.35em; background-color: var(--hl-todo-bg); color: var(--hl-todo-text); font: var(--w-mono-strong) 0.78em/1 var(--font-mono); font-style: normal; text-decoration: none; }
+.faust-mark--settled { animation: faust-settle 1200ms var(--ease-out); }
+/* children of a filled mark inherit its text colour and lose their own ground */
+:is(.faust-mark--search, .faust-mark--search-current) * { color: inherit; }
+.faust-mark--search-current * { background-color: transparent; }
+
+/* diff view and result block */
+.faust-result { display: flex; flex-direction: column; min-height: 0; }
+.faust-result--floating { width: min(680px, 100%); max-height: 50%; background: var(--surface-raised); border: var(--bw) solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-2); overflow: hidden; }   /* 50 % of the dock, which is as high as the page */
+.faust-result__head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: 40px; padding: 0 var(--sp-4); border-bottom: var(--bw) solid var(--rule); }
+.faust-result__context { padding: var(--sp-3) var(--sp-4) 0; font: var(--type-quote); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.faust-result__body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--sp-4); }
+.faust-result__actions { flex: none; display: flex; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-top: var(--bw) solid var(--rule); }
+.faust-diff { font: var(--type-prose); color: var(--text); }
+.faust-diff p { margin: 0 0 0.6em; }
+.faust-diff--unified { max-width: 34em; margin: 0 auto; }
+.faust-diff--split { display: grid; grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr); }
+.faust-diff__rule { background: var(--rule); }
+.faust-diff__col  { min-width: 0; padding: 0 var(--sp-5) var(--sp-4); }
+.faust-diff__colhead { position: sticky; top: 0; z-index: var(--z-raised); display: flex; justify-content: space-between; gap: var(--sp-3); margin: 0 calc(-1 * var(--sp-5)) var(--sp-3); padding: var(--sp-2) var(--sp-5); background: var(--surface-raised); border-bottom: var(--bw) solid var(--rule); }
+.faust-diff__count { font: var(--type-meta); font-variant-numeric: tabular-nums; }
+.faust-diff__count--ins { color: var(--success-text); }
+.faust-diff__count--ins::before { content: "+"; }
+.faust-diff__count--del { color: var(--error-text); }
+.faust-diff__count--del::before { content: "\2212"; }
+
+/* ============ 12 Dock, suggestion bar, voice bar, inline prompt ============ */
+/* The bottom dock: the one band where a transient surface may float over the paper. It is as
+   high as the page (top 0), so a percentage height of its occupant resolves against the
+   page; the occupant sits at its bottom, 16px above the pane's edge. The dock itself takes
+   no pointer events. */
+.faust-dock { position: absolute; inset: 0 0 var(--sp-4) 0; z-index: var(--z-float); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 0 var(--sp-4); pointer-events: none; }
+.faust-dock > * { pointer-events: auto; max-width: 100%; }
+.faust-suggestbar, .faust-voicebar {
+  display: flex; align-items: center; gap: var(--sp-1); height: var(--h-xl); padding: 0 var(--sp-2) 0 var(--sp-4); flex: none;
+  background: var(--surface-raised); color: var(--text-2);
+  border: var(--bw) solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-2);
+  font: var(--type-ui); white-space: nowrap; user-select: none;
+  animation: faust-rise var(--dur-fast) var(--ease-out);
+}
+.faust-suggestbar__label { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text); }
+.faust-suggestbar__label > .faust-icon { color: var(--accent-line); }
+.faust-suggestbar__count { margin: 0 var(--sp-2); font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.faust-suggestbar__sep { width: 1px; height: 16px; margin: 0 var(--sp-1); background: var(--rule); }
+.faust-suggestbar[aria-busy="true"] .faust-suggestbar__label { color: var(--accent-text); }
+.faust-suggestbar .faust-btn > .faust-icon.faust-suggestbar__compact { display: none; }      /* the icons of the compact form */
+/* Compact forms, by the width of the page (a size container): split view guarantees panes of 400px. */
+@container page (max-width: 560px) {
+  .faust-suggestbar__name, .faust-suggestbar__sep--lead { display: none; }
+  .faust-suggestbar__all > .faust-btn__label { display: none; }
+  .faust-suggestbar .faust-suggestbar__all > .faust-icon.faust-suggestbar__compact { display: inline-block; }
+}
+@container page (max-width: 440px) {
+  .faust-suggestbar :is(.faust-suggestbar__reject, .faust-suggestbar__accept) > .faust-btn__label { display: none; }
+  .faust-suggestbar :is(.faust-suggestbar__reject, .faust-suggestbar__accept) > .faust-icon.faust-suggestbar__compact { display: inline-block; }
+  .faust-suggestbar { padding-left: var(--sp-3); }
+  .faust-suggestbar__count { margin: 0 var(--sp-1); }
+}
+/* voice bar: the anatomy of the suggestion bar: state word, the heard text, cancel */
+.faust-voicebar__state { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text); }
+.faust-voicebar[data-state="listening"] .faust-voicebar__state { color: var(--error-text); }
+.faust-voicebar__heard { min-width: 0; max-width: 36ch; margin: 0 var(--sp-2); overflow: hidden; text-overflow: ellipsis; font: var(--type-quote); color: var(--text-2); }
+
+/* The inline prompt is a block in the text column (a CodeMirror block widget): it pushes
+   the lines apart and covers nothing, so it has no elevation: one frame, no shadow. The
+   widget's root is the slot, which spaces it with padding; CodeMirror does not count the
+   vertical margins of a block widget in its height map. */
+.faust-inline-prompt-slot { padding: var(--sp-2) 0; }
+.faust-inline-prompt {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: var(--sp-1) var(--sp-2);
+  padding: var(--sp-1) var(--sp-1) var(--sp-1) var(--sp-3);
+  background: var(--surface-raised); color: var(--text);
+  border: var(--bw) solid var(--border-control); border-radius: var(--radius-sm);
+  font: var(--type-input); text-align: left; text-indent: 0; white-space: normal; cursor: default;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.faust-inline-prompt:focus-within { border-color: var(--accent-line); box-shadow: 0 0 0 1px var(--accent-line); }      /* one 2px line: the field is already the focused thing */
+.faust-inline-prompt__sigil { color: var(--accent-line); }
+.faust-inline-prompt__input { min-width: 0; max-height: 120px; padding: var(--sp-1) 0; background: none; border: 0; outline: none; resize: none; font: inherit; color: inherit; }
+.faust-inline-prompt__hint  { grid-column: 2 / -1; padding-bottom: var(--sp-1); font: var(--type-meta); color: var(--text-3); }
+.faust-inline-prompt[aria-busy="true"] { border-color: var(--accent-line); }
+.faust-inline-prompt[aria-busy="true"] .faust-inline-prompt__input { color: var(--text-2); }
+.faust-inline-prompt[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 2px var(--error-bg); }
+.faust-inline-prompt[aria-invalid="true"] .faust-inline-prompt__hint { color: var(--error-text); }
+.faust-inline-prompt[aria-disabled="true"] { border-color: var(--rule); box-shadow: none; }
+.faust-inline-prompt[aria-disabled="true"] :is(.faust-inline-prompt__sigil, .faust-inline-prompt__input) { color: var(--text-disabled); }
+
+/* ============ 13 Finding list, story tree, import preview ============ */
+.faust-findings { display: flex; flex-direction: column; gap: var(--sp-half); }
+/* A finding is a div with role="button" and tabindex="0": it holds buttons (its actions), so it cannot be one. */
+.faust-finding {
+  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: var(--sp-half) var(--sp-2); width: 100%;
+  padding: var(--sp-2) var(--sp-3); background: none; color: var(--text);
+  border: var(--bw) solid transparent; border-radius: var(--radius-sm); text-align: left; cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
+}
+.faust-finding:hover  { background: var(--fill-hover); }
+.faust-finding:active { background: var(--fill-active); }
+.faust-finding.is-active, .faust-finding.is-active:is(:hover, :active) { background: var(--accent-tint); border-color: var(--accent-line); }
+.faust-finding:focus-visible { outline-offset: -2px; }
+.faust-finding__icon  { margin-top: 2px; color: var(--warning); }
+.faust-finding__kind  { font: var(--type-label); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--warning-text); }
+.faust-finding__where { font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.faust-finding__quote { grid-column: 2 / -1; font: var(--type-quote); color: var(--text-2); }
+.faust-finding__note  { grid-column: 2 / -1; font: var(--type-serif-sm); color: var(--text); }
+.faust-finding__actions { grid-column: 2 / -1; display: flex; gap: var(--sp-2); margin-top: var(--sp-1); }
+.faust-finding[data-severity="error"] .faust-finding__icon { color: var(--error); }
+.faust-finding[data-severity="error"] .faust-finding__kind { color: var(--error-text); }
+.faust-finding[data-severity="note"]  .faust-finding__icon { color: var(--info); }
+.faust-finding[data-severity="note"]  .faust-finding__kind { color: var(--info-text); }
+.faust-finding.is-resolved :is(.faust-finding__kind, .faust-finding__note, .faust-finding__icon) { color: var(--text-3); }
+.faust-finding.is-resolved .faust-finding__quote { text-decoration: line-through; }
+/* on the hover, pressed or selected fill the weakest level steps up */
+.faust-finding:is(:hover, :active, .is-active) .faust-finding__where { color: var(--text-2); }
+.faust-finding.is-resolved:is(:hover, :active, .is-active) :is(.faust-finding__kind, .faust-finding__note) { color: var(--text-2); }
+
+.faust-tree { display: flex; flex-direction: column; gap: 1px; }
+.faust-tree .faust-row { padding-left: calc(var(--sp-2) + var(--depth, 0) * var(--sp-4)); }
+.faust-tree__twisty { flex: none; width: 16px; height: 16px; display: inline-grid; place-items: center; color: var(--text-3); transition: transform var(--dur-fast) var(--ease-out); }
+.faust-row:is(:hover, :active, .is-selected, [aria-selected="true"], .is-drop-inside) > .faust-tree__twisty { color: var(--text-2); }
+.faust-row[aria-expanded="true"] > .faust-tree__twisty { transform: rotate(90deg); }
+.faust-row.is-drop-inside { background: var(--accent-tint); box-shadow: inset 0 0 0 1px var(--accent-line); }
+.faust-row.is-drop-before { box-shadow: inset 0 2px 0 var(--accent-line); }
+.faust-row.is-drop-after  { box-shadow: inset 0 -2px 0 var(--accent-line); }
+
+/* Import preview: lives in a --fixed dialog body. It is 560px high when the window has the
+   room and shrinks with the dialog; only its two columns scroll. */
+.faust-import { display: grid; grid-template-columns: 300px 1px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); flex: 0 1 560px; min-height: 0; }
+.faust-import__list { min-height: 0; overflow-y: auto; padding: var(--sp-2); }
+.faust-import__rule { background: var(--rule); }
+.faust-import__preview { min-height: 0; overflow-y: auto; padding: var(--sp-5) 0; background: var(--surface-paper); --ms-size: 16px; --measure: calc(16px * var(--measure-em) * var(--measure-face)); --page-gutter: var(--sp-5); --page-inset: max(var(--sp-5), calc((100% - var(--measure)) / 2)); }
+/* The preview is a read-only editor: the column is then a page element as well (class faust-page), so the measure applies. */
+.faust-import__preview.faust-page { padding: 0; }
+.faust-import__preview.faust-page > .faust-editor-host { flex: 1 1 0; min-height: 0; }
+/* An excluded part is not disabled: its row is live and must be read to decide. Strike and the empty box say "excluded". */
+.faust-import .faust-row.is-excluded :is(.faust-row__title, .faust-row__meta) { color: var(--text-2); text-decoration: line-through; text-decoration-color: var(--text-3); }
+.faust-dropzone { display: grid; place-items: center; min-height: 160px; padding: var(--sp-5); border: var(--bw) dashed var(--border-control); border-radius: var(--radius-md); color: var(--text-2); text-align: center; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
+.faust-dropzone.is-over { background: var(--accent-tint); border-color: var(--accent-line); border-style: solid; color: var(--text); }
+
+/* ============ 14 Editor (CodeMirror) ============
+ * Specificity (0,3,0) or more: at least one class more than the CodeMirror theme, which is
+ * injected last, and two more than the highlight classes, so no !important is needed.
+ */
+.faust-editor-host { font-synthesis: weight style; }     /* the author may pick a family without an italic or bold face */
+.faust-editor-host .cm-editor .cm-content {
+  caret-color: var(--accent-line);
+  font-weight: var(--w-serif);
+  font-variant-numeric: oldstyle-nums proportional-nums;
+  font-kerning: normal;
+}
+.faust-editor-host .cm-editor .cm-content:focus-visible { outline: none; }     /* the manuscript shows focus by its caret, never by a ring */
+.faust-editor-host .cm-editor .cm-placeholder { color: var(--text-3); font-style: italic; }
+/* Paragraph distance. Every line carries the paragraph gap as bottom padding; a blank line,
+   and the line before a blank line, carry none, so a blank line is exactly one line and
+   the gap applies only between paragraphs separated by a single break. */
+.faust-editor-host .cm-editor .cm-line:has(> br:only-child),
+.faust-editor-host .cm-editor .cm-line:has(+ .cm-line > br:only-child) { padding-bottom: 0; }
+.faust-editor-host .cm-editor .cm-faust-tag { color: var(--text-3); }
+.faust-editor-host .cm-editor .cm-faust-underline { text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+.faust-editor-host .cm-editor .cm-faust-match { background-color: var(--hl-search-bg); color: var(--ink); box-shadow: inset 0 calc(-1 * var(--mark-line)) 0 var(--hl-search-line); border-radius: var(--radius-xs); }
+.faust-editor-host .cm-editor .cm-faust-match-current { background-color: var(--hl-search-current-bg); color: var(--hl-search-current-text); border-radius: var(--radius-xs); }
+.faust-editor-host .cm-editor .cm-faust-todo { padding: 0.1em 0.35em; border-radius: var(--radius-xs); background-color: var(--hl-todo-bg); color: var(--hl-todo-text); font: var(--w-mono-strong) 0.78em/1 var(--font-mono); text-decoration: none; }
+.faust-editor-host .cm-editor .cm-faust-scenebreak { text-align: center; letter-spacing: 0.5em; color: var(--text-3); }
+/* Nesting. Syntax highlighting has the higher precedence, so its spans (Markdown markers in
+   --text-3, links, emphasis) are created INSIDE the mark spans; a mark and a mark can nest
+   either way. The rule: the mark sets the text colour, whatever is inside it inherits it.
+   A mark that can carry a ground sets --ink itself, for the case where it is the inner span.
+   A search hit is the one exception to inheriting: nested in another mark it keeps its own
+   colour, because it brings its own ground (the current hit is a solid block). */
+.faust-editor-host .cm-editor :is(.faust-mark--ins, .faust-mark--ai, .faust-mark--finding, .faust-mark--avoid, .faust-mark--search) { color: var(--ink); }
+.faust-editor-host .cm-editor :is(.faust-mark, .cm-faust-match, .cm-faust-match-current, .cm-faust-todo) *:not(.cm-faust-match, .cm-faust-match-current, .faust-mark--search, .faust-mark--search-current) { color: inherit; }
+.faust-editor-host .cm-editor :is(.cm-faust-match-current, .faust-mark--search-current) * { background-color: transparent; box-shadow: none; }
+
+/* The feature code in src/editor. Its CodeMirror themes carry provisional colours ("final
+   colours come from the design tokens"); these rules are those tokens, bound to the class
+   names it uses on 2026-11-17. When a name changes the selector follows; the values are the
+   recipes of sections 4, 10 and 11. Specificity is one class above each theme rule. */
+/* avoid-word and story mention (termHighlightCore.js): the marks of section 11 */
+.faust-editor-host .cm-editor .cm-faust-avoid { background-color: transparent; border-radius: var(--radius-xs); text-decoration: underline dashed var(--hl-avoid-line); text-decoration-thickness: var(--mark-line); text-underline-offset: 0.2em; }
+.faust-editor-host .cm-editor .cm-faust-avoid:hover { background-color: var(--hl-avoid-bg); }
+.faust-editor-host .cm-editor .cm-faust-mention { text-decoration: underline dotted var(--border-control); text-decoration-thickness: var(--mark-line); text-underline-offset: 0.2em; }
+.faust-editor-host .cm-editor .cm-faust-mention:hover { text-decoration-color: var(--accent-line); }
+/* Suggestions (suggestionsCore.js). Its colour hooks (--sugg-*, --target-bg) are defined in
+   the token file; these rules say what a colour hook cannot: the line weights, the mark
+   under review as a stronger ground instead of an outline, the passage a suggestion refers
+   to as the AI anchor's heavy dotted line, and the block. */
+.faust-editor-host .cm-editor .cm-faust-sugg-del { text-decoration-color: var(--diff-del-line); text-decoration-thickness: var(--mark-line); border-radius: var(--radius-xs); }
+.faust-editor-host .cm-editor .cm-faust-sugg-ins { color: var(--ink); border-bottom-width: var(--mark-line); border-radius: var(--radius-xs) var(--radius-xs) 0 0; }
+.faust-editor-host .cm-editor .cm-faust-sugg-new { color: var(--ink); border-bottom-style: solid; border-bottom-width: var(--mark-line); }      /* new text that replaces nothing: the insertion's line without its ground */
+.faust-editor-host .cm-editor .cm-faust-sugg-orig { border-bottom: calc(var(--mark-line) * 2) dotted var(--hl-ai-line); }
+.faust-editor-host .cm-editor .cm-faust-target { color: var(--ink); border-radius: var(--radius-xs); }
+.faust-editor-host .cm-editor .cm-faust-sugg-current { outline: none; }
+.faust-editor-host .cm-editor :is(.cm-faust-sugg-ins, .cm-faust-sugg-new).cm-faust-sugg-current { background-color: var(--diff-ins-bg-active); }
+.faust-editor-host .cm-editor .cm-faust-sugg-del.cm-faust-sugg-current { background-color: var(--diff-del-bg); color: var(--diff-del-text); }
+.faust-editor-host .cm-editor .cm-faust-sugg-orig.cm-faust-sugg-current { background-color: var(--hl-ai-bg); }
+.faust-editor-host .cm-editor :is(.cm-faust-sugg-del, .cm-faust-sugg-ins, .cm-faust-sugg-new, .cm-faust-sugg-orig, .cm-faust-target, .cm-faust-avoid, .cm-faust-mention) *:not(.cm-faust-match, .cm-faust-match-current, .faust-mark--search, .faust-mark--search-current) { color: inherit; }
+/* The suggestion block is a CodeMirror block widget: no vertical margin (CodeMirror does not
+   measure it); the space above and below is a transparent border, which it does measure.
+   A well in the paper with the gold bar of "FAUST proposes this"; under review, the tint. */
+.faust-editor-host .cm-editor .cm-faust-block {
+  margin: 0; padding: var(--sp-2) var(--sp-3); color: var(--ink);
+  border: 0 solid transparent; border-width: var(--sp-2) 0; background-clip: padding-box;
+  background-color: var(--surface-sunken);
+  background-image: linear-gradient(90deg, var(--accent-line) 0 2px, transparent 2px);
+}
+.faust-editor-host .cm-editor .cm-faust-block.cm-faust-sugg-current { background-image: linear-gradient(90deg, var(--accent-line) 0 2px, transparent 2px), linear-gradient(var(--accent-tint), var(--accent-tint)); }
+.faust-editor-host .cm-editor .cm-faust-block :is(.cm-faust-block-head, .cm-faust-block-note, .cm-faust-block-bar, .cm-faust-block-label, .cm-faust-block-hint) { font: var(--type-meta); color: var(--text-3); }
+.faust-editor-host .cm-editor .cm-faust-block.cm-faust-sugg-current :is(.cm-faust-block-head, .cm-faust-block-note, .cm-faust-block-bar, .cm-faust-block-label, .cm-faust-block-hint, .cm-faust-block-text[data-placeholder]) { color: var(--text-2); }
+.faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button { min-height: var(--h-sm); padding: 0 var(--sp-2); background: transparent; color: var(--text); border: var(--bw) solid var(--border); border-radius: var(--radius-sm); font: var(--type-meta); }
+.faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:not(:disabled):hover { background: var(--fill-hover); border-color: var(--border-control); }
+.faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:disabled { opacity: 1; color: var(--text-disabled); border-color: var(--rule); }
+
+/* The inline prompt as it is built (inlinePromptCore.js): a CodeMirror tooltip at the caret,
+   role="dialog". It floats, so it is a popover: raised, 1px border, 8px, level-2 shadow. It
+   must be rendered in the layer host (tooltips({ parent }) in FaustEditor.js): inside the
+   editor it is a descendant of the page, which is a size container with overflow hidden. */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt { padding: var(--sp-3); background: var(--surface-raised); color: var(--text); border: var(--bw) solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-2); font: var(--type-meta); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt.cm-faust-prompt-busy { border-color: var(--accent-line); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-field { padding: var(--sp-2) var(--sp-3); background: var(--surface-sunken); color: var(--text); border: var(--bw) solid var(--border-control); border-radius: var(--radius-sm); font: var(--type-input); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-field:focus { border-color: var(--focus-ring); outline: var(--bw-strong) solid var(--focus-ring); outline-offset: 0; }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-field[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 2px var(--error-bg); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(button, select, input) { min-height: var(--h-sm); padding: 0 var(--sp-2); background: transparent; color: var(--text); border: var(--bw) solid var(--border); border-radius: var(--radius-sm); font: var(--type-meta); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(select, input) { background: var(--surface-sunken); border-color: var(--border-control); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:not(:disabled):hover { background: var(--fill-hover); border-color: var(--border-control); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:disabled { color: var(--text-disabled); border-color: var(--rule); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-chips button { background: var(--fill-subtle); border-color: transparent; color: var(--text-2); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-chips button:not(:disabled):hover { background: var(--fill-active); border-color: transparent; color: var(--text); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-primary:not(:disabled):hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-primary:disabled { background: var(--fill-subtle); border-color: transparent; color: var(--text-disabled); font-weight: var(--w-mono); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-link { min-height: 0; padding: 0; background: none; border: 0; color: var(--text-2); text-decoration: underline; }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-link:not(:disabled):hover { background: none; color: var(--text); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(.cm-faust-prompt-caption, .cm-faust-prompt-keys, .cm-faust-prompt-hint, .cm-faust-prompt-model) { color: var(--text-3); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(.cm-faust-prompt-summary, .cm-faust-prompt-instruction, .cm-faust-prompt-note, .cm-faust-prompt-status) { color: var(--text-2); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(.cm-faust-prompt-error, .cm-faust-prompt-blocked) { color: var(--error-text); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(.cm-faust-prompt-preview, .cm-faust-prompt-detail) { padding: var(--sp-2) var(--sp-3); background: var(--surface-sunken); color: var(--text); border: var(--bw) solid var(--rule); border-radius: var(--radius-sm); font: var(--type-serif); }
+
+/* The page: one measure, one left edge, one scroller. The page element is the primary
+   editor content box (today .faust-editor-content with the added --main class, later
+   .faust-page). It carries --ms-size (and, with a manuscript face other than EB Garamond,
+   --measure-face) inline, so the measure is declared here. */
+.faust-editor-content--main, .faust-page {
+  container: page / inline-size;
+  --measure: calc(var(--ms-size) * var(--measure-em) * var(--measure-face));
+  --page-w: calc(var(--measure) + 2 * var(--annot-gutter));
+  --page-inset: max(var(--page-gutter), calc((100% - var(--measure)) / 2));
+  --page-edge: max(calc(var(--page-gutter) + var(--scrollbar-w)), calc((100% - var(--measure)) / 2));
+}
+:is(.faust-editor-content--main, .faust-page)[data-measure="narrow"] { --measure-em: var(--measure-narrow); }
+:is(.faust-editor-content--main, .faust-page)[data-measure="wide"]   { --measure-em: var(--measure-wide); }
+:is(.faust-editor-content--main, .faust-page) .faust-editor-host .cm-scroller { scrollbar-gutter: stable both-edges; }
+:is(.faust-editor-content--main, .faust-page) .faust-editor-host .cm-content {
+  padding: var(--fe-pad-top) var(--page-inset) var(--fe-pad-bottom);
+}
+
+/* Plain text outside CodeMirror is set like the manuscript. Markdown is never shown through
+   this class: the split reference pane and the import preview are read-only FaustEditors. */
+.faust-manuscript {
+  font-family: var(--font-serif); font-size: var(--ms-size); line-height: var(--ms-leading);
+  font-weight: var(--w-serif); color: var(--ink); font-synthesis: weight style;
+  font-variant-numeric: oldstyle-nums proportional-nums; font-kerning: normal;
+  white-space: pre-wrap; overflow-wrap: break-word;
+  padding-inline: var(--page-inset);
+}
+.faust-manuscript :is(em, i) { font-style: italic; }
+.faust-manuscript :is(strong, b) { font-weight: var(--w-serif-bold); }
+
+/* Annotation markers live in the strip reserved beside the text; the max() keeps them in the pane. */
+.faust-annot-margin { right: max(var(--sp-4), calc((100% - var(--page-w)) / 2 + var(--sp-2))) !important; width: 20px !important; }
+.faust-annot-marker { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; background: var(--surface-raised); color: var(--text-2); border: var(--bw) solid var(--border); border-radius: var(--radius-sm); cursor: pointer; }
+.faust-annot-marker:hover { border-color: var(--border-control); color: var(--text); }
+/* priority on the review scale: critical and high are errors, medium a warning, low and info a note */
+.faust-annot-marker:is([data-priority="critical"], [data-priority="high"]) { color: var(--error); }
+.faust-annot-marker[data-priority="medium"] { color: var(--warning); }
+.faust-annot-marker:is([data-priority="low"], [data-priority="info"]) { color: var(--info); }
+.faust-annot-marker.is-active { background-image: linear-gradient(var(--fill-active), var(--fill-active)); border-color: var(--border-control); }   /* the open marker: a fill and a stronger edge, never a colour, which is the priority */
+
+/* ============ 15 Shell: header, panels, page, format bar, status bar, focus mode, chat ============
+ * New class names and data attributes only; see the note at the top of the file.
+ */
+/* ---- Header ---- */
+.faust-header__row {
+  height: 100%; display: flex; align-items: center; gap: var(--sp-4);
+  padding: 0 var(--sp-4) 0 80px;                 /* 80px: the window controls */
+  color: var(--text);
+}
+.faust-app.is-fullscreen .faust-header__row { padding-left: var(--sp-4); }
+.faust-header__brand { display: flex; align-items: center; gap: var(--sp-3); flex: 0 1 auto; min-width: 0; }
+.faust-wordmark { display: inline-flex; align-items: center; gap: var(--sp-2); font: 600 18px/1 var(--font-serif); letter-spacing: var(--tracking-caps); color: var(--text); }
+.faust-wordmark > .faust-icon { color: var(--accent-line); }
+.faust-header__title { flex: 0 1 auto; min-width: 4ch; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--type-serif); color: var(--text-2); }   /* the project name: the author's words, serif; shown here and nowhere else */
+.faust-header__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-line); opacity: 0; flex: none; }   /* always mounted: it never changes the row's width */
+.faust-header__dot.is-unsaved { opacity: 1; }
+.faust-header__spacer { flex: 1 1 24px; min-width: 24px; align-self: stretch; }   /* always a drag handle */
+/* Actions: groups 16px apart, 2px inside a group. One grammar per group: file verbs are
+   words, view toggles are 28px icon buttons, the engine is the FAUST star with its name,
+   settings is an icon, the theme is a two-option segmented control (NOX | DEIS). */
+.faust-header__actions { display: flex; align-items: center; gap: var(--sp-4); flex: none; }
+.faust-header__group { display: flex; align-items: center; gap: var(--sp-half); }
+.faust-header .faust-segmented { border-color: var(--rule); }
+.faust-header__more { display: none; }
+@media (max-width: 1279px) { .faust-header [data-priority="2"] .faust-btn__label { display: none; } }
+@media (max-width: 1119px) { .faust-header [data-priority="3"] { display: none; } .faust-header__more { display: inline-flex; } }
+
+/* ---- Side panels: sidebar, Inspector and Liminal Engine share one shell and one motion ---- */
+:is(.faust-sidebar, .faust-inspector, .faust-aipanel)[data-state] {
+  flex: none; display: flex; overflow: hidden; position: relative;
+  background: var(--surface-panel);
+  user-select: none; cursor: default; -webkit-app-region: no-drag;
+  transition: width var(--dur-slow) var(--ease-std);
+}
+.faust-sidebar[data-state]   { width: var(--sidebar-w);   border-right: var(--bw) solid var(--rule); }
+.faust-inspector[data-state] { width: var(--inspector-w); border-left:  var(--bw) solid var(--rule); justify-content: flex-end; }
+.faust-aipanel[data-state]   { width: var(--aipanel-w);   border-left:  var(--bw) solid var(--rule); justify-content: flex-end; }
+:is(.faust-sidebar, .faust-inspector, .faust-aipanel)[data-state="closed"] {
+  width: 0; border-width: 0; visibility: hidden;
+  transition: width var(--dur-slow) var(--ease-std), visibility 0s linear var(--dur-slow);
+}
+/* The inner box keeps its width while the shell animates, so text never re-wraps. */
+.faust-panel { flex: none; display: flex; flex-direction: column; min-height: 0; height: 100%; }
+.faust-sidebar   > .faust-panel { width: var(--sidebar-w); }
+.faust-inspector > .faust-panel { width: var(--inspector-w); }
+.faust-aipanel   > .faust-panel { width: var(--aipanel-w); }
+.faust-panel__head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-height: 48px; padding: 0 var(--sp-3) 0 var(--sp-4); }
+.faust-panel__title { font: var(--type-title-panel); color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.faust-panel__title > .faust-icon { color: var(--accent-line); margin-right: var(--sp-2); }
+.faust-panel__tabs { flex: none; padding: 0 var(--sp-4); }
+.faust-panel__body { flex: 1 1 0; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; padding: var(--sp-3) var(--sp-4) var(--sp-5); }
+.faust-panel__foot { flex: none; padding: var(--sp-2) var(--sp-4); border-top: var(--bw) solid var(--rule); }
+.faust-panel :is(input, textarea, [contenteditable], .is-selectable) { user-select: text; cursor: text; }
+
+/* ---- Editor pane ---- */
+/* Interim page: the primary pane after the one-line edits of region B, step 1. */
+.faust-editor-content--main { display: flex; flex-direction: column; overflow: hidden; padding: var(--page-pad-top) 0 0; }
+.faust-page-row { display: block; box-sizing: border-box; flex: none; width: 100%; max-width: min(calc(100% - 2 * (var(--page-gutter) + var(--scrollbar-w))), var(--measure)); margin-inline: auto; }   /* the same column as the text, classic scrollbars included */
+/* A row whose content has no bound (the stored AI suggestions) is a closed disclosure; open, it scrolls inside itself and never takes more than a quarter of the window from the manuscript. */
+.faust-page-row--bounded { flex: 0 1 auto; min-height: var(--h-sm); max-height: min(180px, 25vh); overflow-y: auto; overscroll-behavior: contain; }
+.faust-editor-content--main > .faust-editor-body { flex: 1 1 0; min-height: 0; height: auto !important; }   /* the inline height:'100%' made the pane overflow by the height of the head */
+/* The old toolbar starts on the shared left edge and keeps one row while the pane has the room
+   (it is wider than the measure); in a narrower pane it wraps to a second row until it becomes .faust-formatbar. */
+.faust-editor-content--main .formatting-toolbar { flex: none; align-self: flex-start; width: fit-content; max-width: calc(100% - var(--page-edge) - var(--page-gutter) - var(--scrollbar-w)); margin-left: var(--page-edge); }
+.faust-editor-area:has(> .faust-editor-split) .faust-editor-content--main { --page-pad-top: 24px; }
+
+/* Final page: head block and text share one centred column; the format bar lies on the desk. */
+.faust-editor-area.is-split > .faust-editor { flex: 1 1 0; min-width: 400px; max-width: none; }   /* split view: two equal panes */
+.faust-editor-area.is-split > .faust-editor + .faust-editor { border-left: var(--bw) solid var(--rule); }
+/* The bar is a size container with overflow hidden: nothing that opens from it may be its
+   descendant. Its popovers, its "more" menu and its tooltips render in the layer host (section 10). */
+.faust-formatbar {
+  container: formatbar / inline-size;
+  flex: none; height: var(--formatbar-h);
+  display: flex; align-items: center; gap: var(--sp-2); padding: 0 var(--sp-3);
+  background: var(--surface-page); border-bottom: var(--bw) solid var(--rule);
+  overflow: hidden; white-space: nowrap; user-select: none;
+}
+.faust-formatbar__group { display: flex; align-items: center; gap: var(--sp-half); flex: none; }
+.faust-formatbar__group + .faust-formatbar__group { margin-left: var(--sp-1); padding-left: var(--sp-2); border-left: var(--bw) solid var(--rule); }
+.faust-formatbar__end { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); flex: none; }
+.faust-formatbar__more { display: none; }
+@container formatbar (max-width: 760px) { .faust-formatbar [data-priority="2"] { display: none; } .faust-formatbar__more { display: inline-flex; } }
+@container formatbar (max-width: 560px) { .faust-formatbar [data-priority="3"] { display: none; } }
+.faust-page { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+.faust-page__head { flex: none; padding: var(--page-pad-top) var(--page-edge) var(--sp-5); }
+.faust-chapter-title {
+  display: block; width: 100%; padding: 0; background: transparent;
+  border: 0; border-bottom: var(--bw) solid transparent; border-radius: 0;
+  font: var(--type-title-chapter); letter-spacing: var(--tracking-title); color: var(--ink); text-overflow: ellipsis;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.faust-chapter-title:hover { border-bottom-color: var(--rule); }
+.faust-chapter-title:focus-visible { outline: none; border-bottom-color: var(--accent-line); }   /* the one field whose focus is a rule, not a ring: it is a line of the page */
+.faust-chapter-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); margin-top: var(--sp-1); min-height: 20px; font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.faust-page__body { flex: 1 1 0; min-height: 0; position: relative; display: flex; }
+.faust-page__body > .faust-editor-host { flex: 1 1 0; min-width: 0; }
+
+/* ---- Status bar ---- */
+.faust-statusbar { display: flex; align-items: center; gap: var(--sp-5); padding: 0 var(--sp-4); background: var(--surface-panel); border-top: var(--bw) solid var(--rule); font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; user-select: none; }
+.faust-statusbar__start { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.faust-statusbar__end { margin-left: auto; flex: none; display: flex; align-items: center; gap: var(--sp-4); }
+.faust-savestate { display: inline-flex; align-items: center; gap: var(--sp-1); min-width: 13ch; color: var(--text-2); }   /* fixed slot: the row never jumps */
+.faust-savestate[data-state="saving"] > .faust-dot { color: var(--warning); }
+.faust-savestate[data-state="saved"]  > .faust-dot { color: var(--success); }
+.faust-savestate[data-state="error"]  > .faust-dot { color: var(--error); }
+.faust-savestate[data-state="error"] { color: var(--error-text); }
+@media (max-width: 1119px) { .faust-statusbar [data-priority="3"] { display: none; } }
+
+/* ---- Focus mode: the page alone ---- */
+/* CSS hides only what has no state of its own: the format bar, the meta row, the sigil bar,
+   the launcher, and a collapsed rail. Panels and the chat window follow their state, which
+   toggleFocusMode() closes on entry and restores on exit; a panel the author opens by a
+   command while in focus mode is shown, as it is today. */
+.faust-focus-mode :is(.faust-formatbar, .faust-chapter-meta, .faust-sigilbar, .faust-fab) { display: none !important; }
+.faust-focus-mode .faust-sidebar.collapsed { display: none !important; }
+.faust-focus-mode :is(.faust-editor-content--main, .faust-page) { --page-pad-top: var(--sp-8); }
+.faust-focus-mode .faust-chapter-title { color: var(--text-2); }
+.faust-focus-drag { position: fixed; inset: 0 0 auto 0; height: 28px; z-index: var(--z-sticky); -webkit-app-region: drag; }
+.faust-focus-exit.faust-btn { position: fixed; top: var(--sp-3); right: var(--sp-5); z-index: var(--z-float); padding: 0 var(--sp-3); opacity: 1; -webkit-app-region: no-drag; transition: opacity var(--dur-mid) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+.faust-focus-exit.faust-btn.is-idle { opacity: 0; }                 /* set after 2 s without pointer movement */
+.faust-focus-exit.faust-btn:is(:hover, :focus-visible) { opacity: 1; }
+
+/* ---- The one permitted launcher, and the chat window above it ---- */
+.faust-fab {
+  position: fixed; right: calc(var(--right-col-w) + var(--sp-4)); bottom: calc(var(--footer-h) + var(--sp-4)); z-index: var(--z-dock);
+  width: 36px; height: 36px; display: grid; place-items: center; padding: 0;
+  background: var(--surface-raised); color: var(--accent-line);
+  border: var(--bw) solid var(--border); border-radius: 50%; box-shadow: var(--shadow-2); cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), right var(--dur-slow) var(--ease-std);
+}
+.faust-fab:hover { border-color: var(--border-control); background-image: linear-gradient(var(--fill-hover), var(--fill-hover)); }
+.faust-fab:active { background-image: linear-gradient(var(--fill-active), var(--fill-active)); }
+.faust-fab[aria-expanded="true"] { background-image: linear-gradient(var(--fill-active), var(--fill-active)); }
+
+/* Chat window. These rules replace styles/claude-chat.css (its link is removed in the
+   same commit); the class names are the ones ClaudeChat.js already uses. The Liminal Engine
+   conversation uses the same message classes (.chat-message.user / .assistant / .error,
+   .message-role, .streaming-indicator), so there is one conversation look. */
+.claude-chat-container {
+  position: fixed; right: calc(var(--right-col-w) + var(--sp-4)); bottom: calc(var(--footer-h) + 60px); z-index: var(--z-dock);
+  width: min(400px, calc(100vw - 2 * var(--sp-4)));
+  max-height: min(560px, calc(100vh - var(--header-h) - var(--footer-h) - 92px));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--surface-raised); color: var(--text);
+  border: var(--bw) solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-2);
+  font: var(--type-serif); animation: faust-rise var(--dur-fast) var(--ease-out);
+}
+.claude-chat-header { flex: none; display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 var(--sp-2) 0 var(--sp-4); border-bottom: var(--bw) solid var(--rule); }
+.claude-chat-title { display: flex; align-items: center; gap: var(--sp-2); font: var(--type-title-pop); color: var(--text); }
+.claude-icon { color: var(--accent-line); display: inline-grid; }
+.claude-chat-controls { display: flex; align-items: center; gap: var(--sp-1); }
+.thinking-toggle { display: flex; align-items: center; gap: var(--sp-2); margin-right: var(--sp-2); font: var(--type-meta); color: var(--text-2); cursor: pointer; }
+.clear-btn, .close-btn { width: var(--h-sm); height: var(--h-sm); display: inline-grid; place-items: center; padding: 0; background: none; border: 0; border-radius: var(--radius-sm); color: var(--text-2); font: var(--type-ui); }
+.clear-btn:hover, .close-btn:hover { background: var(--fill-hover); color: var(--text); }
+.claude-chat-messages { flex: 1 1 auto; min-height: 160px; overflow-y: auto; overscroll-behavior: contain; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+.chat-message { max-width: 100%; padding: 0; border-radius: var(--radius-sm); }
+.chat-message.user { align-self: flex-end; max-width: 88%; padding: var(--sp-2) var(--sp-3); background: var(--fill-subtle); color: var(--text); font: var(--type-input); }
+.chat-message.assistant { align-self: stretch; color: var(--text); font: var(--type-serif); }
+.chat-message.error { padding: var(--sp-2) var(--sp-3); background: var(--error-bg); box-shadow: inset 0 0 0 1px var(--error-border); color: var(--text); font: var(--type-input); }
+.chat-message.thinking { padding: 0 0 0 var(--sp-3); border-left: var(--bw) solid var(--border); }
+.message-role { margin-bottom: var(--sp-1); font: var(--type-meta); color: var(--text-3); }
+.chat-message.user .message-role { color: var(--text-2); }                 /* on the bubble's fill the label steps up */
+.message-role.error, .chat-message.error .message-role { color: var(--error-text); }
+.message-content { white-space: pre-wrap; overflow-wrap: break-word; }
+.thinking-content { max-height: 132px; overflow-y: auto; font: var(--type-serif-sm); color: var(--text-2); }
+.insert-btn { margin-top: var(--sp-2); height: var(--h-sm); padding: 0 var(--sp-2); background: transparent; color: var(--text); border: var(--bw) solid var(--border); border-radius: var(--radius-sm); font: var(--type-meta); }
+.insert-btn:hover { background: var(--fill-hover); border-color: var(--border-control); }
+.streaming-indicator { display: flex; gap: var(--sp-1); padding: var(--sp-2) 0; }
+.streaming-indicator .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--text-3); animation: faust-dot 1.2s ease-in-out infinite; }
+.streaming-indicator .dot:nth-child(2) { animation-delay: 0.15s; }
+.streaming-indicator .dot:nth-child(3) { animation-delay: 0.3s; }
+@media (prefers-reduced-motion: reduce) { .streaming-indicator .dot { animation: none; opacity: 0.6; } }
+.claude-chat-error { display: none; }                      /* the error is shown once, as the bubble */
+.claude-chat-input { flex: none; display: flex; align-items: flex-end; gap: var(--sp-2); padding: var(--sp-3); border-top: var(--bw) solid var(--rule); }
+.claude-chat-input textarea { flex: 1; min-width: 0; padding: var(--sp-2) var(--sp-3); resize: none; background: var(--surface-sunken); color: var(--text); border: var(--bw) solid var(--border-control); border-radius: var(--radius-sm); font: var(--type-input); }
+.claude-chat-input textarea:focus-visible { border-color: var(--focus-ring); }
+.send-btn { width: var(--h-lg); height: var(--h-lg); display: inline-grid; place-items: center; padding: 0; background: var(--accent); color: var(--on-accent); border: 0; border-radius: var(--radius-sm); font: var(--type-ui-strong); }
+.send-btn:not(:disabled):hover { background: var(--accent-hover); }
+.send-btn:disabled { background: var(--fill-subtle); color: var(--text-disabled); cursor: default; }
+
+/* ============ 16 Legacy bridge ============
+ * The only rules that reach into today's inline-styled markup. Each one names the inline
+ * style or stylesheet rule it overrides and the condition for deleting it. Attribute
+ * selectors match the serialised inline style that React writes (checked in Chromium:
+ * `color: '#000'` serialises as "color: rgb(0, 0, 0)", a var() is kept as written).
+ * Apart from the marked layout rules above (annotation strip, editor body height, focus
+ * mode), this is the only place with !important.
+ */
+
+/* L1  Hover and press for buttons that still set their background inline (a stylesheet
+       background cannot beat it): an inset veil over the fill, under the label. Replaces
+       the deleted global lift. Under the veil a label in --text-3 steps up, as in the
+       recipes. Delete when no button without a faust- class is left. */
+button:not([class*="faust-"]) { transition: box-shadow var(--dur-fast) var(--ease-out); }
+button:not([class*="faust-"]):hover:not(:disabled)  { box-shadow: inset 0 0 0 100vmax var(--fill-hover); }
+button:not([class*="faust-"]):active:not(:disabled) { box-shadow: inset 0 0 0 100vmax var(--fill-active); }
+button:not([class*="faust-"]):is(:hover, :active):not(:disabled):is([style^="color: var(--text-3)"], [style*="; color: var(--text-3)"]) { color: var(--text-2) !important; }
+
+/* S1  Bare font names (667 inline `fontFamily: 'IBM Plex Mono'` / `'EB Garamond'`, none with
+       a fallback: offline such an element drops to Times). Gives them the full stacks.
+       The second rule gives unweighted legacy serif text the theme's grade: with the 400
+       face loaded it would otherwise drop from today's Medium to 400, lighter than the
+       system's own text (no !important needed: those elements have no inline weight).
+       Delete after the fontFamily sweep. */
+[style*="IBM Plex Mono"] { font-family: var(--font-mono) !important; }
+[style*="EB Garamond"]   { font-family: var(--font-serif) !important; }
+[style*="EB Garamond"]:not([style*="font-weight"]):not(h1, h2, h3, h4, h5, h6, b, strong) { font-weight: var(--w-serif); }
+
+/* S2  Labels on a token fill. 67 inline `color: '#000'` sit on --bronze, --sigil or --gold;
+       the first rule fixes those on any element. The second makes the fill alone decide the
+       label of a BUTTON, whatever its inline colour: the header's Tallenna button paints
+       var(--bronze) under a constant var(--text) whenever there are unsaved changes, and it
+       matches only while the conditional background is the fill. The third gives the three
+       fill names one bronze, so two primary buttons side by side match.
+       Delete after '#000' has become var(--on-accent) and the fills var(--accent). */
+:is([style*="background: var(--bronze"], [style*="background: var(--sigil"], [style*="background: var(--gold"]):is([style^="color: rgb(0, 0, 0)"], [style*="; color: rgb(0, 0, 0)"]) { color: var(--on-accent) !important; }
+button:is([style*="background: var(--bronze"], [style*="background: var(--sigil"], [style*="background: var(--gold"]) { color: var(--on-accent) !important; }
+:is([style*="background: var(--sigil"], [style*="background: var(--gold"]) { background: var(--accent) !important; }
+
+/* S3  Field edges and focus for fields that still carry inline styles: the inline
+       `border: 1px solid var(--border-color)` is a hairline, a field edge needs 3:1; three
+       fields set outline:'none' inline. The chapter title (a bare field) and inline
+       validation borders are left alone. Delete when every field has a faust- class. */
+:is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):not([class*="faust-"]):not(.faust-editor-content > input):not([style*="255, 68, 68"]):not([style*="--error"]):not([aria-invalid="true"]) { border-color: var(--border-control) !important; }
+:is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):not([class*="faust-"]):not(.faust-editor-content > input):focus-visible { outline: var(--bw-strong) solid var(--focus-ring) !important; outline-offset: 0; border-color: var(--focus-ring) !important; }
+.faust-editor-content > input:focus-visible { border-bottom-color: var(--accent-line) !important; }
+
+/* S4  Disabled buttons were dimmed twice (global opacity .5 on an inline grey: 1.7:1).
+       One legible, shaped look. A button that is disabled because it is working carries
+       aria-busy and is left alone (F7 adds aria-busy to the voice button, whose listening
+       state is its inline colour). Delete when all buttons use faust-btn. */
+button:disabled:not([aria-busy="true"]):not([class*="faust-"]) {
+  opacity: 1 !important;
+  background-color: var(--fill-subtle) !important; background-image: none !important;
+  border-color: var(--rule) !important; border-image: none !important;
+  color: var(--text-disabled) !important;
+  box-shadow: none !important; text-shadow: none !important; cursor: default !important;
+}
+button[aria-busy="true"]:disabled:not([class*="faust-"]) { opacity: 1 !important; cursor: progress !important; }
+
+/* S5  The Liminal Engine panel covered the header and the status bar and shared z-index 9999
+       with the modals. Confined until it is docked as .faust-aipanel (region E). The
+       launcher is not rendered while the panel is open (F7), so it never sits on the panel. */
+.liminal-engine-panel {
+  top: var(--header-h) !important; bottom: var(--footer-h) !important;
+  z-index: var(--z-panel) !important; max-width: 42vw;
+  background: var(--surface-panel) !important;
+  border-left: var(--bw) solid var(--border) !important; box-shadow: var(--shadow-2) !important;
+}
+
+/* S6  Formatting toolbar: no band now that its --bg-2 has a value.
+       Delete when it becomes .faust-formatbar. */
+.formatting-toolbar:not(.faust-formatbar) { background: transparent !important; border-radius: 0 !important; padding-inline: 0 !important; }
+
+/* S7  Sigil slab: a hard-coded black box with its own gold palette, in both themes.
+       Selected by what it is (the parent of the sigil buttons), not by where it sits.
+       On the interim page the slab is lifted so that it ends where the toolbar begins
+       (the toolbar starts 74px under the page's top padding; the slab is 46px high):
+       its inline top of 80px would lie on the toolbar's first row in split view and in
+       low windows. Delete when the buttons become .faust-sigil-btn inside .faust-sigilbar. */
+:has(> .ai-toolbar-btn) {
+  background: var(--surface-raised) !important; border: var(--bw) solid var(--border) !important;
+  border-radius: var(--radius-md) !important; padding: var(--sp-1) !important; gap: var(--sp-half) !important;
+  box-shadow: var(--shadow-1) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
+}
+.faust-editor-content--main > :has(> .ai-toolbar-btn) { top: calc(var(--page-pad-top) + 28px) !important; }
+.ai-toolbar-btn, .ai-toolbar-btn-primary {
+  width: 36px; height: 36px; min-width: 0 !important; padding: 0 !important;
+  background: transparent !important; border: var(--bw) solid transparent !important; border-image: none !important;
+  border-radius: var(--radius-sm) !important; color: var(--accent-line) !important;
+  box-shadow: none !important; text-shadow: none !important; transform: none !important; letter-spacing: 0 !important;
+  transition: background-color var(--dur-sigil) var(--ease-out), color var(--dur-sigil) var(--ease-out) !important;
+}
+.ai-toolbar-btn:hover:not(:disabled) { background: var(--accent-tint) !important; }
+:is(.ai-toolbar-btn, .ai-toolbar-btn-primary):active:not(:disabled) { animation: faust-sigil-pulse 400ms var(--ease-std); }
+.ai-toolbar-btn-primary { background: var(--accent-tint-strong) !important; }
+.ai-toolbar-btn-primary:hover:not(:disabled) { background: var(--accent) !important; color: var(--on-accent) !important; }
+:is(.ai-toolbar-btn, .ai-toolbar-btn-primary):disabled { background: transparent !important; color: var(--text-disabled) !important; }
+
+/* S8  Focus mode leaves only the page, also for today's markup (the slab; the rail is in section 15).
+       Delete with S7. */
+.faust-focus-mode :has(> .ai-toolbar-btn) { display: none !important; }

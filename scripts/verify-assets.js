@@ -9,7 +9,9 @@ const path = require('path');
 
 const REQUIRED_ASSETS = [
   'dist/styles/faust-theme.css',
+  'dist/styles/faust-tokens.css',
   'dist/styles/faust-simple-layout.css',
+  'dist/styles/faust-components.css',
   'dist/bundle.js',
   'dist/index.html'
 ];
