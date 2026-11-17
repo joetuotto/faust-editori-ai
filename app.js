@@ -661,7 +661,11 @@ function FAUSTApp() {
       return [];
     }
   });
-  const [showRecentFilesMenu, setShowRecentFilesMenu] = useState(false);
+  // Viimeisimmät, Kirjanmerkit, Tilannekuvat and Etsi are popovers (R-60): usePopover gives each one
+  // its press outside, its Esc and one popover open at a time; the names below are its open state.
+  const recentPop = usePopover();
+  const showRecentFilesMenu = recentPop.open;
+  const setShowRecentFilesMenu = recentPop.setOpen;
 
   // Settings state
 
@@ -696,10 +700,14 @@ function FAUSTApp() {
   const [draggedChapterId, setDraggedChapterId] = useState(null);
 
   // Bookmarks state
-  const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
+  const bookmarksPop = usePopover();
+  const showBookmarksPanel = bookmarksPop.open;
+  const setShowBookmarksPanel = bookmarksPop.setOpen;
 
   // Snapshots state
-  const [showSnapshotsPanel, setShowSnapshotsPanel] = useState(false);
+  const snapshotsPop = usePopover();
+  const showSnapshotsPanel = snapshotsPop.open;
+  const setShowSnapshotsPanel = snapshotsPop.setOpen;
 
   const [activeCollectionId, setActiveCollectionId] = useState(null);
   const [showCollectionDialog, setShowCollectionDialog] = useState(false); // the dialog Uusi kokoelma
@@ -716,7 +724,9 @@ function FAUSTApp() {
   // which made the sheet throw as soon as it opened.
   const [selectedCharacter, setSelectedCharacter] = useState(null);
   const [characterSheetMode, setCharacterSheetMode] = useState('list'); // 'list', 'view', 'edit'
-  const [showFindDialog, setShowFindDialog] = useState(false);
+  const findPop = usePopover();
+  const showFindDialog = findPop.open;
+  const setShowFindDialog = findPop.setOpen;
   const [focusMode, setFocusMode] = useState(false);
   const [, setAiUsageTick] = useState(0); // bumps a re-render when AI usage totals change
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -893,12 +903,9 @@ function FAUSTApp() {
     const handleKeyboardShortcuts = (event) => {
       // ESC key for modals
       if (event.key === 'Escape' || event.keyCode === 27) {
-        // Close modals in priority order (last opened first)
-        if (showFindDialog || showReplaceDialog) {
-          setShowFindDialog(false);
-          setShowReplaceDialog(false);
-          console.log('[ESC] Closed Find/Replace dialog');
-        } else if (showRegenerateDialog) {
+        // Close modals in priority order (last opened first). The popovers (Etsi, Viimeisimmät,
+        // Tilannekuvat, Kirjanmerkit) close themselves on Esc through usePopover (R-70).
+        if (showRegenerateDialog) {
           setShowRegenerateDialog(false);
           setRegenerateFeedback('');
           console.log('[ESC] Closed Regenerate dialog');
@@ -933,9 +940,6 @@ function FAUSTApp() {
           setShowVersionComparison(false);
           setComparisonVersionId(null);
           console.log('[ESC] Closed Version Comparison');
-        } else if (showRecentFilesMenu) {
-          setShowRecentFilesMenu(false);
-          console.log('[ESC] Closed Recent Files menu');
         }
         return;
       }
@@ -949,8 +953,6 @@ function FAUSTApp() {
       window.removeEventListener('keydown', handleKeyboardShortcuts);
     };
   }, [
-    showFindDialog,
-    showReplaceDialog,
     showRegenerateDialog,
     showCharacterSheet,
     showLocationSheet,
@@ -960,8 +962,7 @@ function FAUSTApp() {
     showCastPlanDialog,
     showProjectSettings,
     showVersionHistory,
-    showVersionComparison,
-    showRecentFilesMenu
+    showVersionComparison
   ]);
 
   // Menu events. The IPC listener is registered once, so it calls through a
@@ -1242,6 +1243,10 @@ function FAUSTApp() {
     const anchor = headerMore.anchorRef.current;
     if (headerMore.open && (!anchor || anchor.getClientRects().length === 0)) headerMore.close();
   });
+
+  // A popover that asks a question (askText, askConfirm) stays open under it: a press in the question
+  // is not a press outside the popover, and the popover shows the result when the question is answered.
+  const closeUnlessAsking = (close) => () => { if (!textPrompt && !confirmRequest) close(); };
 
   // The format bar's "more" menu lists the groups that the bar's container rules have hidden, as
   // they were when it opened. It closes when the bar changes width (the hidden set may change with
@@ -1926,13 +1931,16 @@ function FAUSTApp() {
     console.log('[Replace All] Replaced', total, 'matches in', changes.length, 'chapters');
   };
 
-  const closeFindDialog = () => {
-    setShowFindDialog(false);
+  // Etsi closes by its close button, its format bar button, Esc, a press outside it, or another popover
+  // opening (usePopover). Whatever the path, the hits and the record of the last search go with it.
+  const closeFindDialog = () => setShowFindDialog(false);
+  useEffect(() => {
+    if (showFindDialog) return;
     setShowReplaceDialog(false);
-    setSearchResults([]);
+    setSearchResults(prev => (prev.length ? [] : prev));
     setCurrentSearchIndex(-1);
     lastSearchRef.current = '';   // the panel reopens without a stale "Ei osumia"
-  };
+  }, [showFindDialog]);
 
   // Hits belong to the term and the options they were found with. A new term clears them
   // (unless it is the term just searched, as after a click in Aiemmat haut); a changed option
@@ -4691,54 +4699,45 @@ ${contextPrompt}`;
               title: 'Avaa projekti (' + shortcut('CmdOrCtrl+O') + ')'
             }, 'Avaa…'),
 
-            // Recent projects: always rendered; the menu stays in place until it becomes a popover
+            // Recent projects: always rendered; the menu is a popover in the layer host (R-60, MV-46)
             // Recent Files Dropdown
-            e('div', { style: { position: 'relative' } },
-              e('button', {
-                className: 'faust-btn faust-btn--icon',
-                'data-priority': '1',
-                'aria-label': 'Viimeisimmät projektit',
-                title: 'Viimeisimmät projektit',
-                'aria-haspopup': 'menu',
-                'aria-expanded': showRecentFilesMenu,
-                onClick: () => setShowRecentFilesMenu(prev => !prev)
-              }, icons.chevronDown({ size: 14 })),
-              showRecentFilesMenu && e('div', {
-                className: 'faust-popover faust-popover--header faust-menu',
-                role: 'menu',
-                'aria-label': 'Viimeisimmät projektit',
-                style: { position: 'absolute', top: '100%', left: 0, marginTop: 'var(--sp-1)', overflowY: 'auto' },
-                onClick: (ev) => ev.stopPropagation()
-              },
-                recentFiles.length === 0
-                  ? e('button', { className: 'faust-menu__item', role: 'menuitem', disabled: true }, 'Ei viimeisimpiä projekteja')
-                  : [
-                      ...recentFiles.map(file =>
-                        e('button', {
-                          key: file.path,
-                          className: 'faust-menu__item faust-menu__item--author',
-                          role: 'menuitem',
-                          title: file.path,
-                          onClick: () => {
-                            loadRecentFile(file.path);
-                            setShowRecentFilesMenu(false);
-                          }
-                        }, file.path.split(/[\\/]/).pop())
-                      ),
-                      e('div', { key: 'sep', className: 'faust-menu__sep', role: 'separator' }),
+            e('button', {
+              ...recentPop.triggerProps,
+              className: 'faust-btn faust-btn--icon',
+              'data-priority': '1',
+              'aria-label': 'Viimeisimmät projektit',
+              title: 'Viimeisimmät projektit',
+              'aria-haspopup': 'menu'
+            }, icons.chevronDown({ size: 14 })),
+            showRecentFilesMenu && e(Popover, { ...recentPop.popoverProps, layer: 'header', menu: true, label: 'Viimeisimmät projektit' },
+              recentFiles.length === 0
+                ? e('button', { className: 'faust-menu__item', role: 'menuitem', disabled: true }, 'Ei viimeisimpiä projekteja')
+                : [
+                    ...recentFiles.map(file =>
                       e('button', {
-                        key: 'clear',
-                        className: 'faust-menu__item',
+                        key: file.path,
+                        className: 'faust-menu__item faust-menu__item--author',
                         role: 'menuitem',
-                        title: 'Poista projektit vain tästä valikosta. Tiedostot säilyvät.',
+                        title: file.path,
                         onClick: () => {
-                          setRecentFiles([]);
-                          localStorage.removeItem('faust-recent-files');
+                          loadRecentFile(file.path);
                           setShowRecentFilesMenu(false);
                         }
-                      }, 'Tyhjennä valikko')
-                    ]
-              )
+                      }, file.path.split(/[\\/]/).pop())
+                    ),
+                    e('div', { key: 'sep', className: 'faust-menu__sep', role: 'separator' }),
+                    e('button', {
+                      key: 'clear',
+                      className: 'faust-menu__item',
+                      role: 'menuitem',
+                      title: 'Poista projektit vain tästä valikosta. Tiedostot säilyvät.',
+                      onClick: () => {
+                        setRecentFiles([]);
+                        localStorage.removeItem('faust-recent-files');
+                        setShowRecentFilesMenu(false);
+                      }
+                    }, 'Tyhjennä valikko')
+                  ]
             ),
 
             e('button', {
@@ -4750,92 +4749,84 @@ ${contextPrompt}`;
                 : 'Tallenna (' + shortcut('CmdOrCtrl+S') + '). Kaikki muutokset on jo tallennettu.'
             }, 'Tallenna'),
 
-            // Tilannekuvat: the panel stays in place until it becomes a popover
-            e('div', { style: { position: 'relative' } },
-              e('button', {
-                className: 'faust-btn faust-btn--quiet',
-                'data-priority': '2',
-                'aria-label': 'Tilannekuvat',
-                'aria-pressed': showSnapshotsPanel,
-                'aria-expanded': showSnapshotsPanel,
-                title: showSnapshotsPanel
-                  ? 'Kätke tilannekuvat'
-                  : `Näytä tilannekuvat (${(project.snapshots || []).length}): tallenna koko käsikirjoituksen nykyinen tila nimellä ja palaa siihen myöhemmin. Tilannekuvat tallentuvat projektitiedostoon; ne eivät ole erillinen varmuuskopio.`,
-                onClick: () => setShowSnapshotsPanel(prev => !prev)
-              }, icons.snapshot({ size: 14 }), e('span', { className: 'faust-btn__label' }, 'Tilannekuvat')),
+            // Tilannekuvat: the button and its popover in the layer host (R-60, MV-44, MV-45)
+            e('button', {
+              ref: snapshotsPop.anchorRef,
+              className: 'faust-btn faust-btn--quiet',
+              'data-priority': '2',
+              'aria-label': 'Tilannekuvat',
+              'aria-pressed': showSnapshotsPanel,
+              'aria-expanded': showSnapshotsPanel,
+              title: showSnapshotsPanel
+                ? 'Kätke tilannekuvat'
+                : `Näytä tilannekuvat (${(project.snapshots || []).length}): tallenna koko käsikirjoituksen nykyinen tila nimellä ja palaa siihen myöhemmin. Tilannekuvat tallentuvat projektitiedostoon; ne eivät ole erillinen varmuuskopio.`,
+              onClick: () => setShowSnapshotsPanel(prev => !prev)
+            }, icons.snapshot({ size: 14 }), e('span', { className: 'faust-btn__label' }, 'Tilannekuvat')),
 
-              // Snapshots dropdown panel
-              showSnapshotsPanel && e('div', {
-                className: 'faust-popover faust-popover--header',
-                style: { position: 'absolute', top: '100%', left: 'auto', right: 0, marginTop: 'var(--sp-1)' },
-                onClick: (ev) => ev.stopPropagation()
-              },
-                e('div', { className: 'faust-popover__head' },
-                  e('span', { className: 'faust-popover__title' }, `Tilannekuvat (${(project.snapshots || []).length})`),
-                  e('button', {
-                    className: 'faust-btn faust-btn--icon faust-btn--sm',
-                    'aria-label': 'Kätke tilannekuvat',
-                    title: 'Kätke tilannekuvat',
-                    onClick: () => setShowSnapshotsPanel(false)
-                  }, icons.close({ size: 14 }))
-                ),
+            // Snapshots dropdown panel. It stays open under the questions it asks (closeUnlessAsking).
+            showSnapshotsPanel && e(Popover, {
+              ...snapshotsPop.popoverProps,
+              onClose: closeUnlessAsking(snapshotsPop.close),
+              layer: 'header',
+              title: `Tilannekuvat (${(project.snapshots || []).length})`,
+              closeLabel: 'Kätke tilannekuvat',
+              closeTitle: 'Kätke tilannekuvat'
+            },
+              e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+                // A cancel on either prompt creates nothing
+                e('button', {
+                  className: 'faust-btn faust-btn--block faust-btn--sm',
+                  title: 'Tallenna koko käsikirjoituksen nykyinen tila tilannekuvaksi, johon voit palata myöhemmin',
+                  onClick: async () => {
+                    const name = await askText('Tilannekuvan nimi', `Ennen muokkausta ${new Date().toLocaleDateString('fi-FI')}`, '', 'Jatka');
+                    if (name === null) return;
+                    const desc = await askText('Kuvaus (valinnainen)', '', '', 'Tallenna tilannekuva');
+                    if (desc === null) return;
+                    createSnapshot(name, desc);
+                  }
+                }, '+ Uusi tilannekuva…'),
 
-                e('div', { className: 'faust-popover__body', style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
-                  // A cancel on either prompt creates nothing
-                  e('button', {
-                    className: 'faust-btn faust-btn--block faust-btn--sm',
-                    title: 'Tallenna koko käsikirjoituksen nykyinen tila tilannekuvaksi, johon voit palata myöhemmin',
-                    onClick: async () => {
-                      const name = await askText('Tilannekuvan nimi', `Ennen muokkausta ${new Date().toLocaleDateString('fi-FI')}`, '', 'Jatka');
-                      if (name === null) return;
-                      const desc = await askText('Kuvaus (valinnainen)', '', '', 'Tallenna tilannekuva');
-                      if (desc === null) return;
-                      createSnapshot(name, desc);
-                    }
-                  }, '+ Uusi tilannekuva…'),
-
-                  (project.snapshots || []).length === 0
-                    ? e('div', { className: 'faust-empty faust-empty--compact' },
-                        e('div', { className: 'faust-empty__title' }, 'Ei vielä tilannekuvia.'),
-                        e('div', { className: 'faust-empty__hint' }, 'Tallenna tilannekuva ennen isoja muutoksia, niin voit palata käsikirjoituksen nykyiseen tilaan.')
-                      )
-                    : [...(project.snapshots || [])].reverse().map(snapshot =>
-                        e('div', { key: snapshot.id, className: 'faust-card faust-card--compact' },
-                          e('div', { className: 'faust-serif' }, snapshot.name),
-                          e('div', { className: 'faust-meta' },
-                            new Date(snapshot.created).toLocaleString('fi-FI', { dateStyle: 'short', timeStyle: 'short' })),
-                          e('div', { className: 'faust-meta' },
-                            count(snapshot.chapterCount || 0, 'luku') + ' · ' + count(snapshot.totalWords || 0, 'sana')),
-                          snapshot.description && e('div', { className: 'faust-card__body' }, snapshot.description),
-                          e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-1)', marginTop: 'var(--sp-1)' } },
-                            e('button', {
-                              className: 'faust-btn faust-btn--sm',
-                              title: 'Palauta kaikki luvut tähän tilannekuvaan',
-                              onClick: () => restoreSnapshot(snapshot.id)
-                            }, 'Palauta…'),
-                            e('button', {
-                              className: 'faust-btn faust-btn--sm faust-btn--quiet',
-                              title: 'Näytä, montako sanaa avoimessa luvussa on nyt ja montako tässä tilannekuvassa',
-                              onClick: () => compareWithSnapshot(snapshot.id)
-                            }, 'Vertaa sanamäärää'),
-                            e('button', {
-                              className: 'faust-btn faust-btn--sm faust-btn--danger',
-                              title: 'Poista tämä tilannekuva',
-                              onClick: async () => {
-                                const confirmed = await askConfirm(
-                                  'Poistetaanko tilannekuva?',
-                                  'Tilannekuva ”' + snapshot.name + '” poistetaan. Poistoa ei voi kumota.',
-                                  'Poista tilannekuva',
-                                  'Peruuta',
-                                  { danger: true }
-                                );
-                                if (confirmed) deleteSnapshot(snapshot.id);
-                              }
-                            }, 'Poista')
-                          )
+                (project.snapshots || []).length === 0
+                  ? e('div', { className: 'faust-empty faust-empty--compact' },
+                      e('div', { className: 'faust-empty__title' }, 'Ei vielä tilannekuvia.'),
+                      e('div', { className: 'faust-empty__hint' }, 'Tallenna tilannekuva ennen isoja muutoksia, niin voit palata käsikirjoituksen nykyiseen tilaan.')
+                    )
+                  : [...(project.snapshots || [])].reverse().map(snapshot =>
+                      e('div', { key: snapshot.id, className: 'faust-card faust-card--compact' },
+                        e('div', { className: 'faust-serif' }, snapshot.name),
+                        e('div', { className: 'faust-meta' },
+                          new Date(snapshot.created).toLocaleString('fi-FI', { dateStyle: 'short', timeStyle: 'short' })),
+                        e('div', { className: 'faust-meta' },
+                          count(snapshot.chapterCount || 0, 'luku') + ' · ' + count(snapshot.totalWords || 0, 'sana')),
+                        snapshot.description && e('div', { className: 'faust-card__body' }, snapshot.description),
+                        e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-1)', marginTop: 'var(--sp-1)' } },
+                          e('button', {
+                            className: 'faust-btn faust-btn--sm',
+                            title: 'Palauta kaikki luvut tähän tilannekuvaan',
+                            onClick: () => restoreSnapshot(snapshot.id)
+                          }, 'Palauta…'),
+                          e('button', {
+                            className: 'faust-btn faust-btn--sm faust-btn--quiet',
+                            title: 'Näytä, montako sanaa avoimessa luvussa on nyt ja montako tässä tilannekuvassa',
+                            onClick: () => compareWithSnapshot(snapshot.id)
+                          }, 'Vertaa sanamäärää'),
+                          e('button', {
+                            className: 'faust-btn faust-btn--sm faust-btn--danger',
+                            title: 'Poista tämä tilannekuva',
+                            onClick: async () => {
+                              const confirmed = await askConfirm(
+                                'Poistetaanko tilannekuva?',
+                                'Tilannekuva ”' + snapshot.name + '” poistetaan. Poistoa ei voi kumota.',
+                                'Poista tilannekuva',
+                                'Peruuta',
+                                { danger: true }
+                              );
+                              if (confirmed) deleteSnapshot(snapshot.id);
+                            }
+                          }, 'Poista')
                         )
                       )
-                )
+                    )
               )
             )
           ),
@@ -5368,12 +5359,14 @@ ${contextPrompt}`;
                 title: showBookmarksPanel ? 'Kätke kirjanmerkit' : 'Näytä kirjanmerkit',
                 onClick: () => setShowBookmarksPanel(prev => !prev),
                 pressed: showBookmarksPanel,
+                anchor: bookmarksPop.anchorRef,   // the anchor of the bookmarks popover
                 kind: 'word',
                 menu: `Kirjanmerkit (${bookmarkCount})`,
-                checkbox: true
+                // Opening the menu has closed the popover (one at a time): from the menu it only opens
+                menuClick: () => setShowBookmarksPanel(true)
               },
               // The anchor of the find popover; pressed while it is open
-              { key: 'find', face: icons.search({ size: 14 }), name: 'Etsi', title: 'Etsi (' + shortcut('CmdOrCtrl+F') + ')', onClick: () => (showFindDialog ? closeFindDialog() : openFind()), pressed: showFindDialog, kind: 'icon', menu: 'Etsi…', menuClick: openFind, keys: 'CmdOrCtrl+F' }
+              { key: 'find', face: icons.search({ size: 14 }), name: 'Etsi', title: 'Etsi (' + shortcut('CmdOrCtrl+F') + ')', onClick: () => (showFindDialog ? closeFindDialog() : openFind()), pressed: showFindDialog, anchor: findPop.anchorRef, kind: 'icon', menu: 'Etsi…', menuClick: openFind, keys: 'CmdOrCtrl+F' }
             ] }
           ];
           const kindClass = { glyph: 'faust-btn--glyph', icon: 'faust-btn--icon', word: 'faust-btn--quiet' };
@@ -5452,6 +5445,7 @@ ${contextPrompt}`;
             },
               ...group.items.map(item => e('button', {
                 key: item.key,
+                ref: item.anchor,
                 type: 'button',
                 className: 'faust-btn ' + kindClass[item.kind],
                 onClick: item.onClick,
@@ -5480,15 +5474,13 @@ ${contextPrompt}`;
                   key: item.key,
                   type: 'button',
                   className: 'faust-menu__item',
-                  role: item.checkbox ? 'menuitemcheckbox' : 'menuitem',
-                  'aria-checked': item.checkbox ? !!item.pressed : undefined,
+                  role: 'menuitem',
                   onMouseDown: (ev) => ev.preventDefault(),
                   onClick: () => {
                     formatMore.close();
                     (item.menuClick || item.onClick)();
                   }
                 },
-                  item.checkbox && item.pressed ? icons.check({ size: 14 }) : null,
                   item.menu,
                   item.keys ? e('span', { className: 'faust-menu__shortcut' }, shortcut(item.keys)) : null
                 ))
@@ -5610,82 +5602,68 @@ ${contextPrompt}`;
               editorDimensions: editorDimensions
             }),
 
-            // Bookmarks panel (floating). Becomes a Popover anchored to its button in the cross-region pass.
-            showBookmarksPanel && e('div', {
-              className: 'faust-popover',
-              style: {
-                position: 'absolute',
-                top: 'calc(var(--h-md) + var(--sp-5))',
-                right: 'calc(var(--scrollbar-w) + var(--sp-4))',
-                left: 'auto',
-                // The pane clips what overflows it: the popover ends inside the editor body (100% = its height)
-                '--popover-max-h': 'calc(100% - var(--h-md) - var(--sp-5) - var(--sp-4))'
-              }
+            // Bookmarks (MV-65): a popover anchored to the format bar's bookmarks button (R-60); outside
+            // press, Esc and one popover at a time come from usePopover. Rendered in the layer host; it
+            // stays open under the question of its Poista (closeUnlessAsking).
+            showBookmarksPanel && e(Popover, {
+              ...bookmarksPop.popoverProps,
+              onClose: closeUnlessAsking(bookmarksPop.close),
+              title: `Kirjanmerkit (${(project.bookmarks || []).length})`,
+              closeLabel: 'Kätke kirjanmerkit',
+              closeTitle: 'Kätke kirjanmerkit'
             },
-              e('div', { className: 'faust-popover__head' },
-                e('div', { className: 'faust-popover__title' }, `Kirjanmerkit (${(project.bookmarks || []).length})`),
-                e('button', {
-                  type: 'button',
-                  className: 'faust-btn faust-btn--icon faust-btn--sm',
-                  onClick: () => setShowBookmarksPanel(false),
-                  title: 'Kätke kirjanmerkit',
-                  'aria-label': 'Kätke kirjanmerkit'
-                }, icons.close({ size: 14 }))
-              ),
-              e('div', { className: 'faust-popover__body' },
-                (project.bookmarks || []).length === 0
-                  ? e('div', { className: 'faust-empty faust-empty--compact' },
-                      e('div', { className: 'faust-empty__title' }, 'Ei vielä kirjanmerkkejä.'),
-                      e('div', { className: 'faust-empty__hint' }, 'Kirjanmerkillä palaat nopeasti tiettyyn kohtaan tekstissä.')
-                    )
-                  : (project.bookmarks || []).map(bookmark => {
-                      // The chapter line shows the chapter's current title
-                      const chapter = (project.structure || []).find(ch => ch.id === bookmark.chapterId);
-                      const chapterTitle = (chapter ? chapter.title : bookmark.chapterTitle) || 'Nimetön luku';
-                      // A row holds its delete button, so it is a div with role="button", not a button
-                      return e('div', {
-                        key: bookmark.id,
-                        className: 'faust-row faust-row--two faust-row--author',
-                        role: 'button',
-                        tabIndex: 0,
-                        onClick: () => jumpToBookmark(bookmark),
-                        onKeyDown: (ev) => {
-                          if (ev.target !== ev.currentTarget) return;
-                          if (ev.key === 'Enter' || ev.key === ' ') {
-                            ev.preventDefault();
-                            jumpToBookmark(bookmark);
-                          }
+              (project.bookmarks || []).length === 0
+                ? e('div', { className: 'faust-empty faust-empty--compact' },
+                    e('div', { className: 'faust-empty__title' }, 'Ei vielä kirjanmerkkejä.'),
+                    e('div', { className: 'faust-empty__hint' }, 'Kirjanmerkillä palaat nopeasti tiettyyn kohtaan tekstissä.')
+                  )
+                : (project.bookmarks || []).map(bookmark => {
+                    // The chapter line shows the chapter's current title
+                    const chapter = (project.structure || []).find(ch => ch.id === bookmark.chapterId);
+                    const chapterTitle = (chapter ? chapter.title : bookmark.chapterTitle) || 'Nimetön luku';
+                    // A row holds its delete button, so it is a div with role="button", not a button
+                    return e('div', {
+                      key: bookmark.id,
+                      className: 'faust-row faust-row--two faust-row--author',
+                      role: 'button',
+                      tabIndex: 0,
+                      onClick: () => jumpToBookmark(bookmark),
+                      onKeyDown: (ev) => {
+                        if (ev.target !== ev.currentTarget) return;
+                        if (ev.key === 'Enter' || ev.key === ' ') {
+                          ev.preventDefault();
+                          jumpToBookmark(bookmark);
                         }
-                      },
-                        e('div', { className: 'faust-row__text' },
-                          e('span', { className: 'faust-row__title' }, bookmark.name),
-                          e('span', {
-                            className: 'faust-row__meta',
-                            style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }
-                          }, icons.hexagon({ size: 12 }), 'Luku: ' + chapterTitle),
-                          bookmark.context && e('span', { className: 'faust-quote faust-clamp-2' }, `”…${bookmark.context.trim()}…”`)
-                        ),
-                        e('div', { className: 'faust-row__actions' },
-                          e('button', {
-                            type: 'button',
-                            className: 'faust-btn faust-btn--sm faust-btn--danger',
-                            title: 'Poista kirjanmerkki',
-                            onClick: async (ev) => {
-                              ev.stopPropagation();
-                              const confirmed = await askConfirm(
-                                'Poistetaanko kirjanmerkki?',
-                                `Kirjanmerkki ”${bookmark.name}” poistetaan. Teksti ei muutu.`,
-                                'Poista kirjanmerkki',
-                                'Peruuta',
-                                { danger: true }
-                              );
-                              if (confirmed) deleteBookmark(bookmark.id);
-                            }
-                          }, 'Poista')
-                        )
-                      );
-                    })
-              )
+                      }
+                    },
+                      e('div', { className: 'faust-row__text' },
+                        e('span', { className: 'faust-row__title' }, bookmark.name),
+                        e('span', {
+                          className: 'faust-row__meta',
+                          style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }
+                        }, icons.hexagon({ size: 12 }), 'Luku: ' + chapterTitle),
+                        bookmark.context && e('span', { className: 'faust-quote faust-clamp-2' }, `”…${bookmark.context.trim()}…”`)
+                      ),
+                      e('div', { className: 'faust-row__actions' },
+                        e('button', {
+                          type: 'button',
+                          className: 'faust-btn faust-btn--sm faust-btn--danger',
+                          title: 'Poista kirjanmerkki',
+                          onClick: async (ev) => {
+                            ev.stopPropagation();
+                            const confirmed = await askConfirm(
+                              'Poistetaanko kirjanmerkki?',
+                              `Kirjanmerkki ”${bookmark.name}” poistetaan. Teksti ei muutu.`,
+                              'Poista kirjanmerkki',
+                              'Peruuta',
+                              { danger: true }
+                            );
+                            if (confirmed) deleteBookmark(bookmark.id);
+                          }
+                        }, 'Poista')
+                      )
+                    );
+                  })
             ),
 
             // Manuscript editor (CodeMirror, see src/components/FaustEditor.js).
@@ -5758,31 +5736,58 @@ ${contextPrompt}`;
                   )
           ) : null,
 
-          // Find & Replace dialog. Becomes a Popover anchored to the format bar's Etsi button in the cross-region pass.
-          showFindDialog ? e('div', {
-            className: 'faust-popover',
-            style: {
-              position: 'absolute',
-              top: 'var(--sp-4)',
-              right: 'calc(var(--scrollbar-w) + var(--sp-4))',
-              left: 'auto',
-              '--popover-w': 'min(440px, calc(100% - 2 * var(--sp-4)))'
-            }
-          },
-            e('div', { className: 'faust-popover__head' },
-              e('div', { className: 'faust-popover__title' }, showReplaceDialog ? 'Etsi ja korvaa' : 'Etsi'),
+          // Etsi (MV-64): a popover of 440 px anchored to the format bar's Etsi button (R-60), at the
+          // fallback place when that button is hidden (focus mode, a narrow bar). Outside press, Esc and
+          // one popover at a time come from usePopover; it stays open under the question of
+          // Korvaa kaikki… (closeUnlessAsking). Closing it clears the hits (see closeFindDialog).
+          showFindDialog ? e(Popover, {
+            ...findPop.popoverProps,
+            onClose: closeUnlessAsking(closeFindDialog),
+            width: 440,
+            title: showReplaceDialog ? 'Etsi ja korvaa' : 'Etsi',
+            closeLabel: 'Sulje',
+            closeTitle: 'Sulje (Esc)',
+            footer: e('div', { style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 'var(--sp-2)' } },
               e('button', {
                 type: 'button',
-                className: 'faust-btn faust-btn--icon faust-btn--sm',
-                onClick: closeFindDialog,
-                title: 'Sulje (Esc)',
-                'aria-label': 'Sulje'
-              }, icons.close({ size: 14 }))
-            ),
-            e('div', {
-              className: 'faust-popover__body',
-              style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', padding: '0 var(--sp-4) var(--sp-3)' }
-            },
+                className: 'faust-btn faust-btn--sm',
+                onClick: () => performSearch()
+              }, 'Etsi'),
+              e('button', {
+                type: 'button',
+                className: 'faust-btn faust-btn--sm',
+                onClick: findPrevious,
+                disabled: searchResults.length === 0,
+                title: 'Etsi edellinen (' + shortcut('CmdOrCtrl+Shift+G') + ')'
+              }, 'Edellinen'),
+              e('button', {
+                type: 'button',
+                className: 'faust-btn faust-btn--sm faust-btn--primary',
+                onClick: findNext,
+                disabled: searchResults.length === 0,
+                title: 'Etsi seuraava (' + shortcut('CmdOrCtrl+G') + ')'
+              }, 'Seuraava'),
+              showReplaceDialog ? (() => {
+                // A hit in a character, place or thread has no text in the manuscript to replace
+                const current = searchResults[currentSearchIndex];
+                const outsideChapters = !!current && !current.chapterId;
+                return e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--sm',
+                  onClick: replaceCurrent,
+                  disabled: !current || outsideChapters,
+                  title: outsideChapters ? 'Korvaus koskee vain lukujen tekstiä' : undefined
+                }, 'Korvaa');
+              })() : null,
+              showReplaceDialog ? e('button', {
+                type: 'button',
+                className: 'faust-btn faust-btn--sm',
+                onClick: replaceAll,
+                disabled: searchResults.length === 0
+              }, 'Korvaa kaikki…') : null
+            )
+          },
+            e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', padding: '0 var(--sp-2) var(--sp-1)' } },
               e('div', { className: 'faust-field' },
                 e('input', {
                   id: 'search-term',
@@ -5791,9 +5796,9 @@ ${contextPrompt}`;
                   className: 'faust-input',
                   value: searchTerm,
                   onChange: (ev) => setSearchTerm(ev.target.value),
+                  // Esc reaches the popover, which closes itself (R-70)
                   onKeyDown: (ev) => {
                     if (ev.key === 'Enter') handleSearchEnter(ev.shiftKey);
-                    if (ev.key === 'Escape') closeFindDialog();
                   },
                   placeholder: 'Etsittävä teksti',
                   autoFocus: true,
@@ -5934,45 +5939,6 @@ ${contextPrompt}`;
                     : null
                 );
               })()
-            ),
-            e('div', { className: 'faust-popover__foot', style: { flexWrap: 'wrap' } },
-              e('button', {
-                type: 'button',
-                className: 'faust-btn faust-btn--sm',
-                onClick: () => performSearch()
-              }, 'Etsi'),
-              e('button', {
-                type: 'button',
-                className: 'faust-btn faust-btn--sm',
-                onClick: findPrevious,
-                disabled: searchResults.length === 0,
-                title: 'Etsi edellinen (' + shortcut('CmdOrCtrl+Shift+G') + ')'
-              }, 'Edellinen'),
-              e('button', {
-                type: 'button',
-                className: 'faust-btn faust-btn--sm faust-btn--primary',
-                onClick: findNext,
-                disabled: searchResults.length === 0,
-                title: 'Etsi seuraava (' + shortcut('CmdOrCtrl+G') + ')'
-              }, 'Seuraava'),
-              showReplaceDialog ? (() => {
-                // A hit in a character, place or thread has no text in the manuscript to replace
-                const current = searchResults[currentSearchIndex];
-                const outsideChapters = !!current && !current.chapterId;
-                return e('button', {
-                  type: 'button',
-                  className: 'faust-btn faust-btn--sm',
-                  onClick: replaceCurrent,
-                  disabled: !current || outsideChapters,
-                  title: outsideChapters ? 'Korvaus koskee vain lukujen tekstiä' : undefined
-                }, 'Korvaa');
-              })() : null,
-              showReplaceDialog ? e('button', {
-                type: 'button',
-                className: 'faust-btn faust-btn--sm',
-                onClick: replaceAll,
-                disabled: searchResults.length === 0
-              }, 'Korvaa kaikki…') : null
             )
           ) : null,
 
