@@ -1152,16 +1152,6 @@ button:not([class*="faust-"]):hover:not(:disabled)  { box-shadow: inset 0 0 0 10
 button:not([class*="faust-"]):active:not(:disabled) { box-shadow: inset 0 0 0 100vmax var(--fill-active); }
 button:not([class*="faust-"]):is(:hover, :active):not(:disabled):is([style^="color: var(--text-3)"], [style*="; color: var(--text-3)"]) { color: var(--text-2) !important; }
 
-/* S1  Bare font names (667 inline `fontFamily: 'IBM Plex Mono'` / `'EB Garamond'`, none with
-       a fallback: offline such an element drops to Times). Gives them the full stacks.
-       The second rule gives unweighted legacy serif text the theme's grade: with the 400
-       face loaded it would otherwise drop from today's Medium to 400, lighter than the
-       system's own text (no !important needed: those elements have no inline weight).
-       Delete after the fontFamily sweep. */
-[style*="IBM Plex Mono"] { font-family: var(--font-mono) !important; }
-[style*="EB Garamond"]   { font-family: var(--font-serif) !important; }
-[style*="EB Garamond"]:not([style*="font-weight"]):not(h1, h2, h3, h4, h5, h6, b, strong) { font-weight: var(--w-serif); }
-
 /* S2  Labels on a token fill. 67 inline `color: '#000'` sit on --bronze, --sigil or --gold;
        the first rule fixes those on any element. The second makes the fill alone decide the
        label of a BUTTON, whatever its inline colour: the header's Tallenna button paints
