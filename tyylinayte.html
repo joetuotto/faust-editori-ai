@@ -1,0 +1,1044 @@
+<!doctype html>
+<!--
+  Tyylinäyte: the state page of the FAUST design system. Development only.
+
+  Every recipe of styles/faust-components.css in its states, the type scale, the tokens and
+  the icon set, in both themes. One capture per theme is the regression reference for the
+  system itself; a keyboard pass (Tab through the page) shows the focus ring on every control.
+
+  Open it in the app's own engine, from the repository root:
+      ./node_modules/.bin/electron tyylinayte.html
+  The theme follows the hash (tyylinayte.html#DEIS) and the switch at the top.
+  The page loads the stylesheets in the order of index.html and the two modules
+  src/components/icons.js and src/components/ui.js as they are. It is not part of the build:
+  scripts/post-build.js does not copy it.
+
+  Hover, pressed and focus states are live: move the pointer or press Tab. What a still can
+  show (selected, pressed, disabled, busy, invalid, open) is laid out side by side.
+  Page-only rules carry the prefix tn- and use tokens only.
+-->
+<html lang="fi" data-theme="NOX">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:;">
+<title>FAUST – Tyylinäyte</title>
+<script>document.documentElement.setAttribute('data-theme', location.hash.slice(1) === 'DEIS' ? 'DEIS' : 'NOX');</script>
+<link rel="stylesheet" href="./styles/faust-theme.css">
+<link rel="stylesheet" href="./styles/faust-tokens.css">
+<link rel="stylesheet" href="./styles/faust-simple-layout.css">
+<link rel="stylesheet" href="./styles/faust-components.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+/* ---- page-only layout (tn-): tokens only ---- */
+[hidden] { display: none !important; }      /* the recipes set display; the live dialogs are closed with the hidden attribute */
+.tn-top { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: var(--sp-5); padding: var(--sp-2) var(--sp-5); background: var(--surface-panel); border-bottom: var(--bw) solid var(--rule); }
+.tn-top h1 { font: var(--type-title-panel); letter-spacing: 0; white-space: nowrap; }
+.tn-nav { display: flex; flex-wrap: wrap; gap: var(--sp-half) var(--sp-3); font: var(--type-meta); min-width: 0; }
+.tn-nav a { color: var(--text-2); text-decoration: none; }
+.tn-nav a:hover { color: var(--text); }
+.tn-main { max-width: 1280px; margin: 0 auto; padding: 0 var(--sp-5) var(--sp-8); }
+.tn-section { padding: var(--sp-6) 0 var(--sp-5); border-top: var(--bw) solid var(--rule); scroll-margin-top: 56px; }
+.tn-section:first-child { border-top: 0; }
+.tn-section > h2 { font: var(--type-title-view); letter-spacing: var(--tracking-title); margin-bottom: var(--sp-1); }
+.tn-lead { font: var(--type-serif); color: var(--text-2); max-width: 70ch; margin-bottom: var(--sp-4); }
+.tn-h3 { font: var(--type-label); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-2); margin: var(--sp-5) 0 var(--sp-2); }
+.tn-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.tn-row + .tn-row { margin-top: var(--sp-3); }
+.tn-row--top { align-items: flex-start; }
+.tn-cap { font: var(--type-meta); color: var(--text-3); }
+.tn-cap--w { flex: none; width: 128px; }
+.tn-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--sp-5); align-items: start; }
+.tn-cols--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tn-stack { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.tn-box { padding: var(--sp-4); border: var(--bw) solid var(--rule); border-radius: var(--radius-sm); min-width: 0; }
+.tn-box--page { background: var(--surface-page); }
+.tn-box--panel { background: var(--surface-panel); }
+.tn-box--paper { background: var(--surface-paper); }
+.tn-box--raised { background: var(--surface-raised); }
+.tn-box--sunken { background: var(--surface-sunken); }
+.tn-box > .tn-cap:first-child { display: block; margin-bottom: var(--sp-2); }
+.tn-w220 { width: 220px; } .tn-w320 { width: 320px; } .tn-w440 { width: 440px; }
+/* layers that are position: fixed in the app are laid out in the flow here */
+.tn-static :is(.faust-popover, .faust-tooltip, .claude-chat-container, .faust-fab, .faust-focus-exit.faust-btn, .faust-toast-host) { position: relative; inset: auto; transform: none; animation: none; }
+.tn-static .faust-tooltip { width: fit-content; }
+.tn-static .faust-toast-host { width: 440px; }
+.tn-static .faust-toast { animation: none; }
+.tn-static .faust-dialog { animation: none; }
+.tn-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--sp-2); }
+.tn-swatch { display: flex; flex-direction: column; gap: var(--sp-half); font: var(--type-meta); color: var(--text-3); }
+.tn-swatch > i { display: block; height: 32px; border-radius: var(--radius-sm); box-shadow: inset 0 0 0 1px var(--rule); }
+.tn-swatch > b { font-weight: var(--w-mono-strong); color: var(--text); }
+.tn-type { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: var(--sp-2) var(--sp-4); align-items: baseline; }
+.tn-type > span:nth-child(odd) { font: var(--type-meta); color: var(--text-3); }
+.tn-levels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-2); }
+.tn-levels .tn-box { display: flex; flex-direction: column; gap: var(--sp-1); font: var(--type-ui); }
+.tn-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: var(--sp-3) var(--sp-1); }
+.tn-icons > span { display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); font: var(--type-meta); color: var(--text-3); overflow-wrap: anywhere; text-align: center; }
+.tn-icons > span > .faust-icon { color: var(--text); }
+.tn-icons--sigil > span > .faust-icon { color: var(--accent-line); }
+/* mock-only: what CodeMirror itself does in the real app (structure and inherited type) */
+.tn-cm.faust-editor-host { position: relative; font-family: var(--font-serif); font-size: var(--ms-size); line-height: var(--ms-leading); color: var(--ink); }
+.tn-cm .cm-editor { display: flex; flex-direction: column; }
+.tn-cm .cm-scroller { display: flex; align-items: flex-start; }
+.tn-cm .cm-content { flex: 1; min-width: 0; display: block; outline: none; }
+.tn-cm .cm-line { display: block; min-height: 1.8em; }
+.tn-cm .cm-tooltip { position: relative; width: 420px; max-width: 100%; display: flex; flex-direction: column; gap: var(--sp-2); }
+/* the whole shell in a frame: the frame is the containing block of its fixed layers, and the
+   app fills the frame instead of the window */
+.tn-frame { height: 640px; contain: layout; overflow: hidden; border: var(--bw) solid var(--border); border-radius: var(--radius-md); }
+.tn-frame .faust-app { width: 100%; height: 100%; position: relative; }
+.tn-frame :is(.faust-header, .faust-focus-drag) { -webkit-app-region: no-drag; }
+.tn-frame .faust-editor-host { position: relative; font-family: var(--font-serif); font-size: var(--ms-size); line-height: var(--ms-leading); color: var(--ink); }
+.tn-frame .cm-editor { position: absolute; inset: 0; display: flex; flex-direction: column; }
+.tn-frame .cm-scroller { flex: 1; display: flex; align-items: flex-start; overflow: auto; }
+.tn-frame .cm-content { flex-grow: 2; flex-shrink: 1; min-height: 100%; display: block; outline: none; }
+.tn-frame .cm-line { display: block; min-height: 1.8em; }
+.tn-frame .faust-toast-host { position: absolute; }
+</style>
+<script src="./node_modules/react/umd/react.production.min.js"></script>
+<script src="./node_modules/react-dom/umd/react-dom.production.min.js"></script>
+</head>
+<body>
+
+<div class="tn-top">
+  <h1>FAUST · Tyylinäyte</h1>
+  <div class="faust-segmented" role="radiogroup" aria-label="Teema">
+    <button class="faust-segmented__option" role="radio" data-theme-opt="NOX">NOX</button>
+    <button class="faust-segmented__option" role="radio" data-theme-opt="DEIS">DEIS</button>
+  </div>
+  <nav class="tn-nav" id="tn-nav"></nav>
+</div>
+
+<main class="tn-main">
+
+<!-- ======================= Tokens ======================= -->
+<section class="tn-section" id="tokenit" data-title="Tokenit">
+  <h2>Tokenit</h2>
+  <p class="tn-lead">Värit luetaan sivun omasta tyylistä: jokainen ruutu on tokenin laskettu arvo tässä teemassa.</p>
+  <div class="tn-h3">Pinnat ja täytöt</div>
+  <div class="tn-swatches" data-swatches="--surface-panel --surface-page --surface-paper --surface-raised --surface-sunken --fill-subtle --fill-hover --fill-active --scrim --track"></div>
+  <div class="tn-h3">Teksti, viivat ja reunat</div>
+  <div class="tn-swatches" data-swatches="--text --text-2 --text-3 --text-disabled --ink --rule --border --border-control --focus-ring"></div>
+  <div class="tn-h3">Korostus: pronssi on täyttö, kulta on viiva</div>
+  <div class="tn-swatches" data-swatches="--accent --accent-hover --accent-active --on-accent --accent-text --accent-line --accent-tint --accent-tint-strong --gilt --dialog-frame"></div>
+  <div class="tn-h3">Tilat</div>
+  <div class="tn-swatches" data-swatches="--success --success-text --success-bg --success-border --warning --warning-text --warning-bg --warning-border --error --error-text --error-bg --error-border --info --info-text --info-bg --info-border --danger --danger-hover --on-danger"></div>
+  <div class="tn-h3">Merkinnät tekstissä, langat, työkaluvihje</div>
+  <div class="tn-swatches" data-swatches="--selection-bg --diff-ins-bg --diff-ins-bg-active --diff-ins-line --diff-del-bg --diff-del-line --hl-search-bg --hl-search-line --hl-search-current-bg --hl-search-current-text --hl-ai-bg --hl-ai-line --hl-finding-bg --hl-finding-line --hl-finding-error-line --hl-finding-note-line --hl-avoid-bg --hl-avoid-line --hl-todo-bg --hl-todo-text --thread-1 --thread-2 --thread-3 --thread-4 --thread-5 --thread-6 --tooltip-bg --tooltip-text"></div>
+  <div class="tn-h3">Tekstitasot viidellä pinnalla</div>
+  <div class="tn-levels">
+    <div class="tn-box tn-box--panel"><span class="tn-cap">--surface-panel</span><span style="color:var(--text)">Teksti</span><span style="color:var(--text-2)">Teksti 2</span><span style="color:var(--text-3)">Teksti 3</span><span style="color:var(--text-disabled)">Ei käytössä</span><span style="color:var(--accent-text)">Korostusteksti</span></div>
+    <div class="tn-box tn-box--page"><span class="tn-cap">--surface-page</span><span style="color:var(--text)">Teksti</span><span style="color:var(--text-2)">Teksti 2</span><span style="color:var(--text-3)">Teksti 3</span><span style="color:var(--text-disabled)">Ei käytössä</span><span style="color:var(--accent-text)">Korostusteksti</span></div>
+    <div class="tn-box tn-box--paper"><span class="tn-cap">--surface-paper</span><span style="color:var(--text)">Teksti</span><span style="color:var(--text-2)">Teksti 2</span><span style="color:var(--text-3)">Teksti 3</span><span style="color:var(--text-disabled)">Ei käytössä</span><span style="color:var(--accent-text)">Korostusteksti</span></div>
+    <div class="tn-box tn-box--raised"><span class="tn-cap">--surface-raised</span><span style="color:var(--text)">Teksti</span><span style="color:var(--text-2)">Teksti 2</span><span style="color:var(--text-3)">Teksti 3</span><span style="color:var(--text-disabled)">Ei käytössä</span><span style="color:var(--accent-text)">Korostusteksti</span></div>
+    <div class="tn-box tn-box--sunken"><span class="tn-cap">--surface-sunken</span><span style="color:var(--text)">Teksti</span><span style="color:var(--text-2)">Teksti 2</span><span style="color:var(--text-3)">Teksti 3</span><span style="color:var(--text-disabled)">Ei käytössä</span><span style="color:var(--accent-text)">Korostusteksti</span></div>
+  </div>
+</section>
+
+<!-- ======================= Typography ======================= -->
+<section class="tn-section" id="typografia" data-title="Typografia">
+  <h2>Typografia</h2>
+  <p class="tn-lead">Otsikko ja kirjoittajan omat sanat ovat antiikvaa, kaikki mitä voi painaa, nimetä tai laskea on monoa, ja sovelluksen kokonainen virke kirjoittajalle on antiikvaa.</p>
+  <div class="tn-h3">Asteikko (--type-*)</div>
+  <div class="tn-type" id="tn-type"></div>
+  <div class="tn-h3">Käsikirjoitus</div>
+  <div class="tn-box tn-box--paper"><div class="faust-manuscript" style="--page-inset: 0px; max-width: calc(var(--ms-size) * 28)">Juna pysähtyi asemalle hieman ennen puoltayötä. <strong>Aino</strong> nosti laukkunsa hyllyltä ja jäi hetkeksi seisomaan käytävälle, ikään kuin olisi vielä voinut kääntyä takaisin. Mies katsoi häntä <em>pitkään</em>, niin kuin olisi tunnistanut hänet jostakin. Vuonna 1998 lunta satoi 37 päivää.</div></div>
+  <div class="tn-h3">Tekstiroolit (osio 2)</div>
+  <div class="tn-type">
+    <span>.faust-label</span><span class="faust-label">Osion otsikko</span>
+    <span>.faust-meta</span><span class="faust-meta">186 sanaa · 1 311 merkkiä</span>
+    <span>.faust-ui</span><span class="faust-ui">Käyttöliittymän teksti</span>
+    <span>.faust-serif</span><span class="faust-serif">Projektissa ei ole vielä tekstiä vietäväksi.</span>
+    <span>.faust-quote</span><span class="faust-quote">”…katsoi häntä pitkään, niin kuin olisi tunnistanut…”</span>
+    <span>.faust-latin</span><span class="faust-latin">Scrutinium profundum</span>
+    <span>.faust-num</span><span class="faust-meta faust-num">1 111 · 8 888 · 80 000</span>
+    <span>.faust-clamp-2</span><span class="faust-serif faust-clamp-2" style="max-width: 36ch">Kaupunki oli pienempi kuin hän muisti. Asemarakennuksen kello näytti väärää aikaa, ja torin laidalla seisova hotelli oli maalattu uudelleen, mutta ikkunat olivat samat: korkeat, kapeat ja pimeät.</span>
+    <span>.faust-clamp-3</span><span class="faust-serif faust-clamp-3" style="max-width: 36ch">Kaupunki oli pienempi kuin hän muisti. Asemarakennuksen kello näytti väärää aikaa, ja torin laidalla seisova hotelli oli maalattu uudelleen, mutta ikkunat olivat samat: korkeat, kapeat ja pimeät. Hän oli lähtenyt täältä kaksikymmentä vuotta sitten.</span>
+    <span>.faust-visually-hidden</span><span class="faust-meta">Tämän rivin lopussa on vain ruudunlukijalle näkyvä teksti.<span class="faust-visually-hidden"> Piilotettu teksti.</span></span>
+    <span>.faust-prose</span><span class="faust-prose">Hotellin aulassa paloi yksi lamppu. Vastaanoton takana istui vanha nainen, joka nosti katseensa ristisanatehtävästä vasta, kun Aino laski laukkunsa lattialle.</span>
+  </div>
+</section>
+
+<!-- ======================= 1 Native chrome ======================= -->
+<section class="tn-section" id="natiivi" data-title="Natiivi">
+  <h2>Natiivit säätimet</h2>
+  <p class="tn-lead">Valintaruudut, valintanapit, liukusäädin ja vierityspalkit seuraavat teemaa (color-scheme, accent-color, scrollbar-color). Liukusäädin on ainoa uudelleen piirretty.</p>
+  <div class="tn-row">
+    <label class="faust-check"><input type="checkbox">Ei valittu</label>
+    <label class="faust-check"><input type="checkbox" checked>Valittu</label>
+    <label class="faust-check"><input type="checkbox" disabled>Ei käytössä</label>
+    <label class="faust-check"><input type="checkbox" checked disabled>Valittu, ei käytössä</label>
+    <label class="faust-check"><input type="radio" name="tn-r1">Ei valittu</label>
+    <label class="faust-check"><input type="radio" name="tn-r1" checked>Valittu</label>
+    <label class="faust-check"><input type="radio" name="tn-r2" disabled>Ei käytössä</label>
+    <label class="faust-check"><input type="radio" name="tn-r2" checked disabled>Valittu, ei käytössä</label>
+  </div>
+  <div class="tn-row">
+    <span class="tn-cap tn-cap--w">liukusäädin, --value</span><input type="range" value="40" style="--value: 40%; width: 200px">
+    <span class="tn-cap">ilman --value</span><input type="range" value="70" style="width: 200px">
+    <span class="tn-cap">ei käytössä</span><input type="range" value="30" disabled style="--value: 30%; width: 200px">
+  </div>
+  <div class="tn-row tn-row--top">
+    <span class="tn-cap tn-cap--w">.faust-scroll</span>
+    <div class="faust-scroll tn-box tn-box--raised" style="height: 96px; width: 320px"><p class="faust-serif">Kaupunki oli pienempi kuin hän muisti. Asemarakennuksen kello näytti väärää aikaa, ja torin laidalla seisova hotelli oli maalattu uudelleen, mutta ikkunat olivat samat: korkeat, kapeat ja pimeät. Hän oli lähtenyt täältä kaksikymmentä vuotta sitten eikä ollut luvannut kenellekään palaavansa. Hotellin aulassa paloi yksi lamppu.</p></div>
+    <span class="tn-cap">.faust-scroll--page</span>
+    <div class="faust-scroll faust-scroll--page tn-box tn-box--paper" style="height: 96px; width: 220px"><p class="faust-serif">Keskitetty palsta pysyy keskellä, kun klassinen vierityspalkki ilmestyy: tila varataan kummaltakin reunalta. Hotellin aulassa paloi yksi lamppu. Vastaanoton takana istui vanha nainen.</p></div>
+    <span class="tn-cap">valinta: maalaa teksti</span><span class="faust-serif">Valittu teksti saa ensisijaisen tekstivärin.</span>
+    <input class="faust-input" style="width: 200px" placeholder="Paikkamerkki">
+  </div>
+</section>
+
+<!-- ======================= 3 Buttons ======================= -->
+<section class="tn-section" id="painikkeet" data-title="Painikkeet">
+  <h2>Painikkeet</h2>
+  <p class="tn-lead">Yksi perhe. Pronssi täyttö on pinnan yksi ensisijainen toiminto. Kromissa painettu kytkin on täyttö, sisällössä sävy ja kultareuna. Ei käytössä -tila on tokeniväri, ei läpikuultavuus.</p>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">perus</span>
+    <button class="faust-btn">Sulje</button>
+    <button class="faust-btn" aria-pressed="true">Painettu</button>
+    <button class="faust-btn" aria-expanded="true">Avattu <i data-icon="chevronDown" data-size="12"></i></button>
+    <button class="faust-btn" disabled>Ei käytössä</button>
+    <button class="faust-btn" aria-busy="true" disabled><span class="faust-spinner faust-spinner--sm"></span>Haetaan malleja…</button>
+    <button class="faust-btn"><i data-icon="exportOut" data-size="14"></i>Vie…</button>
+  </div>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">--primary</span>
+    <button class="faust-btn faust-btn--primary">Tallenna</button>
+    <button class="faust-btn faust-btn--primary"><i data-icon="quill" data-size="14"></i>Kirjoita tekoälyn kanssa…</button>
+    <button class="faust-btn faust-btn--primary" disabled>Ei käytössä</button>
+    <button class="faust-btn faust-btn--primary" aria-busy="true" disabled><span class="faust-spinner faust-spinner--sm"></span>Viedään…</button>
+    <button class="faust-btn faust-btn--icon faust-btn--primary" aria-label="Lähetä"><i data-icon="send" data-size="14"></i></button>
+  </div>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">--quiet</span>
+    <button class="faust-btn faust-btn--quiet">Uusi</button>
+    <button class="faust-btn faust-btn--quiet" aria-pressed="true"><i data-icon="star8" data-size="14"></i>Liminal Engine</button>
+    <button class="faust-btn faust-btn--quiet" disabled>Ei käytössä</button>
+    <button class="faust-btn faust-btn--quiet" aria-busy="true" disabled><span class="faust-spinner faust-spinner--sm"></span>Tallennetaan…</button>
+  </div>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">--danger</span>
+    <button class="faust-btn faust-btn--danger">Poista luku</button>
+    <button class="faust-btn faust-btn--danger" disabled>Ei käytössä</button>
+    <button class="faust-btn faust-btn--danger faust-btn--primary">Poista</button>
+    <button class="faust-btn faust-btn--danger faust-btn--primary" disabled>Ei käytössä</button>
+    <button class="faust-btn faust-btn--icon faust-btn--danger" aria-label="Poista"><i data-icon="trash" data-size="16"></i></button>
+  </div>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">koot --sm, perus, --lg</span>
+    <button class="faust-btn faust-btn--sm">Pieni</button><button class="faust-btn">Perus</button><button class="faust-btn faust-btn--lg">Suuri</button>
+    <button class="faust-btn faust-btn--sm faust-btn--primary">Hyväksy</button><button class="faust-btn faust-btn--primary">Hyväksy</button><button class="faust-btn faust-btn--lg faust-btn--primary">Hyväksy</button>
+  </div>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">--icon</span>
+    <button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Sulje"><i data-icon="close" data-size="14"></i></button>
+    <button class="faust-btn faust-btn--icon" aria-label="Sivupalkki"><i data-icon="panelLeft" data-size="16"></i></button>
+    <button class="faust-btn faust-btn--icon" aria-label="Tietopaneeli" aria-pressed="true"><i data-icon="panelRight" data-size="16"></i></button>
+    <button class="faust-btn faust-btn--icon faust-btn--lg" aria-label="Asetukset"><i data-icon="settings" data-size="16"></i></button>
+    <button class="faust-btn faust-btn--icon" aria-label="Ei käytössä" disabled><i data-icon="split" data-size="16"></i></button>
+    <button class="faust-btn faust-btn--icon" aria-label="Käynnissä" aria-busy="true" disabled><span class="faust-spinner faust-spinner--sm"></span></button>
+    <span class="tn-cap">ääni: lepo, kuuntelee</span>
+    <button class="faust-btn faust-btn--icon" aria-label="Sanele viesti"><i data-icon="mic" data-size="16"></i></button>
+    <button class="faust-btn faust-btn--icon" aria-label="Kuunnellaan – puhu nyt" data-state="listening"><i data-icon="mic" data-size="16"></i></button>
+  </div>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">--glyph</span>
+    <button class="faust-btn faust-btn--glyph" aria-label="Lihavointi"><b>B</b></button>
+    <button class="faust-btn faust-btn--glyph" aria-label="Kursivointi" aria-pressed="true"><i>I</i></button>
+    <button class="faust-btn faust-btn--glyph" aria-label="Alleviivaus"><u>U</u></button>
+    <button class="faust-btn faust-btn--glyph" aria-label="Yliviivaus" disabled><s>S</s></button>
+  </div>
+  <div class="tn-row tn-row--top"><span class="tn-cap tn-cap--w">--block (paneeli)</span>
+    <div class="tn-box tn-box--panel tn-w320 tn-stack">
+      <button class="faust-btn faust-btn--block faust-btn--primary"><i data-icon="quill" data-size="14"></i>Kirjoita tekoälyn kanssa…</button>
+      <button class="faust-btn faust-btn--block">Testaa yhteys</button>
+      <button class="faust-btn faust-btn--block" disabled>Suunnittele ensin hahmot</button>
+      <button class="faust-btn faust-btn--block" aria-busy="true" disabled><span class="faust-spinner faust-spinner--sm"></span>Haetaan malleja…</button>
+    </div>
+  </div>
+  <div class="tn-h3">Sigilipainikkeet ja sigilipalkki</div>
+  <div class="tn-row">
+    <button class="faust-sigil-btn" aria-label="Analysoi luku"><i data-icon="mercury" data-size="20"></i></button>
+    <button class="faust-sigil-btn" aria-label="Pika-arvio" aria-pressed="true"><i data-icon="alembic" data-size="20"></i></button>
+    <button class="faust-sigil-btn" aria-label="Tee tiivistelmä" disabled><i data-icon="sulfur" data-size="20"></i></button>
+    <button class="faust-sigil-btn" aria-label="Analysoi luku" aria-busy="true" disabled><span class="faust-spinner"></span></button>
+    <button class="faust-sigil-btn faust-sigil-btn--primary" aria-label="Magnum Opus"><i data-icon="stone" data-size="20"></i></button>
+    <button class="faust-sigil-btn faust-sigil-btn--primary" aria-label="Magnum Opus" disabled><i data-icon="stone" data-size="20"></i></button>
+    <button class="faust-sigil-btn faust-sigil-btn--primary" aria-label="Magnum Opus on käynnissä" aria-busy="true" disabled><span class="faust-spinner"></span></button>
+    <button class="faust-sigil-btn faust-sigil-btn--sm" aria-label="Hahmot"><i data-icon="sol" data-size="16"></i></button>
+    <button class="faust-sigil-btn faust-sigil-btn--lg" aria-label="Magnum Opus"><i data-icon="stoneFull" data-size="24"></i></button>
+    <span class="tn-cap">.faust-sigilbar</span>
+    <span class="faust-sigilbar">
+      <button class="faust-sigil-btn" aria-label="Analysoi luku"><i data-icon="mercury" data-size="20"></i></button>
+      <button class="faust-sigil-btn" aria-label="Pika-arvio"><i data-icon="alembic" data-size="20"></i></button>
+      <button class="faust-sigil-btn" aria-label="Tee tiivistelmä"><i data-icon="sulfur" data-size="20"></i></button>
+      <button class="faust-sigil-btn faust-sigil-btn--primary" aria-label="Magnum Opus"><i data-icon="stone" data-size="20"></i></button>
+    </span>
+  </div>
+</section>
+
+<!-- ======================= 4 Fields ======================= -->
+<section class="tn-section" id="kentat" data-title="Kentät">
+  <h2>Kentät</h2>
+  <p class="tn-lead">Yksi kenttä: upotettu pinta, 3:1-reuna, kohdistuksessa korostusreuna ja 2px:n kehä. Virhe on reuna, sävy ja teksti kentän alla.</p>
+  <div class="tn-cols">
+    <div class="tn-stack">
+      <label class="faust-field"><span class="faust-field__label">Projektin nimi</span><input class="faust-input faust-input--author" value="Lumen alla"><span class="faust-field__hint">Näkyy yläpalkissa ja vientitiedoston nimessä.</span></label>
+      <label class="faust-field"><span class="faust-field__label">Tavoitesanamäärä</span><input class="faust-input" value="50" aria-invalid="true"><span class="faust-field__error">Anna luku väliltä 1 000 – 500 000.</span></label>
+      <label class="faust-field"><span class="faust-field__label">Ei käytössä</span><input class="faust-input" value="http://127.0.0.1:23333" disabled></label>
+      <label class="faust-field"><span class="faust-field__label">Vain luku</span><input class="faust-input" value="esimerkki.faust" readonly></label>
+      <label class="faust-field"><span class="faust-field__label">Paikkamerkki</span><input class="faust-input" placeholder="esim. claude-opus-4-5"></label>
+      <label class="faust-field"><span class="faust-field__label">--sm (paneeli)</span><input class="faust-input faust-input--sm" value="23333"></label>
+    </div>
+    <div class="tn-stack">
+      <label class="faust-field"><span class="faust-field__label">Tiivistelmä</span><textarea class="faust-textarea faust-textarea--author">Aino palaa kotikaupunkiinsa kahdenkymmenen vuoden jälkeen.</textarea></label>
+      <label class="faust-field"><span class="faust-field__label">Ohje tekoälylle</span><textarea class="faust-textarea" placeholder="Kerro, mitä haluat muuttaa"></textarea></label>
+      <label class="faust-field"><span class="faust-field__label">Ei käytössä</span><textarea class="faust-textarea" disabled>Luvussa ei ole vielä tekstiä</textarea></label>
+      <div class="faust-field"><span class="faust-field__label">Clauden API-avain</span><input class="faust-input" type="password" value="xxxxxxxxxxxx"><div class="faust-field__row"><button class="faust-btn faust-btn--sm">Tallenna avain</button></div></div>
+    </div>
+    <div class="tn-stack">
+      <label class="faust-field"><span class="faust-field__label">Fontti</span><select class="faust-select"><option>EB Garamond</option><option>Georgia</option><option>Palatino</option></select></label>
+      <label class="faust-field"><span class="faust-field__label">--sm</span><select class="faust-select faust-select--sm"><option>1.8 (oletus)</option><option>1.5</option></select></label>
+      <label class="faust-field"><span class="faust-field__label">Ei käytössä</span><select class="faust-select" disabled><option>Claude Sonnet</option></select></label>
+      <label class="faust-field"><span class="faust-field__label">Virhe</span><select class="faust-select" aria-invalid="true"><option>Valitse malli</option></select><span class="faust-field__error">Valitse malli ennen yhteyden testaamista.</span></label>
+      <div class="faust-field"><span class="faust-field__label">Pituus</span><div class="faust-slider"><input type="range" value="40" style="--value: 40%"><span class="faust-slider__value">800</span></div></div>
+      <div class="faust-field"><span class="faust-field__label">Pituus, ei käytössä</span><div class="faust-slider"><input type="range" value="40" style="--value: 40%" disabled><span class="faust-slider__value">800</span></div></div>
+    </div>
+    <div class="tn-stack">
+      <span class="tn-cap">.faust-check (mono, paneeli)</span>
+      <div class="faust-check-group">
+        <label class="faust-check"><input type="checkbox" checked>Kirjoituskonetila</label>
+        <label class="faust-check"><input type="checkbox">Oikoluku</label>
+        <label class="faust-check"><input type="checkbox" disabled>Ei käytössä</label>
+      </div>
+      <span class="tn-cap">.faust-check--serif, .faust-check-group--grid (valintaikkunan runko)</span>
+      <div class="faust-check-group faust-check-group--grid">
+        <label class="faust-check faust-check--serif"><input type="radio" name="tn-g1" checked><span>Koko käsikirjoitus</span><span class="faust-check__hint">3 lukua</span></label>
+        <label class="faust-check faust-check--serif"><input type="radio" name="tn-g1"><span>Avoin luku</span><span class="faust-check__hint">Saapuminen</span></label>
+        <label class="faust-check faust-check--serif"><input type="radio" name="tn-g1" disabled><span>Valitut luvut</span><span class="faust-check__hint">luvussa ei ole tekstiä</span></label>
+      </div>
+      <span class="tn-cap">.faust-rating (Oma arvio)</span>
+      <div class="tn-row">
+        <span class="faust-rating" role="radiogroup" aria-label="Oma arvio">
+          <button class="faust-rating__star is-on" role="radio" aria-checked="false" aria-label="Anna 1 tähti"><i data-icon="star" data-size="16" data-filled="1"></i></button>
+          <button class="faust-rating__star is-on" role="radio" aria-checked="false" aria-label="Anna 2 tähteä"><i data-icon="star" data-size="16" data-filled="1"></i></button>
+          <button class="faust-rating__star is-on" role="radio" aria-checked="true" aria-label="Anna 3 tähteä"><i data-icon="star" data-size="16" data-filled="1"></i></button>
+          <button class="faust-rating__star" role="radio" aria-checked="false" aria-label="Anna 4 tähteä"><i data-icon="star" data-size="16"></i></button>
+          <button class="faust-rating__star" role="radio" aria-checked="false" aria-label="Anna 5 tähteä"><i data-icon="star" data-size="16"></i></button>
+        </span>
+        <span class="faust-rating" role="radiogroup" aria-label="Oma arvio, ei käytössä">
+          <button class="faust-rating__star" disabled aria-label="1"><i data-icon="star" data-size="16"></i></button>
+          <button class="faust-rating__star" disabled aria-label="2"><i data-icon="star" data-size="16"></i></button>
+          <button class="faust-rating__star" disabled aria-label="3"><i data-icon="star" data-size="16"></i></button>
+        </span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 5 Tabs and segmented ======================= -->
+<section class="tn-section" id="valilehdet" data-title="Välilehdet">
+  <h2>Välilehdet ja segmenttisäädin</h2>
+  <p class="tn-lead">Välilehti on virke monolla ja kultaviiva alla; segmenttisäätimessä valittu on täyttö, ei kehys.</p>
+  <div class="tn-row tn-row--top">
+    <div class="tn-box tn-box--panel tn-w320">
+      <div class="faust-tabs" role="tablist">
+        <button class="faust-tab" role="tab" aria-selected="true">Ulkoasu</button>
+        <button class="faust-tab" role="tab" aria-selected="false">Luku</button>
+        <button class="faust-tab" role="tab" aria-selected="false" aria-busy="true">Projekti</button>
+        <button class="faust-tab" role="tab" aria-selected="false" disabled>Tekoäly</button>
+      </div>
+    </div>
+    <div class="tn-stack">
+      <div class="tn-row">
+        <div class="faust-segmented" role="radiogroup" aria-label="Teema"><button class="faust-segmented__option" role="radio" aria-checked="true">NOX</button><button class="faust-segmented__option" role="radio" aria-checked="false">DEIS</button></div>
+        <div class="faust-segmented" aria-label="Tasaus"><button class="faust-segmented__option" aria-pressed="true" aria-label="Vasen"><i data-icon="alignLeft" data-size="14"></i></button><button class="faust-segmented__option" aria-label="Keskitetty"><i data-icon="alignCenter" data-size="14"></i></button><button class="faust-segmented__option" aria-label="Oikea"><i data-icon="alignRight" data-size="14"></i></button><button class="faust-segmented__option" aria-label="Tasattu"><i data-icon="alignJustify" data-size="14"></i></button></div>
+        <div class="faust-segmented" aria-label="Ei käytössä"><button class="faust-segmented__option" aria-pressed="true" disabled>Ideointi</button><button class="faust-segmented__option" disabled>Kirjoitus</button><button class="faust-segmented__option" disabled>Viimeistely</button></div>
+      </div>
+      <div class="tn-w320"><div class="faust-segmented faust-segmented--block" aria-label="Tekoälyn työtapa"><button class="faust-segmented__option">Ideointi</button><button class="faust-segmented__option" aria-pressed="true">Kirjoitus</button><button class="faust-segmented__option">Viimeistely</button></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 6 Cards, chips, rows, sections ======================= -->
+<section class="tn-section" id="kortit" data-title="Kortit ja rivit">
+  <h2>Kortit, merkit, rivit ja osiot</h2>
+  <p class="tn-lead">Kortti on kulmikas ja varjoton; valittu kortti ja valittu rivi saavat sävyn ja kultaviivan. Merkin rooli näkyy pisteestä tai sanasta, ei väristä yksin.</p>
+  <div class="tn-h3">Kortit (.faust-cardgrid)</div>
+  <div class="faust-cardgrid">
+    <button class="faust-card faust-card--click"><span class="faust-card__head"><span class="faust-card__title">Saapuminen</span><span class="faust-chip faust-chip--dot faust-chip--warning">Muokattavana</span></span><span class="faust-card__body">Aino palaa kotikaupunkiinsa yöjunalla ja ottaa huoneen hotellista torin laidalta.</span><span class="faust-card__foot"><span>Luku 1</span><span>186 sanaa</span></span></button>
+    <button class="faust-card faust-card--click is-selected"><span class="faust-card__head"><span class="faust-card__title">Asianajajan luona</span><span class="faust-chip faust-chip--hollow">Luonnos</span></span><span class="faust-card__body">Valittu kortti: sävy ja kultareuna.</span><span class="faust-card__foot"><span>Luku 2</span><span>93 sanaa</span></span></button>
+    <div class="faust-card is-dragging"><span class="faust-card__head"><span class="faust-card__title">Talo mäellä</span></span><span class="faust-card__body">Raahattava kortti.</span><span class="faust-card__foot"><span>Luku 3</span><span>47 sanaa</span></span></div>
+    <div class="faust-card is-drop-target"><span class="faust-card__head"><span class="faust-card__title">Luku 4</span></span><span class="faust-card__body">Pudotuskohta: kultaviiva vasemmalla.</span><span class="faust-card__foot"><span>Luku 4</span><span>0 sanaa</span></span></div>
+    <div class="faust-card" aria-disabled="true"><span class="faust-card__head"><span class="faust-card__title" style="color: inherit">Ei käytössä</span></span><span class="faust-card__body" style="color: inherit">Kortti, jota ei voi avata.</span></div>
+    <div class="faust-card faust-card--stripe" style="--stripe: var(--thread-2)"><span class="faust-card__head"><span class="faust-card__title">Kadonnut avain</span><span class="faust-chip faust-chip--plain">Sivujuoni</span></span><span class="faust-card__body">Juonilangan kortti: raita on langan väri.</span></div>
+    <div class="faust-card faust-card--compact"><span class="faust-card__head"><span class="faust-card__title">Saapuminen</span><span class="faust-chip faust-chip--dot faust-chip--success">Valmis</span></span><span class="faust-meta">186 sanaa</span></div>
+    <button class="faust-card faust-card--add"><i data-icon="plus" data-size="16"></i><span class="faust-ui">Uusi luku</span></button>
+  </div>
+  <div class="tn-h3">Merkit (.faust-chip), piste, näppäin</div>
+  <div class="tn-row">
+    <span class="faust-chip">Neutraali</span><span class="faust-chip faust-chip--accent">Korostus</span><span class="faust-chip faust-chip--success">Valmis</span><span class="faust-chip faust-chip--warning">Huomio</span><span class="faust-chip faust-chip--error">Virhe</span><span class="faust-chip faust-chip--info">Tieto</span>
+    <span class="faust-chip faust-chip--hollow">Suunnitteilla</span><span class="faust-chip faust-chip--dot">Luonnos</span><span class="faust-chip faust-chip--dot faust-chip--warning">Muokattavana</span><span class="faust-chip faust-chip--dot faust-chip--success">Valmis</span><span class="faust-chip faust-chip--struck">Hylätty</span>
+    <span class="faust-chip faust-chip--plain">Sade</span><span class="faust-chip faust-chip--count">3</span><span class="faust-chip faust-chip--count">12</span>
+  </div>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">painikkeena</span>
+    <button class="faust-chip">Jatkuvuus</button><button class="faust-chip" aria-pressed="true">Tyyli</button><button class="faust-chip" disabled>Ei käytössä</button><button class="faust-chip" aria-pressed="true" disabled>Lukittu valinta</button>
+    <span class="tn-cap">.faust-dot</span><span class="faust-dot" style="color: var(--success)"></span><span class="faust-dot" style="color: var(--warning)"></span><span class="faust-dot" style="color: var(--error)"></span>
+    <span class="tn-cap">.faust-kbd</span><span class="faust-kbd">⇧</span><span class="faust-kbd">⌘</span><span class="faust-kbd">K</span><span class="faust-kbd">Esc</span>
+  </div>
+  <div class="tn-h3">Rivit (.faust-row) paneelin pinnalla</div>
+  <div class="tn-row tn-row--top">
+    <div class="tn-box tn-box--panel tn-w220 tn-stack" style="gap: 1px">
+      <button class="faust-row faust-row--two faust-row--author is-selected"><span class="faust-row__text"><span class="faust-row__title">Saapuminen</span><span class="faust-row__meta">186 sanaa</span></span><span class="faust-row__actions"><span class="faust-btn faust-btn--icon faust-btn--sm"><i data-icon="arrowDown" data-size="14"></i></span><span class="faust-btn faust-btn--icon faust-btn--sm faust-btn--danger"><i data-icon="trash" data-size="14"></i></span></span></button>
+      <button class="faust-row faust-row--two faust-row--author"><span class="faust-row__text"><span class="faust-row__title">Asianajajan luona</span><span class="faust-row__meta">93 sanaa</span></span></button>
+      <button class="faust-row faust-row--two faust-row--author" disabled><span class="faust-row__text"><span class="faust-row__title">Ei käytössä</span><span class="faust-row__meta">0 sanaa</span></span></button>
+    </div>
+    <div class="tn-box tn-box--panel tn-w220 tn-stack" style="gap: 1px">
+      <button class="faust-row"><span class="faust-row__icon"><i data-icon="sol" data-size="14"></i></span><span class="faust-row__title">Hahmot</span><span class="faust-chip faust-chip--count" style="margin-left: auto">4</span></button>
+      <button class="faust-row" aria-current="true"><span class="faust-row__icon"><i data-icon="terra" data-size="14"></i></span><span class="faust-row__title">Paikat</span><span class="faust-chip faust-chip--count" style="margin-left: auto">2</span></button>
+      <button class="faust-row"><span class="faust-row__icon"><i data-icon="lemniscate" data-size="14"></i></span><span class="faust-row__title">Juonilangat</span><span class="faust-row__meta" style="margin-left: auto">3</span></button>
+      <button class="faust-row is-error"><span class="faust-row__icon"><i data-icon="warning" data-size="14"></i></span><span class="faust-row__title">Tiedostoviite</span><span class="faust-row__meta" style="margin-left: auto">ei löydy</span></button>
+      <div class="faust-row faust-row--static"><span class="faust-row__icon"><i data-icon="clock" data-size="14"></i></span><span class="faust-row__title">Staattinen rivi</span><span class="faust-row__meta" style="margin-left: auto">17.11.</span></div>
+    </div>
+    <div class="tn-box tn-box--panel tn-w320">
+      <div class="faust-section"><div class="faust-section__head"><span class="faust-section__title">Tavoitteet</span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Nollaa sanalaskuri"><i data-icon="refresh" data-size="14"></i></button></div>
+        <div class="faust-kv"><span>Käsikirjoituksen tavoite</span><span>80 000</span></div>
+        <div class="faust-kv"><span>Kirjoituskerran tavoite</span><span>500</span></div>
+        <div class="tn-row" style="margin-top: var(--sp-2)"><span class="faust-stat faust-stat--hero"><b>326</b> / 80 000 sanaa</span><span class="faust-stat"><b>4</b> lukua</span></div>
+      </div>
+      <div class="faust-section"><div class="faust-section__head"><span class="faust-section__title">Parannusehdotukset</span></div>
+        <details class="faust-disclosure"><summary><i data-icon="chevronRight" data-size="12"></i>Suljettu (3)</summary><p class="faust-serif">Sisältö</p></details>
+        <details class="faust-disclosure" open><summary><i data-icon="chevronRight" data-size="12"></i>Avattu (2)</summary><p class="faust-serif">Lisää aistihavaintoja aseman kuvaukseen.</p></details>
+      </div>
+    </div>
+    <div class="tn-w320 tn-stack">
+      <span class="tn-cap">.faust-excerpt</span>
+      <div class="faust-excerpt"><span class="faust-excerpt__caption">Valittu teksti · Saapuminen</span><span class="faust-excerpt__text">Kaupunki oli pienempi kuin hän muisti. Asemarakennuksen kello näytti väärää aikaa, ja torin laidalla seisova hotelli oli maalattu uudelleen.</span></div>
+      <span class="tn-cap">.faust-shortcuts</span>
+      <div class="faust-shortcuts" style="grid-template-columns: minmax(0, 1fr)">
+        <div class="faust-shortcut"><span>Tallenna nimellä</span><span class="faust-shortcut__keys"><kbd class="faust-kbd">⇧</kbd><kbd class="faust-kbd">⌘</kbd><kbd class="faust-kbd">S</kbd></span></div>
+        <div class="faust-shortcut"><span>Etsi seuraava / edellinen</span><span style="display: inline-flex; gap: var(--sp-2); flex: none"><span class="faust-shortcut__keys"><kbd class="faust-kbd">⌘</kbd><kbd class="faust-kbd">G</kbd></span><span class="faust-shortcut__keys"><kbd class="faust-kbd">⇧</kbd><kbd class="faust-kbd">⌘</kbd><kbd class="faust-kbd">G</kbd></span></span></div>
+      </div>
+    </div>
+  </div>
+  <div class="tn-h3">Aikajana (.faust-timeline)</div>
+  <div class="tn-box tn-box--raised">
+    <div class="faust-timeline"><div class="faust-timeline__grid" style="--n: 4">
+      <span></span>
+      <div class="faust-card faust-card--compact"><span class="faust-card__title">Saapuminen</span><span class="faust-chip faust-chip--dot faust-chip--success">Valmis</span></div>
+      <div class="faust-card faust-card--compact"><span class="faust-card__title">Asianajajan luona</span><span class="faust-chip faust-chip--dot faust-chip--warning">Muokattavana</span></div>
+      <div class="faust-card faust-card--compact"><span class="faust-card__title">Talo mäellä</span><span class="faust-chip faust-chip--dot">Luonnos</span></div>
+      <div class="faust-card faust-card--compact"><span class="faust-card__title">Luku 4</span><span class="faust-chip faust-chip--hollow">Suunnitteilla</span></div>
+      <span></span>
+      <span class="faust-timeline__name">Perintö</span><span class="faust-timeline__bar" style="--from: 0; --to: 3; --thread: var(--thread-1)"></span><span class="faust-chip faust-chip--success faust-timeline__status" style="grid-column: -2">Ratkaistu</span>
+      <span class="faust-timeline__name">Kadonnut avain</span><span class="faust-timeline__bar is-open" style="--from: 1; --to: 2; --thread: var(--thread-2)"></span><span class="faust-chip faust-timeline__status" style="grid-column: -2">Avoin</span>
+      <span class="faust-timeline__name">Naapurin salaisuus</span><span class="faust-timeline__bar" style="--from: 2; --to: 3; --thread: var(--thread-3)"></span><span class="faust-chip faust-chip--struck faust-timeline__status" style="grid-column: -2">Hylätty</span>
+    </div></div>
+  </div>
+</section>
+
+<!-- ======================= 7 Progress, spinner, empty ======================= -->
+<section class="tn-section" id="edistyminen" data-title="Edistyminen">
+  <h2>Edistyminen, odotus ja tyhjä tila</h2>
+  <p class="tn-lead">Edistyminen on kultaviiva, odotus on pyörivä kehä eikä koskaan kuvake, ja tyhjä tila on yksi kursiivirivi, vihje ja enintään yksi toiminto.</p>
+  <div class="tn-cols">
+    <div class="tn-stack" style="gap: var(--sp-3)">
+      <span class="tn-cap">.faust-progress 40 %</span><div class="faust-progress" style="--value: 40%"><i></i></div>
+      <span class="tn-cap">--goal 65 %</span><div class="faust-progress faust-progress--goal" style="--value: 65%"><i></i></div>
+      <span class="tn-cap">.is-complete</span><div class="faust-progress faust-progress--goal is-complete" style="--value: 100%"><i></i></div>
+      <span class="tn-cap">.is-error</span><div class="faust-progress is-error" style="--value: 55%"><i></i></div>
+      <span class="tn-cap">--indeterminate</span><div class="faust-progress faust-progress--indeterminate"><i></i></div>
+      <div class="tn-row"><span class="tn-cap">.faust-spinner --sm, perus, --lg</span><span class="faust-spinner faust-spinner--sm"></span><span class="faust-spinner"></span><span class="faust-spinner faust-spinner--lg"></span></div>
+    </div>
+    <div class="tn-box tn-box--panel"><div class="faust-empty faust-empty--compact"><span class="faust-empty__title">Ei viimeisimpiä projekteja</span><span class="faust-empty__hint">--compact</span></div></div>
+    <div class="tn-box tn-box--raised"><div class="faust-empty"><span class="faust-empty__icon"><i data-icon="sol" data-size="40"></i></span><span class="faust-empty__title">Tarinassa ei ole vielä hahmoja.</span><span class="faust-empty__hint">Suunnittele hahmot tai luo ensimmäinen hahmo itse.</span><button class="faust-btn faust-empty__action">Uusi hahmo…</button></div></div>
+    <div class="tn-box tn-box--raised"><div class="faust-empty is-error"><span class="faust-empty__icon"><i data-icon="error" data-size="40"></i></span><span class="faust-empty__title">Tekoälypyyntö epäonnistui</span><span class="faust-empty__hint">Varmista, että Cherry Studio on käynnissä.</span><button class="faust-btn faust-empty__action">Yritä uudelleen</button></div></div>
+  </div>
+  <div class="tn-box tn-box--paper" style="margin-top: var(--sp-4)"><div class="faust-empty faust-empty--page"><span class="faust-empty__icon"><i data-icon="stoneFull" data-size="40"></i></span><span class="faust-empty__title">Luvussa ei ole vielä tekstiä</span><span class="faust-empty__hint">--page: aloita kirjoittaminen tai anna Magnum Opuksen kirjoittaa luku.</span></div></div>
+</section>
+
+<!-- ======================= 8 Notification and callout ======================= -->
+<section class="tn-section tn-static" id="ilmoitukset" data-title="Ilmoitukset">
+  <h2>Ilmoitus ja huomautus</h2>
+  <p class="tn-lead">Ilmoitus korvaa natiivit alert-ikkunat. Laji näkyy kuvakkeen muodosta ja sanamuodosta, ei väristä yksin. Painikkeet näyttävät oikean ilmoituksen sivun yläreunassa (ui.js: notify ja alert-sovitin).</p>
+  <div class="tn-row">
+    <button class="faust-btn" data-notify="success">Onnistui (4 s)</button><button class="faust-btn" data-notify="info">Tieto (4 s)</button><button class="faust-btn" data-notify="warning">Huomio (8 s)</button><button class="faust-btn" data-notify="error">Virhe (pysyy)</button><button class="faust-btn" data-notify="busy">Käynnissä</button><button class="faust-btn" data-notify="alert1">alert('Testi')</button><button class="faust-btn" data-notify="alert2">kaksirivinen alert</button>
+  </div>
+  <div class="tn-cols tn-cols--2" style="margin-top: var(--sp-4)">
+    <div class="tn-stack">
+      <div class="faust-toast faust-toast--success" role="status"><span class="faust-toast__icon"><i data-icon="success" data-size="16"></i></span><span class="faust-toast__text">Projekti tallennettu</span><button class="faust-btn faust-btn--icon faust-btn--sm faust-toast__close" aria-label="Sulje ilmoitus"><i data-icon="close" data-size="14"></i></button><span class="faust-toast__detail">~/Kirjat/esimerkki.faust</span></div>
+      <div class="faust-toast faust-toast--info" role="status"><span class="faust-toast__icon"><i data-icon="info" data-size="16"></i></span><span class="faust-toast__text">Vertailu: ”Ennen editointia”</span><button class="faust-btn faust-btn--icon faust-btn--sm faust-toast__close" aria-label="Sulje ilmoitus"><i data-icon="close" data-size="14"></i></button><span class="faust-toast__detail">Tilannekuva: 12 000 sanaa
+Nyt: 13 450 sanaa</span></div>
+      <div class="faust-toast faust-toast--warning" role="alert"><span class="faust-toast__icon"><i data-icon="warning" data-size="16"></i></span><span class="faust-toast__text">Valitse ensin tekstistä kohta, jonka haluat kirjoittaa uudelleen</span><button class="faust-btn faust-btn--icon faust-btn--sm faust-toast__close" aria-label="Sulje ilmoitus"><i data-icon="close" data-size="14"></i></button></div>
+      <div class="faust-toast faust-toast--error" role="alert"><span class="faust-toast__icon"><i data-icon="error" data-size="16"></i></span><span class="faust-toast__text">Vienti epäonnistui</span><button class="faust-btn faust-btn--icon faust-btn--sm faust-toast__close" aria-label="Sulje ilmoitus"><i data-icon="close" data-size="14"></i></button><span class="faust-toast__detail">Tiedostoon ei voitu kirjoittaa.</span><span class="faust-toast__actions"><button class="faust-btn faust-btn--sm">Yritä uudelleen</button></span></div>
+      <div class="faust-toast faust-toast--busy" role="status"><span class="faust-toast__icon"><span class="faust-spinner"></span></span><span class="faust-toast__text">Magnum Opus on käynnissä: tekoäly kirjoittaa lukua…</span><button class="faust-btn faust-btn--icon faust-btn--sm faust-toast__close" aria-label="Sulje ilmoitus"><i data-icon="close" data-size="14"></i></button><span class="faust-toast__actions"><button class="faust-btn faust-btn--sm">Peruuta</button></span><div class="faust-progress" style="--value: 45%"><i></i></div></div>
+    </div>
+    <div class="tn-box tn-box--panel tn-stack">
+      <div class="faust-callout"><span class="faust-callout__icon"><i data-icon="info" data-size="14"></i></span><span class="faust-callout__title">Neutraali</span><span class="faust-callout__body">Hinta riippuu Cherry Studiossa valitusta mallista.</span></div>
+      <div class="faust-callout faust-callout--hint"><span class="faust-callout__icon"><i data-icon="idea" data-size="14"></i></span><span class="faust-callout__title">Vihje</span><span class="faust-callout__body">Valitse ensin tekstistä kohta, jonka haluat kirjoittaa uudelleen.</span></div>
+      <div class="faust-callout faust-callout--success"><span class="faust-callout__icon"><i data-icon="success" data-size="14"></i></span><span class="faust-callout__title">Avain tallennettu</span><span class="faust-callout__body">Yhteys tekoälyn lähteeseen toimii.</span></div>
+      <div class="faust-callout faust-callout--warning"><span class="faust-callout__icon"><i data-icon="warning" data-size="14"></i></span><span class="faust-callout__title">Avain puuttuu</span><span class="faust-callout__body">Lisää API-avain ennen yhteyden testaamista.</span><span class="faust-callout__actions"><button class="faust-btn faust-btn--sm">Tekoälyasetukset…</button></span></div>
+      <div class="faust-callout faust-callout--error"><span class="faust-callout__icon"><i data-icon="error" data-size="14"></i></span><span class="faust-callout__title">Tekoälypyyntö epäonnistui</span><span class="faust-callout__body">Cherry Studion yhdyskäytävään ei saada yhteyttä.</span></div>
+      <div class="faust-callout faust-callout--info"><span class="faust-callout__icon"><i data-icon="info" data-size="14"></i></span><span class="faust-callout__title">Tieto</span><span class="faust-callout__body">Tilannekuvat tallentuvat projektitiedostoon.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 9 Dialog ======================= -->
+<section class="tn-section tn-static" id="valintaikkunat" data-title="Valintaikkunat">
+  <h2>Valintaikkuna</h2>
+  <p class="tn-lead">Yksi kehys: nostettu pinta, 2px:n kehys, 8px:n kulmat. Otsikkorivi ja alarivi pysyvät, vain runko vierii. Painikkeet avaavat oikean ikkunan himmennyksen päälle; kysymys avautuu aina ylimmäksi.</p>
+  <div class="tn-row"><button class="faust-btn" data-open="tn-dlg">Avaa valintaikkuna</button><button class="faust-btn" data-open="tn-confirm">Avaa kysymys (--top)</button></div>
+  <div class="tn-row tn-row--top" style="margin-top: var(--sp-4)">
+    <div class="faust-dialog faust-dialog--sm" role="alertdialog" aria-label="Poistetaanko luku?">
+      <div class="faust-dialog__header"><div class="faust-dialog__heading"><h2 class="faust-dialog__title">Poistetaanko luku?</h2></div></div>
+      <div class="faust-dialog__body">Luku ”Talo mäellä” ja sen 47 sanaa poistetaan. Voit kumota muutoksen valitsemalla Muokkaa → Kumoa.</div>
+      <div class="faust-dialog__footer"><button class="faust-btn faust-btn--lg">Peruuta</button><button class="faust-btn faust-btn--lg faust-btn--danger faust-btn--primary">Poista luku</button></div>
+    </div>
+    <div class="faust-dialog faust-dialog--sm faust-dialog--plain" role="dialog" aria-label="Kirjanmerkin nimi">
+      <div class="faust-dialog__title">Kirjanmerkin nimi</div>
+      <input class="faust-input" value="Konduktöörin katse">
+      <div class="tn-row" style="justify-content: flex-end; margin-top: var(--sp-4)"><button class="faust-btn faust-btn--lg">Peruuta</button><button class="faust-btn faust-btn--lg faust-btn--primary">OK</button></div>
+    </div>
+    <div class="faust-dialog faust-dialog--md" role="dialog" aria-label="Vie käsikirjoitus" aria-busy="true" style="max-height: 420px">
+      <div class="faust-dialog__header"><div class="faust-dialog__heading"><h2 class="faust-dialog__title">Vie käsikirjoitus</h2><div class="faust-dialog__sub">3 lukua · 326 sanaa</div></div><button class="faust-btn faust-btn--icon" aria-label="Sulje"><i data-icon="close" data-size="16"></i></button></div>
+      <div class="faust-dialog__body">
+        <div class="faust-callout faust-callout--error" style="margin-bottom: var(--sp-4)"><span class="faust-callout__icon"><i data-icon="error" data-size="14"></i></span><span class="faust-callout__title">Vienti epäonnistui</span><span class="faust-callout__body">Tiedostoon ei voitu kirjoittaa.</span></div>
+        <div class="faust-label" style="margin-bottom: var(--sp-2)">Mitä viedään</div>
+        <div class="faust-check-group faust-check-group--grid"><label class="faust-check faust-check--serif"><input type="radio" name="tn-d1" checked><span>Koko käsikirjoitus</span><span class="faust-check__hint">3 lukua</span></label><label class="faust-check faust-check--serif"><input type="radio" name="tn-d1"><span>Avoin luku</span><span class="faust-check__hint">Saapuminen</span></label></div>
+        <div class="faust-label" style="margin: var(--sp-5) 0 var(--sp-2)">Muoto</div>
+        <div class="faust-check-group faust-check-group--grid"><label class="faust-check faust-check--serif"><input type="radio" name="tn-d2" checked><span>Word (.docx)</span><span class="faust-check__hint">Kustantajalle ja jatkomuokkaukseen</span></label><label class="faust-check faust-check--serif"><input type="radio" name="tn-d2"><span>PDF</span><span class="faust-check__hint">Valmis sivuasettelu, sivunumerot</span></label><label class="faust-check faust-check--serif"><input type="radio" name="tn-d2"><span>EPUB</span><span class="faust-check__hint">E-kirja lukulaitteisiin</span></label></div>
+      </div>
+      <div class="faust-progress faust-progress--indeterminate"><i></i></div>
+      <div class="faust-dialog__footer"><span class="faust-dialog__footer-start"><span class="faust-meta">Viedään lukua 2 / 3</span></span><button class="faust-btn faust-btn--lg" disabled>Sulje</button><button class="faust-btn faust-btn--lg faust-btn--primary" aria-busy="true" disabled><span class="faust-spinner faust-spinner--sm"></span>Viedään…</button></div>
+    </div>
+  </div>
+  <div class="tn-row tn-row--top">
+    <div class="faust-dialog faust-dialog--lg" role="dialog" aria-label="Hahmot" style="max-height: 360px">
+      <div class="faust-dialog__header"><div class="faust-dialog__heading"><h2 class="faust-dialog__title"><i data-icon="sol" data-size="20"></i>Hahmot</h2><div class="faust-dialog__sub">Tarinan hahmot ja heidän profiilinsa</div></div><div class="faust-dialog__actions"><button class="faust-btn"><i data-icon="plus" data-size="14"></i>Uusi hahmo…</button></div><button class="faust-btn faust-btn--icon" aria-label="Sulje"><i data-icon="close" data-size="16"></i></button></div>
+      <div class="faust-dialog__body">
+        <button class="faust-row faust-row--two faust-row--author is-selected"><span class="faust-row__icon"><i data-icon="sol" data-size="14"></i></span><span class="faust-row__text"><span class="faust-row__title">Aino Kivelä</span><span class="faust-row__meta">Näkökulmahahmo · 3 lukua</span></span></button>
+        <button class="faust-row faust-row--two faust-row--author"><span class="faust-row__icon"><i data-icon="sol" data-size="14"></i></span><span class="faust-row__text"><span class="faust-row__title">Asianajaja Lehto</span><span class="faust-row__meta">1 luku</span></span></button>
+        <button class="faust-row faust-row--two faust-row--author"><span class="faust-row__icon"><i data-icon="sol" data-size="14"></i></span><span class="faust-row__text"><span class="faust-row__title">Vastaanoton nainen</span><span class="faust-row__meta">1 luku</span></span></button>
+      </div>
+      <div class="faust-dialog__footer"><span class="faust-dialog__footer-start"><button class="faust-btn faust-btn--lg faust-btn--danger">Poista hahmo</button></span><button class="faust-btn faust-btn--lg">Sulje</button><button class="faust-btn faust-btn--lg faust-btn--primary">Tallenna</button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 10 Popover, menu, tooltip ======================= -->
+<section class="tn-section tn-static" id="kerrokset" data-title="Ponnahdukset">
+  <h2>Ponnahdusikkuna, valikko ja työkaluvihje</h2>
+  <p class="tn-lead">Sovelluksessa nämä piirretään kerrosisäntään (.faust-layer) kiinteään kohtaan ankkurin mukaan. Tässä ne ovat sivun virrassa.</p>
+  <div class="tn-row tn-row--top">
+    <div class="faust-popover faust-popover--modal" style="--popover-w: 300px">
+      <div class="faust-popover__head"><span class="faust-popover__title">Kirjanmerkit <span class="faust-meta">2</span></span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Sulje"><i data-icon="close" data-size="14"></i></button></div>
+      <div class="faust-popover__body">
+        <button class="faust-row faust-row--two faust-row--author"><span class="faust-row__text"><span class="faust-row__title">Konduktöörin katse</span><span class="faust-row__meta">Saapuminen</span><span class="faust-quote faust-clamp-2">”…katsoi häntä pitkään, niin kuin olisi tunnistanut…”</span></span></button>
+        <button class="faust-row faust-row--two faust-row--author"><span class="faust-row__text"><span class="faust-row__title">Avain 17</span><span class="faust-row__meta">Asianajajan luona</span><span class="faust-quote faust-clamp-2">”…kaiverrettu numero 17…”</span></span></button>
+      </div>
+      <div class="faust-popover__foot"><button class="faust-btn faust-btn--sm"><i data-icon="bookmarkAdd" data-size="14"></i>Kirjanmerkki…</button></div>
+    </div>
+    <div class="faust-popover faust-popover--header faust-menu" role="menu">
+      <div class="faust-menu__label">Viimeisimmät projektit</div>
+      <button class="faust-menu__item faust-menu__item--author" role="menuitem">Lumen alla</button>
+      <button class="faust-menu__item faust-menu__item--author" role="menuitem" data-active="true">Talo mäellä (osoitettu)</button>
+      <div class="faust-menu__sep"></div>
+      <button class="faust-menu__item" role="menuitemcheckbox" aria-checked="true"><i data-icon="check" data-size="14"></i>Kirjoituskonetila<span class="faust-menu__shortcut">⇧⌘T</span></button>
+      <button class="faust-menu__item" role="menuitem"><i data-icon="exportOut" data-size="14"></i>Vie…<span class="faust-menu__shortcut">⌘E</span></button>
+      <button class="faust-menu__item" role="menuitem" disabled><i data-icon="history" data-size="14"></i>Palauta tämä versio…<span class="faust-menu__shortcut">⌘R</span></button>
+      <div class="faust-menu__sep"></div>
+      <button class="faust-menu__item faust-menu__item--danger" role="menuitem"><i data-icon="trash" data-size="14"></i>Tyhjennä valikko</button>
+    </div>
+    <div class="tn-stack">
+      <div class="faust-tooltip"><div class="faust-tooltip__title">Scrutinium profundum</div>Analysoi luku: tekoäly arvioi rakenteen, tempon ja kielen.<span class="faust-tooltip__kbd">⇧⌘A</span></div>
+      <div class="faust-tooltip">Näytä tietopaneeli<span class="faust-tooltip__kbd">⌘2</span></div>
+      <div class="faust-tooltip">Kätke sivupalkki</div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 11 Marks, diff, result ======================= -->
+<section class="tn-section" id="merkinnat" data-title="Merkinnät">
+  <h2>Merkinnät tekstissä, vertailu ja tulos</h2>
+  <p class="tn-lead">Jokaisella merkinnällä on oma viivansa, joten kahta ei eroteta pelkällä värillä. Levossa merkintä on viivansa; pohja piirretään vain uudelle tekstille, hakuosumalle ja osoitetulle tai tarkasteltavalle merkinnälle.</p>
+  <div class="tn-cols tn-cols--2">
+    <div class="tn-box tn-box--paper"><div class="faust-manuscript" style="--page-inset: 0px">Juna pysähtyi <span class="faust-mark faust-mark--ins">asemalle hieman ennen puoltayötä</span> <span class="faust-mark faust-mark--del">myöhään illalla</span>. Laiturilla ei ollut <span class="faust-mark faust-mark--search">ketään</span>, vain <span class="faust-mark faust-mark--search-current">lumi</span>, joka satoi <span class="faust-mark faust-mark--ai">vinosti lamppujen valossa</span>. <span class="faust-mark faust-mark--mention">Aino</span> nosti laukkunsa. Kello <span class="faust-mark faust-mark--finding">näytti väärää aikaa</span>, hotelli oli <span class="faust-mark faust-mark--finding" data-severity="error">maalattu kaksikymmentä vuotta sitten</span> ja ikkunat olivat <span class="faust-mark faust-mark--finding" data-severity="note">pimeät</span>. Hän oli <span class="faust-mark faust-mark--avoid">jotenkin</span> väsynyt. <span class="faust-mark faust-mark--todo">[TODO: tarkista junan aikataulu]</span> <span class="faust-mark faust-mark--settled">Hyväksytty teksti asettuu paikalleen.</span></div></div>
+    <div class="tn-box tn-box--paper"><span class="tn-cap">.is-active (tarkasteltava tai osoitettu)</span><div class="faust-manuscript" style="--page-inset: 0px">Juna pysähtyi <span class="faust-mark faust-mark--ins is-active">asemalle hieman ennen puoltayötä</span> <span class="faust-mark faust-mark--del is-active">myöhään illalla</span>. Lumi satoi <span class="faust-mark faust-mark--ai is-active">vinosti lamppujen valossa</span>. Kello <span class="faust-mark faust-mark--finding is-active">näytti väärää aikaa</span>, hotelli oli <span class="faust-mark faust-mark--finding is-active" data-severity="error">maalattu kaksikymmentä vuotta sitten</span> ja ikkunat olivat <span class="faust-mark faust-mark--finding is-active" data-severity="note">pimeät</span>. Hän oli <span class="faust-mark faust-mark--avoid is-active">jotenkin</span> väsynyt.</div></div>
+  </div>
+  <div class="tn-h3">Tulos (.faust-result) ja vertailu (.faust-diff)</div>
+  <div class="tn-cols tn-cols--2">
+    <div class="faust-result faust-result--floating" style="max-height: none; width: 100%">
+      <div class="faust-result__head"><span class="faust-label"><i data-icon="mercury" data-size="14"></i> Analysoi luku</span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Sulje"><i data-icon="close" data-size="14"></i></button></div>
+      <div class="faust-result__context">”Kaupunki oli pienempi kuin hän muisti. Asemarakennuksen kello näytti väärää aikaa…”</div>
+      <div class="faust-result__body"><div class="faust-diff faust-diff--unified"><p>Kaupunki oli <span class="faust-mark faust-mark--del">pienempi kuin hän muisti</span> <span class="faust-mark faust-mark--ins">kutistunut</span>. Asemarakennuksen kello näytti väärää aikaa.</p></div></div>
+      <div class="faust-result__actions"><button class="faust-btn faust-btn--quiet">Hylkää</button><button class="faust-btn faust-btn--primary">Korvaa valittu teksti</button></div>
+    </div>
+    <div class="faust-dialog faust-dialog--lg" role="dialog" aria-label="Versioiden vertailu" style="max-height: 280px; animation: none">
+      <div class="faust-dialog__header"><div class="faust-dialog__heading"><h2 class="faust-dialog__title">Versioiden vertailu</h2></div><button class="faust-btn faust-btn--icon" aria-label="Sulje"><i data-icon="close" data-size="16"></i></button></div>
+      <div class="faust-dialog__body faust-dialog__body--flush">
+        <div class="faust-diff faust-diff--split">
+          <div class="faust-diff__col"><div class="faust-diff__colhead"><span class="faust-label">Versio 1</span><span class="faust-diff__count faust-diff__count--del">12</span></div><p>Kaupunki oli <span class="faust-mark faust-mark--del">pienempi kuin hän muisti</span>.</p><p>Hotellin aulassa paloi yksi lamppu.</p><p>Vastaanoton takana istui vanha nainen.</p></div>
+          <div class="faust-diff__rule"></div>
+          <div class="faust-diff__col"><div class="faust-diff__colhead"><span class="faust-label">Versio 2</span><span class="faust-diff__count faust-diff__count--ins">9</span></div><p>Kaupunki oli <span class="faust-mark faust-mark--ins">kutistunut</span>.</p><p>Hotellin aulassa paloi yksi lamppu.</p><p>Vastaanoton takana istui vanha nainen.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 12 Dock, suggestion bar, voice bar, inline prompt ======================= -->
+<section class="tn-section" id="telakka" data-title="Telakka">
+  <h2>Ehdotuspalkki, äänipalkki ja rivikehote</h2>
+  <p class="tn-lead">Telakan (.faust-dock) asukkaat. Ehdotuspalkin tiiviit muodot seuraavat sivun leveyttä (@container page): 620, 520 ja 420 pikseliä.</p>
+  <div class="tn-stack" style="gap: var(--sp-3); align-items: flex-start">
+    <div style="container: page / inline-size; width: 620px"><div class="faust-suggestbar" role="toolbar" aria-label="Ehdotukset" style="width: fit-content"><span class="faust-suggestbar__label"><i data-icon="star8" data-size="14"></i><span class="faust-suggestbar__name">Ehdotus</span></span><span class="faust-suggestbar__count">2 / 7</span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Edellinen"><i data-icon="chevronUp" data-size="14"></i></button><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Seuraava"><i data-icon="chevronDown" data-size="14"></i></button><span class="faust-suggestbar__sep faust-suggestbar__sep--lead"></span><button class="faust-btn faust-btn--quiet faust-btn--sm faust-suggestbar__reject"><i data-icon="close" data-size="14" data-class="faust-suggestbar__compact"></i><span class="faust-btn__label">Hylkää</span></button><button class="faust-btn faust-btn--primary faust-btn--sm faust-suggestbar__accept"><i data-icon="check" data-size="14" data-class="faust-suggestbar__compact"></i><span class="faust-btn__label">Hyväksy</span></button><span class="faust-suggestbar__sep"></span><button class="faust-btn faust-btn--quiet faust-btn--sm faust-suggestbar__all"><i data-icon="checkAll" data-size="14" data-class="faust-suggestbar__compact"></i><span class="faust-btn__label">Hyväksy kaikki</span></button></div></div>
+    <div style="container: page / inline-size; width: 520px"><div class="faust-suggestbar" role="toolbar" aria-label="Ehdotukset, 520" style="width: fit-content"><span class="faust-suggestbar__label"><i data-icon="star8" data-size="14"></i><span class="faust-suggestbar__name">Ehdotus</span></span><span class="faust-suggestbar__count">2 / 7</span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Edellinen"><i data-icon="chevronUp" data-size="14"></i></button><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Seuraava"><i data-icon="chevronDown" data-size="14"></i></button><span class="faust-suggestbar__sep faust-suggestbar__sep--lead"></span><button class="faust-btn faust-btn--quiet faust-btn--sm faust-suggestbar__reject"><i data-icon="close" data-size="14" data-class="faust-suggestbar__compact"></i><span class="faust-btn__label">Hylkää</span></button><button class="faust-btn faust-btn--primary faust-btn--sm faust-suggestbar__accept"><i data-icon="check" data-size="14" data-class="faust-suggestbar__compact"></i><span class="faust-btn__label">Hyväksy</span></button><span class="faust-suggestbar__sep"></span><button class="faust-btn faust-btn--quiet faust-btn--sm faust-suggestbar__all" aria-label="Hyväksy kaikki"><i data-icon="checkAll" data-size="14" data-class="faust-suggestbar__compact"></i><span class="faust-btn__label">Hyväksy kaikki</span></button></div></div>
+    <div style="container: page / inline-size; width: 420px"><div class="faust-suggestbar" role="toolbar" aria-label="Ehdotukset, 420" aria-busy="true" style="width: fit-content"><span class="faust-suggestbar__label"><i data-icon="star8" data-size="14"></i><span class="faust-suggestbar__name">Ehdotus</span></span><span class="faust-suggestbar__count">2 / 7</span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Edellinen"><i data-icon="chevronUp" data-size="14"></i></button><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Seuraava"><i data-icon="chevronDown" data-size="14"></i></button><span class="faust-suggestbar__sep faust-suggestbar__sep--lead"></span><button class="faust-btn faust-btn--quiet faust-btn--sm faust-suggestbar__reject" aria-label="Hylkää"><i data-icon="close" data-size="14" data-class="faust-suggestbar__compact"></i><span class="faust-btn__label">Hylkää</span></button><button class="faust-btn faust-btn--primary faust-btn--sm faust-suggestbar__accept" aria-label="Hyväksy"><i data-icon="check" data-size="14" data-class="faust-suggestbar__compact"></i><span class="faust-btn__label">Hyväksy</span></button><span class="faust-suggestbar__sep"></span><button class="faust-btn faust-btn--quiet faust-btn--sm faust-suggestbar__all" aria-label="Hyväksy kaikki"><i data-icon="checkAll" data-size="14" data-class="faust-suggestbar__compact"></i><span class="faust-btn__label">Hyväksy kaikki</span></button></div></div>
+    <div class="tn-row">
+      <div class="faust-voicebar" data-state="listening"><span class="faust-voicebar__state"><button class="faust-btn faust-btn--icon faust-btn--sm" data-state="listening" aria-label="Kuunnellaan – puhu nyt"><i data-icon="mic" data-size="14"></i></button>Kuunnellaan – puhu nyt</span><span class="faust-voicebar__heard">”tiivistä tämä kappale kahteen virkkeeseen”</span><button class="faust-btn faust-btn--quiet faust-btn--sm">Peruuta</button></div>
+      <div class="faust-voicebar" data-state="processing"><span class="faust-voicebar__state"><span class="faust-spinner faust-spinner--sm"></span>Käsitellään</span><span class="faust-voicebar__heard">”tiivistä tämä kappale kahteen virkkeeseen”</span><button class="faust-btn faust-btn--quiet faust-btn--sm">Peruuta</button></div>
+    </div>
+    <div class="tn-cols" style="width: 100%">
+      <div class="faust-inline-prompt-slot"><div class="faust-inline-prompt"><span class="faust-inline-prompt__sigil"><i data-icon="star8" data-size="16"></i></span><textarea class="faust-inline-prompt__input" rows="1" aria-label="Pyyntö">Tiivistä tämä kappale kahteen virkkeeseen</textarea><button class="faust-btn faust-btn--icon faust-btn--primary" aria-label="Lähetä"><i data-icon="send" data-size="14"></i></button><span class="faust-inline-prompt__hint">Enter lähettää · Esc sulkee</span></div></div>
+      <div class="faust-inline-prompt-slot"><div class="faust-inline-prompt" aria-busy="true"><span class="faust-inline-prompt__sigil"><span class="faust-spinner"></span></span><textarea class="faust-inline-prompt__input" rows="1" aria-label="Pyyntö, käynnissä" readonly>Tiivistä tämä kappale kahteen virkkeeseen</textarea><button class="faust-btn faust-btn--icon" aria-label="Pysäytä"><i data-icon="stop" data-size="14"></i></button><span class="faust-inline-prompt__hint">Tekoäly pohtii…</span></div></div>
+      <div class="faust-inline-prompt-slot"><div class="faust-inline-prompt" aria-invalid="true"><span class="faust-inline-prompt__sigil"><i data-icon="star8" data-size="16"></i></span><textarea class="faust-inline-prompt__input" rows="1" aria-label="Pyyntö, virhe">Tiivistä</textarea><button class="faust-btn faust-btn--icon faust-btn--primary" aria-label="Lähetä"><i data-icon="send" data-size="14"></i></button><span class="faust-inline-prompt__hint">Tekoälypyyntö epäonnistui. Yritä uudelleen.</span></div></div>
+      <div class="faust-inline-prompt-slot"><div class="faust-inline-prompt" aria-disabled="true"><span class="faust-inline-prompt__sigil"><i data-icon="star8" data-size="16"></i></span><textarea class="faust-inline-prompt__input" rows="1" aria-label="Pyyntö, ei käytössä" disabled>Avain puuttuu</textarea><button class="faust-btn faust-btn--icon faust-btn--primary" aria-label="Lähetä" disabled><i data-icon="send" data-size="14"></i></button><span class="faust-inline-prompt__hint">Lisää API-avain tietopaneelin Tekoäly-välilehdellä.</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 13 Findings, tree, import ======================= -->
+<section class="tn-section" id="loydokset" data-title="Löydökset">
+  <h2>Löydöslista, tarinapuu ja tuonnin esikatselu</h2>
+  <p class="tn-lead">Löydös on painettava rivi, jonka laji on sana ja kuvake. Puun rivit sisentyvät syvyyden mukaan (--depth). Tuonnissa pois jätetty osa on yliviivattu, ei harmaa.</p>
+  <div class="tn-row tn-row--top">
+    <div class="tn-box tn-box--panel tn-w320"><div class="faust-findings">
+      <div role="button" tabindex="0" class="faust-finding is-active"><span class="faust-finding__icon"><i data-icon="warning" data-size="14"></i></span><span class="faust-finding__kind">Jatkuvuus</span><span class="faust-finding__where">r. 14</span><span class="faust-finding__quote">”kello näytti väärää aikaa”</span><span class="faust-finding__note">Luvussa 3 kello on pysähtynyt, tässä se käy väärin.</span><span class="faust-finding__actions"><button class="faust-btn faust-btn--sm">Merkitse käsitellyksi</button><button class="faust-chip faust-chip--warning">Jatkuvuus</button></span></div>
+      <div role="button" tabindex="0" class="faust-finding" data-severity="error"><span class="faust-finding__icon"><i data-icon="error" data-size="14"></i></span><span class="faust-finding__kind">Ristiriita</span><span class="faust-finding__where">r. 22</span><span class="faust-finding__quote">”kaksikymmentä vuotta sitten”</span></div>
+      <div role="button" tabindex="0" class="faust-finding" data-severity="note"><span class="faust-finding__icon"><i data-icon="info" data-size="14"></i></span><span class="faust-finding__kind">Huomio</span><span class="faust-finding__where">r. 31</span><span class="faust-finding__quote">”pimeät”</span></div>
+      <div role="button" tabindex="0" class="faust-finding is-resolved"><span class="faust-finding__icon"><i data-icon="check" data-size="14"></i></span><span class="faust-finding__kind">Tyyli</span><span class="faust-finding__where">r. 40</span><span class="faust-finding__quote">”jotenkin väsynyt”</span><span class="faust-finding__note">Käsitelty.</span></div>
+    </div></div>
+    <div class="tn-box tn-box--panel tn-w220"><div class="faust-tree" role="tree">
+      <button class="faust-row" role="treeitem" aria-expanded="true" style="--depth: 0"><span class="faust-tree__twisty"><i data-icon="chevronRight" data-size="12"></i></span><span class="faust-row__icon"><i data-icon="salt" data-size="14"></i></span><span class="faust-row__title">Tarina</span></button>
+      <button class="faust-row" role="treeitem" aria-expanded="true" style="--depth: 1"><span class="faust-tree__twisty"><i data-icon="chevronRight" data-size="12"></i></span><span class="faust-row__icon"><i data-icon="sol" data-size="14"></i></span><span class="faust-row__title">Hahmot</span><span class="faust-chip faust-chip--count" style="margin-left: auto">2</span></button>
+      <button class="faust-row" role="treeitem" aria-selected="true" style="--depth: 2"><span class="faust-tree__twisty"></span><span class="faust-row__icon"><i data-icon="sol" data-size="14"></i></span><span class="faust-row__title">Aino Kivelä</span></button>
+      <button class="faust-row is-drop-before" role="treeitem" style="--depth: 2"><span class="faust-tree__twisty"></span><span class="faust-row__icon"><i data-icon="sol" data-size="14"></i></span><span class="faust-row__title">Asianajaja Lehto</span></button>
+      <button class="faust-row is-drop-inside" role="treeitem" aria-expanded="false" style="--depth: 1"><span class="faust-tree__twisty"><i data-icon="chevronRight" data-size="12"></i></span><span class="faust-row__icon"><i data-icon="terra" data-size="14"></i></span><span class="faust-row__title">Paikat</span></button>
+      <button class="faust-row is-drop-after" role="treeitem" aria-expanded="false" style="--depth: 1"><span class="faust-tree__twisty"><i data-icon="chevronRight" data-size="12"></i></span><span class="faust-row__icon"><i data-icon="lemniscate" data-size="14"></i></span><span class="faust-row__title">Juonilangat</span></button>
+    </div></div>
+    <div class="tn-stack tn-w320">
+      <div class="faust-dropzone"><span class="faust-serif">Pudota tiedosto tähän tai valitse tiedosto.</span></div>
+      <div class="faust-dropzone is-over"><span class="faust-serif">Pudota tuodaksesi</span></div>
+    </div>
+  </div>
+  <div class="tn-h3">Tuonnin esikatselu (.faust-import)</div>
+  <div class="faust-dialog faust-dialog--xl" role="dialog" aria-label="Tuo käsikirjoitus" style="max-height: 360px; animation: none">
+    <div class="faust-dialog__header"><div class="faust-dialog__heading"><h2 class="faust-dialog__title">Tuo käsikirjoitus</h2><div class="faust-dialog__sub">romaani.docx · 3 osaa</div></div><button class="faust-btn faust-btn--icon" aria-label="Sulje"><i data-icon="close" data-size="16"></i></button></div>
+    <div class="faust-dialog__body faust-dialog__body--fixed"><div class="faust-import">
+      <div class="faust-import__list">
+        <label class="faust-row faust-row--two faust-row--author is-selected"><input type="checkbox" checked><span class="faust-row__text"><span class="faust-row__title">Saapuminen</span><span class="faust-row__meta">186 sanaa</span></span></label>
+        <label class="faust-row faust-row--two faust-row--author"><input type="checkbox" checked><span class="faust-row__text"><span class="faust-row__title">Asianajajan luona</span><span class="faust-row__meta">93 sanaa</span></span></label>
+        <label class="faust-row faust-row--two faust-row--author is-excluded"><input type="checkbox"><span class="faust-row__text"><span class="faust-row__title">Sisällysluettelo</span><span class="faust-row__meta">12 sanaa · ei tuoda</span></span></label>
+      </div>
+      <div class="faust-import__rule"></div>
+      <div class="faust-import__preview"><div class="faust-manuscript">Juna pysähtyi asemalle hieman ennen puoltayötä. Laiturilla ei ollut ketään, vain lumi, joka satoi vinosti lamppujen valossa ja peitti raiteet yhä uudelleen. Aino nosti laukkunsa hyllyltä ja jäi hetkeksi seisomaan käytävälle, ikään kuin olisi vielä voinut kääntyä takaisin. Kaupunki oli pienempi kuin hän muisti. Asemarakennuksen kello näytti väärää aikaa, ja torin laidalla seisova hotelli oli maalattu uudelleen, mutta ikkunat olivat samat: korkeat, kapeat ja pimeät.</div></div>
+    </div></div>
+    <div class="faust-dialog__footer"><span class="faust-dialog__footer-start"><span class="faust-meta">2 osaa tuodaan, 1 jätetään pois</span></span><button class="faust-btn faust-btn--lg">Peruuta</button><button class="faust-btn faust-btn--lg faust-btn--primary">Tuo 2 osaa</button></div>
+  </div>
+</section>
+
+<!-- ======================= 14 Editor ======================= -->
+<section class="tn-section" id="editori" data-title="Editori">
+  <h2>Editorin merkinnät (CodeMirror)</h2>
+  <p class="tn-lead">Jäljitelmä: oikeassa editorissa rakenteen ja perustyylit antaa CodeMirrorin teema (FaustEditor.js) ja ominaisuuskoodin omat teemat. Tässä näkyy se, minkä komponenttityylit yksin määräävät.</p>
+  <div class="tn-cols tn-cols--2">
+    <div class="tn-box tn-box--paper"><div class="faust-editor-host tn-cm"><div class="cm-editor"><div class="cm-scroller"><div class="cm-content">
+      <div class="cm-line"><span class="cm-faust-tag">**</span><strong>Aino</strong><span class="cm-faust-tag">**</span> nosti laukkunsa ja jäi <span class="cm-faust-match">seisomaan</span> käytävälle, <span class="cm-faust-match-current">ikään kuin</span> olisi vielä voinut kääntyä.</div>
+      <div class="cm-line"><span class="cm-faust-todo">[TODO: tarkista junan aikataulu vuodelta 1998]</span></div>
+      <div class="cm-line cm-faust-scenebreak">***</div>
+      <div class="cm-line">Hän oli <span class="cm-faust-avoid">jotenkin</span> väsynyt, ja <span class="cm-faust-mention">Aino</span> tiesi sen.</div>
+      <div class="cm-line"><span class="cm-placeholder">Aloita kirjoittaminen…</span></div>
+      <div class="cm-faust-block"><div class="cm-faust-block-head">Ehdotus · Liminal Engine</div><div class="cm-faust-block-text" data-placeholder="Tyhjä ehdotus">Kaupunki oli kutistunut. Asemarakennuksen kello näytti väärää aikaa.</div><div class="cm-faust-block-bar"><button class="cm-faust-block-button">Hylkää</button> <button class="cm-faust-block-button">Hyväksy</button> <button class="cm-faust-block-button" disabled>Ei käytössä</button></div></div>
+      <div class="cm-faust-block cm-faust-sugg-current"><div class="cm-faust-block-head">Tarkasteltava ehdotus</div><div class="cm-faust-block-text">Hotellin aulassa paloi yksi lamppu.</div><div class="cm-faust-block-note">Tekoäly lyhensi virkettä.</div></div>
+    </div></div></div></div></div>
+    <div class="tn-stack">
+      <span class="tn-cap">Rivikehote CodeMirrorin työkaluvihjeenä (.cm-tooltip.cm-faust-prompt)</span>
+      <div class="faust-editor-host tn-cm"><div class="cm-tooltip cm-faust-prompt" role="dialog" aria-label="Rivikehote">
+        <div class="cm-faust-prompt-caption">Liminal Engine · valittu teksti</div>
+        <textarea class="cm-faust-prompt-field" rows="2" aria-label="Pyyntö">Tiivistä tämä kappale kahteen virkkeeseen</textarea>
+        <div class="cm-faust-prompt-chips tn-row" style="gap: var(--sp-1)"><button>Lyhennä</button><button>Selkeytä</button><button disabled>Ei käytössä</button></div>
+        <div class="tn-row" style="justify-content: space-between"><span class="cm-faust-prompt-keys">Enter lähettää · Esc sulkee</span><span class="tn-row" style="gap: var(--sp-2)"><button class="cm-faust-prompt-link">Muokkaa pyyntöä</button><button>Peruuta</button><button class="cm-faust-prompt-primary">Lähetä</button><button class="cm-faust-prompt-primary" disabled>Lähetä</button></span></div>
+      </div></div>
+      <div class="faust-editor-host tn-cm"><div class="cm-tooltip cm-faust-prompt cm-faust-prompt-busy" role="dialog" aria-label="Rivikehote, käynnissä">
+        <div class="cm-faust-prompt-status">Tekoäly pohtii…</div>
+        <div class="cm-faust-prompt-preview">Kaupunki oli kutistunut. Kello näytti väärää aikaa.</div>
+        <div class="cm-faust-prompt-error">Tekoälypyyntö epäonnistui</div>
+      </div></div>
+      <span class="tn-cap">.faust-annot-marker: tärkeys ja avattu</span>
+      <div class="tn-row"><button class="faust-annot-marker" data-priority="high" aria-label="Merkintä, tärkeä"><i data-icon="warning" data-size="14"></i></button><button class="faust-annot-marker" data-priority="medium" aria-label="Merkintä"><i data-icon="idea" data-size="14"></i></button><button class="faust-annot-marker" data-priority="low" aria-label="Merkintä, tieto"><i data-icon="note" data-size="14"></i></button><button class="faust-annot-marker" aria-label="Reunahuomautus"><i data-icon="comment" data-size="14"></i></button><button class="faust-annot-marker is-active" data-priority="medium" aria-label="Avattu merkintä"><i data-icon="star8" data-size="14"></i></button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= 15 Shell ======================= -->
+<section class="tn-section tn-static" id="runko" data-title="Runko">
+  <h2>Runko: yläpalkki, paneelit, sivu, muotoilupalkki, tilarivi, keskustelu</h2>
+  <p class="tn-lead">Luokat, joihin alueet siirtyvät yksi kerrallaan. Yläpalkin toiminnot ovat ryhmissä: tiedostoverbit sanoina, näkymäkytkimet kuvakkeina, teema kaksiosaisena säätimenä.</p>
+  <div class="tn-h3">Yläpalkki (.faust-header__row)</div>
+  <div class="tn-box tn-box--page" style="padding: 0; height: var(--header-h)"><div class="faust-header__row">
+    <div class="faust-header__brand"><span class="faust-wordmark">FAUST <i data-icon="star8" data-size="14"></i></span><span class="faust-header__title" title="Lumen alla">Lumen alla</span><span class="faust-header__dot is-unsaved"></span></div>
+    <div class="faust-header__spacer"></div>
+    <div class="faust-header__actions">
+      <div class="faust-header__group"><button class="faust-btn faust-btn--quiet">Avaa…</button><button class="faust-btn faust-btn--quiet">Tallenna</button><button class="faust-btn faust-btn--quiet" aria-label="Tilannekuvat"><i data-icon="snapshot" data-size="14"></i><span class="faust-num">3</span></button></div>
+      <div class="faust-header__group"><button class="faust-btn faust-btn--icon" aria-label="Sivupalkki" aria-pressed="true"><i data-icon="panelLeft" data-size="16"></i></button><button class="faust-btn faust-btn--icon" aria-label="Tietopaneeli" aria-pressed="false"><i data-icon="panelRight" data-size="16"></i></button><button class="faust-btn faust-btn--icon" aria-label="Jaettu näkymä"><i data-icon="split" data-size="16"></i></button><button class="faust-btn faust-btn--icon" aria-label="Korttinäkymä"><i data-icon="cards" data-size="16"></i></button><button class="faust-btn faust-btn--icon" aria-label="Keskittymistila"><i data-icon="focus" data-size="16"></i></button></div>
+      <div class="faust-header__group"><div class="faust-segmented" role="radiogroup" aria-label="Teema"><button class="faust-segmented__option" role="radio" aria-checked="true">NOX</button><button class="faust-segmented__option" role="radio" aria-checked="false">DEIS</button></div></div>
+      <div class="faust-header__group"><button class="faust-btn faust-btn--quiet"><i data-icon="star8" data-size="14"></i>Liminal Engine</button><button class="faust-btn faust-btn--icon" aria-label="Asetukset"><i data-icon="settings" data-size="16"></i></button></div>
+    </div>
+  </div></div>
+  <div class="tn-h3">Muotoilupalkki (.faust-formatbar), sivun otsikko ja tilarivi (.faust-statusbar)</div>
+  <div class="tn-box tn-box--paper" style="padding: 0; overflow: hidden">
+    <div class="faust-formatbar">
+      <div class="faust-formatbar__group"><button class="faust-btn faust-btn--glyph" aria-label="Lihavointi"><b>B</b></button><button class="faust-btn faust-btn--glyph" aria-label="Kursivointi" aria-pressed="true"><i>I</i></button><button class="faust-btn faust-btn--glyph" aria-label="Alleviivaus"><u>U</u></button><button class="faust-btn faust-btn--glyph" aria-label="Yliviivaus"><s>S</s></button></div>
+      <div class="faust-formatbar__group" data-priority="2"><button class="faust-btn faust-btn--quiet">H1</button><button class="faust-btn faust-btn--quiet">H2</button><button class="faust-btn faust-btn--quiet">H3</button></div>
+      <div class="faust-formatbar__group" data-priority="3"><button class="faust-btn faust-btn--icon" aria-label="Lainaus"><i data-icon="quote" data-size="14"></i></button><button class="faust-btn faust-btn--icon" aria-label="Luettelo"><i data-icon="list" data-size="14"></i></button><button class="faust-btn faust-btn--icon" aria-label="Numeroitu luettelo"><i data-icon="listOrdered" data-size="14"></i></button><button class="faust-btn faust-btn--quiet" aria-label="Kohtauksen erotin">* * *</button></div>
+      <div class="faust-formatbar__group"><button class="faust-btn faust-btn--icon" aria-label="Kirjanmerkit" aria-expanded="true"><i data-icon="bookmark" data-size="14"></i></button><button class="faust-btn faust-btn--icon" aria-label="Etsi"><i data-icon="search" data-size="14"></i></button><button class="faust-btn faust-btn--icon faust-formatbar__more" aria-label="Lisää"><i data-icon="more" data-size="14"></i></button></div>
+      <div class="faust-formatbar__end"><span class="faust-sigilbar"><button class="faust-sigil-btn" aria-label="Analysoi luku"><i data-icon="mercury" data-size="20"></i></button><button class="faust-sigil-btn" aria-label="Pika-arvio"><i data-icon="alembic" data-size="20"></i></button><button class="faust-sigil-btn" aria-label="Tee tiivistelmä"><i data-icon="sulfur" data-size="20"></i></button><button class="faust-sigil-btn faust-sigil-btn--primary" aria-label="Magnum Opus"><i data-icon="stone" data-size="20"></i></button></span></div>
+    </div>
+    <div style="padding: var(--sp-5) var(--sp-6)">
+      <input class="faust-chapter-title" value="Saapuminen" aria-label="Luvun otsikko">
+      <div class="faust-chapter-meta"><span class="faust-stat"><b>186</b> sanaa</span><span class="faust-chip faust-chip--dot faust-chip--warning">Muokattavana</span><span>Tempo: keskinopea</span></div>
+    </div>
+    <div class="faust-statusbar" style="height: var(--footer-h)"><span class="faust-statusbar__start">Saapuminen</span><span class="faust-statusbar__end"><span class="faust-savestate" data-state="saved"><span class="faust-dot"></span>Tallennettu</span><span class="faust-savestate" data-state="saving"><span class="faust-dot"></span>Tallennetaan…</span><span class="faust-savestate" data-state="error"><span class="faust-dot"></span>Tallennus epäonnistui</span><span class="faust-stat"><b>186</b> sanaa</span><span class="faust-stat">yhteensä <b>326</b> sanaa</span><span data-priority="3">esimerkki.faust</span></span></div>
+  </div>
+  <div class="tn-h3">Paneeli (.faust-panel), käynnistin, keskittymistilan poistuminen, keskustelu</div>
+  <div class="tn-row tn-row--top">
+    <div class="tn-box tn-box--panel" style="padding: 0; width: 320px; height: 300px"><div class="faust-panel">
+      <div class="faust-panel__head"><span class="faust-panel__title"><i data-icon="star8" data-size="16"></i>Liminal Engine</span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Kätke Liminal Engine"><i data-icon="close" data-size="14"></i></button></div>
+      <div class="faust-panel__tabs"><div class="faust-tabs" role="tablist"><button class="faust-tab" role="tab" aria-selected="true">Keskustelu</button><button class="faust-tab" role="tab" aria-selected="false">Tarkistus</button></div></div>
+      <div class="faust-panel__body"><div class="faust-excerpt"><span class="faust-excerpt__caption">Valittu teksti</span><span class="faust-excerpt__text">Kaupunki oli pienempi kuin hän muisti.</span></div><p class="faust-serif is-selectable" style="margin-top: var(--sp-3)">Paneelin runko vierii, otsikko ja alaosa pysyvät.</p></div>
+      <div class="faust-panel__foot"><span class="faust-meta">⌘K näyttää ja kätkee</span></div>
+    </div></div>
+    <div class="tn-stack">
+      <span class="tn-cap">.faust-fab: lepo ja avattu</span>
+      <div class="tn-row"><button class="faust-fab" aria-label="Avaa erillinen keskustelu"><i data-icon="star8" data-size="16"></i></button><button class="faust-fab" aria-label="Keskustelu on auki" aria-expanded="true"><i data-icon="star8" data-size="16"></i></button></div>
+      <span class="tn-cap">.faust-focus-exit.faust-btn</span>
+      <button class="faust-btn faust-btn--quiet faust-focus-exit">Poistu keskittymistilasta</button>
+    </div>
+    <div class="claude-chat-container" style="width: 400px">
+      <div class="claude-chat-header"><div class="claude-chat-title"><span class="claude-icon"><i data-icon="star8" data-size="16"></i></span>Liminal Engine – keskustelu</div><div class="claude-chat-controls"><label class="thinking-toggle"><input type="checkbox">Perusteellinen vastaus</label><button class="clear-btn" aria-label="Tyhjennä"><i data-icon="trash" data-size="14"></i></button><button class="close-btn" aria-label="Sulje"><i data-icon="close" data-size="14"></i></button></div></div>
+      <div class="claude-chat-messages" style="min-height: 0">
+        <div class="chat-message user"><div class="message-role">Sinä</div><div class="message-content">Miten avaisin toisen luvun?</div></div>
+        <div class="chat-message thinking"><div class="message-role">Tekoäly pohtii…</div><div class="thinking-content">Luku alkaa asianajajan toimistosta; avauksen pitäisi kantaa edellisen luvun kylmyyttä.</div></div>
+        <div class="chat-message assistant"><div class="message-role">Tekoäly</div><div class="message-content">Aloita esineestä: avain pöydällä, numero 17 kaiverrettuna.</div><button class="insert-btn">Lisää luvun loppuun</button></div>
+        <div class="chat-message error"><div class="message-role error">Virhe</div><div class="message-content">Tekoälypyyntö epäonnistui.</div></div>
+        <div class="streaming-indicator"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      </div>
+      <div class="claude-chat-input"><textarea rows="2" placeholder="Kirjoita viesti" aria-label="Viesti"></textarea><button class="send-btn" aria-label="Lähetä"><i data-icon="send" data-size="14"></i></button><button class="send-btn" aria-label="Lähetä, ei käytössä" disabled><i data-icon="send" data-size="14"></i></button></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= The whole shell ======================= -->
+<section class="tn-section" id="kehys" data-title="Koko runko">
+  <h2>Koko runko</h2>
+  <p class="tn-lead">Rungon luokat yhdessä, kehyksessä ikkunan sijasta: yläpalkki, sivupalkki, sivu omalla palstallaan, tietopaneeli, telakka ja tilarivi. Kytkimet vaihtavat paneelien tilaa (data-state), jaettua näkymää, keskittymistilaa ja koko näytön sisennystä.</p>
+  <div class="tn-row" style="margin-bottom: var(--sp-3)">
+    <button class="faust-chip" aria-pressed="true" data-frame="sidebar">Sivupalkki</button>
+    <button class="faust-chip" aria-pressed="true" data-frame="inspector">Tietopaneeli</button>
+    <button class="faust-chip" aria-pressed="false" data-frame="aipanel">Liminal Engine</button>
+    <button class="faust-chip" aria-pressed="false" data-frame="split">Jaettu näkymä</button>
+    <button class="faust-chip" aria-pressed="false" data-frame="focus">Keskittymistila</button>
+    <button class="faust-chip" aria-pressed="false" data-frame="fullscreen">Koko näyttö (.is-fullscreen)</button>
+    <button class="faust-chip" aria-pressed="false" data-frame="measure">Leveä palsta (data-measure)</button>
+  </div>
+  <div class="tn-frame"><div class="faust-app" id="tn-app" style="--left-col-w: var(--sidebar-w); --right-col-w: var(--inspector-w)">
+    <header class="faust-header"><div class="faust-header__row">
+      <div class="faust-header__brand"><span class="faust-wordmark">FAUST <i data-icon="star8" data-size="14"></i></span><span class="faust-header__title" title="Lumen alla">Lumen alla</span><span class="faust-header__dot is-unsaved"></span></div>
+      <div class="faust-header__spacer"></div>
+      <div class="faust-header__actions">
+        <div class="faust-header__group"><button class="faust-btn faust-btn--quiet">Avaa…</button><button class="faust-btn faust-btn--quiet" data-priority="2"><i data-icon="save" data-size="14"></i><span class="faust-btn__label">Tallenna</span></button><button class="faust-btn faust-btn--quiet" data-priority="3" aria-label="Tilannekuvat"><i data-icon="snapshot" data-size="14"></i><span class="faust-num">3</span></button></div>
+        <div class="faust-header__group"><button class="faust-btn faust-btn--icon" aria-label="Sivupalkki" aria-pressed="true"><i data-icon="panelLeft" data-size="16"></i></button><button class="faust-btn faust-btn--icon" aria-label="Tietopaneeli" aria-pressed="true"><i data-icon="panelRight" data-size="16"></i></button><button class="faust-btn faust-btn--icon" aria-label="Jaettu näkymä"><i data-icon="split" data-size="16"></i></button><button class="faust-btn faust-btn--icon" data-priority="3" aria-label="Korttinäkymä"><i data-icon="cards" data-size="16"></i></button><button class="faust-btn faust-btn--icon" aria-label="Keskittymistila"><i data-icon="focus" data-size="16"></i></button></div>
+        <div class="faust-header__group"><div class="faust-segmented" role="radiogroup" aria-label="Teema"><button class="faust-segmented__option" role="radio" aria-checked="true">NOX</button><button class="faust-segmented__option" role="radio" aria-checked="false">DEIS</button></div></div>
+        <div class="faust-header__group"><button class="faust-btn faust-btn--quiet"><i data-icon="star8" data-size="14"></i>Liminal Engine</button><button class="faust-btn faust-btn--icon" aria-label="Asetukset"><i data-icon="settings" data-size="16"></i></button><button class="faust-btn faust-btn--icon faust-header__more" aria-label="Lisää"><i data-icon="more" data-size="16"></i></button></div>
+      </div>
+    </div></header>
+    <div class="faust-main">
+      <aside class="faust-sidebar" data-state="open"><div class="faust-panel">
+        <div class="faust-panel__head"><span class="faust-stat faust-stat--hero"><b>326</b> / 80 000 sanaa</span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Kätke sivupalkki"><i data-icon="panelLeft" data-size="14"></i></button></div>
+        <div class="faust-panel__body">
+          <div class="faust-progress faust-progress--goal" style="--value: 4%; margin-bottom: var(--sp-4)"><i></i></div>
+          <div class="faust-section"><div class="faust-section__head"><span class="faust-section__title">Luvut</span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Uusi luku"><i data-icon="plus" data-size="14"></i></button></div>
+            <button class="faust-row faust-row--two faust-row--author is-selected"><span class="faust-row__text"><span class="faust-row__title">Saapuminen</span><span class="faust-row__meta">186 sanaa</span></span></button>
+            <button class="faust-row faust-row--two faust-row--author"><span class="faust-row__text"><span class="faust-row__title">Asianajajan luona</span><span class="faust-row__meta">93 sanaa</span></span></button>
+            <button class="faust-row faust-row--two faust-row--author"><span class="faust-row__text"><span class="faust-row__title">Talo mäellä</span><span class="faust-row__meta">47 sanaa</span></span></button>
+          </div>
+          <div class="faust-section"><div class="faust-section__head"><span class="faust-section__title">Työkalut</span></div>
+            <button class="faust-row"><span class="faust-row__icon"><i data-icon="luna" data-size="14"></i></span><span class="faust-row__title">Aikajana</span></button>
+            <button class="faust-row"><span class="faust-row__icon"><i data-icon="folder" data-size="14"></i></span><span class="faust-row__title">Tutkimuskansio</span></button>
+          </div>
+        </div>
+      </div></aside>
+      <div class="faust-editor-area" id="tn-area">
+        <section class="faust-editor">
+          <div class="faust-formatbar">
+            <div class="faust-formatbar__group"><button class="faust-btn faust-btn--glyph" aria-label="Lihavointi"><b>B</b></button><button class="faust-btn faust-btn--glyph" aria-label="Kursivointi"><i>I</i></button><button class="faust-btn faust-btn--glyph" aria-label="Alleviivaus"><u>U</u></button></div>
+            <div class="faust-formatbar__group" data-priority="2"><button class="faust-btn faust-btn--quiet">H1</button><button class="faust-btn faust-btn--quiet">H2</button></div>
+            <div class="faust-formatbar__group" data-priority="3"><button class="faust-btn faust-btn--icon" aria-label="Lainaus"><i data-icon="quote" data-size="14"></i></button><button class="faust-btn faust-btn--icon" aria-label="Luettelo"><i data-icon="list" data-size="14"></i></button></div>
+            <div class="faust-formatbar__group"><button class="faust-btn faust-btn--icon" aria-label="Kirjanmerkit"><i data-icon="bookmark" data-size="14"></i></button><button class="faust-btn faust-btn--icon faust-formatbar__more" aria-label="Lisää"><i data-icon="more" data-size="14"></i></button></div>
+            <div class="faust-formatbar__end"><span class="faust-sigilbar"><button class="faust-sigil-btn" aria-label="Analysoi luku"><i data-icon="mercury" data-size="20"></i></button><button class="faust-sigil-btn" aria-label="Pika-arvio"><i data-icon="alembic" data-size="20"></i></button><button class="faust-sigil-btn" aria-label="Tee tiivistelmä"><i data-icon="sulfur" data-size="20"></i></button><button class="faust-sigil-btn faust-sigil-btn--primary" aria-label="Magnum Opus"><i data-icon="stone" data-size="20"></i></button></span></div>
+          </div>
+          <div class="faust-page" id="tn-page" style="--ms-size: 18px">
+            <div class="faust-page__head"><input class="faust-chapter-title" value="Saapuminen" aria-label="Luvun otsikko"><div class="faust-chapter-meta"><span class="faust-stat"><b>186</b> sanaa</span><span class="faust-chip faust-chip--dot faust-chip--warning">Muokattavana</span><span>Tempo: keskinopea</span></div></div>
+            <div class="faust-page__body"><div class="faust-editor-host"><div class="cm-editor"><div class="cm-scroller"><div class="cm-content">
+              <div class="cm-line">Juna pysähtyi asemalle hieman ennen puoltayötä. Laiturilla ei ollut ketään, vain lumi, joka satoi vinosti lamppujen valossa ja peitti raiteet yhä uudelleen. <span class="cm-faust-tag">**</span><strong>Aino</strong><span class="cm-faust-tag">**</span> nosti laukkunsa hyllyltä ja jäi hetkeksi seisomaan käytävälle, ikään kuin olisi vielä voinut kääntyä takaisin.</div>
+              <div class="cm-line"><br></div>
+              <div class="cm-line">– Onko tämä pääteasema? hän kysyi <span class="faust-mark faust-mark--search">konduktööriltä</span>.</div>
+              <div class="cm-line"><br></div>
+              <div class="cm-line">Kaupunki oli <span class="faust-mark faust-mark--del">pienempi kuin hän muisti</span> <span class="faust-mark faust-mark--ins is-active">kutistunut</span>. Asemarakennuksen kello näytti <span class="faust-mark faust-mark--finding">väärää aikaa</span>, ja torin laidalla seisova hotelli oli maalattu uudelleen, mutta ikkunat olivat samat: korkeat, kapeat ja pimeät.</div>
+              <div class="cm-line"><br></div>
+              <div class="cm-line">Hotellin aulassa paloi yksi lamppu. Vastaanoton takana istui vanha nainen, joka nosti katseensa ristisanatehtävästä vasta, kun Aino laski laukkunsa lattialle.</div>
+            </div></div></div></div>
+              <div class="faust-annot-margin" style="position: absolute; top: 0; right: 0; width: 40px; height: 100%"><button class="faust-annot-marker" style="position: absolute; top: 132px" data-priority="medium" aria-label="Merkintä"><i data-icon="note" data-size="14"></i></button></div>
+            </div>
+            <div class="faust-dock"><div class="faust-suggestbar" role="toolbar" aria-label="Ehdotukset"><span class="faust-suggestbar__label"><i data-icon="star8" data-size="14"></i><span class="faust-suggestbar__name">Ehdotus</span></span><span class="faust-suggestbar__count">2 / 7</span><span class="faust-suggestbar__sep faust-suggestbar__sep--lead"></span><button class="faust-btn faust-btn--quiet faust-btn--sm faust-suggestbar__reject"><i data-icon="close" data-size="14" data-class="faust-suggestbar__compact"></i><span class="faust-btn__label">Hylkää</span></button><button class="faust-btn faust-btn--primary faust-btn--sm faust-suggestbar__accept"><i data-icon="check" data-size="14" data-class="faust-suggestbar__compact"></i><span class="faust-btn__label">Hyväksy</span></button><span class="faust-suggestbar__sep"></span><button class="faust-btn faust-btn--quiet faust-btn--sm faust-suggestbar__all"><i data-icon="checkAll" data-size="14" data-class="faust-suggestbar__compact"></i><span class="faust-btn__label">Hyväksy kaikki</span></button></div></div>
+          </div>
+        </section>
+        <section class="faust-editor" id="tn-split" hidden>
+          <div class="faust-page" style="--ms-size: 18px"><div class="faust-page__head"><div class="faust-label">Rinnalla: Asianajajan luona</div></div><div class="faust-page__body"><div class="faust-scroll faust-scroll--page" style="flex: 1 1 0"><div class="faust-manuscript">Avain oli pöydällä, numero 17 kaiverrettuna sen varteen. Asianajaja työnsi sen Ainoa kohti ja sanoi, että talo mäellä oli ollut tyhjillään kaksi talvea.</div></div></div></div>
+        </section>
+      </div>
+      <aside class="faust-inspector" data-state="open"><div class="faust-panel">
+        <div class="faust-panel__head"><span class="faust-panel__title">Tietopaneeli</span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Kätke tietopaneeli"><i data-icon="close" data-size="14"></i></button></div>
+        <div class="faust-panel__tabs"><div class="faust-tabs" role="tablist"><button class="faust-tab" role="tab" aria-selected="true">Ulkoasu</button><button class="faust-tab" role="tab" aria-selected="false">Luku</button><button class="faust-tab" role="tab" aria-selected="false">Projekti</button><button class="faust-tab" role="tab" aria-selected="false">Tekoäly</button></div></div>
+        <div class="faust-panel__body">
+          <div class="faust-section"><div class="faust-section__head"><span class="faust-section__title">Teksti</span></div>
+            <label class="faust-field"><span class="faust-field__label">Fontti</span><select class="faust-select faust-select--sm"><option>EB Garamond</option></select></label>
+            <div class="faust-field"><span class="faust-field__label">Zoomaus</span><div class="faust-slider"><input type="range" value="50" style="--value: 50%" aria-label="Zoomaus"><span class="faust-slider__value">100 %</span></div></div>
+            <label class="faust-check" style="margin-top: var(--sp-3)"><input type="checkbox" checked>Kirjoituskonetila</label>
+          </div>
+          <div class="faust-section"><div class="faust-section__head"><span class="faust-section__title">Tekoäly</span></div>
+            <div class="faust-callout faust-callout--warning"><span class="faust-callout__icon"><i data-icon="warning" data-size="14"></i></span><span class="faust-callout__title">Avain puuttuu</span><span class="faust-callout__body">Lisää API-avain ennen yhteyden testaamista.</span></div>
+            <button class="faust-btn faust-btn--block faust-btn--primary" style="margin-top: var(--sp-3)"><i data-icon="quill" data-size="14"></i>Kirjoita tekoälyn kanssa…</button>
+          </div>
+        </div>
+      </div></aside>
+      <aside class="faust-aipanel" data-state="closed"><div class="faust-panel">
+        <div class="faust-panel__head"><span class="faust-panel__title"><i data-icon="star8" data-size="16"></i>Liminal Engine</span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Kätke Liminal Engine"><i data-icon="close" data-size="14"></i></button></div>
+        <div class="faust-panel__body"><div class="faust-empty faust-empty--compact"><span class="faust-empty__title">Kysy neuvoa tai pyydä muutoksia valittuun tekstiin.</span></div></div>
+        <div class="faust-panel__foot"><div class="faust-inline-prompt"><span class="faust-inline-prompt__sigil"><i data-icon="star8" data-size="16"></i></span><textarea class="faust-inline-prompt__input" rows="1" aria-label="Viesti" placeholder="Kirjoita viesti"></textarea><button class="faust-btn faust-btn--icon faust-btn--primary" aria-label="Lähetä"><i data-icon="send" data-size="14"></i></button></div></div>
+      </div></aside>
+    </div>
+    <footer class="faust-footer faust-statusbar"><span class="faust-statusbar__start">Saapuminen</span><span class="faust-statusbar__end"><span class="faust-savestate" data-state="saved"><span class="faust-dot"></span>Tallennettu</span><span class="faust-stat"><b>186</b> sanaa</span><span class="faust-stat">yhteensä <b>326</b> sanaa</span><span data-priority="3">esimerkki.faust</span></span></footer>
+    <div class="faust-focus-drag" id="tn-drag" hidden></div>
+    <button class="faust-btn faust-btn--quiet faust-focus-exit" id="tn-exit" hidden>Poistu keskittymistilasta</button>
+    <button class="faust-fab" aria-label="Avaa erillinen keskustelu"><i data-icon="star8" data-size="16"></i></button>
+  </div></div>
+</section>
+
+<!-- ======================= 16 Legacy bridge ======================= -->
+<section class="tn-section" id="silta" data-title="Silta">
+  <h2>Vanhan merkkauksen silta (osio 16)</h2>
+  <p class="tn-lead">Tämän päivän inline-tyylitetty merkkaus sellaisena kuin React sen kirjoittaa. Sillan säännöt L1 ja S1–S7 antavat sille luettavat värit, fontit ja tilat, kunnes alue siirtyy luokkiin.</p>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">L1, S2, S4</span>
+    <button style="background: transparent; border: 1px solid var(--border-color); color: var(--text); padding: 4px 12px; border-radius: 4px; font-family: &quot;IBM Plex Mono&quot;; font-size: 12px;">Avaa</button>
+    <button style="background: var(--bronze); border: 1px solid var(--border-color); color: var(--text); padding: 4px 12px; border-radius: 4px; font-family: &quot;IBM Plex Mono&quot;; font-size: 12px;">Tallenna (muutoksia)</button>
+    <button style="background: var(--sigil); border: none; color: rgb(0, 0, 0); padding: 8px 16px; border-radius: 4px; font-family: &quot;IBM Plex Mono&quot;; font-size: 12px; font-weight: 600;">Continue Writing</button>
+    <span style="background: var(--bronze); color: rgb(0, 0, 0); padding: 2px 8px; border-radius: 4px; font-family: &quot;IBM Plex Mono&quot;; font-size: 11px;">musta teksti pronssilla</span>
+    <button disabled style="background: var(--bronze); border: none; color: rgb(0, 0, 0); padding: 8px 16px; border-radius: 4px; font-family: &quot;IBM Plex Mono&quot;; font-size: 12px; opacity: 0.5;">Ei käytössä</button>
+    <button disabled aria-busy="true" style="background: rgb(255, 68, 68); border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 12px;">ääni</button>
+    <button style="background: transparent; border: none; color: var(--text-3); padding: 4px 8px; font-family: &quot;IBM Plex Mono&quot;; font-size: 11px;">text-3 nousee osoitettaessa</button>
+  </div>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">S1, S3</span>
+    <span style="font-family: &quot;EB Garamond&quot;; font-size: 17px;">EB Garamond ilman varafonttia</span>
+    <span style="font-family: &quot;EB Garamond&quot;; font-size: 17px; font-weight: 600;">sama, paino 600</span>
+    <span style="font-family: &quot;IBM Plex Mono&quot;; font-size: 12px;">IBM Plex Mono ilman varafonttia</span>
+    <input type="text" value="vanha kenttä" style="padding: 8px 10px; background: var(--bg-2); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text); font-family: &quot;IBM Plex Mono&quot;; font-size: 13px;">
+    <select style="padding: 6px 8px; background: var(--bg-2); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text); font-family: &quot;IBM Plex Mono&quot;; font-size: 12px;"><option>vanha valinta</option></select>
+    <input type="text" value="virhe" aria-invalid="true" style="padding: 8px 10px; background: var(--bg-2); border: 1px solid var(--error); border-radius: 4px; color: var(--text); font-family: &quot;IBM Plex Mono&quot;; font-size: 13px;">
+  </div>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">S6, S7</span>
+    <div class="formatting-toolbar" style="display: flex; gap: 4px; padding: 8px; background: var(--bg-2); border-radius: 4px;"><button style="background: var(--bg-2); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text); padding: 4px 10px; font-family: &quot;EB Garamond&quot;; font-size: 14px; font-weight: 700;">B</button><button style="background: var(--bg-2); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text); padding: 4px 10px; font-family: &quot;IBM Plex Mono&quot;; font-size: 11px;">H1</button><button style="background: var(--bg-2); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-3); padding: 4px 10px; font-family: &quot;IBM Plex Mono&quot;; font-size: 11px;">TODO</button></div>
+    <div style="display: flex; gap: 8px; padding: 12px; background: rgba(0, 0, 0, 0.85); border-radius: 8px;"><button class="ai-toolbar-btn" style="background: rgb(26, 24, 21); border: 1px solid rgb(199, 162, 90); color: rgb(232, 200, 120); font-size: 18px;">☿</button><button class="ai-toolbar-btn" style="background: rgb(26, 24, 21); border: 1px solid rgb(199, 162, 90); color: rgb(232, 200, 120); font-size: 18px;">⚗</button><button class="ai-toolbar-btn" disabled style="background: rgb(26, 24, 21); border: 1px solid rgb(199, 162, 90); color: rgb(232, 200, 120); font-size: 18px;">🜍</button><button class="ai-toolbar-btn-primary" style="background: rgb(199, 162, 90); border: 2px solid rgb(232, 200, 120); color: rgb(0, 0, 0);"><i data-icon="stone" data-size="20"></i></button></div>
+  </div>
+</section>
+
+<!-- ======================= Icons ======================= -->
+<section class="tn-section" id="kuvakkeet" data-title="Kuvakkeet">
+  <h2>Kuvakkeet</h2>
+  <p class="tn-lead">15 sigiliä ja 77 työkalukuvaketta (src/components/icons.js). Sigili on kultaa siellä, missä se on säädin tai otsikko; työkalukuvake on tekstinsä värinen. Viivan paksuus pysyy ruudulla samana koosta riippumatta.</p>
+  <div class="tn-h3">Sigilit 40</div><div class="tn-icons tn-icons--sigil" data-sheet="sigils" data-size="40"></div>
+  <div class="tn-h3">Sigilit 20</div><div class="tn-icons tn-icons--sigil" data-sheet="sigils" data-size="20"></div>
+  <div class="tn-h3">Sigilit 14</div><div class="tn-icons tn-icons--sigil" data-sheet="sigils" data-size="14"></div>
+  <div class="tn-h3">Työkalukuvakkeet 24</div><div class="tn-icons" data-sheet="glyphs" data-size="24"></div>
+  <div class="tn-h3">Työkalukuvakkeet 16</div><div class="tn-icons" data-sheet="glyphs" data-size="16"></div>
+  <div class="tn-h3">Työkalukuvakkeet 14</div><div class="tn-icons" data-sheet="glyphs" data-size="14"></div>
+  <div class="tn-h3">Täytetty tähti (Icon filled)</div>
+  <div class="tn-row" style="color: var(--accent-line)"><i data-icon="star" data-size="16" data-filled="1"></i><i data-icon="star" data-size="16" data-filled="1"></i><i data-icon="star" data-size="16"></i></div>
+</section>
+
+</main>
+
+<!-- live layers: the real notification host, and two dialogs opened by the buttons of section 9 -->
+<div id="tn-toasts"></div>
+<div class="faust-layer"></div>
+<div class="faust-scrim" id="tn-dlg" hidden>
+  <div class="faust-dialog faust-dialog--md" role="dialog" aria-modal="true" aria-labelledby="tn-dlg-title">
+    <div class="faust-dialog__header"><div class="faust-dialog__heading"><h2 class="faust-dialog__title" id="tn-dlg-title">Projektin asetukset</h2><div class="faust-dialog__sub">Lumen alla</div></div><button class="faust-btn faust-btn--icon" aria-label="Sulje" data-close><i data-icon="close" data-size="16"></i></button></div>
+    <div class="faust-dialog__body">
+      <label class="faust-field"><span class="faust-field__label">Projektin nimi</span><input class="faust-input faust-input--author" value="Lumen alla" data-autofocus></label>
+      <label class="faust-field"><span class="faust-field__label">Käsikirjoituksen tavoite</span><input class="faust-input" value="80000"></label>
+    </div>
+    <div class="faust-dialog__footer"><span class="faust-dialog__footer-start"><button class="faust-btn faust-btn--lg" data-open="tn-confirm">Avaa kysymys tämän päälle</button></span><button class="faust-btn faust-btn--lg faust-btn--primary" data-close>Valmis</button></div>
+  </div>
+</div>
+<div class="faust-scrim faust-scrim--top" id="tn-confirm" hidden>
+  <div class="faust-dialog faust-dialog--sm" role="alertdialog" aria-modal="true" aria-labelledby="tn-confirm-title">
+    <div class="faust-dialog__header"><div class="faust-dialog__heading"><h2 class="faust-dialog__title" id="tn-confirm-title">Palautetaanko tallentamaton työ?</h2></div></div>
+    <div class="faust-dialog__body">Edellinen istunto päättyi kesken. Projektista ”Lumen alla” on tallentamaton versio.</div>
+    <div class="faust-dialog__footer"><button class="faust-btn faust-btn--lg" data-close data-autofocus>Hylkää</button><button class="faust-btn faust-btn--lg faust-btn--primary" data-close>Palauta</button></div>
+  </div>
+</div>
+
+<script type="module">
+import { Icon, SIGILS, GLYPHS } from './src/components/icons.js';
+import { ToastHost, notify, installAlertShim } from './src/components/ui.js';
+
+const e = React.createElement;
+const root = document.documentElement;
+
+// As app.js does at start: the width of a classic scrollbar, for the page's left edge
+{
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:absolute;top:-99px;width:50px;height:50px;overflow:scroll';
+  document.body.append(probe);
+  root.style.setProperty('--scrollbar-w', (probe.offsetWidth - probe.clientWidth) + 'px');
+  probe.remove();
+}
+
+// Icons: every <i data-icon> placeholder becomes the svg the icon module renders through React
+// (one hidden root, then each svg is moved to its place, so child selectors see the svg itself).
+const sheets = { sigils: Object.keys(SIGILS), glyphs: Object.keys(GLYPHS) };
+for (const grid of document.querySelectorAll('[data-sheet]')) {
+  for (const name of sheets[grid.dataset.sheet]) {
+    const cell = document.createElement('span');
+    cell.innerHTML = `<i data-icon="${name}" data-size="${grid.dataset.size}"></i>${name}`;
+    grid.append(cell);
+  }
+}
+const placeholders = [...document.querySelectorAll('i[data-icon]')];
+const holder = document.createElement('div');
+ReactDOM.flushSync(() => ReactDOM.createRoot(holder).render(
+  placeholders.map((node, index) => e('span', { key: index }, Icon({
+    name: node.dataset.icon, size: Number(node.dataset.size) || 16, className: node.dataset.class, filled: !!node.dataset.filled
+  })))
+));
+placeholders.forEach((node, index) => {
+  const svg = holder.children[index].firstChild;
+  if (svg) node.replaceWith(svg); else node.textContent = '?' + node.dataset.icon;
+});
+
+// Theme: the hash and the switch at the top; values are re-read after every change
+const swatchGrids = [...document.querySelectorAll('[data-swatches]')];
+const TYPE = ['label', 'meta', 'ui', 'ui-strong', 'input', 'serif-sm', 'serif', 'quote', 'title-pop', 'title-panel', 'title-dialog', 'title-view', 'title-chapter', 'prose'];
+const SAMPLE = {
+  label: 'OSION OTSIKKO', meta: '186 sanaa · 1 311 merkkiä', ui: 'Tallenna nimellä', 'ui-strong': 'Aktiivinen välilehti', input: 'http://127.0.0.1:23333',
+  'serif-sm': 'Aino palaa kotikaupunkiinsa yöjunalla.', serif: 'Projektissa on tallentamattomia muutoksia.', quote: '”…katsoi häntä pitkään…”',
+  'title-pop': 'Kirjanmerkit', 'title-panel': 'Liminal Engine', 'title-dialog': 'Vie käsikirjoitus', 'title-view': 'Aikajana', 'title-chapter': 'Saapuminen',
+  prose: 'Juna pysähtyi asemalle hieman ennen puoltayötä.'
+};
+function describe() {
+  const cs = getComputedStyle(root);
+  for (const grid of swatchGrids) {
+    grid.replaceChildren(...grid.dataset.swatches.split(' ').map(name => {
+      const cell = document.createElement('span'); cell.className = 'tn-swatch';
+      const chip = document.createElement('i'); chip.style.background = `var(${name})`;
+      const label = document.createElement('b'); label.textContent = name;
+      const value = document.createElement('span'); value.textContent = cs.getPropertyValue(name).trim();
+      cell.append(chip, label, value); return cell;
+    }));
+  }
+  const type = document.getElementById('tn-type');
+  type.replaceChildren(...TYPE.flatMap(name => {
+    const label = document.createElement('span');
+    const sample = document.createElement('span'); sample.style.font = `var(--type-${name})`; sample.textContent = SAMPLE[name];
+    if (name === 'label') { sample.style.letterSpacing = 'var(--tracking-caps)'; }
+    type.append(sample);
+    const c = getComputedStyle(sample);
+    label.textContent = `--type-${name} · ${c.fontWeight} ${c.fontSize}/${c.lineHeight}`;
+    return [label, sample];
+  }));
+}
+function setTheme(name) {
+  root.setAttribute('data-theme', name);
+  history.replaceState(null, '', '#' + name);
+  for (const option of document.querySelectorAll('[data-theme-opt]')) option.setAttribute('aria-checked', String(option.dataset.themeOpt === name));
+  describe();
+}
+for (const option of document.querySelectorAll('[data-theme-opt]')) option.addEventListener('click', () => setTheme(option.dataset.themeOpt));
+setTheme(root.getAttribute('data-theme'));
+
+// Section links
+document.getElementById('tn-nav').append(...[...document.querySelectorAll('.tn-section')].map(section => {
+  const link = document.createElement('a'); link.href = '#' + section.id; link.textContent = section.dataset.title;
+  link.addEventListener('click', (event) => { event.preventDefault(); section.scrollIntoView(); });
+  return link;
+}));
+
+// The real notification host and the alert shim
+ReactDOM.createRoot(document.getElementById('tn-toasts')).render(e(ToastHost));
+installAlertShim();
+const SHOW = {
+  success: () => notify('success', 'Projekti tallennettu', { detail: '~/Kirjat/esimerkki.faust' }),
+  info: () => notify('info', 'Kaikki muutokset on tallennettu'),
+  warning: () => notify('warning', 'Valitse ensin tekstistä kohta, jonka haluat kirjoittaa uudelleen'),
+  error: () => notify('error', 'Vienti epäonnistui', { detail: 'Tiedostoon ei voitu kirjoittaa.', action: { label: 'Yritä uudelleen', onClick: () => {} } }),
+  busy: () => { const task = notify('busy', 'Tekoäly kirjoittaa lukua…'); let value = 0; const timer = setInterval(() => { value += 10; task.update({ progress: value }); if (value >= 100) { clearInterval(timer); task.close(); notify('success', 'Luku on valmis'); } }, 400); },
+  alert1: () => window.alert('Testi'),
+  alert2: () => window.alert('Vertailu: "Ennen editointia"\n\nTilannekuva: 12 000 sanaa\nNyt: 13 450 sanaa')
+};
+for (const button of document.querySelectorAll('[data-notify]')) button.addEventListener('click', SHOW[button.dataset.notify]);
+
+// The whole shell: the toggles write the same states the app writes
+const app = document.getElementById('tn-app');
+const frame = { sidebar: true, inspector: true, aipanel: false, split: false, focus: false, fullscreen: false, measure: false };
+function drawFrame() {
+  const calm = frame.focus;                                        // focus mode closes the panels; their state comes back on exit
+  const left = frame.sidebar && !calm, right = frame.inspector && !calm, ai = frame.aipanel && !calm;
+  app.querySelector('.faust-sidebar').dataset.state = left ? 'open' : 'closed';
+  app.querySelector('.faust-inspector').dataset.state = right ? 'open' : 'closed';
+  app.querySelector('.faust-aipanel').dataset.state = ai ? 'open' : 'closed';
+  app.style.setProperty('--left-col-w', left ? 'var(--sidebar-w)' : '0px');
+  app.style.setProperty('--right-col-w', right && ai ? 'calc(var(--inspector-w) + var(--aipanel-w))' : right ? 'var(--inspector-w)' : ai ? 'var(--aipanel-w)' : '0px');
+  app.classList.toggle('faust-focus-mode', frame.focus);
+  app.classList.toggle('is-fullscreen', frame.fullscreen);
+  document.getElementById('tn-area').classList.toggle('is-split', frame.split);
+  document.getElementById('tn-split').hidden = !frame.split;
+  document.getElementById('tn-exit').hidden = !frame.focus;
+  document.getElementById('tn-drag').hidden = !frame.focus;
+  if (frame.measure) document.getElementById('tn-page').dataset.measure = 'wide'; else delete document.getElementById('tn-page').dataset.measure;
+  for (const button of document.querySelectorAll('[data-frame]')) button.setAttribute('aria-pressed', String(frame[button.dataset.frame]));
+}
+for (const button of document.querySelectorAll('[data-frame]')) button.addEventListener('click', () => { frame[button.dataset.frame] = !frame[button.dataset.frame]; drawFrame(); });
+document.getElementById('tn-exit').addEventListener('click', () => { frame.focus = false; drawFrame(); });
+drawFrame();
+
+// Live dialogs: opened last is on top; Esc and the close buttons close the topmost one only
+const open = [];
+function show(id) {
+  const scrim = document.getElementById(id);
+  if (!scrim.hidden) return;
+  scrim.hidden = false;
+  scrim.classList.toggle('is-stacked', open.length > 0);       // a dialog over a dialog: the scrim is painted once
+  open.push({ scrim, opener: document.activeElement });
+  const first = scrim.querySelector('[data-autofocus]') || scrim.querySelector('button');
+  if (first) first.focus();
+}
+function closeTop() {
+  const top = open.pop();
+  if (!top) return false;
+  top.scrim.hidden = true;
+  if (top.opener && top.opener.focus) top.opener.focus();
+  return true;
+}
+for (const button of document.querySelectorAll('[data-open]')) button.addEventListener('click', () => show(button.dataset.open));
+for (const button of document.querySelectorAll('[data-close]')) button.addEventListener('click', closeTop);
+window.addEventListener('keydown', (event) => { if (event.key === 'Escape' && closeTop()) event.stopPropagation(); }, true);
+</script>
+</body>
+</html>
