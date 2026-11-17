@@ -11,17 +11,25 @@
 class StoryContinuityTracker {
   constructor(project) {
     this.project = project;
+    this.continuity();
+  }
 
-    // Ensure continuity structure exists
-    if (!this.project.continuity) {
-      this.project.continuity = {
-        characters: {}, // { name: { appearances: [], traits: {}, state: {} } }
-        locations: {}, // { name: { descriptions: [], firstMentioned: chapterIndex } }
-        timeline: [], // [ { chapter, event, timestamp } ]
-        facts: [], // [ { fact, source: chapterIndex } ]
-        plotThreads: {} // { threadId: { introduced, resolved, status } }
-      };
-    }
+  /**
+   * The continuity record of the current project, completed where it is missing.
+   * The app swaps `this.project` whenever the project changes, and a new project, an old
+   * file or a place saved from its form (only `locations`) may lack any part of it, so
+   * every writer goes through here instead of relying on the constructor.
+   */
+  continuity() {
+    const isRecord = (value) => !!value && typeof value === 'object' && !Array.isArray(value);
+    if (!isRecord(this.project.continuity)) this.project.continuity = {};
+    const record = this.project.continuity;
+    if (!isRecord(record.characters)) record.characters = {}; // { name: { appearances: [], traits: {}, state: {} } }
+    if (!isRecord(record.locations)) record.locations = {}; // { name: { descriptions: [], firstMentioned: chapterIndex } }
+    if (!Array.isArray(record.timeline)) record.timeline = []; // [ { chapter, event, timestamp } ]
+    if (!Array.isArray(record.facts)) record.facts = []; // [ { fact, source: chapterIndex } ]
+    if (!isRecord(record.plotThreads)) record.plotThreads = {}; // { threadId: { introduced, resolved, status } }
+    return record;
   }
 
   /**
@@ -112,8 +120,9 @@ class StoryContinuityTracker {
    * Track character appearance in chapter
    */
   trackCharacterAppearance(characterName, chapterIndex) {
-    if (!this.project.continuity.characters[characterName]) {
-      this.project.continuity.characters[characterName] = {
+    const characters = this.continuity().characters;
+    if (!characters[characterName]) {
+      characters[characterName] = {
         name: characterName,
         appearances: [],
         traits: {},
@@ -121,7 +130,8 @@ class StoryContinuityTracker {
       };
     }
 
-    const character = this.project.continuity.characters[characterName];
+    const character = characters[characterName];
+    if (!Array.isArray(character.appearances)) character.appearances = [];
 
     if (!character.appearances.includes(chapterIndex)) {
       character.appearances.push(chapterIndex);
@@ -133,8 +143,9 @@ class StoryContinuityTracker {
    * Track location mention
    */
   trackLocation(locationName, chapterIndex) {
-    if (!this.project.continuity.locations[locationName]) {
-      this.project.continuity.locations[locationName] = {
+    const locations = this.continuity().locations;
+    if (!locations[locationName]) {
+      locations[locationName] = {
         name: locationName,
         firstMentioned: chapterIndex,
         appearances: [],
@@ -142,7 +153,9 @@ class StoryContinuityTracker {
       };
     }
 
-    const location = this.project.continuity.locations[locationName];
+    // A place written in its form has no appearances yet
+    const location = locations[locationName];
+    if (!Array.isArray(location.appearances)) location.appearances = [];
 
     if (!location.appearances.includes(chapterIndex)) {
       location.appearances.push(chapterIndex);
@@ -154,26 +167,28 @@ class StoryContinuityTracker {
    * Add a timeline event
    */
   addTimelineEvent(chapterIndex, event, timestamp = null) {
-    this.project.continuity.timeline.push({
+    const timeline = this.continuity().timeline;
+    timeline.push({
       chapter: chapterIndex,
       event,
       timestamp: timestamp || new Date().toISOString()
     });
 
     // Sort by chapter
-    this.project.continuity.timeline.sort((a, b) => a.chapter - b.chapter);
+    timeline.sort((a, b) => a.chapter - b.chapter);
   }
 
   /**
    * Add a story fact
    */
   addFact(fact, sourceChapter) {
-    const existing = this.project.continuity.facts.find(f =>
-      f.fact.toLowerCase() === fact.toLowerCase()
+    const facts = this.continuity().facts;
+    const existing = facts.find(f =>
+      String((f && f.fact) || '').toLowerCase() === fact.toLowerCase()
     );
 
     if (!existing) {
-      this.project.continuity.facts.push({
+      facts.push({
         fact,
         source: sourceChapter,
         addedAt: new Date().toISOString()
@@ -277,7 +292,7 @@ class StoryContinuityTracker {
 
     // Check for characters that disappear for many chapters
     Object.values(this.project.continuity?.characters || {}).forEach(char => {
-      if (char.appearances.length < 2) return;
+      if (!char || !Array.isArray(char.appearances) || char.appearances.length < 2) return;
 
       const gaps = [];
       for (let i = 1; i < char.appearances.length; i++) {

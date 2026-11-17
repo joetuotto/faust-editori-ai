@@ -567,7 +567,7 @@ function FAUSTApp() {
     if (!thread) return;
     if (!(await askConfirm(
       'Poistetaanko juonilanka?',
-      'Juonilanka ”' + thread.name + '” poistetaan. Poistoa ei voi kumota.',
+      'Juonilanka ”' + (thread.name || 'Nimetön juonilanka') + '” poistetaan. Poistoa ei voi kumota.',
       'Poista juonilanka',
       'Peruuta',
       { danger: true }
@@ -604,7 +604,7 @@ function FAUSTApp() {
   // Consistency check state
   const [consistencyErrors, setConsistencyErrors] = useState([]);
   const [checkingConsistency, setCheckingConsistency] = useState(false);
-  // A complete check of the open project found nothing (no failed requests, no project change since)
+  // A complete check of the open project found nothing (cleared when another project opens or an import replaces it)
   const [consistencyChecked, setConsistencyChecked] = useState(false);
 
   // Voice state
@@ -2055,6 +2055,11 @@ function FAUSTApp() {
     setProject(prev => pristine
       ? { ...prev, title: result.title || prev.title, author: prev.author || result.author || '', structure: imported }
       : { ...prev, structure: [...prev.structure, ...imported] });
+    if (pristine) {
+      // A consistency result belongs to the text it was found in
+      setConsistencyErrors([]);
+      setConsistencyChecked(false);
+    }
     setActiveChapterId(imported[0].id);
     setUnsavedChanges(true);
     console.log('[Import]', imported.length, 'chapters from', result.filePath);
@@ -3405,9 +3410,8 @@ Return ONLY valid JSON:
 
     if (questions && questions.questions) {
       setCharacterQuestions(questions.questions);
-      // Answers belong to the questions they were given for
+      // Answers belong to the questions they were given for; the generated profile stays (BUG-12)
       setCharacterAnswers({});
-      setCharacterProfile(null);
       setCharacterBuilderStep(4); // Move to questions step
     } else {
       setCharacterBuilderStep(2);

@@ -331,7 +331,11 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-row__text  { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-half); }
 .faust-row__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .faust-row--author .faust-row__title { font: var(--type-serif); }
-.faust-row__meta  { font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.faust-row__meta  { font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* a collection row's rule (Tila: …, Hahmo: …, Hakusana: …) is cut, not run past the column (sidebar request 3).
+   Only there until XR-3 takes the hidden row actions out of the flow (lead decision 1, option (b)); a chapter
+   row's word count must show whole, and its text column is 64 px at rest while the actions keep their width. */
+.faust-row:has(> .faust-chip--count) .faust-row__meta { overflow: hidden; text-overflow: ellipsis; }
 .faust-row__actions { margin-left: auto; display: flex; gap: var(--sp-half); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
 .faust-row:is(:hover, :focus-within, .is-selected) .faust-row__actions { opacity: 1; }
 /* on a hover, pressed, selected or drop fill the weakest text level steps up, so it never drops under 4.5:1 */
