@@ -175,7 +175,7 @@ export function ShortcutsDialog({ open, onClose }) {
       style: { '--dialog-w': '800px' }
     },
       e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' } },
-        e('div', { style: { fontFamily: 'EB Garamond', fontSize: '20px', fontWeight: 600 } }, 'Pikanäppäimet'),
+        e('div', { className: 'faust-dialog__title' }, 'Pikanäppäimet'),
         e('button', { onClick: onClose, className: buttonClass(false) }, 'Sulje')
       ),
       // Two columns of rows: the command in serif, each key a keycap, an alternative as a further group
@@ -297,7 +297,7 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
       'aria-label': 'Vie käsikirjoitus',
       className: panelClass('md')
     },
-      e('div', { style: { fontFamily: 'EB Garamond', fontSize: '20px', fontWeight: 600 } }, 'Vie käsikirjoitus'),
+      e('div', { className: 'faust-dialog__title' }, 'Vie käsikirjoitus'),
 
       chapters.length === 0 && e('div', { style: { fontFamily: 'EB Garamond', fontSize: '15px', marginTop: '12px' } },
         'Projektissa ei ole vielä tekstiä vietäväksi.'),
@@ -382,7 +382,7 @@ export function ConfirmDialog({ request, onDone }) {
 
   return e('div', { className: SCRIM_TOP },
     e('div', { role: 'alertdialog', 'aria-modal': 'true', 'aria-label': request.title, className: panelClass('sm') },
-      e('div', { style: { fontFamily: 'EB Garamond', fontSize: '19px', fontWeight: 600, marginBottom: '10px' } }, request.title),
+      e('div', { className: 'faust-dialog__title' }, request.title),
       request.message && e('div', {
         style: { fontFamily: 'EB Garamond', fontSize: '15px', lineHeight: '1.5', whiteSpace: 'pre-line' }
       }, request.message),

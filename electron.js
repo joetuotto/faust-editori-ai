@@ -231,9 +231,13 @@ async function loadUiPrefs() {
   }
 }
 
+let uiPrefsSaving = Promise.resolve();
 async function saveUiPrefs(next) {
   uiPrefs = { ...uiPrefs, ...next };
-  await fs.writeFile(getUiPrefsPath(), JSON.stringify(uiPrefs, null, 2), 'utf-8');
+  // Saves run one after another and each writes atomically: two quick theme switches cannot tear the file
+  const text = JSON.stringify(uiPrefs, null, 2);
+  uiPrefsSaving = uiPrefsSaving.catch(() => {}).then(() => writeFileAtomic(getUiPrefsPath(), text));
+  await uiPrefsSaving;
   console.log('[UI Prefs] Saved:', uiPrefs);
 }
 
@@ -416,6 +420,10 @@ ipcMain.on('theme-changed', (_event, theme) => {
   applyNativeTheme(next);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setBackgroundColor(themeBackground(next));
+    // The first report comes after the renderer has mounted and listens on the menu channel, so it
+    // is also the moment to tell it the fullscreen state (after a reload, or a window restored in
+    // fullscreen, no enter-full-screen event follows). Repeating it on a theme switch is harmless.
+    mainWindow.webContents.send('menu-action', 'fullscreen-changed', mainWindow.isFullScreen());
   }
   if (uiPrefs.theme !== next) {
     saveUiPrefs({ theme: next }).catch((error) => console.error('[UI Prefs] Save error:', error));

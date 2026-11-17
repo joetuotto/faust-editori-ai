@@ -35,18 +35,32 @@ function measureScrollbar() {
 // The theme change. Stores the theme, tells the main process (native menus, select lists and
 // confirm boxes follow it) and sets data-theme: at once on the first run and under reduced
 // motion, otherwise under the golden swipe (styles/faust-tokens.css, part 5).
+// A switch during a running swipe cancels it: its timers are cleared and its band removed, so
+// the page never shows the intermediate theme and the cross-fade class stays for the new swipe.
+let themeSwipe = { timers: [], band: null };
 function applyTheme(next, animate) {
   const root = document.documentElement;
   const calm = !animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   try { localStorage.setItem('faust-theme', next); } catch (err) { /* private mode */ }
   if (window.electronAPI && window.electronAPI.setTheme) window.electronAPI.setTheme(next);
-  if (calm) { root.setAttribute('data-theme', next); return; }
+  themeSwipe.timers.forEach(clearTimeout);
+  if (themeSwipe.band) themeSwipe.band.remove();
+  themeSwipe = { timers: [], band: null };
+  if (calm) { root.classList.remove('faust-theme-switching'); root.setAttribute('data-theme', next); return; }
   root.classList.add('faust-theme-switching');                      // 80 % dip and colour cross-fade
   const swipe = document.createElement('div');
   swipe.className = 'faust-theme-swipe';                            // the golden band, 800ms after a 150ms dip
   document.body.append(swipe);
-  setTimeout(() => root.setAttribute('data-theme', next), 550);     // the band is over the centre
-  setTimeout(() => { swipe.remove(); root.classList.remove('faust-theme-switching'); }, 1200);
+  themeSwipe = {
+    band: swipe,
+    timers: [
+      setTimeout(() => root.setAttribute('data-theme', next), 550), // the band is over the centre
+      setTimeout(() => {
+        swipe.remove();
+        if (themeSwipe.band === swipe) { root.classList.remove('faust-theme-switching'); themeSwipe = { timers: [], band: null }; }
+      }, 1200)
+    ]
+  };
 }
 
 // CharacterGenerator, callAIProvider, and RefinementManager
@@ -255,8 +269,8 @@ function FAUSTApp() {
 
   // UI state
   const [isDarkMode, setIsDarkMode] = useState(() => {
-    const saved = localStorage.getItem('faust-theme');
-    return saved ? saved === 'NOX' : true;
+    // Same rule as the first-paint script in index.html: anything but 'DEIS' is NOX
+    try { return localStorage.getItem('faust-theme') !== 'DEIS'; } catch (err) { return true; }
   });
   const [showInspector, setShowInspector] = useState(false);
   // Native fullscreen, reported by the main process through the menu channel ('fullscreen-changed')
@@ -2920,6 +2934,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         console.error('[Voice] AI error:', result.error);
         alert('AI-virhe: ' + result.error);
         setVoiceState('error');
+        setTimeout(() => setVoiceState('idle'), 2000);
         return null;
       }
     } catch (error) {
@@ -2971,7 +2986,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
       }
     } catch (error) {
       console.error('[Voice] Error:', error);
-      alert(error.message);
+      notify('error', error.message);
       setVoiceState('error');
       setTimeout(() => setVoiceState('idle'), 2000);
     }
@@ -3279,7 +3294,20 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     // Update on window resize
     window.addEventListener('resize', updateEditorDimensions);
 
+    // The first measurement can come before the fonts and the text have their final height:
+    // measure again when the web fonts are in and whenever the scroller or its content resizes.
+    let alive = true;
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (alive) updateEditorDimensions(); });
+    let resizeObserver = null;
+    if (editorRef.current && window.ResizeObserver) {
+      resizeObserver = new ResizeObserver(updateEditorDimensions);
+      resizeObserver.observe(editorRef.current);
+      Array.from(editorRef.current.children).forEach(child => resizeObserver.observe(child));
+    }
+
     return () => {
+      alive = false;
+      if (resizeObserver) resizeObserver.disconnect();
       if (editorRef.current) {
         editorRef.current.removeEventListener('scroll', updateEditorDimensions);
       }
@@ -3479,7 +3507,7 @@ ${contextPrompt}`;
       }
     } catch (error) {
       console.error('[AI Assistant Voice] Error:', error);
-      alert(error.message);
+      notify('error', error.message);
       setAiChatVoiceState('error');
       setTimeout(() => setAiChatVoiceState('idle'), 2000);
     }
@@ -3880,7 +3908,7 @@ ${contextPrompt}`;
 
     // Header
     e('div', { className: 'faust-header' },
-      e('div', { style: { padding: '16px', paddingLeft: '80px', color: 'var(--text)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
+      e('div', { style: { padding: '16px', paddingLeft: isFullScreen ? '16px' : '80px', color: 'var(--text)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
         e('div', { style: { display: 'flex', alignItems: 'center', gap: '12px' } },
           // FAUST with 8-pointed star
           e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
@@ -5787,7 +5815,7 @@ ${contextPrompt}`;
             e('button', {
               onClick: handleVoiceEdit,
               disabled: voiceState !== 'idle',
-              'aria-busy': voiceState !== 'idle',
+              'aria-busy': voiceState === 'listening' || voiceState === 'processing',
               style: {
                 background: voiceState === 'listening' ? '#ff4444' :
                            voiceState === 'processing' ? '#ffaa00' : 'var(--bronze)',
@@ -12479,11 +12507,12 @@ ${contextPrompt}`;
       }
     })),
 
+    // Claude Chat Toggle Button (floating)
     // Chat launcher: the one permitted floating control (.faust-fab). 36px, above the status
     // bar, left of an open Inspector; not rendered while the chat or the Liminal Engine is open.
     !claudeChatOpen && !aiAssistantOpen && e('button', {
       className: 'faust-fab',
-      'aria-label': 'Avaa erillinen keskustelu: vastaus näkyy sitä mukaa kuin tekoäly kirjoittaa sitä, ja vastauksen voi lisätä luvun loppuun',
+      'aria-label': 'Avaa erillinen keskustelu',
       title: 'Avaa erillinen keskustelu: vastaus näkyy sitä mukaa kuin tekoäly kirjoittaa sitä, ja vastauksen voi lisätä luvun loppuun',
       onClick: () => setClaudeChatOpen(true)
     }, icons.star8({ size: 16 })),

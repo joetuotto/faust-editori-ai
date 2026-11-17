@@ -1085,8 +1085,9 @@ button:is([style*="background: var(--bronze"], [style*="background: var(--sigil"
 /* S4  Disabled buttons were dimmed twice (global opacity .5 on an inline grey: 1.7:1).
        One legible, shaped look. A button that is disabled because it is working carries
        aria-busy and is left alone (F7 adds aria-busy to the voice button, whose listening
-       state is its inline colour). Delete when all buttons use faust-btn. */
-button:disabled:not([aria-busy="true"]):not([class*="faust-"]) {
+       state is its inline colour). The sigil tiles keep their own disabled look (S7).
+       Delete when all buttons use faust-btn. */
+button:disabled:not([aria-busy="true"]):not([class*="faust-"]):not(.ai-toolbar-btn):not(.ai-toolbar-btn-primary) {
   opacity: 1 !important;
   background-color: var(--fill-subtle) !important; background-image: none !important;
   border-color: var(--rule) !important; border-image: none !important;
@@ -1133,6 +1134,12 @@ button[aria-busy="true"]:disabled:not([class*="faust-"]) { opacity: 1 !important
 .ai-toolbar-btn-primary { background: var(--accent-tint-strong) !important; }
 .ai-toolbar-btn-primary:hover:not(:disabled) { background: var(--accent) !important; color: var(--on-accent) !important; }
 :is(.ai-toolbar-btn, .ai-toolbar-btn-primary):disabled { background: transparent !important; color: var(--text-disabled) !important; }
+
+/* S9  Meta text on a tinted (selected) row: --text-3 on the DEIS selection tint is 4.40:1.
+       As in the recipes, the meta text of a selected row steps up to --text-2 (5.72:1).
+       The second pattern is the selected card of the card view.
+       Delete when the chapter list and the card view use their recipes (regions C and D). */
+:is([style*="background: var(--bg-tertiary"], [style*="background: rgba(143, 122, 83, 0.15)"]) [style*="color: var(--text-3"] { color: var(--text-2) !important; }
 
 /* S8  Focus mode leaves only the page, also for today's markup (the slab; the rail is in section 15).
        Delete with S7. */

@@ -85,6 +85,14 @@
 .tn-cm .cm-content { flex: 1; min-width: 0; display: block; outline: none; }
 .tn-cm .cm-line { display: block; min-height: 1.8em; }
 .tn-cm .cm-tooltip { position: relative; width: 420px; max-width: 100%; display: flex; flex-direction: column; gap: var(--sp-2); }
+/* Stand-ins for what the feature code's own theme gives the suggestion marks (suggestionsCore.js reads the --sugg-* hooks) */
+.tn-cm .cm-faust-sugg-ins { background-color: var(--sugg-ins-bg); border-bottom: 0 solid var(--sugg-ins-line); }
+.tn-cm .cm-faust-sugg-new { border-bottom-color: var(--sugg-ins-line); }
+.tn-cm .cm-faust-sugg-del { background-color: var(--sugg-del-bg); color: var(--sugg-del-text); text-decoration-line: line-through; }
+.tn-cm .cm-faust-target { background-color: var(--target-bg); }
+.tn-cm .cm-faust-underline { text-decoration-line: underline; }
+/* The S5 sample stays in the flow: the bridge pins the real panel between header and status bar */
+.tn-section .liminal-engine-panel { position: relative; top: auto !important; bottom: auto !important; }
 /* the whole shell in a frame: the frame is the containing block of its fixed layers, and the
    app fills the frame instead of the window */
 .tn-frame { height: 640px; contain: layout; overflow: hidden; border: var(--bw) solid var(--border); border-radius: var(--radius-md); }
@@ -653,14 +661,19 @@ Nyt: 13 450 sanaa</span></div>
       <div class="cm-line"><span class="cm-faust-todo">[TODO: tarkista junan aikataulu vuodelta 1998]</span></div>
       <div class="cm-line cm-faust-scenebreak">***</div>
       <div class="cm-line">Hän oli <span class="cm-faust-avoid">jotenkin</span> väsynyt, ja <span class="cm-faust-mention">Aino</span> tiesi sen.</div>
+      <div class="cm-line">Ehdotukset: <span class="cm-faust-sugg-del">vanha sana</span> <span class="cm-faust-sugg-ins">uusi sana</span>, <span class="cm-faust-sugg-new">lisätty virke</span> ja <span class="cm-faust-sugg-orig">kohta, johon ehdotus viittaa</span>.</div>
+      <div class="cm-line">Tarkasteltavana: <span class="cm-faust-sugg-del cm-faust-sugg-current">vanha sana</span> <span class="cm-faust-sugg-ins cm-faust-sugg-current">uusi sana</span>, <span class="cm-faust-sugg-new cm-faust-sugg-current">lisätty virke</span> ja <span class="cm-faust-sugg-orig cm-faust-sugg-current">viitattu kohta</span>.</div>
+      <div class="cm-line">Kehotteen <span class="cm-faust-target">kohdeteksti</span> ja <span class="cm-faust-underline">alleviivattu</span> sana.</div>
       <div class="cm-line"><span class="cm-placeholder">Aloita kirjoittaminen…</span></div>
-      <div class="cm-faust-block"><div class="cm-faust-block-head">Ehdotus · Liminal Engine</div><div class="cm-faust-block-text" data-placeholder="Tyhjä ehdotus">Kaupunki oli kutistunut. Asemarakennuksen kello näytti väärää aikaa.</div><div class="cm-faust-block-bar"><button class="cm-faust-block-button">Hylkää</button> <button class="cm-faust-block-button">Hyväksy</button> <button class="cm-faust-block-button" disabled>Ei käytössä</button></div></div>
+      <div class="cm-faust-block"><div class="cm-faust-block-head">Ehdotus · Liminal Engine</div><div class="cm-faust-block-text" data-placeholder="Tyhjä ehdotus">Kaupunki oli kutistunut. Asemarakennuksen kello näytti väärää aikaa.</div><div class="cm-faust-block-label">Muutos</div><div class="cm-faust-block-hint">Hyväksy tai hylkää; Esc palaa tekstiin.</div><div class="cm-faust-block-bar"><button class="cm-faust-block-button">Hylkää</button> <button class="cm-faust-block-button">Hyväksy</button> <button class="cm-faust-block-button" disabled>Ei käytössä</button></div></div>
       <div class="cm-faust-block cm-faust-sugg-current"><div class="cm-faust-block-head">Tarkasteltava ehdotus</div><div class="cm-faust-block-text">Hotellin aulassa paloi yksi lamppu.</div><div class="cm-faust-block-note">Tekoäly lyhensi virkettä.</div></div>
     </div></div></div></div></div>
     <div class="tn-stack">
       <span class="tn-cap">Rivikehote CodeMirrorin työkaluvihjeenä (.cm-tooltip.cm-faust-prompt)</span>
       <div class="faust-editor-host tn-cm"><div class="cm-tooltip cm-faust-prompt" role="dialog" aria-label="Rivikehote">
         <div class="cm-faust-prompt-caption">Liminal Engine · valittu teksti</div>
+        <div class="cm-faust-prompt-summary">Valittu: 2 virkettä, 31 sanaa</div>
+        <div class="cm-faust-prompt-instruction">Ohje: säilytä kertojan ääni.</div>
         <textarea class="cm-faust-prompt-field" rows="2" aria-label="Pyyntö">Tiivistä tämä kappale kahteen virkkeeseen</textarea>
         <div class="cm-faust-prompt-chips tn-row" style="gap: var(--sp-1)"><button>Lyhennä</button><button>Selkeytä</button><button disabled>Ei käytössä</button></div>
         <div class="tn-row" style="justify-content: space-between"><span class="cm-faust-prompt-keys">Enter lähettää · Esc sulkee</span><span class="tn-row" style="gap: var(--sp-2)"><button class="cm-faust-prompt-link">Muokkaa pyyntöä</button><button>Peruuta</button><button class="cm-faust-prompt-primary">Lähetä</button><button class="cm-faust-prompt-primary" disabled>Lähetä</button></span></div>
@@ -669,6 +682,10 @@ Nyt: 13 450 sanaa</span></div>
         <div class="cm-faust-prompt-status">Tekoäly pohtii…</div>
         <div class="cm-faust-prompt-preview">Kaupunki oli kutistunut. Kello näytti väärää aikaa.</div>
         <div class="cm-faust-prompt-error">Tekoälypyyntö epäonnistui</div>
+        <div class="cm-faust-prompt-blocked">Valinta on liian pitkä tälle mallille.</div>
+        <div class="cm-faust-prompt-detail">Virheen tiedot: aikakatkaisu 30 s.</div>
+        <div class="cm-faust-prompt-note">Teksti ei muuttunut.</div>
+        <div class="tn-row" style="justify-content: space-between"><span class="cm-faust-prompt-hint">Yritä uudelleen tai lyhennä valintaa.</span><span class="cm-faust-prompt-model">Malli: oletus</span></div>
       </div></div>
       <span class="tn-cap">.faust-annot-marker: tärkeys ja avattu</span>
       <div class="tn-row"><button class="faust-annot-marker" data-priority="high" aria-label="Merkintä, tärkeä"><i data-icon="warning" data-size="14"></i></button><button class="faust-annot-marker" data-priority="medium" aria-label="Merkintä"><i data-icon="idea" data-size="14"></i></button><button class="faust-annot-marker" data-priority="low" aria-label="Merkintä, tieto"><i data-icon="note" data-size="14"></i></button><button class="faust-annot-marker" aria-label="Reunahuomautus"><i data-icon="comment" data-size="14"></i></button><button class="faust-annot-marker is-active" data-priority="medium" aria-label="Avattu merkintä"><i data-icon="star8" data-size="14"></i></button></div>
@@ -729,6 +746,7 @@ Nyt: 13 450 sanaa</span></div>
         <div class="chat-message error"><div class="message-role error">Virhe</div><div class="message-content">Tekoälypyyntö epäonnistui.</div></div>
         <div class="streaming-indicator"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
       </div>
+      <div class="claude-chat-error">Virhe näytetään kerran, viestinä (tämä rivi on piilotettu)</div>
       <div class="claude-chat-input"><textarea rows="2" placeholder="Kirjoita viesti" aria-label="Viesti"></textarea><button class="send-btn" aria-label="Lähetä"><i data-icon="send" data-size="14"></i></button><button class="send-btn" aria-label="Lähetä, ei käytössä" disabled><i data-icon="send" data-size="14"></i></button></div>
     </div>
   </div>
@@ -852,9 +870,13 @@ Nyt: 13 450 sanaa</span></div>
     <select style="padding: 6px 8px; background: var(--bg-2); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text); font-family: &quot;IBM Plex Mono&quot;; font-size: 12px;"><option>vanha valinta</option></select>
     <input type="text" value="virhe" aria-invalid="true" style="padding: 8px 10px; background: var(--bg-2); border: 1px solid var(--error); border-radius: 4px; color: var(--text); font-family: &quot;IBM Plex Mono&quot;; font-size: 13px;">
   </div>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">S5, S9</span>
+    <div class="liminal-engine-panel" style="width: 260px; padding: 12px; background: rgb(10, 10, 10); font-family: &quot;IBM Plex Mono&quot;; font-size: 12px;">Liminal Engine -paneeli (S5: paneelin pinta ja reuna)</div>
+    <div style="padding: 8px 12px; border-radius: 4px; background: var(--bg-tertiary, rgba(143,122,83,0.1));"><div style="font-family: &quot;EB Garamond&quot;; font-size: 15px;">Saapuminen</div><div style="font-size: 11px; color: var(--text-3);">186 sanaa (valitun rivin metateksti, S9)</div></div>
+  </div>
   <div class="tn-row"><span class="tn-cap tn-cap--w">S6, S7</span>
     <div class="formatting-toolbar" style="display: flex; gap: 4px; padding: 8px; background: var(--bg-2); border-radius: 4px;"><button style="background: var(--bg-2); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text); padding: 4px 10px; font-family: &quot;EB Garamond&quot;; font-size: 14px; font-weight: 700;">B</button><button style="background: var(--bg-2); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text); padding: 4px 10px; font-family: &quot;IBM Plex Mono&quot;; font-size: 11px;">H1</button><button style="background: var(--bg-2); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-3); padding: 4px 10px; font-family: &quot;IBM Plex Mono&quot;; font-size: 11px;">TODO</button></div>
-    <div style="display: flex; gap: 8px; padding: 12px; background: rgba(0, 0, 0, 0.85); border-radius: 8px;"><button class="ai-toolbar-btn" style="background: rgb(26, 24, 21); border: 1px solid rgb(199, 162, 90); color: rgb(232, 200, 120); font-size: 18px;">☿</button><button class="ai-toolbar-btn" style="background: rgb(26, 24, 21); border: 1px solid rgb(199, 162, 90); color: rgb(232, 200, 120); font-size: 18px;">⚗</button><button class="ai-toolbar-btn" disabled style="background: rgb(26, 24, 21); border: 1px solid rgb(199, 162, 90); color: rgb(232, 200, 120); font-size: 18px;">🜍</button><button class="ai-toolbar-btn-primary" style="background: rgb(199, 162, 90); border: 2px solid rgb(232, 200, 120); color: rgb(0, 0, 0);"><i data-icon="stone" data-size="20"></i></button></div>
+    <div style="display: flex; gap: 8px; padding: 12px; background: rgba(0, 0, 0, 0.85); border-radius: 8px;"><button class="ai-toolbar-btn" style="background: rgb(26, 24, 21); border: 1px solid rgb(199, 162, 90); color: rgb(232, 200, 120); font-size: 18px;">☿</button><button class="ai-toolbar-btn" style="background: rgb(26, 24, 21); border: 1px solid rgb(199, 162, 90); color: rgb(232, 200, 120); font-size: 18px;">⚗</button><button class="ai-toolbar-btn" disabled style="background: rgb(26, 24, 21); border: 1px solid rgb(199, 162, 90); color: rgb(232, 200, 120); font-size: 18px;">🜍</button><button class="ai-toolbar-btn-primary" style="background: rgb(199, 162, 90); border: 2px solid rgb(232, 200, 120); color: rgb(0, 0, 0);"><i data-icon="stone" data-size="20"></i></button><button class="ai-toolbar-btn-primary" disabled style="background: rgb(199, 162, 90); border: 2px solid rgb(232, 200, 120); color: rgb(0, 0, 0);"><i data-icon="stone" data-size="20"></i></button></div>
   </div>
 </section>
 
@@ -970,7 +992,16 @@ function setTheme(name) {
   for (const option of document.querySelectorAll('[data-theme-opt]')) option.setAttribute('aria-checked', String(option.dataset.themeOpt === name));
   describe();
 }
-for (const option of document.querySelectorAll('[data-theme-opt]')) option.addEventListener('click', () => setTheme(option.dataset.themeOpt));
+// A click switches under the golden swipe, as the app does (.faust-theme-switching, .faust-theme-swipe)
+function swipeTo(name) {
+  if (name === root.getAttribute('data-theme')) return;
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { setTheme(name); return; }
+  root.classList.add('faust-theme-switching');
+  const band = document.createElement('div'); band.className = 'faust-theme-swipe'; document.body.append(band);
+  setTimeout(() => setTheme(name), 550);
+  setTimeout(() => { band.remove(); root.classList.remove('faust-theme-switching'); }, 1200);
+}
+for (const option of document.querySelectorAll('[data-theme-opt]')) option.addEventListener('click', () => swipeTo(option.dataset.themeOpt));
 setTheme(root.getAttribute('data-theme'));
 
 // Section links

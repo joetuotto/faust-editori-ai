@@ -44,11 +44,22 @@ function remove(id) {
   emit();
 }
 
+const MAX_STAYING = 5;            // a runaway of persistent notifications (a repeated failure) stops here
 export function notify(kind, text, options = {}) {
   const id = ++seq;
   const item = { id, kind, text: String(text), detail: options.detail, action: options.action,
                  duration: options.duration === undefined ? STAY[kind] : options.duration };
+  // The same message again replaces the one on screen instead of stacking a copy of it
+  const same = t => t.kind === item.kind && t.text === item.text && t.detail === item.detail && !t.action && !item.action;
+  items = items.filter(t => !same(t));
+  waiting = waiting.filter(t => !same(t));
   admit(item);
+  // Persistent notifications are never pushed out by timed ones; past five, the oldest persistent one goes
+  const staying = items.filter(t => !(t.duration > 0));
+  if (staying.length > MAX_STAYING) {
+    const drop = new Set(staying.slice(0, staying.length - MAX_STAYING).map(t => t.id));
+    items = items.filter(t => !drop.has(t.id));
+  }
   emit();
   const close = () => remove(id);
   const update = (patch) => { items = items.map(t => (t.id === id ? { ...t, ...patch } : t)); emit(); };
@@ -114,6 +125,7 @@ export function ToastHost() {
   const [list, setList] = useState(items);
   useEffect(() => {
     listeners.add(setList);
+    setList(items);               // a notify() between the first render and this effect is not lost
     return () => { listeners.delete(setList); };
   }, []);
   return e('div', { className: 'faust-toast-host' }, list.map(item => e(Toast, { key: item.id, item })));

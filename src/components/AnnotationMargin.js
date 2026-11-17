@@ -46,7 +46,9 @@
       const { scrollTop, clientHeight, scrollHeight } = editorDimensions;
       const contentLength = content.length;
 
-      if (scrollHeight === 0 || contentLength === 0) {
+      // Nothing scrolls (or nothing is measured yet): the whole text is visible. Without this
+      // the ratio below is 0 / 0 and no annotation is shown.
+      if (scrollHeight === 0 || scrollHeight <= clientHeight || contentLength === 0) {
         return { start: 0, end: contentLength };
       }
 
