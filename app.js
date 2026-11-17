@@ -5674,7 +5674,7 @@ ${contextPrompt}`;
               style: {
                 flex: 1,
                 fontFamily: manuscriptFont.stack,
-                fontSize: `${18 * (parseInt(editorZoom) / 100)}px`,
+                fontSize: 'var(--ms-size)',   // the page element's manuscript size (zoom)
                 lineHeight: lineSpacing,
                 textAlign: textAlign,
                 // Space after every paragraph: 1.0 = none, 1.5 = 0.4 em, 2.0 = 0.8 em
@@ -6131,7 +6131,7 @@ ${contextPrompt}`;
                           // The manuscript settings of the Ulkoasu tab, as in the main pane
                           style: {
                             fontFamily: manuscriptFont.stack,
-                            fontSize: `${18 * (parseInt(editorZoom) / 100)}px`,
+                            fontSize: 'var(--ms-size)',
                             lineHeight: lineSpacing,
                             textAlign: textAlign,
                             paragraphGap: `${Math.max(0, (parseFloat(paragraphSpacing) || 1) - 1) * 0.8}em`,
