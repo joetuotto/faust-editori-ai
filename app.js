@@ -1269,7 +1269,8 @@ function FAUSTApp() {
   // Panels and the window width (R-45, V 6.2). Below 1200 px one side panel is open at a time: opening
   // either side closes the other and the one opened last stays; when the right column closes, a sidebar
   // that this rule closed comes back. Turning split view on closes the right column below 1400 px and
-  // also the sidebar below 1120 px. It acts only through the panels' own setters, so the header toggles
+  // also the sidebar below 1120 px; while it is on, the one-side rule holds below 1400 px (V 6.2: two
+  // panes of 400 px). It acts only through the panels' own setters, so the header toggles
   // tell the truth, and it does nothing in focus mode, which closes and restores the panels itself (the
   // render that leaves focus mode is compared with the state before it, as in the effect above).
   const widthBand = (width) => [1120, 1200, 1400].filter((limit) => width >= limit).length;
@@ -1307,7 +1308,8 @@ function FAUSTApp() {
       }
       return;
     }
-    if (width < 1200 && sidesNow.left && sidesNow.right) {
+    // While split view is on, its two panes need 800 px: the one-side rule then holds below 1400 px
+    if (width < (sidesNow.split ? 1400 : 1200) && sidesNow.left && sidesNow.right) {
       if (lastSideRef.current === 'left') closeRightColumn();
       else { setSidebarCollapsed(true); sidebarClosedByWidthRef.current = true; }
       return;
@@ -7416,9 +7418,24 @@ ${contextPrompt}`;
             )
           ) : null,
 
-          // Input area
+          // Input area: the message field has the foot's whole width on its own line (the docked panel
+          // is 360 px at its narrowest), dictation and Lähetä stand on the line under it
           e('div', { key: 'input', className: 'faust-panel__foot' },
-            e('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' } },
+            e('input', {
+              className: 'faust-input',
+              type: 'text',
+              value: aiChatInput,
+              onChange: (ev) => setAiChatInput(ev.target.value),
+              onKeyDown: (ev) => {
+                if (ev.key === 'Enter' && !ev.shiftKey) {
+                  ev.preventDefault();
+                  sendAiAssistantMessage();
+                }
+              },
+              placeholder: textSelection ? 'Kerro, miten valittua tekstiä muutetaan…' : 'Kirjoita viesti…',
+              disabled: aiChatProcessing
+            }),
+            e('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', marginTop: 'var(--sp-2)' } },
               voiceInputAvailable ? e('button', {
                 className: 'faust-btn faust-btn--icon faust-btn--lg',
                 onClick: handleAiAssistantVoice,
@@ -7429,22 +7446,8 @@ ${contextPrompt}`;
                 'aria-label': aiChatVoiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Sanele viesti',
                 title: aiChatVoiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Sanele viesti'
               }, icons.mic({ size: 16 })) : null,
-              e('input', {
-                className: 'faust-input',
-                type: 'text',
-                value: aiChatInput,
-                onChange: (ev) => setAiChatInput(ev.target.value),
-                onKeyDown: (ev) => {
-                  if (ev.key === 'Enter' && !ev.shiftKey) {
-                    ev.preventDefault();
-                    sendAiAssistantMessage();
-                  }
-                },
-                placeholder: textSelection ? 'Kerro, miten valittua tekstiä muutetaan…' : 'Kirjoita viesti…',
-                disabled: aiChatProcessing,
-                style: { flex: 1 }
-              }),
               e('button', {
+                style: { marginLeft: 'auto' },
                 className: 'faust-btn faust-btn--primary faust-btn--lg',
                 onClick: sendAiAssistantMessage,
                 disabled: aiChatProcessing || !aiChatInput.trim(),

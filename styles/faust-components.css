@@ -350,6 +350,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-sidebar .faust-row:hover > .faust-row__actions { background: linear-gradient(var(--fill-hover), var(--fill-hover)), var(--surface-panel); }
 .faust-sidebar .faust-row:active > .faust-row__actions { background: linear-gradient(var(--fill-active), var(--fill-active)), var(--surface-panel); }
 .faust-sidebar .faust-row:is(.is-selected, [aria-current="true"]) > .faust-row__actions { background: linear-gradient(var(--accent-tint), var(--accent-tint)), var(--surface-panel); }
+/* The mask clips everything outside the actions' box, so the focus ring is drawn inside the button,
+   past the fade: whole on all four sides */
+.faust-sidebar .faust-row > .faust-row__actions .faust-btn:focus-visible { outline-offset: -2px; }
 /* on a hover, pressed, selected or drop fill the weakest text level steps up, so it never drops under 4.5:1 */
 .faust-row:is(:hover, :active, .is-selected, [aria-current="true"], [aria-selected="true"], .is-drop-inside) :is(.faust-row__meta, .faust-row__icon) { color: var(--text-2); }
 .faust-row--static:is(:hover, :active) :is(.faust-row__meta, .faust-row__icon) { color: var(--text-3); }
@@ -977,6 +980,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-panel__body { flex: 1 1 0; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; padding: var(--sp-3) var(--sp-4) var(--sp-5); }
 .faust-panel__foot { flex: none; padding: var(--sp-2) var(--sp-4); border-top: var(--bw) solid var(--rule); }
 .faust-panel :is(input, textarea, [contenteditable], .is-selectable) { user-select: text; cursor: text; }
+/* The Liminal Engine's message field: a placeholder longer than the field ends in an ellipsis, not mid-word */
+.faust-aipanel .faust-panel__foot .faust-input { text-overflow: ellipsis; }
 
 /* ---- Editor pane ---- */
 /* Interim page: the primary pane after the one-line edits of region B, step 1. */
