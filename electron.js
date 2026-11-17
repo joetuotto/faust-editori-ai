@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, shell, nativeTheme } = require('electron');
 const manuscript = require('./utils/manuscript');
 const path = require('path');
 const fs = require('fs').promises;
@@ -193,10 +193,24 @@ function describeAIError(error) {
 }
 
 // --- UI prefs kept by the main process ---
-// Theme, panels and editor settings live in the renderer (localStorage).
+// Panels and editor settings live in the renderer (localStorage). The theme lives there too;
+// the renderer reports it ('theme-changed') and the copy kept here (uiPrefs.theme, 'NOX' or
+// 'DEIS') is what the native layer and the window's first frame are painted from.
 let uiPrefs = {
   spellCheck: true
 };
+
+// The two --surface-page values of styles/faust-tokens.css: the window is this colour
+// before the page has painted, so no window starts white.
+function themeBackground(theme) {
+  return theme === 'DEIS' ? '#F8F2E8' : '#141210';
+}
+
+// What the operating system draws (context menu, application menu, the open list of a
+// select, confirm boxes) follows the app's theme, not the system's appearance.
+function applyNativeTheme(theme) {
+  nativeTheme.themeSource = theme === 'DEIS' ? 'light' : 'dark';
+}
 
 let uiPrefsPath = null;
 
@@ -260,8 +274,9 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
-    minWidth: 1000,
-    minHeight: 600,
+    minWidth: 1024,
+    minHeight: 640,
+    backgroundColor: themeBackground(uiPrefs.theme),   // the first frame is the page colour
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -270,8 +285,9 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js')
     },
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 12, y: 16 }
-    // v1.4.1: Removed backgroundColor to allow theme CSS to control background
+    // The lights on the centre line of the 52px header: the position is that of the 16pt
+    // button frame, the 12pt circle sits 2pt inside it (measured: y 18 puts the circles at 20 to 32pt)
+    trafficLightPosition: { x: 16, y: 18 }
   });
 
   // Load production app
@@ -284,9 +300,20 @@ function createWindow() {
   setSpellCheck(uiPrefs.spellCheck !== false);
   attachContextMenu(mainWindow);
   attachCloseGuard(mainWindow);
+  attachFullScreenReport(mainWindow);
 
   // Luo valikko
   createMenu();
+}
+
+// In native fullscreen the window controls are gone and the header drops its inset for them.
+// The menu channel is the only one from here to the renderer.
+function attachFullScreenReport(win) {
+  const report = (on) => {
+    if (!win.isDestroyed()) win.webContents.send('menu-action', 'fullscreen-changed', on);
+  };
+  win.on('enter-full-screen', () => report(true));
+  win.on('leave-full-screen', () => report(false));
 }
 
 function setSpellCheck(enabled) {
@@ -381,6 +408,18 @@ app.on('before-quit', () => {
 
 ipcMain.on('project:set-dirty', (_event, dirty) => {
   rendererDirty = !!dirty;
+});
+
+// The renderer reports its theme at start and on every switch. Only the two names are accepted.
+ipcMain.on('theme-changed', (_event, theme) => {
+  const next = theme === 'DEIS' ? 'DEIS' : 'NOX';
+  applyNativeTheme(next);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setBackgroundColor(themeBackground(next));
+  }
+  if (uiPrefs.theme !== next) {
+    saveUiPrefs({ theme: next }).catch((error) => console.error('[UI Prefs] Save error:', error));
+  }
 });
 
 ipcMain.on('project:close-confirmed', () => {
@@ -600,6 +639,7 @@ async function writeFileAtomic(filePath, text) {
 app.whenReady().then(async () => {
   await loadApiConfig();
   await loadUiPrefs();  // v1.4.1: Load UI preferences
+  applyNativeTheme(uiPrefs.theme);  // before the window and its menus exist
   createWindow();
 
   app.on('activate', () => {

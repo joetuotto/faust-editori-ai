@@ -115,6 +115,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open a web page in the system browser (https only, checked in the main process)
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+  // Theme ('NOX' or 'DEIS'): the main process mirrors it into the native layer
+  // (menus, select lists, confirm boxes) and into the window's background
+  setTheme: (theme) => ipcRenderer.send('theme-changed', theme),
+
   // Menu actions: one channel, callback(action, argument)
   onMenuAction: (callback) => {
     ipcRenderer.on('menu-action', (_event, action, arg) => callback(action, arg));
