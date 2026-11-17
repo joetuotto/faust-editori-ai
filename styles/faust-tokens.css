@@ -420,7 +420,7 @@
   --paper: var(--surface-paper);
   --border-color: var(--border);
   --border-strong: var(--border-control);
-  --bronze: var(--accent);              /* fills (bridge S2 gives every button on it the on-accent label); safe as text on the five surfaces */
+  --bronze: var(--accent);              /* fills; safe as text on the five surfaces */
   --sigil: var(--accent-text);          /* text, borders and fills alike: passes in each role */
   --gold: var(--accent-text);
   --gold-hover: var(--gilt);
