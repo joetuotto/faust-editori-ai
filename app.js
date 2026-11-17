@@ -1235,6 +1235,14 @@ function FAUSTApp() {
   const openLiminalEngine = () => { setClaudeChatOpen(false); setAiAssistantOpen(true); };
   const openChat = () => { setAiAssistantOpen(false); setClaudeChatOpen(true); };
 
+  // The header's "more" menu holds the priority-3 commands, which the header shows below 1120 px only
+  // there. It closes when its button is hidden (a wider window, focus mode).
+  const headerMore = usePopover();
+  useEffect(() => {
+    const anchor = headerMore.anchorRef.current;
+    if (headerMore.open && (!anchor || anchor.getClientRects().length === 0)) headerMore.close();
+  });
+
   // The right column holds one docked panel: Tietopaneeli or the Liminal Engine (R-42). The panel
   // opened last stays and closes the other; closing one reopens nothing. Leaving focus mode restores
   // the panels as they were before it, so that render is compared with that state: a command given in
@@ -4838,7 +4846,7 @@ ${contextPrompt}`;
             }, icons.split({ size: 16 }))
           ),
 
-          // Paneelit: Sivupalkki, Tietopaneeli and Liminal Engine
+          // Paneelit: Sivupalkki, Tietopaneeli, Liminal Engine and Keskustelu
           e('div', { className: 'faust-header__group' },
             e('button', {
               className: 'faust-btn faust-btn--icon',
@@ -4868,7 +4876,17 @@ ${contextPrompt}`;
                 ? 'Kätke Liminal Engine (' + shortcut('CmdOrCtrl+Shift+K') + ')'
                 : 'Näytä Liminal Engine, FAUSTin tekoälyavustaja: kysy neuvoa tai pyydä muutoksia valittuun tekstiin (' + shortcut('CmdOrCtrl+Shift+K') + ')',
               onClick: () => (aiAssistantOpen ? setAiAssistantOpen(false) : openLiminalEngine())
-            }, icons.star8({ size: 14 }), 'Liminal Engine')
+            }, icons.star8({ size: 14 }), 'Liminal Engine'),
+            // Below 1120 px this button moves into the "more" menu (priority 3)
+            e('button', {
+              className: 'faust-btn faust-btn--quiet',
+              'data-priority': '3',
+              'aria-pressed': claudeChatOpen,
+              title: claudeChatOpen
+                ? 'Sulje keskustelu'
+                : 'Avaa erillinen keskustelu: vastaus näkyy sitä mukaa kuin tekoäly kirjoittaa sitä, ja vastauksen voi lisätä luvun loppuun',
+              onClick: () => (claudeChatOpen ? setClaudeChatOpen(false) : openChat())
+            }, icons.star8({ size: 14 }), 'Keskustelu')
           ),
 
           // Teema: two options, the one in use is selected
@@ -4889,6 +4907,30 @@ ${contextPrompt}`;
                 onClick: () => setIsDarkMode(false)
               }, 'DEIS')
             )
+          ),
+
+          // "More": shown below 1120 px by the stylesheet; its menu lists the priority-3 commands
+          e('button', {
+            ...headerMore.triggerProps,
+            className: 'faust-btn faust-btn--icon faust-header__more',
+            'aria-label': 'Lisää toimintoja',
+            title: 'Lisää toimintoja',
+            'aria-haspopup': 'menu'
+          }, icons.more({ size: 16 })),
+          headerMore.open && e(Popover, { ...headerMore.popoverProps, layer: 'header', menu: true, label: 'Lisää toimintoja' },
+            e('button', {
+              type: 'button',
+              className: 'faust-menu__item',
+              role: 'menuitemcheckbox',
+              'aria-checked': claudeChatOpen,
+              title: claudeChatOpen
+                ? 'Sulje keskustelu'
+                : 'Avaa erillinen keskustelu: vastaus näkyy sitä mukaa kuin tekoäly kirjoittaa sitä, ja vastauksen voi lisätä luvun loppuun',
+              onClick: () => {
+                headerMore.close();
+                if (claudeChatOpen) setClaudeChatOpen(false); else openChat();
+              }
+            }, icons.star8({ size: 14 }), 'Keskustelu')
           )
         )
       )
@@ -9275,15 +9317,8 @@ ${contextPrompt}`;
       }
     })),
 
-    // Claude Chat Toggle Button (floating)
-    // Chat launcher: the one permitted floating control (.faust-fab). 36px, above the status
-    // bar, left of an open Inspector; not rendered while the chat or the Liminal Engine is open.
-    !claudeChatOpen && !aiAssistantOpen && e('button', {
-      className: 'faust-fab',
-      'aria-label': 'Avaa erillinen keskustelu: vastaus näkyy sitä mukaa kuin tekoäly kirjoittaa sitä, ja vastauksen voi lisätä luvun loppuun',
-      title: 'Avaa erillinen keskustelu: vastaus näkyy sitä mukaa kuin tekoäly kirjoittaa sitä, ja vastauksen voi lisätä luvun loppuun',
-      onClick: openChat
-    }, icons.star8({ size: 16 })),
+    // The keskustelu has no floating opener: the header's Keskustelu button (or its row in the
+    // header's "more" menu below 1120 px) and Näytä ▸ Keskustelu open it.
 
     // Notifications (the replacement for native alert boxes)
     e(ToastHost),
