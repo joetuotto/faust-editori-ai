@@ -904,72 +904,30 @@ function FAUSTApp() {
     console.log('[Complexity] Score:', analysis.score, 'Phase:', analysis.phase);
   }, [project.structure, project.characters]);
 
-  // Global keyboard shortcuts
+  // Esc closes the topmost layer only (R-70). The layers that are components close themselves
+  // first and stop the key: dialogs and questions through the layer stack (capture phase on
+  // window), the inline prompt and the editor's own keys, the focused element, then popovers and
+  // menus (bubble phase on document). What reaches this handler closes one of the app's own
+  // layers, nearest first: the voice comparison (as Hylkää), the keskustelu, the Liminal Engine
+  // panel, and last Keskittymistila. The handler lives in a ref that every render refreshes, so
+  // the listener is registered once and needs no list of states.
+  const handleEscapeRef = useRef(null);
+  handleEscapeRef.current = (event) => {
+    if (event.defaultPrevented || layerStack.size() > 0 || textPrompt || confirmRequest) return;
+    if (voiceDiffView) rejectVoiceEdit();
+    else if (claudeChatOpen) setClaudeChatOpen(false);
+    else if (aiAssistantOpen) setAiAssistantOpen(false);
+    else if (focusMode) toggleFocusMode();
+    else return;
+    event.preventDefault();
+  };
   useEffect(() => {
-    const handleKeyboardShortcuts = (event) => {
-      // ESC key for modals
-      if (event.key === 'Escape' || event.keyCode === 27) {
-        // Close modals in priority order (last opened first). The popovers (Etsi, Viimeisimmät,
-        // Tilannekuvat, Kirjanmerkit) close themselves on Esc through usePopover (R-70).
-        if (showRegenerateDialog) {
-          setShowRegenerateDialog(false);
-          setRegenerateFeedback('');
-          console.log('[ESC] Closed Regenerate dialog');
-        } else if (showCharacterSheet) {
-          setShowCharacterSheet(false);
-          console.log('[ESC] Closed Character Sheet');
-        } else if (showLocationSheet) {
-          setShowLocationSheet(false);
-          console.log('[ESC] Closed Location Sheet');
-        } else if (showThreadSheet) {
-          setShowThreadSheet(false);
-          console.log('[ESC] Closed Thread Sheet');
-        } else if (showContinueDialog) {
-          setShowContinueDialog(false);
-          setContinuePreview('');
-          console.log('[ESC] Closed Continue Writing dialog');
-        } else if (showCharacterBuilder) {
-          setShowCharacterBuilder(false);
-          setCharacterBuilderStep(1);
-          console.log('[ESC] Closed Character Builder');
-        } else if (showCastPlanDialog) {
-          setShowCastPlanDialog(false);
-          setCastPlanStep(1);
-          console.log('[ESC] Closed Cast Plan dialog');
-        } else if (showProjectSettings) {
-          setShowProjectSettings(false);
-          console.log('[ESC] Closed Project Settings');
-        } else if (showVersionHistory) {
-          setShowVersionHistory(false);
-          console.log('[ESC] Closed Version History');
-        } else if (showVersionComparison) {
-          setShowVersionComparison(false);
-          setComparisonVersionId(null);
-          console.log('[ESC] Closed Version Comparison');
-        }
-        return;
-      }
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape' || event.keyCode === 27) handleEscapeRef.current(event);
     };
-
-    // Add event listener
-    window.addEventListener('keydown', handleKeyboardShortcuts);
-
-    // Cleanup
-    return () => {
-      window.removeEventListener('keydown', handleKeyboardShortcuts);
-    };
-  }, [
-    showRegenerateDialog,
-    showCharacterSheet,
-    showLocationSheet,
-    showThreadSheet,
-    showContinueDialog,
-    showCharacterBuilder,
-    showCastPlanDialog,
-    showProjectSettings,
-    showVersionHistory,
-    showVersionComparison
-  ]);
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Menu events. The IPC listener is registered once, so it calls through a
   // ref that always holds the handler of the latest render. A handler captured
@@ -4734,7 +4692,7 @@ ${contextPrompt}`;
     focusMode && e('button', {
       className: 'faust-btn faust-btn--quiet faust-focus-exit' + (focusExitIdle ? ' is-idle' : ''),
       onClick: toggleFocusMode,
-      title: 'Poistu keskittymistilasta (' + shortcut('CmdOrCtrl+Shift+F') + ')'
+      title: 'Poistu keskittymistilasta (' + shortcut('CmdOrCtrl+Shift+F') + ' tai Esc)'
     }, 'Poistu keskittymistilasta'),
 
     // Header
@@ -7508,7 +7466,7 @@ ${contextPrompt}`;
               )
             ),
             e('div', { className: 'faust-meta', style: { marginTop: 'var(--sp-2)', textAlign: 'center' } },
-              shortcut('CmdOrCtrl+Shift+K') + ' kätkee paneelin · Enter lähettää')
+              shortcut('CmdOrCtrl+Shift+K') + ' tai Esc kätkee paneelin · Enter lähettää')
           )
         ]
       )))
