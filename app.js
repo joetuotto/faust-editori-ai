@@ -1258,6 +1258,58 @@ function FAUSTApp() {
   });
   const rightColumnOpen = rightNow.inspector || rightNow.engine; /* I-06 adds: || rightNow.language */
 
+  // Panels and the window width (R-45, V 6.2). Below 1200 px one side panel is open at a time: opening
+  // either side closes the other and the one opened last stays; when the right column closes, a sidebar
+  // that this rule closed comes back. Turning split view on closes the right column below 1400 px and
+  // also the sidebar below 1120 px. It acts only through the panels' own setters, so the header toggles
+  // tell the truth, and it does nothing in focus mode, which closes and restores the panels itself (the
+  // render that leaves focus mode is compared with the state before it, as in the effect above).
+  const widthBand = (width) => [1120, 1200, 1400].filter((limit) => width >= limit).length;
+  const [, setWidthBand] = useState(() => widthBand(window.innerWidth));
+  useEffect(() => {
+    // Renders again only when the window crosses one of the three widths
+    const onResize = () => setWidthBand(widthBand(window.innerWidth));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const sidesNow = { left: !sidebarCollapsed, right: rightColumnOpen, split: splitViewEnabled && !corkboardEnabled };
+  const sidesPrevRef = useRef(sidesNow);
+  const sidesFocusRef = useRef(focusMode);
+  const lastSideRef = useRef('left');                // the side opened last
+  const sidebarClosedByWidthRef = useRef(false);     // the sidebar this rule closed, to bring back
+  useLayoutEffect(() => {
+    const leavingFocus = sidesFocusRef.current && !focusMode;
+    sidesFocusRef.current = focusMode;
+    let prev = sidesPrevRef.current;
+    sidesPrevRef.current = sidesNow;
+    if (focusMode) return;
+    if (leavingFocus) {
+      const before = panelsBeforeFocusRef.current || {};
+      prev = { left: !before.sidebarCollapsed, right: !!(before.showInspector || before.aiAssistantOpen /* I-06 adds: || before.languagePanel */), split: sidesNow.split };
+    }
+    const width = window.innerWidth;
+    const closeRightColumn = () => { setShowInspector(false); setAiAssistantOpen(false); /* I-06 adds: setLanguagePanel(null); */ };
+    if (sidesNow.left && !prev.left) { lastSideRef.current = 'left'; sidebarClosedByWidthRef.current = false; }
+    if (sidesNow.right && !prev.right) lastSideRef.current = 'right';
+    if (sidesNow.split && !prev.split && width < 1400) {
+      if (sidesNow.right) closeRightColumn();
+      if (width < 1120) {
+        if (sidesNow.left) setSidebarCollapsed(true);
+        sidebarClosedByWidthRef.current = false;   // split view needs the room: the sidebar stays closed
+      }
+      return;
+    }
+    if (width < 1200 && sidesNow.left && sidesNow.right) {
+      if (lastSideRef.current === 'left') closeRightColumn();
+      else { setSidebarCollapsed(true); sidebarClosedByWidthRef.current = true; }
+      return;
+    }
+    if (prev.right && !sidesNow.right && !sidesNow.left && sidebarClosedByWidthRef.current) {
+      sidebarClosedByWidthRef.current = false;
+      setSidebarCollapsed(false);
+    }
+  });
+
   // Jaettu näkymä. Opening shows a chapter other than the open one, as the header button always
   // did; the second pane also opens in a one-chapter project, where it shows that chapter.
   const openSplitView = () => {
@@ -4540,9 +4592,9 @@ ${contextPrompt}`;
   return e('div', {
     className: (focusMode ? 'faust-app faust-focus-mode' : 'faust-app') + (isFullScreen ? ' is-fullscreen' : ''),
     // Widths of the open side panels, for everything that centres on the editor pane
-    // (notifications, launcher, chat window). The sidebar's are today's; var(--sidebar-w) and 0px after region C.
+    // (notifications, popovers, chat window); 0px for a closed panel
     style: {
-      '--left-col-w': sidebarCollapsed ? (focusMode ? '0px' : '40px') : '220px',   // focus mode hides the collapsed rail
+      '--left-col-w': sidebarCollapsed ? '0px' : 'var(--sidebar-w)',
       '--right-col-w': rightNow.engine /* I-06 adds: || rightNow.language */ ? 'var(--aipanel-w)' : rightNow.inspector ? 'var(--inspector-w)' : '0px'
     }
   },
@@ -4786,8 +4838,18 @@ ${contextPrompt}`;
             }, icons.split({ size: 16 }))
           ),
 
-          // Paneelit: Tietopaneeli and Liminal Engine
+          // Paneelit: Sivupalkki, Tietopaneeli and Liminal Engine
           e('div', { className: 'faust-header__group' },
+            e('button', {
+              className: 'faust-btn faust-btn--icon',
+              'data-priority': '1',
+              'aria-label': 'Sivupalkki',
+              'aria-pressed': !sidebarCollapsed,
+              title: sidebarCollapsed
+                ? 'Näytä sivupalkki (' + shortcut('CmdOrCtrl+1') + ')'
+                : 'Kätke sivupalkki (' + shortcut('CmdOrCtrl+1') + ')',
+              onClick: () => setSidebarCollapsed(prev => !prev)
+            }, icons.panelLeft({ size: 16 })),
             e('button', {
               className: 'faust-btn faust-btn--icon',
               'data-priority': '1',
@@ -4835,244 +4897,234 @@ ${contextPrompt}`;
     // Main content - three columns
     e('div', { className: 'faust-main' },
       // Left sidebar - Chapter list
-      e('div', { className: sidebarCollapsed ? 'faust-sidebar collapsed' : 'faust-sidebar' },
-        // Collapsed: the 40 px strip holds only the button that shows the sidebar again (XR-3 removes the strip)
-        sidebarCollapsed
-          ? e('div', { style: { display: 'flex', justifyContent: 'center', paddingTop: 'var(--sp-3)' } },
+      // Two states and no strip: closed is width 0 (the shell's 300 ms motion). The header's Sivupalkki
+      // button and ⌘1 show it again; the inner panel keeps var(--sidebar-w) while the shell moves.
+      e('div', { className: 'faust-sidebar', 'data-state': sidebarCollapsed ? 'closed' : 'open' },
+        e('div', { className: 'faust-panel' },
+          // Head: the manuscript's word count and goal; the project title is shown in the header only.
+          // The row wraps: a long readout pushes the close button to the next line instead of under it.
+          (() => {
+            const target = Number(project.targets && project.targets.totalWords) || 0;
+            const [wordNum, wordNoun] = countParts(totalWords, 'sana');
+            const percent = target > 0 ? Math.min(100, Math.floor((totalWords / target) * 100)) : 0;
+            return e('div', { className: 'faust-panel__head', style: { flexWrap: 'wrap', rowGap: 'var(--sp-1)', paddingTop: 'var(--sp-2)', paddingBottom: 'var(--sp-2)' } },
+              target > 0
+                ? e('button', {
+                    className: 'faust-btn faust-btn--quiet',
+                    style: { marginLeft: 'calc(-1 * var(--sp-3))' },
+                    title: 'Käsikirjoituksen tavoite. Muuta tavoitetta projektin asetuksissa.',
+                    onClick: () => setShowProjectSettings(true)
+                  },
+                    e('span', { className: 'faust-stat faust-stat--hero' },
+                      e('b', null, totalWords.toLocaleString('fi-FI')),
+                      ' / ' + target.toLocaleString('fi-FI') + ' sanaa'
+                    )
+                  )
+                : e('span', { className: 'faust-stat faust-stat--hero' }, e('b', null, wordNum), ' ' + wordNoun),
               e('button', {
                 className: 'faust-btn faust-btn--icon faust-btn--sm',
-                'aria-label': 'Näytä sivupalkki (' + shortcut('CmdOrCtrl+1') + ')',
-                title: 'Näytä sivupalkki (' + shortcut('CmdOrCtrl+1') + ')',
-                onClick: () => setSidebarCollapsed(false)
-              }, icons.panelLeft({ size: 14 }))
-            )
-          // Open: the panel shell. The inline width keeps the 220 px column of the layout file until
-          // XR-3 gives the sidebar its data-state (then the shell rule sets var(--sidebar-w) and this goes).
-          : e('div', { className: 'faust-panel', style: { width: '100%' } },
-              // Head: the manuscript's word count and goal; the project title is shown in the header only.
-              // The row wraps: a long readout pushes the close button to the next line instead of under it.
-              (() => {
-                const target = Number(project.targets && project.targets.totalWords) || 0;
-                const [wordNum, wordNoun] = countParts(totalWords, 'sana');
-                const percent = target > 0 ? Math.min(100, Math.floor((totalWords / target) * 100)) : 0;
-                return e('div', { className: 'faust-panel__head', style: { flexWrap: 'wrap', rowGap: 'var(--sp-1)', paddingTop: 'var(--sp-2)', paddingBottom: 'var(--sp-2)' } },
-                  target > 0
-                    ? e('button', {
-                        className: 'faust-btn faust-btn--quiet',
-                        style: { marginLeft: 'calc(-1 * var(--sp-3))' },
-                        title: 'Käsikirjoituksen tavoite. Muuta tavoitetta projektin asetuksissa.',
-                        onClick: () => setShowProjectSettings(true)
-                      },
-                        e('span', { className: 'faust-stat faust-stat--hero' },
-                          e('b', null, totalWords.toLocaleString('fi-FI')),
-                          ' / ' + target.toLocaleString('fi-FI') + ' sanaa'
-                        )
-                      )
-                    : e('span', { className: 'faust-stat faust-stat--hero' }, e('b', null, wordNum), ' ' + wordNoun),
-                  e('button', {
-                    className: 'faust-btn faust-btn--icon faust-btn--sm',
-                    style: { marginLeft: 'auto' },
-                    'aria-label': 'Kätke sivupalkki (' + shortcut('CmdOrCtrl+1') + ')',
-                    title: 'Kätke sivupalkki (' + shortcut('CmdOrCtrl+1') + ')',
-                    onClick: () => setSidebarCollapsed(true)
-                  }, icons.panelLeft({ size: 14 })),
-                  e('div', { style: { flexBasis: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
-                    e('span', { className: 'faust-meta' }, count(project.structure.length, 'luku')),
-                    target > 0 && e('div', {
-                      className: 'faust-progress faust-progress--goal' + (totalWords >= target ? ' is-complete' : ''),
-                      style: { '--value': percent + '%' },
-                      'aria-hidden': true
-                    }, e('i'))
+                style: { marginLeft: 'auto' },
+                'aria-label': 'Kätke sivupalkki (' + shortcut('CmdOrCtrl+1') + ')',
+                title: 'Kätke sivupalkki (' + shortcut('CmdOrCtrl+1') + ')',
+                onClick: () => setSidebarCollapsed(true)
+              }, icons.panelLeft({ size: 14 })),
+              e('div', { style: { flexBasis: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
+                e('span', { className: 'faust-meta' }, count(project.structure.length, 'luku')),
+                target > 0 && e('div', {
+                  className: 'faust-progress faust-progress--goal' + (totalWords >= target ? ' is-complete' : ''),
+                  style: { '--value': percent + '%' },
+                  'aria-hidden': true
+                }, e('i'))
+              )
+            );
+          })(),
+
+          // Body: chapters and collections (the only part that scrolls)
+          e('div', { className: 'faust-panel__body' },
+            e('div', { className: 'faust-section' },
+              e('div', { className: 'faust-section__head' },
+                e('div', { className: 'faust-section__title' }, 'Luvut')
+              ),
+              project.structure.map((chapter, idx) => {
+                const isOpen = chapter.id === activeChapterId;
+                return e('div', {
+                  key: chapter.id,
+                  className: 'faust-row faust-row--two faust-row--author' + (isOpen ? ' is-selected' : ''),
+                  role: 'button',
+                  tabIndex: 0,
+                  'aria-current': isOpen,
+                  onClick: () => setActiveChapterId(chapter.id),
+                  onKeyDown: (ev) => {
+                    if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ')) {
+                      ev.preventDefault();
+                      setActiveChapterId(chapter.id);
+                    }
+                  }
+                },
+                  e('span', { className: 'faust-row__text' },
+                    e('span', { className: 'faust-row__title' }, chapter.title || 'Nimetön luku'),
+                    e('span', { className: 'faust-row__meta' }, count(chapter.wordCount || 0, 'sana'))
+                  ),
+                  // Row actions: shown on hover, focus and for the open chapter by the stylesheet
+                  e('span', { className: 'faust-row__actions' },
+                    e('button', {
+                      className: 'faust-btn faust-btn--icon faust-btn--sm',
+                      'aria-label': 'Siirrä lukua ylemmäs',
+                      title: 'Siirrä lukua ylemmäs',
+                      disabled: idx === 0,
+                      onClick: (ev) => { ev.stopPropagation(); moveChapterUp(chapter.id); }
+                    }, icons.arrowUp({ size: 14 })),
+                    e('button', {
+                      className: 'faust-btn faust-btn--icon faust-btn--sm',
+                      'aria-label': 'Siirrä lukua alemmas',
+                      title: 'Siirrä lukua alemmas',
+                      disabled: idx === project.structure.length - 1,
+                      onClick: (ev) => { ev.stopPropagation(); moveChapterDown(chapter.id); }
+                    }, icons.arrowDown({ size: 14 })),
+                    project.structure.length > 1 && e('button', {
+                      className: 'faust-btn faust-btn--icon faust-btn--sm faust-btn--danger',
+                      'aria-label': 'Poista luku',
+                      title: 'Poista luku',
+                      onClick: (ev) => { ev.stopPropagation(); deleteChapter(chapter.id); }
+                    }, icons.trash({ size: 14 }))
                   )
                 );
-              })(),
+              }),
+              e('button', {
+                className: 'faust-btn faust-btn--block faust-btn--sm',
+                style: { marginTop: 'var(--sp-2)' },
+                title: 'Lisää uusi luku loppuun (' + shortcut('CmdOrCtrl+Shift+N') + ')',
+                onClick: addChapter
+              }, '+ Uusi luku')
+            ),
 
-              // Body: chapters and collections (the only part that scrolls)
-              e('div', { className: 'faust-panel__body' },
-                e('div', { className: 'faust-section' },
-                  e('div', { className: 'faust-section__head' },
-                    e('div', { className: 'faust-section__title' }, 'Luvut')
-                  ),
-                  project.structure.map((chapter, idx) => {
-                    const isOpen = chapter.id === activeChapterId;
-                    return e('div', {
-                      key: chapter.id,
-                      className: 'faust-row faust-row--two faust-row--author' + (isOpen ? ' is-selected' : ''),
-                      role: 'button',
-                      tabIndex: 0,
-                      'aria-current': isOpen,
-                      onClick: () => setActiveChapterId(chapter.id),
-                      onKeyDown: (ev) => {
-                        if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ')) {
-                          ev.preventDefault();
-                          setActiveChapterId(chapter.id);
+            e('div', { className: 'faust-section' },
+              e('div', { className: 'faust-section__head' },
+                e('div', { className: 'faust-section__title' }, 'Kokoelmat')
+              ),
+              (project.collections || []).length === 0
+                ? e('div', { className: 'faust-empty faust-empty--compact' },
+                    e('div', { className: 'faust-empty__title' }, 'Ei vielä kokoelmia.'),
+                    e('div', { className: 'faust-empty__hint' }, 'Kokoelma poimii yhteen luvut, joilla on jotain yhteistä, esimerkiksi kaikki luvut, joissa sama hahmo esiintyy.')
+                  )
+                : (project.collections || []).map(collection => {
+                    const chapters = getCollectionChapters(collection);
+                    const isActive = activeCollectionId === collection.id;
+                    const toggleOpen = () => setActiveCollectionId(isActive ? null : collection.id);
+                    // The kind in words (M A.3): the rule and its filter, or the kind's name when the filter is empty
+                    const kind = collection.type === 'status'
+                      ? (collection.filter ? 'Tila: ' + labelOf('status', normStatus(collection.filter)).toLowerCase() : 'Luvut tilan mukaan')
+                      : collection.type === 'character'
+                        ? (collection.filter ? 'Hahmo: ' + collection.filter : 'Luvut, joissa esiintyy hahmo')
+                        : collection.type === 'search'
+                          ? (collection.filter ? 'Hakusana: ' + collection.filter : 'Luvut, joissa on hakusana')
+                          : 'Itse valitut luvut';
+                    return e('div', { key: collection.id },
+                      e('div', {
+                        className: 'faust-row faust-row--two faust-row--author',
+                        role: 'button',
+                        tabIndex: 0,
+                        'aria-expanded': isActive,
+                        onClick: toggleOpen,
+                        onKeyDown: (ev) => {
+                          if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ')) {
+                            ev.preventDefault();
+                            toggleOpen();
+                          }
                         }
-                      }
-                    },
-                      e('span', { className: 'faust-row__text' },
-                        e('span', { className: 'faust-row__title' }, chapter.title || 'Nimetön luku'),
-                        e('span', { className: 'faust-row__meta' }, count(chapter.wordCount || 0, 'sana'))
+                      },
+                        e('span', { className: 'faust-row__icon' },
+                          isActive ? icons.chevronDown({ size: 14 }) : icons.chevronRight({ size: 14 })
+                        ),
+                        e('span', { className: 'faust-row__text' },
+                          e('span', { className: 'faust-row__title' }, collection.name),
+                          e('span', { className: 'faust-row__meta' }, kind)
+                        ),
+                        e('span', { className: 'faust-chip faust-chip--count' }, chapters.length),
+                        e('span', { className: 'faust-row__actions' },
+                          e('button', {
+                            className: 'faust-btn faust-btn--icon faust-btn--sm faust-btn--danger',
+                            'aria-label': 'Poista kokoelma',
+                            title: 'Poista kokoelma',
+                            onClick: async (ev) => {
+                              ev.stopPropagation();
+                              if (await askConfirm('Poistetaanko kokoelma?', 'Kokoelma ”' + collection.name + '” poistetaan. Luvut säilyvät.', 'Poista kokoelma', 'Peruuta', { danger: true })) {
+                                deleteCollection(collection.id);
+                              }
+                            }
+                          }, icons.trash({ size: 14 }))
+                        )
                       ),
-                      // Row actions: shown on hover, focus and for the open chapter by the stylesheet
-                      e('span', { className: 'faust-row__actions' },
-                        e('button', {
-                          className: 'faust-btn faust-btn--icon faust-btn--sm',
-                          'aria-label': 'Siirrä lukua ylemmäs',
-                          title: 'Siirrä lukua ylemmäs',
-                          disabled: idx === 0,
-                          onClick: (ev) => { ev.stopPropagation(); moveChapterUp(chapter.id); }
-                        }, icons.arrowUp({ size: 14 })),
-                        e('button', {
-                          className: 'faust-btn faust-btn--icon faust-btn--sm',
-                          'aria-label': 'Siirrä lukua alemmas',
-                          title: 'Siirrä lukua alemmas',
-                          disabled: idx === project.structure.length - 1,
-                          onClick: (ev) => { ev.stopPropagation(); moveChapterDown(chapter.id); }
-                        }, icons.arrowDown({ size: 14 })),
-                        project.structure.length > 1 && e('button', {
-                          className: 'faust-btn faust-btn--icon faust-btn--sm faust-btn--danger',
-                          'aria-label': 'Poista luku',
-                          title: 'Poista luku',
-                          onClick: (ev) => { ev.stopPropagation(); deleteChapter(chapter.id); }
-                        }, icons.trash({ size: 14 }))
+                      // The chapters of an open collection, under its name
+                      isActive && e('div', { style: { paddingLeft: 'var(--sp-5)' } },
+                        chapters.length === 0
+                          ? e('div', { className: 'faust-meta', style: { padding: 'var(--sp-1) var(--sp-3)' } }, 'Ei lukuja')
+                          : chapters.map(ch =>
+                              e('button', {
+                                key: ch.id,
+                                className: 'faust-row faust-row--author' + (ch.id === activeChapterId ? ' is-selected' : ''),
+                                'aria-current': ch.id === activeChapterId,
+                                onClick: () => setActiveChapterId(ch.id)
+                              }, e('span', { className: 'faust-row__title' }, ch.title || 'Nimetön luku'))
+                            )
                       )
                     );
                   }),
-                  e('button', {
-                    className: 'faust-btn faust-btn--block faust-btn--sm',
-                    style: { marginTop: 'var(--sp-2)' },
-                    title: 'Lisää uusi luku loppuun (' + shortcut('CmdOrCtrl+Shift+N') + ')',
-                    onClick: addChapter
-                  }, '+ Uusi luku')
-                ),
-
-                e('div', { className: 'faust-section' },
-                  e('div', { className: 'faust-section__head' },
-                    e('div', { className: 'faust-section__title' }, 'Kokoelmat')
-                  ),
-                  (project.collections || []).length === 0
-                    ? e('div', { className: 'faust-empty faust-empty--compact' },
-                        e('div', { className: 'faust-empty__title' }, 'Ei vielä kokoelmia.'),
-                        e('div', { className: 'faust-empty__hint' }, 'Kokoelma poimii yhteen luvut, joilla on jotain yhteistä, esimerkiksi kaikki luvut, joissa sama hahmo esiintyy.')
-                      )
-                    : (project.collections || []).map(collection => {
-                        const chapters = getCollectionChapters(collection);
-                        const isActive = activeCollectionId === collection.id;
-                        const toggleOpen = () => setActiveCollectionId(isActive ? null : collection.id);
-                        // The kind in words (M A.3): the rule and its filter, or the kind's name when the filter is empty
-                        const kind = collection.type === 'status'
-                          ? (collection.filter ? 'Tila: ' + labelOf('status', normStatus(collection.filter)).toLowerCase() : 'Luvut tilan mukaan')
-                          : collection.type === 'character'
-                            ? (collection.filter ? 'Hahmo: ' + collection.filter : 'Luvut, joissa esiintyy hahmo')
-                            : collection.type === 'search'
-                              ? (collection.filter ? 'Hakusana: ' + collection.filter : 'Luvut, joissa on hakusana')
-                              : 'Itse valitut luvut';
-                        return e('div', { key: collection.id },
-                          e('div', {
-                            className: 'faust-row faust-row--two faust-row--author',
-                            role: 'button',
-                            tabIndex: 0,
-                            'aria-expanded': isActive,
-                            onClick: toggleOpen,
-                            onKeyDown: (ev) => {
-                              if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ')) {
-                                ev.preventDefault();
-                                toggleOpen();
-                              }
-                            }
-                          },
-                            e('span', { className: 'faust-row__icon' },
-                              isActive ? icons.chevronDown({ size: 14 }) : icons.chevronRight({ size: 14 })
-                            ),
-                            e('span', { className: 'faust-row__text' },
-                              e('span', { className: 'faust-row__title' }, collection.name),
-                              e('span', { className: 'faust-row__meta' }, kind)
-                            ),
-                            e('span', { className: 'faust-chip faust-chip--count' }, chapters.length),
-                            e('span', { className: 'faust-row__actions' },
-                              e('button', {
-                                className: 'faust-btn faust-btn--icon faust-btn--sm faust-btn--danger',
-                                'aria-label': 'Poista kokoelma',
-                                title: 'Poista kokoelma',
-                                onClick: async (ev) => {
-                                  ev.stopPropagation();
-                                  if (await askConfirm('Poistetaanko kokoelma?', 'Kokoelma ”' + collection.name + '” poistetaan. Luvut säilyvät.', 'Poista kokoelma', 'Peruuta', { danger: true })) {
-                                    deleteCollection(collection.id);
-                                  }
-                                }
-                              }, icons.trash({ size: 14 }))
-                            )
-                          ),
-                          // The chapters of an open collection, under its name
-                          isActive && e('div', { style: { paddingLeft: 'var(--sp-5)' } },
-                            chapters.length === 0
-                              ? e('div', { className: 'faust-meta', style: { padding: 'var(--sp-1) var(--sp-3)' } }, 'Ei lukuja')
-                              : chapters.map(ch =>
-                                  e('button', {
-                                    key: ch.id,
-                                    className: 'faust-row faust-row--author' + (ch.id === activeChapterId ? ' is-selected' : ''),
-                                    'aria-current': ch.id === activeChapterId,
-                                    onClick: () => setActiveChapterId(ch.id)
-                                  }, e('span', { className: 'faust-row__title' }, ch.title || 'Nimetön luku'))
-                                )
-                          )
-                        );
-                      }),
-                  e('button', {
-                    className: 'faust-btn faust-btn--block faust-btn--sm',
-                    style: { marginTop: 'var(--sp-2)' },
-                    onClick: () => setShowCollectionDialog(true)
-                  }, '+ Uusi kokoelma…')
-                )
-              ),
-
-              // Foot: the five tools, always in view
-              e('div', { className: 'faust-panel__foot' },
-                e('div', { className: 'faust-section__head' },
-                  e('div', { className: 'faust-section__title' }, 'Työkalut')
-                ),
-                e('button', {
-                  className: 'faust-row',
-                  title: 'Avaa luettelo tarinan hahmoista ja heidän profiileistaan',
-                  onClick: () => openCharacterList()
-                },
-                  e('span', { className: 'faust-row__icon' }, icons.sol({ size: 14 })),
-                  e('span', { className: 'faust-row__title' }, 'Hahmot')
-                ),
-                e('button', {
-                  className: 'faust-row',
-                  title: 'Avaa luettelo tarinan tapahtumapaikoista',
-                  onClick: () => setShowLocationSheet(true)
-                },
-                  e('span', { className: 'faust-row__icon' }, icons.terra({ size: 14 })),
-                  e('span', { className: 'faust-row__title' }, 'Paikat')
-                ),
-                e('button', {
-                  className: 'faust-row',
-                  title: 'Avaa luettelo juonista, joita seurataan luvusta toiseen',
-                  onClick: () => setShowThreadSheet(true)
-                },
-                  e('span', { className: 'faust-row__icon' }, icons.lemniscate({ size: 14 })),
-                  e('span', { className: 'faust-row__title' }, 'Juonilangat')
-                ),
-                e('button', {
-                  className: 'faust-row',
-                  title: 'Avaa aikajana: luvut, tapahtuma-ajat ja juonilangat (' + shortcut('CmdOrCtrl+Shift+T') + ')',
-                  onClick: () => setShowTimelineView(true)
-                },
-                  e('span', { className: 'faust-row__icon' }, icons.luna({ size: 14 })),
-                  e('span', { className: 'faust-row__title' }, 'Aikajana')
-                ),
-                e('button', {
-                  className: 'faust-row',
-                  title: 'Avaa tutkimuskansio: muistiinpanot, linkit ja muu taustamateriaali (' + shortcut('CmdOrCtrl+Shift+R') + ')',
-                  onClick: () => setShowResearchFolder(true)
-                },
-                  e('span', { className: 'faust-row__icon' }, icons.trigon({ size: 14 })),
-                  e('span', { className: 'faust-row__title' }, 'Tutkimuskansio')
-                )
-              )
+              e('button', {
+                className: 'faust-btn faust-btn--block faust-btn--sm',
+                style: { marginTop: 'var(--sp-2)' },
+                onClick: () => setShowCollectionDialog(true)
+              }, '+ Uusi kokoelma…')
             )
+          ),
+
+          // Foot: the five tools, always in view
+          e('div', { className: 'faust-panel__foot' },
+            e('div', { className: 'faust-section__head' },
+              e('div', { className: 'faust-section__title' }, 'Työkalut')
+            ),
+            e('button', {
+              className: 'faust-row',
+              title: 'Avaa luettelo tarinan hahmoista ja heidän profiileistaan',
+              onClick: () => openCharacterList()
+            },
+              e('span', { className: 'faust-row__icon' }, icons.sol({ size: 14 })),
+              e('span', { className: 'faust-row__title' }, 'Hahmot')
+            ),
+            e('button', {
+              className: 'faust-row',
+              title: 'Avaa luettelo tarinan tapahtumapaikoista',
+              onClick: () => setShowLocationSheet(true)
+            },
+              e('span', { className: 'faust-row__icon' }, icons.terra({ size: 14 })),
+              e('span', { className: 'faust-row__title' }, 'Paikat')
+            ),
+            e('button', {
+              className: 'faust-row',
+              title: 'Avaa luettelo juonista, joita seurataan luvusta toiseen',
+              onClick: () => setShowThreadSheet(true)
+            },
+              e('span', { className: 'faust-row__icon' }, icons.lemniscate({ size: 14 })),
+              e('span', { className: 'faust-row__title' }, 'Juonilangat')
+            ),
+            e('button', {
+              className: 'faust-row',
+              title: 'Avaa aikajana: luvut, tapahtuma-ajat ja juonilangat (' + shortcut('CmdOrCtrl+Shift+T') + ')',
+              onClick: () => setShowTimelineView(true)
+            },
+              e('span', { className: 'faust-row__icon' }, icons.luna({ size: 14 })),
+              e('span', { className: 'faust-row__title' }, 'Aikajana')
+            ),
+            e('button', {
+              className: 'faust-row',
+              title: 'Avaa tutkimuskansio: muistiinpanot, linkit ja muu taustamateriaali (' + shortcut('CmdOrCtrl+Shift+R') + ')',
+              onClick: () => setShowResearchFolder(true)
+            },
+              e('span', { className: 'faust-row__icon' }, icons.trigon({ size: 14 })),
+              e('span', { className: 'faust-row__title' }, 'Tutkimuskansio')
+            )
+          )
+        )
       ),
 
       // Center editor area (supports split view)

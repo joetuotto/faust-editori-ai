@@ -331,13 +331,25 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-row__text  { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-half); }
 .faust-row__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .faust-row--author .faust-row__title { font: var(--type-serif); }
-.faust-row__meta  { font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
-/* a collection row's rule (Tila: …, Hahmo: …, Hakusana: …) is cut, not run past the column (sidebar request 3).
-   Only there until XR-3 takes the hidden row actions out of the flow (lead decision 1, option (b)); a chapter
-   row's word count must show whole, and its text column is 64 px at rest while the actions keep their width. */
-.faust-row:has(> .faust-chip--count) .faust-row__meta { overflow: hidden; text-overflow: ellipsis; }
+.faust-row__meta  { font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .faust-row__actions { margin-left: auto; display: flex; gap: var(--sp-half); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
 .faust-row:is(:hover, :focus-within, .is-selected) .faust-row__actions { opacity: 1; }
+/* In the sidebar's narrow column the row actions reserve no width: the name and its line use the whole
+   row, and the actions lie over the row's end on the row's own ground (the panel surface under the
+   row's fill), with a short fade on their left edge (the mask reads only alpha). They show on hover,
+   on keyboard focus and on the selected row, and take no press while hidden. */
+.faust-sidebar .faust-row { position: relative; }
+.faust-sidebar .faust-row > .faust-row__actions {
+  position: absolute; top: 50%; right: var(--sp-3); translate: 0 -50%; margin-left: 0;
+  padding-left: var(--sp-4); background: var(--surface-panel); pointer-events: none;
+  -webkit-mask-image: linear-gradient(to right, transparent, var(--surface-panel) var(--sp-4));
+  mask-image: linear-gradient(to right, transparent, var(--surface-panel) var(--sp-4));
+}
+.faust-sidebar .faust-row--two > .faust-row__actions { top: var(--sp-2); translate: none; }   /* on the title line */
+.faust-sidebar .faust-row:is(:hover, :focus-within, .is-selected) > .faust-row__actions { pointer-events: auto; }
+.faust-sidebar .faust-row:hover > .faust-row__actions { background: linear-gradient(var(--fill-hover), var(--fill-hover)), var(--surface-panel); }
+.faust-sidebar .faust-row:active > .faust-row__actions { background: linear-gradient(var(--fill-active), var(--fill-active)), var(--surface-panel); }
+.faust-sidebar .faust-row:is(.is-selected, [aria-current="true"]) > .faust-row__actions { background: linear-gradient(var(--accent-tint), var(--accent-tint)), var(--surface-panel); }
 /* on a hover, pressed, selected or drop fill the weakest text level steps up, so it never drops under 4.5:1 */
 .faust-row:is(:hover, :active, .is-selected, [aria-current="true"], [aria-selected="true"], .is-drop-inside) :is(.faust-row__meta, .faust-row__icon) { color: var(--text-2); }
 .faust-row--static:is(:hover, :active) :is(.faust-row__meta, .faust-row__icon) { color: var(--text-3); }
@@ -1027,12 +1039,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 @media (max-width: 1119px) { .faust-statusbar [data-priority="3"] { display: none; } }
 
 /* ---- Focus mode: the page alone ---- */
-/* CSS hides only what has no state of its own: the format bar, the meta row, the sigil bar,
-   the launcher, and a collapsed rail. Panels and the chat window follow their state, which
-   toggleFocusMode() closes on entry and restores on exit; a panel the author opens by a
-   command while in focus mode is shown, as it is today. */
+/* CSS hides only what has no state of its own: the format bar, the meta row, the sigil bar
+   and the launcher. Panels and the chat window follow their state, which toggleFocusMode()
+   closes on entry and restores on exit; a panel command given in focus mode leaves it first. */
 .faust-focus-mode :is(.faust-formatbar, .faust-chapter-meta, .faust-sigilbar, .faust-fab) { display: none !important; }
-.faust-focus-mode .faust-sidebar.collapsed { display: none !important; }
 .faust-focus-mode :is(.faust-editor-content--main, .faust-page) { --page-pad-top: var(--sp-8); }
 .faust-focus-mode .faust-chapter-title { color: var(--text-2); }
 .faust-focus-drag { position: fixed; inset: 0 0 auto 0; height: 28px; z-index: var(--z-sticky); -webkit-app-region: drag; }

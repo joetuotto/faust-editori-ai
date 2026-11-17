@@ -58,11 +58,6 @@
   position: relative;
 }
 
-.faust-sidebar.collapsed {
-  width: 40px;
-  overflow: hidden;
-}
-
 /* Center editor - fills remaining space */
 .faust-editor {
   flex: 1;
