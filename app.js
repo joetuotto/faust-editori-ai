@@ -567,7 +567,7 @@ function FAUSTApp() {
     if (!thread) return;
     if (!(await askConfirm(
       'Poistetaanko juonilanka?',
-      'Juonilanka ”' + thread.name + '” poistetaan. Poistoa ei voi kumota.',
+      'Juonilanka ”' + (thread.name || 'Nimetön juonilanka') + '” poistetaan. Poistoa ei voi kumota.',
       'Poista juonilanka',
       'Peruuta',
       { danger: true }
@@ -604,7 +604,8 @@ function FAUSTApp() {
   // Consistency check state
   const [consistencyErrors, setConsistencyErrors] = useState([]);
   const [checkingConsistency, setCheckingConsistency] = useState(false);
-  // A complete check of the open project found nothing (no failed requests, no project change since)
+  // A complete check of the open project found nothing (no failed request). Cleared when another
+  // project opens or an import replaces the open one; edits made after the check do not clear it.
   const [consistencyChecked, setConsistencyChecked] = useState(false);
 
   // Voice state

@@ -331,7 +331,11 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-row__text  { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-half); }
 .faust-row__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .faust-row--author .faust-row__title { font: var(--type-serif); }
-.faust-row__meta  { font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.faust-row__meta  { font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* a text meta beside a count chip (the sidebar's collections) ends in an ellipsis instead of drawing over the
+   chip or scrolling the column sideways. A chapter's word count is not cut: until the hidden row actions leave
+   the flow (sidebar request 4, a lead decision), it runs on into the space they keep at rest. */
+.faust-row:has(> .faust-chip--count) > .faust-row__text > .faust-row__meta { overflow: hidden; text-overflow: ellipsis; }
 .faust-row__actions { margin-left: auto; display: flex; gap: var(--sp-half); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
 .faust-row:is(:hover, :focus-within, .is-selected) .faust-row__actions { opacity: 1; }
 /* on a hover, pressed, selected or drop fill the weakest text level steps up, so it never drops under 4.5:1 */
