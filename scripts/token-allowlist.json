@@ -1,12 +1,12 @@
 {
   "app.js": {
-    "colourLiteral": 277,
+    "colourLiteral": 273,
     "bareFontName": 508,
-    "pixelFontSize": 548,
+    "pixelFontSize": 547,
     "transitionAll": 22,
-    "alertCall": 71,
+    "alertCall": 69,
     "confirmCall": 16,
-    "pictograph": 110
+    "pictograph": 109
   },
   "src/components/AIProviderSettings.js": {
     "colourLiteral": 2,
@@ -22,9 +22,9 @@
     "pictograph": 2
   },
   "src/components/Dialogs.js": {
-    "colourLiteral": 4,
-    "bareFontName": 17,
-    "pixelFontSize": 18
+    "colourLiteral": 1,
+    "bareFontName": 10,
+    "pixelFontSize": 10
   },
   "src/components/ErrorBoundary.js": {
     "colourLiteral": 9,
@@ -71,7 +71,6 @@
     "transitionAll": 3
   },
   "styles/faust-simple-layout.css": {
-    "colourLiteral": 21,
-    "transitionAll": 3
+    "colourLiteral": 13
   }
 }
