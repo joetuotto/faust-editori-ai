@@ -679,6 +679,11 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-voicebar__state { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text); }
 .faust-voicebar[data-state="listening"] .faust-voicebar__state { color: var(--error-text); }
 .faust-voicebar__heard { min-width: 0; max-width: 36ch; margin: 0 var(--sp-2); overflow: hidden; text-overflow: ellipsis; font: var(--type-quote); color: var(--text-2); }
+/* FAUST's voice bar starts with the microphone (VoiceButton), so the button's own box is its left margin.
+   In a narrow pane its lines end in an ellipsis inside the bar (the dock keeps it 16px from each edge). */
+.faust-voicebar { gap: var(--sp-3); padding: 0 var(--sp-4) 0 var(--sp-2); }
+.faust-voicebar > div { min-width: 0; }
+.faust-voicebar > div > * { overflow: hidden; text-overflow: ellipsis; }
 
 /* The inline prompt is a block in the text column (a CodeMirror block widget): it pushes
    the lines apart and covers nothing, so it has no elevation: one frame, no shadow. The
@@ -995,7 +1000,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-editor-area:has(> .faust-editor-split) .faust-page { --page-pad-top: 24px; }
 
 /* Final page: head block and text share one centred column; the format bar lies on the desk. */
-.faust-editor-area.is-split > .faust-editor { flex: 1 1 0; min-width: 400px; max-width: none; }   /* split view: two equal panes */
+/* Split view: two equal panes of 400px or more. Where the window-width rule cannot give the area 800px
+   (a right panel below 1200px, an open point for the lead since the XR-3 review), the two share it
+   instead of pushing the second pane, with its close button, under the right column. */
+.faust-editor-area.is-split > .faust-editor { flex: 1 1 0; min-width: min(400px, 50%); max-width: none; }
 .faust-editor-area.is-split > .faust-editor + .faust-editor { border-left: var(--bw) solid var(--rule); }
 /* The bar is a size container with overflow hidden: nothing that opens from it may be its
    descendant. Its popovers, its "more" menu and its tooltips render in the layer host (section 10). */
@@ -1032,6 +1040,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 }
 .faust-chapter-title:hover { border-bottom-color: var(--rule); }
 .faust-chapter-title:focus-visible { outline: none; border-bottom-color: var(--accent-line); }   /* the one field whose focus is a rule, not a ring: it is a line of the page */
+/* The split view's reference page: the same title line, read only (a heading, one line, no hover rule) */
+.faust-editor-split .faust-chapter-title { margin: 0; overflow: hidden; white-space: nowrap; }
+.faust-editor-split .faust-chapter-title:hover { border-bottom-color: transparent; }
 .faust-chapter-meta { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); margin-top: var(--sp-1); min-height: 20px; font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .faust-page__body { flex: 1 1 0; min-height: 0; position: relative; display: flex; }
 .faust-page__body > .faust-editor-host { flex: 1 1 0; min-width: 0; }

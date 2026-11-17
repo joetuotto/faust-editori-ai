@@ -4634,6 +4634,11 @@ ${contextPrompt}`;
     .filter(chapter => (chapter.content || '').trim())
     .map(chapter => ({ id: chapter.id, title: chapter.title || 'Nimetön luku', words: countWords(chapter.content) }));
 
+  // The bottom dock of the page (R-62) holds one occupant: the voice result card, then the suggestion
+  // bar while suggestions are pending, then the voice bar, then the suggestion bar's other states.
+  const dockSuggestionsFirst = false; // I-03: !!suggestionInfo && suggestionInfo.pending > 0
+  const dockSuggestionBar = null;     // I-03: e(SuggestionBar, { info: suggestionInfo, controller: suggestionsRef.current, onOpenChapter: setActiveChapterId, focusEditor: () => editorRef.current && editorRef.current.focus() })
+
   return e('div', {
     className: (focusMode ? 'faust-app faust-focus-mode' : 'faust-app') + (isFullScreen ? ' is-fullscreen' : ''),
     // Widths of the open side panels, for everything that centres on the editor pane
@@ -5189,15 +5194,10 @@ ${contextPrompt}`;
         )
       ),
 
-      // Center editor area (supports split view)
+      // Center editor area (supports split view): a row, filled by the layout file's .faust-editor-area;
+      // is-split gives the two panes their equal widths and the one hairline between them (V 4.5)
       e('div', {
-        className: 'faust-editor-area',
-        style: {
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'row',
-          overflow: 'hidden'
-        }
+        className: 'faust-editor-area' + (splitViewEnabled && !corkboardEnabled ? ' is-split' : '')
       },
         // Corkboard view (when enabled)
         corkboardEnabled ? e('div', {
@@ -5325,10 +5325,7 @@ ${contextPrompt}`;
         ) :
 
         // Primary editor pane (normal view)
-        e('div', {
-          className: 'faust-editor',
-          style: splitViewEnabled ? { flex: 1, borderRight: '2px solid var(--border-color)' } : {}
-        },
+        e('div', { className: 'faust-editor' },
         // Format bar (V 4.5, MV-61): one row at the top of the pane that never wraps. The groups with
         // data-priority leave by the bar's container rules, priority 2 first, then 3; the "more" menu
         // lists what the bar hides. The sigil bar (MV-60) is its right end. The buttons call the same
@@ -5706,49 +5703,6 @@ ${contextPrompt}`;
             })
           ),
 
-          // Voice edit bar (appears when text is selected). Moves into .faust-dock in the cross-region pass.
-          voiceInputAvailable && textSelection && !voiceDiffView ? e('div', {
-            className: 'faust-voicebar',
-            'data-state': voiceState === 'listening' ? 'listening' : undefined,
-            style: {
-              position: 'absolute',
-              left: 0,
-              right: 0,
-              bottom: 'var(--sp-4)',
-              marginInline: 'auto',
-              width: 'fit-content',
-              maxWidth: 'calc(100% - 2 * var(--sp-4))',
-              zIndex: 'var(--z-float)',
-              gap: 'var(--sp-3)',
-              padding: '0 var(--sp-4) 0 var(--sp-2)'
-            }
-          },
-            // While listening the button stays enabled, so it shows the listening look and not the
-            // disabled one; it does nothing then until the dock's voice button can stop listening.
-            e('button', {
-              type: 'button',
-              className: 'faust-btn faust-btn--icon',
-              onClick: voiceState === 'idle' ? handleVoiceEdit : undefined,
-              disabled: voiceState !== 'idle' && voiceState !== 'listening',
-              'aria-pressed': voiceState === 'listening',
-              'data-state': voiceState === 'listening' ? 'listening' : undefined,
-              'aria-busy': voiceState === 'processing',
-              title: voiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Muokkaa valintaa puhumalla',
-              'aria-label': voiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Muokkaa valintaa puhumalla'
-            }, icons.mic({ size: 16 })),
-            voiceState === 'listening'
-              ? e('span', { className: 'faust-voicebar__state' }, 'Kuunnellaan – puhu nyt')
-              : voiceState === 'processing'
-                ? e('span', { className: 'faust-voicebar__state' },
-                    e('span', { className: 'faust-spinner faust-spinner--sm' }),
-                    'Tekoäly muokkaa tekstiä…'
-                  )
-                : e('div', null,
-                    e('div', { className: 'faust-voicebar__state' }, 'Muokkaa valintaa puhumalla'),
-                    e('div', { className: 'faust-meta' }, 'Klikkaa mikrofonia ja kerro, miten tekstiä muutetaan')
-                  )
-          ) : null,
-
           // Etsi (MV-64): a popover of 440 px anchored to the format bar's Etsi button (R-60), to the
           // bar's "more" button while the bar hides it (a narrow bar, a split pane), at the fallback
           // place in focus mode (formatBarAnchor). Outside press, Esc and one popover at a time come
@@ -5957,88 +5911,111 @@ ${contextPrompt}`;
             )
           ) : null,
 
-          // Voice comparison (after a voice edit has produced an ehdotus) - with diff marks.
-          // The result block of the visual foundations; it moves into .faust-dock in the cross-region pass.
-          voiceDiffView ? (() => {
-            const diffResult = computeTextDiff(voiceDiffView.original, voiceDiffView.revised);
-            const origWords = (voiceDiffView.original || '').split(/\s+/).filter(Boolean).length;
-            const newWords = (voiceDiffView.revised || '').split(/\s+/).filter(Boolean).length;
-            const delta = newWords - origWords;
-            // One column of the comparison: the old text keeps its deletions, the new text its insertions.
-            // Adjacent pieces of one kind are one run, also across the spaces between them.
-            // Until the word comparison of I-03 (R-20) both columns are plain text, as in Versioiden
-            // vertailu (menu-visual entry 71): the marks of today's computeTextDiff are wrong after one
-            // inserted word. I-03 wraps the 'removed' runs in del.faust-mark--del and the 'added' runs
-            // in ins.faust-mark--ins.
-            const columnRuns = (leaveOut) => {
-              const pieces = diffResult.filter(piece => piece.type !== leaveOut);
-              const runs = [];
-              pieces.forEach((piece, idx) => {
-                const last = runs[runs.length - 1];
-                const next = pieces[idx + 1];
-                if (last && last.type !== 'same' && piece.type === 'same' && !piece.text.trim() && next && next.type === last.type) {
-                  last.text += piece.text;
-                } else if (last && last.type === piece.type) {
-                  last.text += piece.text;
-                } else {
-                  runs.push({ type: piece.type, text: piece.text });
-                }
-              });
-              return runs;
-            };
-            // The comparison is not modal: accept only while the selection is still the compared text
-            const selectionChanged = !textSelection || textSelection.text !== voiceDiffView.original;
-
-            return e('div', {
-              className: 'faust-result faust-result--floating',
-              style: {
-                position: 'absolute',
-                left: 0,
-                right: 0,
-                bottom: 'var(--sp-4)',
-                marginInline: 'auto',
-                zIndex: 'var(--z-float)'
-              }
+          // The bottom dock (R-62, V 6.5): the page's last child, its one band where a transient surface
+          // floats over the paper. One occupant, in the order of the expression at its end.
+          (() => {
+            // Voice edit bar (appears when text is selected)
+            const voiceBarShown = !!(voiceInputAvailable && textSelection && !voiceDiffView);
+            const voiceBar = voiceBarShown ? e('div', {
+              className: 'faust-voicebar',
+              'data-state': voiceState === 'listening' ? 'listening' : undefined
             },
-              e('div', { className: 'faust-result__head' },
-                e('span', { className: 'faust-label' }, 'Ehdotus'),
-                e('span', { className: 'faust-diff__count' },
-                  'Sanamäärä ' + (delta > 0 ? '+' : delta < 0 ? '−' : '') + Math.abs(delta).toLocaleString('fi-FI'))
-              ),
-              e('div', { className: 'faust-result__context' }, `Puhuttu ohje: ”${voiceDiffView.instruction}”`),
-              e('div', { className: 'faust-result__body' },
-                e('div', { className: 'faust-diff faust-diff--split' },
-                  e('div', { className: 'faust-diff__col' },
-                    e('div', { className: 'faust-diff__colhead' }, e('span', null, 'Alkuperäinen · ' + count(origWords, 'sana'))),
-                    e('div', { className: 'faust-prose' },
-                      ...columnRuns('added').map((run, idx) => e('span', { key: idx }, run.text))
+              // Pressed while it listens, the button stops listening (V 4.1); what was heard so far is used
+              e(VoiceButton, {
+                state: voiceState,
+                label: voiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Muokkaa valintaa puhumalla',
+                disabled: voiceState === 'error',
+                onToggle: voiceState === 'listening'
+                  ? () => { if (voiceInputRef.current) voiceInputRef.current.stop(); }
+                  : handleVoiceEdit
+              }),
+              voiceState === 'listening'
+                ? e('span', { className: 'faust-voicebar__state' }, 'Kuunnellaan – puhu nyt')
+                : voiceState === 'processing'
+                  ? e('span', { className: 'faust-voicebar__state' },
+                      e('span', { className: 'faust-spinner faust-spinner--sm' }),
+                      'Tekoäly muokkaa tekstiä…'
                     )
-                  ),
-                  e('div', { className: 'faust-diff__rule' }),
-                  e('div', { className: 'faust-diff__col' },
-                    e('div', { className: 'faust-diff__colhead' }, e('span', null, 'Ehdotus · ' + count(newWords, 'sana'))),
-                    e('div', { className: 'faust-prose' },
-                      ...columnRuns('removed').map((run, idx) => e('span', { key: idx }, run.text))
+                  : e('div', null,
+                      e('div', { className: 'faust-voicebar__state' }, 'Muokkaa valintaa puhumalla'),
+                      e('div', { className: 'faust-meta' }, 'Klikkaa mikrofonia ja kerro, miten tekstiä muutetaan')
+                    )
+            ) : null;
+
+            // Voice comparison (after a voice edit has produced an ehdotus): the floating result block
+            const voiceCard = voiceDiffView ? (() => {
+              const diffResult = computeTextDiff(voiceDiffView.original, voiceDiffView.revised);
+              const origWords = (voiceDiffView.original || '').split(/\s+/).filter(Boolean).length;
+              const newWords = (voiceDiffView.revised || '').split(/\s+/).filter(Boolean).length;
+              const delta = newWords - origWords;
+              // One column of the comparison: the old text keeps its deletions, the new text its insertions.
+              // Adjacent pieces of one kind are one run, also across the spaces between them.
+              // Until the word comparison of I-03 (R-20) both columns are plain text, as in Versioiden
+              // vertailu (menu-visual entry 71): the marks of today's computeTextDiff are wrong after one
+              // inserted word. I-03 wraps the 'removed' runs in del.faust-mark--del and the 'added' runs
+              // in ins.faust-mark--ins.
+              const columnRuns = (leaveOut) => {
+                const pieces = diffResult.filter(piece => piece.type !== leaveOut);
+                const runs = [];
+                pieces.forEach((piece, idx) => {
+                  const last = runs[runs.length - 1];
+                  const next = pieces[idx + 1];
+                  if (last && last.type !== 'same' && piece.type === 'same' && !piece.text.trim() && next && next.type === last.type) {
+                    last.text += piece.text;
+                  } else if (last && last.type === piece.type) {
+                    last.text += piece.text;
+                  } else {
+                    runs.push({ type: piece.type, text: piece.text });
+                  }
+                });
+                return runs;
+              };
+              // The comparison is not modal: accept only while the selection is still the compared text
+              const selectionChanged = !textSelection || textSelection.text !== voiceDiffView.original;
+
+              return e('div', { className: 'faust-result faust-result--floating' },
+                e('div', { className: 'faust-result__head' },
+                  e('span', { className: 'faust-label' }, 'Ehdotus'),
+                  e('span', { className: 'faust-diff__count' },
+                    'Sanamäärä ' + (delta > 0 ? '+' : delta < 0 ? '−' : '') + Math.abs(delta).toLocaleString('fi-FI'))
+                ),
+                e('div', { className: 'faust-result__context' }, `Puhuttu ohje: ”${voiceDiffView.instruction}”`),
+                e('div', { className: 'faust-result__body' },
+                  e('div', { className: 'faust-diff faust-diff--split' },
+                    e('div', { className: 'faust-diff__col' },
+                      e('div', { className: 'faust-diff__colhead' }, e('span', null, 'Alkuperäinen · ' + count(origWords, 'sana'))),
+                      e('div', { className: 'faust-prose' },
+                        ...columnRuns('added').map((run, idx) => e('span', { key: idx }, run.text))
+                      )
+                    ),
+                    e('div', { className: 'faust-diff__rule' }),
+                    e('div', { className: 'faust-diff__col' },
+                      e('div', { className: 'faust-diff__colhead' }, e('span', null, 'Ehdotus · ' + count(newWords, 'sana'))),
+                      e('div', { className: 'faust-prose' },
+                        ...columnRuns('removed').map((run, idx) => e('span', { key: idx }, run.text))
+                      )
                     )
                   )
+                ),
+                e('div', { className: 'faust-result__actions' },
+                  e('button', {
+                    type: 'button',
+                    className: 'faust-btn faust-btn--quiet',
+                    onClick: rejectVoiceEdit
+                  }, 'Hylkää'),
+                  e('button', {
+                    type: 'button',
+                    className: 'faust-btn faust-btn--primary',
+                    onClick: acceptVoiceEdit,
+                    disabled: selectionChanged,
+                    title: selectionChanged ? 'Valinta on muuttunut. Tee muokkaus uudelleen.' : undefined
+                  }, 'Korvaa valittu teksti')
                 )
-              ),
-              e('div', { className: 'faust-result__actions' },
-                e('button', {
-                  type: 'button',
-                  className: 'faust-btn faust-btn--quiet',
-                  onClick: rejectVoiceEdit
-                }, 'Hylkää'),
-                e('button', {
-                  type: 'button',
-                  className: 'faust-btn faust-btn--primary',
-                  onClick: acceptVoiceEdit,
-                  disabled: selectionChanged,
-                  title: selectionChanged ? 'Valinta on muuttunut. Tee muokkaus uudelleen.' : undefined
-                }, 'Korvaa valittu teksti')
-              )
-            );
-          })() : null
+              );
+            })() : null;
+
+            return e('div', { className: 'faust-dock' }, voiceDiffView ? voiceCard : dockSuggestionsFirst ? dockSuggestionBar : voiceBarShown ? voiceBar : dockSuggestionBar);
+          })()
         )
       ),
 
@@ -6063,10 +6040,8 @@ ${contextPrompt}`;
           const authorText = (text) => e('p', { className: 'faust-serif', style: { margin: 0, whiteSpace: 'pre-wrap' } }, text);
           const infoLine = (text) => e('p', { className: 'faust-ui', style: { margin: 0 } }, text);
 
-          return e('div', {
-            className: 'faust-editor faust-editor-split',
-            style: { borderLeft: 'var(--bw) solid var(--rule)' }
-          },
+          // The hairline between the panes is .faust-editor-area.is-split's (V 4.5)
+          return e('div', { className: 'faust-editor faust-editor-split' },
             // Split view header with selector: it stays put while the content scrolls
             e('div', {
               style: {
@@ -6150,29 +6125,44 @@ ${contextPrompt}`;
               }, icons.close({ size: 14 }))
             ),
 
+            // Chapter view: a page of its own (V 6.3, R-87). Title and meta line stand in its head, on the
+            // text's left edge; the text is a read-only editor, the pane's one scroller, which dims the
+            // Markdown markers as the main pane does. No dock: nothing is edited here (R-62).
+            splitViewType === 'chapter' && refChapter
+              ? e('div', { className: 'faust-page', style: { '--ms-size': 18 * (parseInt(editorZoom) / 100) + 'px' } },
+                  e('div', { className: 'faust-page__head' },
+                    e('h2', { className: 'faust-chapter-title' }, refChapter.title || 'Nimetön luku'),
+                    e('p', {
+                      className: 'faust-meta',
+                      style: { margin: 'var(--sp-1) 0 0' }
+                    }, `${count(refChapter.wordCount || 0, 'sana')} · ${labelOf('status', normStatus(refChapter.status)).toLowerCase()} · vain katselu`)
+                  ),
+                  e('div', { className: 'faust-page__body' },
+                    refChapter.content
+                      ? e(FaustEditor, {
+                          key: refChapter.id,
+                          value: refChapter.content,
+                          readOnly: true,
+                          // The manuscript settings of the Ulkoasu tab, as in the main pane
+                          style: {
+                            fontFamily: editorFont,
+                            fontSize: `${18 * (parseInt(editorZoom) / 100)}px`,
+                            lineHeight: lineSpacing,
+                            textAlign: textAlign,
+                            paragraphGap: `${Math.max(0, (parseFloat(paragraphSpacing) || 1) - 1) * 0.8}em`,
+                            paddingBottom: 'var(--sp-7)'
+                          }
+                        })
+                      : emptyState('Luvussa ei ole vielä tekstiä.')
+                  )
+                )
+
             // Split view content area: the pane's one scroller
-            e('div', {
+            : e('div', {
               className: 'faust-editor-content',
               style: { padding: 'var(--sp-5) 0 var(--sp-7)' }
             },
-              // Chapter view: read only; the text shares one left edge with its title and meta line
-              splitViewType === 'chapter' && (refChapter
-                ? e('div', null,
-                    e('h2', {
-                      style: { margin: '0 0 var(--sp-1)', paddingInline: 'var(--page-inset)', font: 'var(--type-title-chapter)' }
-                    }, refChapter.title || 'Nimetön luku'),
-                    e('p', {
-                      className: 'faust-meta',
-                      style: { margin: '0 0 var(--sp-5)', paddingInline: 'var(--page-inset)' }
-                    }, `${count(refChapter.wordCount || 0, 'sana')} · ${labelOf('status', normStatus(refChapter.status)).toLowerCase()} · vain katselu`),
-                    refChapter.content
-                      ? e('div', {
-                          className: 'faust-manuscript',
-                          style: { '--ms-size': 18 * (parseInt(editorZoom) / 100) + 'px' }
-                        }, refChapter.content)
-                      : emptyState('Luvussa ei ole vielä tekstiä.')
-                  )
-                : emptyState('Valitse luku yllä olevasta valikosta.')),
+              splitViewType === 'chapter' && emptyState('Valitse luku yllä olevasta valikosta.'),
 
               // Character view
               splitViewType === 'character' && (() => {
@@ -7454,16 +7444,17 @@ ${contextPrompt}`;
               disabled: aiChatProcessing
             }),
             e('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', marginTop: 'var(--sp-2)' } },
-              voiceInputAvailable ? e('button', {
-                className: 'faust-btn faust-btn--icon faust-btn--lg',
-                onClick: handleAiAssistantVoice,
-                disabled: aiChatVoiceState !== 'idle',
-                'aria-pressed': aiChatVoiceState === 'listening',
-                'aria-busy': aiChatVoiceState === 'listening',
-                'data-state': aiChatVoiceState === 'listening' ? 'listening' : undefined,
-                'aria-label': aiChatVoiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Sanele viesti',
-                title: aiChatVoiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Sanele viesti'
-              }, icons.mic({ size: 16 })) : null,
+              // Pressed while it listens, the button stops listening (V 4.1). A stopped recognition may
+              // never answer, so the button goes back to rest at once; a late answer still fills the field.
+              voiceInputAvailable ? e(VoiceButton, {
+                className: 'faust-btn--lg',
+                state: aiChatVoiceState,
+                label: aiChatVoiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Sanele viesti',
+                disabled: aiChatVoiceState === 'error',
+                onToggle: aiChatVoiceState === 'listening'
+                  ? () => { if (voiceInputRef.current) voiceInputRef.current.stop(); setAiChatVoiceState('idle'); }
+                  : handleAiAssistantVoice
+              }) : null,
               e('button', {
                 style: { marginLeft: 'auto' },
                 className: 'faust-btn faust-btn--primary faust-btn--lg',
