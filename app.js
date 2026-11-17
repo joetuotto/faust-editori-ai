@@ -18,7 +18,14 @@ import {
   buildSearchPattern, findMatches, replaceAllMatches
 } from './src/editor/textTools.js';
 import { Icon, icons } from './src/components/icons.js';
-import { ToastHost, notify, installAlertShim } from './src/components/ui.js';
+// Notifications and the alert shim (F7); then the shared components the cross-region packages use
+// (R-71): the header and format bar menus and the four popovers (Popover, usePopover), the sigil bar
+// (SigilButton, Tooltip), the voice buttons (VoiceButton), the shared dialog and the Esc chain
+// (Dialog, layerStack), Tietopaneeli's tab row and the version stars (Tabs, Rating)
+import {
+  ToastHost, notify, installAlertShim,
+  Popover, usePopover, SigilButton, Tooltip, VoiceButton, Dialog, layerStack, Tabs, Rating
+} from './src/components/ui.js';
 
 // window.alert -> notify (src/components/ui.js). Removed when the last legacy call is gone.
 installAlertShim();
@@ -180,6 +187,17 @@ const voiceFailureReason = (error) => {
   if (/^äänitunnistus keskeytetty$/i.test(text)) return 'puheentunnistus keskeytyi';
   return text.charAt(0).toLowerCase() + text.slice(1);
 };
+
+// The key of a place in project.continuity.locations. The app keys a place by its name, but an old
+// or hand-edited file may hold one under another key or without a name: the stored object decides.
+const storedLocationKey = (locations, location) => {
+  const byObject = Object.keys(locations).find((key) => locations[key] === location);
+  if (byObject !== undefined) return byObject;
+  return location && location.name && Object.prototype.hasOwnProperty.call(locations, location.name) ? location.name : undefined;
+};
+
+// One plot thread: by id, or by the stored object when a thread from an old file has none
+const sameThread = (a, b) => (b && b.id ? a.id === b.id : a === b);
 
 // Money as the author reads it: noin 0,12 $
 const formatCostFi = (amount) =>
@@ -481,8 +499,15 @@ function FAUSTApp() {
       project.continuity.locations = {};
     }
 
+    // Places are keyed by name: a renamed place leaves its old key, found by the stored object
+    const locations = project.continuity.locations;
+    if (locationFormMode === 'edit' && selectedLocation) {
+      const oldKey = storedLocationKey(locations, selectedLocation);
+      if (oldKey !== undefined && oldKey !== locationData.name) delete locations[oldKey];
+    }
+
     // Create or update location
-    project.continuity.locations[locationData.name] = locationData;
+    locations[locationData.name] = locationData;
 
     setProject({ ...project });
     setUnsavedChanges(true);
@@ -498,8 +523,8 @@ function FAUSTApp() {
     }
 
     if (threadFormMode === 'edit' && selectedThread) {
-      // Update existing thread
-      const threadIndex = project.plotThreads.findIndex(t => t.id === selectedThread.id);
+      // Update existing thread (a thread from an old file may have no id: then the stored object)
+      const threadIndex = project.plotThreads.findIndex(t => sameThread(t, selectedThread));
       if (threadIndex > -1) {
         project.plotThreads[threadIndex] = threadData;
       }
@@ -515,19 +540,21 @@ function FAUSTApp() {
     console.log('[ThreadSheet] Thread saved:', threadData.name);
   };
 
-  // Delete a place from its form. Places are keyed by their stored name, not the edited one.
+  // Delete a place from its form. Places are keyed by their stored name, not the edited one;
+  // an entry whose key differs from its name (an old or hand-edited file) is found by the object.
   const deleteLocation = async (location) => {
     if (!location) return;
     if (!(await askConfirm(
       'Poistetaanko paikka?',
-      'Paikka ”' + location.name + '” poistetaan. Poistoa ei voi kumota.',
+      'Paikka ”' + (location.name || 'Nimetön paikka') + '” poistetaan. Poistoa ei voi kumota.',
       'Poista paikka',
       'Peruuta',
       { danger: true }
     ))) return;
     setProject(prev => {
       const locations = { ...((prev.continuity && prev.continuity.locations) || {}) };
-      delete locations[location.name];
+      const key = storedLocationKey(locations, location);
+      if (key !== undefined) delete locations[key];
       return { ...prev, continuity: { ...(prev.continuity || {}), locations } };
     });
     setUnsavedChanges(true);
@@ -545,9 +572,9 @@ function FAUSTApp() {
       'Peruuta',
       { danger: true }
     ))) return;
-    setProject(prev => ({ ...prev, plotThreads: (prev.plotThreads || []).filter((t) => t.id !== thread.id) }));
+    setProject(prev => ({ ...prev, plotThreads: (prev.plotThreads || []).filter((t) => !sameThread(t, thread)) }));
     // The copy for the panels follows the project only while it has threads: keep it in step
-    setPlotThreads(prev => prev.filter((t) => t.id !== thread.id));
+    setPlotThreads(prev => prev.filter((t) => !sameThread(t, thread)));
     setUnsavedChanges(true);
     setShowThreadFormModal(false);
     setSelectedThread(null);
@@ -577,6 +604,8 @@ function FAUSTApp() {
   // Consistency check state
   const [consistencyErrors, setConsistencyErrors] = useState([]);
   const [checkingConsistency, setCheckingConsistency] = useState(false);
+  // A complete check of the open project found nothing (no failed requests, no project change since)
+  const [consistencyChecked, setConsistencyChecked] = useState(false);
 
   // Voice state
   const [voiceInputAvailable, setVoiceInputAvailable] = useState(false);
@@ -639,6 +668,8 @@ function FAUSTApp() {
   // AI Generation state
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(null); // {stage, message}
+  // Which Magnum Opus command runs (the busy face goes on its button): null | 'one' | 'all'
+  const [magnumOpusRun, setMagnumOpusRun] = useState(null);
   // Which of Analysoi luku, Pika-arvio and Tee tiivistelmä runs: null | 'analyze' | 'quick' | 'summary'
   const [analysisBusy, setAnalysisBusy] = useState(null);
 
@@ -764,11 +795,6 @@ function FAUSTApp() {
   const chapterWords = countWords(activeChapter?.content);
   const chapterCharacters = countCharacters(activeChapter?.content);
   const activeChapterIndex = project.structure.findIndex(ch => ch.id === activeChapterId);
-
-  // Get split view chapter (if enabled)
-  const splitViewChapter = splitViewEnabled && splitViewChapterId
-    ? project.structure.find(ch => ch.id === splitViewChapterId)
-    : null;
 
   // Apply theme: at once on the first run, with the swipe when the author switches
   const themeAppliedRef = useRef(false);
@@ -1795,6 +1821,7 @@ function FAUSTApp() {
 
     setSearchResults([]);
     setCurrentSearchIndex(-1);
+    lastSearchRef.current = '';   // the hits are gone with the text they were found in
     console.log('[Replace All] Replaced', total, 'matches in', changes.length, 'chapters');
   };
 
@@ -1803,6 +1830,7 @@ function FAUSTApp() {
     setShowReplaceDialog(false);
     setSearchResults([]);
     setCurrentSearchIndex(-1);
+    lastSearchRef.current = '';   // the panel reopens without a stale "Ei osumia"
   };
 
   // Hits belong to the term and the options they were found with. A new term clears them
@@ -1871,6 +1899,9 @@ function FAUSTApp() {
     setUnsavedChanges(false);
     setSearchResults([]);
     setCurrentSearchIndex(-1);
+    // A consistency result belongs to the project it was found in
+    setConsistencyErrors([]);
+    setConsistencyChecked(false);
     // The undo history belongs to the project that was open
     if (commandManagerRef.current) commandManagerRef.current.clear();
   };
@@ -2737,6 +2768,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
     }
 
     setIsGenerating(true);
+    setMagnumOpusRun('one');
     setGenerationProgress({ stage: 'preparing', message: 'Magnum Opus: valmistellaan…' });
 
     try {
@@ -2828,6 +2860,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
     } finally {
       setGenerationProgress(null);
       setIsGenerating(false);
+      setMagnumOpusRun(null);
     }
   };
 
@@ -2867,6 +2900,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
     }
 
     setIsGenerating(true);
+    setMagnumOpusRun('all');
     setGenerationProgress({ stage: 'preparing', message: 'Magnum Opus: valmistellaan…' });
 
     try {
@@ -2989,6 +3023,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
     } finally {
       setGenerationProgress(null);
       setIsGenerating(false);
+      setMagnumOpusRun(null);
     }
   };
 
@@ -3096,6 +3131,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
     }
 
     setCheckingConsistency(true);
+    setConsistencyChecked(false);
 
     try {
       const result = await consistencyCheckerRef.current.runFullCheck();
@@ -3105,6 +3141,8 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
         console.log('[Consistency] Found', result.errors.length, 'issues');
 
         const failures = consistencyCheckerRef.current.failures || [];
+        // A run with failed requests is not a complete result (its own warning says so)
+        setConsistencyChecked(failures.length === 0);
         if (failures.length > 0) {
           notify('warning', `Tarkistus jäi kesken: ${count(failures.length, 'pyyntö')} epäonnistui, joten tulos ei ole täydellinen.`, {
             detail: failures.slice(0, 5).join('\n'),
@@ -3311,10 +3349,10 @@ Return ONLY valid JSON:
   };
 
   // + Uusi hahmo…: always a fresh builder. Without a hahmosuunnitelma there is nothing to build
-  // from, so Suunnittele hahmot opens instead.
+  // from, so Suunnittele hahmot opens instead. The test is the one the Hahmot window and the
+  // Projekti tab use to label this button (castPlan.defined), so label and action agree.
   const openCharacterBuilder = () => {
-    const plan = project.castPlan || {};
-    if (!plan.defined || (plan.characterTypes || []).length === 0) {
+    if (!(project.castPlan && project.castPlan.defined)) {
       openCastPlan();
       return;
     }
@@ -6246,6 +6284,9 @@ ${contextPrompt}`;
           ),
           inspectorTab === 'chapter' && activeChapter && e('section', { className: 'faust-section' },
             e('div', { style: { font: 'var(--type-title-pop)', marginBottom: 'var(--sp-2)' } }, activeChapter.title || 'Nimetön luku'),
+            // The status as a chip with M's word (R-50); the Tila select below changes it
+            e('div', { style: { marginBottom: 'var(--sp-3)' } },
+              e('span', { className: 'faust-chip ' + (STATUS_CHIP[normStatus(activeChapter.status)] || '') }, labelOf('status', normStatus(activeChapter.status)))),
             e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Luvun tiedot')),
 
             // Status
@@ -6597,9 +6638,9 @@ ${contextPrompt}`;
 
           // Batch Generation
           inspectorTab === 'ai' && (() => {
-            // Which of the two commands runs: the batch processor flags its own run (the busy face goes on that button)
-            const allRunning = isGenerating && !!(batchProcessorRef.current && batchProcessorRef.current.isProcessing);
-            const oneRunning = isGenerating && !allRunning;
+            // Which of the two commands runs (the busy face goes on that button; a rewrite runs neither)
+            const oneRunning = magnumOpusRun === 'one';
+            const allRunning = magnumOpusRun === 'all';
             const runningTip = 'Magnum Opus on käynnissä: tekoäly kirjoittaa lukua…';
             const notReadyTip = 'Tekoälytoiminnot latautuvat vielä.';
             const busyFace = e('span', { className: 'faust-spinner faust-spinner--sm', 'aria-hidden': 'true' });
@@ -6978,12 +7019,8 @@ ${contextPrompt}`;
 
           // Consistency Check
           inspectorTab === 'project' && (() => {
-            const checker = consistencyCheckerRef.current;
-            // Interim (request 2, XR-1): the checker sets failures to [] at the start of a run, so an
-            // empty list after a run means no contradictions. It survives a project change and a run that
-            // threw; XR-1 replaces the last three terms with logic's state consistencyChecked
-            const checkedClean = !checkingConsistency && consistencyErrors.length === 0 &&
-              !!checker && Array.isArray(checker.failures) && checker.failures.length === 0;
+            // Only a complete check of the open project that found nothing says so
+            const checkedClean = consistencyChecked && !checkingConsistency && consistencyErrors.length === 0;
             const markCount = activeChapter
               ? (activeChapter.annotations || []).filter(a => a.type === 'ai_consistency' || a.type === 'ai-consistency').length
               : 0;

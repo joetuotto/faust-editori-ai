@@ -126,6 +126,11 @@ input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--text-di
 /* voice input while listening: the same glyph, the state in colour, edge and a travelling ring */
 .faust-btn[data-state="listening"],
 .faust-btn[data-state="listening"]:not(:disabled):is(:hover, :active) { background: var(--error-bg); border-color: var(--error); color: var(--error); animation: faust-listen 1.4s ease-out infinite; }
+/* the glyph takes the error colour too, not the accent of a pressed chrome toggle (V 4.1) */
+.faust-btn[data-state="listening"] > .faust-icon { color: inherit; }
+/* a listening button that cannot be pressed again (the Liminal Engine's dictation) keeps the
+   listening look over the disabled and busy rules below */
+.faust-btn[data-state="listening"]:disabled { background: var(--error-bg); border-color: var(--error); color: var(--error); }
 /* disabled: one look on every ground. Shape and label stay; nothing is dimmed twice. */
 .faust-btn:disabled, .faust-btn[aria-disabled="true"] { background: transparent; border-color: var(--rule); color: var(--text-disabled); cursor: default; }
 .faust-btn[aria-disabled="true"] { pointer-events: none; }
@@ -216,6 +221,8 @@ input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--text-di
 .faust-rating__star { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; background: none; border: 0; border-radius: var(--radius-xs); color: var(--text-3); cursor: pointer; }
 .faust-rating__star:hover { color: var(--text); }
 .faust-rating__star.is-on { color: var(--accent-line); }
+/* a chosen star stays a star: no pressed-toggle fill behind it (Rating sets aria-pressed) */
+.faust-rating .faust-rating__star:is([aria-pressed="true"], [aria-pressed="true"]:not(:disabled):is(:hover, :active)) { background: transparent; }
 .faust-rating__star:disabled { color: var(--text-disabled); cursor: default; }
 
 /* ============ 5 Tabs and segmented control ============ */
@@ -324,7 +331,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-row__text  { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-half); }
 .faust-row__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .faust-row--author .faust-row__title { font: var(--type-serif); }
-.faust-row__meta  { font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.faust-row__meta  { font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .faust-row__actions { margin-left: auto; display: flex; gap: var(--sp-half); opacity: 0; transition: opacity var(--dur-fast) var(--ease-out); }
 .faust-row:is(:hover, :focus-within, .is-selected) .faust-row__actions { opacity: 1; }
 /* on a hover, pressed, selected or drop fill the weakest text level steps up, so it never drops under 4.5:1 */
@@ -371,7 +378,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* timeline: one horizontally scrolling wrapper, one grid, so chapter cells and thread bars share the scale.
    Columns: thread name | one per chapter (--n) | status. Row 1 holds the chapter cells. */
 .faust-timeline { overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: var(--sp-2); }
-.faust-timeline__grid { display: grid; grid-template-columns: 150px repeat(var(--n, 1), minmax(120px, 1fr)) 80px; gap: var(--sp-2); align-items: center; min-width: max-content; }
+/* Measured in the app (XR-1): the widest chapter chip, Suunnitteilla, is 124px and a compact card adds
+   26px; the widest thread chip, Suunniteltu, is 109px. The status column takes its widest chip. */
+.faust-timeline__grid { display: grid; grid-template-columns: 150px repeat(var(--n, 1), minmax(152px, 1fr)) max-content; gap: var(--sp-2); align-items: center; min-width: max-content; }
 .faust-timeline__name { position: sticky; left: 0; z-index: var(--z-raised); align-self: stretch; display: flex; align-items: center; min-width: 0; padding-right: var(--sp-2); background: var(--surface-raised); font: var(--type-serif); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .faust-timeline__bar { grid-column: calc(var(--from, 0) + 2) / calc(var(--to, 0) + 3); height: 8px; border-radius: var(--radius-pill); background: var(--thread, var(--thread-1)); }
 .faust-timeline__bar.is-open { border-top-right-radius: 0; border-bottom-right-radius: 0; }       /* not yet resolved: the bar runs on, square-cut */
@@ -1057,8 +1066,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .claude-icon { color: var(--accent-line); display: inline-grid; }
 .claude-chat-controls { display: flex; align-items: center; gap: var(--sp-1); }
 .thinking-toggle { display: flex; align-items: center; gap: var(--sp-2); margin-right: var(--sp-2); font: var(--type-meta); color: var(--text-2); cursor: pointer; }
-.clear-btn, .close-btn { width: var(--h-sm); height: var(--h-sm); display: inline-grid; place-items: center; padding: 0; background: none; border: 0; border-radius: var(--radius-sm); color: var(--text-2); font: var(--type-ui); }
-.clear-btn:hover, .close-btn:hover { background: var(--fill-hover); color: var(--text); }
+/* Tyhjennä is a word button: its look is faust-btn faust-btn--quiet faust-btn--sm */
+.close-btn { width: var(--h-sm); height: var(--h-sm); display: inline-grid; place-items: center; padding: 0; background: none; border: 0; border-radius: var(--radius-sm); color: var(--text-2); font: var(--type-ui); }
+.close-btn:hover { background: var(--fill-hover); color: var(--text); }
 .claude-chat-messages { flex: 1 1 auto; min-height: 160px; overflow-y: auto; overscroll-behavior: contain; padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
 .chat-message { max-width: 100%; padding: 0; border-radius: var(--radius-sm); }
 .chat-message.user { align-self: flex-end; max-width: 88%; padding: var(--sp-2) var(--sp-3); background: var(--fill-subtle); color: var(--text); font: var(--type-input); }
@@ -1081,9 +1091,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .claude-chat-input { flex: none; display: flex; align-items: flex-end; gap: var(--sp-2); padding: var(--sp-3); border-top: var(--bw) solid var(--rule); }
 .claude-chat-input textarea { flex: 1; min-width: 0; padding: var(--sp-2) var(--sp-3); resize: none; background: var(--surface-sunken); color: var(--text); border: var(--bw) solid var(--border-control); border-radius: var(--radius-sm); font: var(--type-input); }
 .claude-chat-input textarea:focus-visible { border-color: var(--focus-ring); }
-.send-btn { width: var(--h-lg); height: var(--h-lg); display: inline-grid; place-items: center; padding: 0; background: var(--accent); color: var(--on-accent); border: 0; border-radius: var(--radius-sm); font: var(--type-ui-strong); }
-.send-btn:not(:disabled):hover { background: var(--accent-hover); }
-.send-btn:disabled { background: var(--fill-subtle); color: var(--text-disabled); cursor: default; }
+/* Lähetä is a word button (faust-btn faust-btn--primary, busy through aria-busy): only its height
+   is the input row's */
+.send-btn { flex: none; height: var(--h-lg); }
 
 /* ============ 16 Legacy bridge ============
  * The only rules that reach into today's inline-styled markup. Each one names the inline
