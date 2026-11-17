@@ -1173,9 +1173,3 @@ button:disabled:not([aria-busy="true"]):not([class*="faust-"]) {
   box-shadow: none !important; text-shadow: none !important; cursor: default !important;
 }
 button[aria-busy="true"]:disabled:not([class*="faust-"]) { opacity: 1 !important; cursor: progress !important; }
-
-/* S9  Meta text on a tinted (selected) row: --text-3 on the DEIS selection tint is 4.40:1.
-       As in the recipes, the meta text of a selected row steps up to --text-2 (5.72:1).
-       The second pattern is the selected card of the card view.
-       Delete when the chapter list and the card view use their recipes (regions C and D). */
-:is([style*="background: var(--bg-tertiary"], [style*="background: rgba(143, 122, 83, 0.15)"]) [style*="color: var(--text-3"] { color: var(--text-2) !important; }
