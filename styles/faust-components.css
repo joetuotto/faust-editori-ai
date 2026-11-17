@@ -887,21 +887,20 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:is([data-role="block-prev"], [data-role="block-next"])::before,
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:is([data-role="attempt-prev"], [data-role="attempt-next"], [data-role="delete-prompt"])::before { content: ""; display: block; width: 14px; height: 14px; margin: auto; background: currentColor; -webkit-mask: var(--glyph) center / contain no-repeat; mask: var(--glyph) center / contain no-repeat; }
 
-/* The page: one measure, one left edge, one scroller. The page element is the primary
-   editor content box (today .faust-editor-content with the added --main class, later
-   .faust-page). It carries --ms-size (and, with a manuscript face other than EB Garamond,
+/* The page: one measure, one left edge, one scroller. The page element (.faust-page) is the
+   editor content box. It carries --ms-size (and, with a manuscript face other than EB Garamond,
    --measure-face) inline, so the measure is declared here. */
-.faust-editor-content--main, .faust-page {
+.faust-page {
   container: page / inline-size;
   --measure: calc(var(--ms-size) * var(--measure-em) * var(--measure-face));
   --page-w: calc(var(--measure) + 2 * var(--annot-gutter));
   --page-inset: max(var(--page-gutter), calc((100% - var(--measure)) / 2));
   --page-edge: max(calc(var(--page-gutter) + var(--scrollbar-w)), calc((100% - var(--measure)) / 2));
 }
-:is(.faust-editor-content--main, .faust-page)[data-measure="narrow"] { --measure-em: var(--measure-narrow); }
-:is(.faust-editor-content--main, .faust-page)[data-measure="wide"]   { --measure-em: var(--measure-wide); }
-:is(.faust-editor-content--main, .faust-page) .faust-editor-host .cm-scroller { scrollbar-gutter: stable both-edges; }
-:is(.faust-editor-content--main, .faust-page) .faust-editor-host .cm-content {
+.faust-page[data-measure="narrow"] { --measure-em: var(--measure-narrow); }
+.faust-page[data-measure="wide"]   { --measure-em: var(--measure-wide); }
+.faust-page .faust-editor-host .cm-scroller { scrollbar-gutter: stable both-edges; }
+.faust-page .faust-editor-host .cm-content {
   padding: var(--fe-pad-top) var(--page-inset) var(--fe-pad-bottom);
 }
 
@@ -984,16 +983,14 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-aipanel .faust-panel__foot .faust-input { text-overflow: ellipsis; }
 
 /* ---- Editor pane ---- */
-/* Interim page: the primary pane after the one-line edits of region B, step 1. */
-.faust-editor-content--main { display: flex; flex-direction: column; overflow: hidden; padding: var(--page-pad-top) 0 0; }
-.faust-page-row { display: block; box-sizing: border-box; flex: none; width: 100%; max-width: min(calc(100% - 2 * (var(--page-gutter) + var(--scrollbar-w))), var(--measure)); margin-inline: auto; }   /* the same column as the text, classic scrollbars included */
+/* A box of the page in the text's column, classic scrollbars included. Inside the page head (the
+   progress box and the stored AI suggestions, until they move to the busy notification and the
+   Luku tab) the head's padding already makes the column. */
+.faust-page-row { display: block; box-sizing: border-box; flex: none; width: 100%; max-width: min(calc(100% - 2 * (var(--page-gutter) + var(--scrollbar-w))), var(--measure)); margin-inline: auto; }
+.faust-page__head > .faust-page-row { max-width: none; margin-top: var(--sp-2); }
 /* A row whose content has no bound (the stored AI suggestions) is a closed disclosure; open, it scrolls inside itself and never takes more than a quarter of the window from the manuscript. */
 .faust-page-row--bounded { flex: 0 1 auto; min-height: var(--h-sm); max-height: min(180px, 25vh); overflow-y: auto; overscroll-behavior: contain; }
-.faust-editor-content--main > .faust-editor-body { flex: 1 1 0; min-height: 0; height: auto !important; }   /* the inline height:'100%' made the pane overflow by the height of the head */
-/* The old toolbar starts on the shared left edge and keeps one row while the pane has the room
-   (it is wider than the measure); in a narrower pane it wraps to a second row until it becomes .faust-formatbar. */
-.faust-editor-content--main .formatting-toolbar { flex: none; align-self: flex-start; width: fit-content; max-width: calc(100% - var(--page-edge) - var(--page-gutter) - var(--scrollbar-w)); margin-left: var(--page-edge); }
-.faust-editor-area:has(> .faust-editor-split) .faust-editor-content--main { --page-pad-top: 24px; }
+.faust-editor-area:has(> .faust-editor-split) .faust-page { --page-pad-top: 24px; }
 
 /* Final page: head block and text share one centred column; the format bar lies on the desk. */
 .faust-editor-area.is-split > .faust-editor { flex: 1 1 0; min-width: 400px; max-width: none; }   /* split view: two equal panes */
@@ -1011,12 +1008,15 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-formatbar__group + .faust-formatbar__group { margin-left: var(--sp-1); padding-left: var(--sp-2); border-left: var(--bw) solid var(--rule); }
 .faust-formatbar__end { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 .faust-formatbar__more { display: none; }
-/* Thresholds for the menu spec's word faces and the captioned sigil bar: estimates from the metrics,
-   measured in the cross-region pass at pane widths 400 to 1700 px (pass: scrollWidth <= clientWidth).
-   The heading group leaves first, then the sigil captions, then the priority-3 groups. */
-@container formatbar (max-width: 1429px) { .faust-formatbar [data-priority="2"] { display: none; } .faust-formatbar__more { display: inline-flex; } }
-@container formatbar (max-width: 1059px) { .faust-sigil-btn__caption { display: none; } .faust-sigil-btn--captioned { width: var(--h-lg); padding: 0; } }
-@container formatbar (max-width: 704px) { .faust-formatbar [data-priority="3"] { display: none; } }
+/* Thresholds for the menu spec's word faces and the captioned sigil bar, measured in Electron 30
+   (XR-5): the bar's content box needs 1450px with every group and the captions, 1082px without the
+   heading group, 734px without the captions too, and 300px with the letters, the "more" button and
+   the four sigils alone. Each threshold keeps 16px in hand (two more digits on the bookmark count,
+   a wider fallback face). The heading group leaves first, then the sigil captions, then the
+   priority-3 groups; the queried width is the content box (the bar's width minus 24px). */
+@container formatbar (max-width: 1465px) { .faust-formatbar [data-priority="2"] { display: none; } .faust-formatbar__more { display: inline-flex; } }
+@container formatbar (max-width: 1097px) { .faust-sigil-btn__caption { display: none; } .faust-sigil-btn--captioned { width: var(--h-lg); padding: 0; } }
+@container formatbar (max-width: 749px) { .faust-formatbar [data-priority="3"] { display: none; } }
 .faust-page { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 .faust-page__head { flex: none; padding: var(--page-pad-top) var(--page-edge) var(--sp-5); }
 .faust-chapter-title {
@@ -1048,7 +1048,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
    and the launcher. Panels and the chat window follow their state, which toggleFocusMode()
    closes on entry and restores on exit; a panel command given in focus mode leaves it first. */
 .faust-focus-mode :is(.faust-formatbar, .faust-chapter-meta, .faust-sigilbar, .faust-fab) { display: none !important; }
-.faust-focus-mode :is(.faust-editor-content--main, .faust-page) { --page-pad-top: var(--sp-8); }
+.faust-focus-mode .faust-page { --page-pad-top: var(--sp-8); }
 .faust-focus-mode .faust-chapter-title { color: var(--text-2); }
 .faust-focus-drag { position: fixed; inset: 0 0 auto 0; height: 28px; z-index: var(--z-sticky); -webkit-app-region: drag; }
 .faust-focus-exit.faust-btn { position: fixed; top: var(--sp-3); right: var(--sp-5); z-index: var(--z-float); padding: 0 var(--sp-3); opacity: 1; -webkit-app-region: no-drag; transition: opacity var(--dur-mid) var(--ease-out), background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
@@ -1164,9 +1164,9 @@ button:is([style*="background: var(--bronze"], [style*="background: var(--sigil"
 /* S4  Disabled buttons were dimmed twice (global opacity .5 on an inline grey: 1.7:1).
        One legible, shaped look. A button that is disabled because it is working carries
        aria-busy and is left alone (F7 adds aria-busy to the voice button, whose listening
-       state is its inline colour). The sigil tiles keep their own disabled look (S7).
+       state is its inline colour). The sigil tiles are .faust-sigil-btn and keep their own look.
        Delete when all buttons use faust-btn. */
-button:disabled:not([aria-busy="true"]):not([class*="faust-"]):not(.ai-toolbar-btn):not(.ai-toolbar-btn-primary) {
+button:disabled:not([aria-busy="true"]):not([class*="faust-"]) {
   opacity: 1 !important;
   background-color: var(--fill-subtle) !important; background-image: none !important;
   border-color: var(--rule) !important; border-image: none !important;
@@ -1175,41 +1175,8 @@ button:disabled:not([aria-busy="true"]):not([class*="faust-"]):not(.ai-toolbar-b
 }
 button[aria-busy="true"]:disabled:not([class*="faust-"]) { opacity: 1 !important; cursor: progress !important; }
 
-/* S6  Formatting toolbar: no band now that its --bg-2 has a value.
-       Delete when it becomes .faust-formatbar. */
-.formatting-toolbar:not(.faust-formatbar) { background: transparent !important; border-radius: 0 !important; padding-inline: 0 !important; }
-
-/* S7  Sigil slab: a hard-coded black box with its own gold palette, in both themes.
-       Selected by what it is (the parent of the sigil buttons), not by where it sits.
-       On the interim page the slab is lifted so that it ends where the toolbar begins
-       (the toolbar starts 74px under the page's top padding; the slab is 46px high):
-       its inline top of 80px would lie on the toolbar's first row in split view and in
-       low windows. Delete when the buttons become .faust-sigil-btn inside .faust-sigilbar. */
-:has(> .ai-toolbar-btn) {
-  background: var(--surface-raised) !important; border: var(--bw) solid var(--border) !important;
-  border-radius: var(--radius-md) !important; padding: var(--sp-1) !important; gap: var(--sp-half) !important;
-  box-shadow: var(--shadow-1) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important;
-}
-.faust-editor-content--main > :has(> .ai-toolbar-btn) { top: calc(var(--page-pad-top) + 28px) !important; }
-.ai-toolbar-btn, .ai-toolbar-btn-primary {
-  width: 36px; height: 36px; min-width: 0 !important; padding: 0 !important;
-  background: transparent !important; border: var(--bw) solid transparent !important; border-image: none !important;
-  border-radius: var(--radius-sm) !important; color: var(--accent-line) !important;
-  box-shadow: none !important; text-shadow: none !important; transform: none !important; letter-spacing: 0 !important;
-  transition: background-color var(--dur-sigil) var(--ease-out), color var(--dur-sigil) var(--ease-out) !important;
-}
-.ai-toolbar-btn:hover:not(:disabled) { background: var(--accent-tint) !important; }
-:is(.ai-toolbar-btn, .ai-toolbar-btn-primary):active:not(:disabled) { animation: faust-sigil-pulse 400ms var(--ease-std); }
-.ai-toolbar-btn-primary { background: var(--accent-tint-strong) !important; }
-.ai-toolbar-btn-primary:hover:not(:disabled) { background: var(--accent) !important; color: var(--on-accent) !important; }
-:is(.ai-toolbar-btn, .ai-toolbar-btn-primary):disabled { background: transparent !important; color: var(--text-disabled) !important; }
-
 /* S9  Meta text on a tinted (selected) row: --text-3 on the DEIS selection tint is 4.40:1.
        As in the recipes, the meta text of a selected row steps up to --text-2 (5.72:1).
        The second pattern is the selected card of the card view.
        Delete when the chapter list and the card view use their recipes (regions C and D). */
 :is([style*="background: var(--bg-tertiary"], [style*="background: rgba(143, 122, 83, 0.15)"]) [style*="color: var(--text-3"] { color: var(--text-2) !important; }
-
-/* S8  Focus mode leaves only the page, also for today's markup (the slab; the rail is in section 15).
-       Delete with S7. */
-.faust-focus-mode :has(> .ai-toolbar-btn) { display: none !important; }

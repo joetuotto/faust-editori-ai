@@ -1243,6 +1243,24 @@ function FAUSTApp() {
     if (headerMore.open && (!anchor || anchor.getClientRects().length === 0)) headerMore.close();
   });
 
+  // The format bar's "more" menu lists the groups that the bar's container rules have hidden, as
+  // they were when it opened. It closes when the bar changes width (the hidden set may change with
+  // it) and when its button is hidden (focus mode, the card view).
+  const formatMore = usePopover();
+  const formatBarRef = useRef(null);
+  useEffect(() => {
+    const anchor = formatMore.anchorRef.current;
+    if (formatMore.open && (!anchor || anchor.getClientRects().length === 0)) formatMore.close();
+  });
+  useEffect(() => {
+    const bar = formatBarRef.current;
+    if (!formatMore.open || !bar || typeof ResizeObserver === 'undefined') return undefined;
+    const openedAt = bar.clientWidth;
+    const observer = new ResizeObserver(() => { if (bar.clientWidth !== openedAt) formatMore.close(); });
+    observer.observe(bar);
+    return () => observer.disconnect();
+  }, [formatMore.open]);
+
   // The right column holds one docked panel: Tietopaneeli or the Liminal Engine (R-42). The panel
   // opened last stays and closes the other; closing one reopens nothing. Leaving focus mode restores
   // the panels as they were before it, so that render is compared with that state: a command given in
@@ -5311,181 +5329,275 @@ ${contextPrompt}`;
           className: 'faust-editor',
           style: splitViewEnabled ? { flex: 1, borderRight: '2px solid var(--border-color)' } : {}
         },
-        e('div', { className: 'faust-editor-content faust-editor-content--main', style: { '--ms-size': 18 * (parseInt(editorZoom) / 100) + 'px' } },
-          // Chapter title
-          e('input', {
-            className: 'faust-page-row faust-chapter-title',
-            value: activeChapter.title,
-            onChange: (ev) => {
-              setProject(prev => ({
-                ...prev,
-                structure: prev.structure.map(ch =>
-                  ch.id === activeChapterId ? { ...ch, title: ev.target.value } : ch
-                )
-              }));
-              setUnsavedChanges(true);
-            },
-            placeholder: 'Luvun otsikko'
-          }),
+        // Format bar (V 4.5, MV-61): one row at the top of the pane that never wraps. The groups with
+        // data-priority leave by the bar's container rules, priority 2 first, then 3; the "more" menu
+        // lists what the bar hides. The sigil bar (MV-60) is its right end. The buttons call the same
+        // functions as the Muotoile and Lisää menus and keep the selection in the text.
+        (() => {
+          const bookmarkCount = (project.bookmarks || []).length;
+          const openFind = () => { setShowFindDialog(true); setShowReplaceDialog(false); };
+          // Each item: its face on the bar and, for the groups that can leave, its menu name and keys
+          const groups = [
+            { id: 'inline', items: [
+              { key: 'bold', face: e('b', null, 'B'), title: 'Lihavointi (' + shortcut('CmdOrCtrl+B') + ')', onClick: formatBold, kind: 'glyph' },
+              { key: 'italic', face: e('i', null, 'I'), title: 'Kursivointi (' + shortcut('CmdOrCtrl+I') + ')', onClick: formatItalic, kind: 'glyph' },
+              { key: 'underline', face: e('u', null, 'U'), title: 'Alleviivaus (' + shortcut('CmdOrCtrl+U') + ')', onClick: formatUnderline, kind: 'glyph' },
+              { key: 'strikethrough', face: e('s', null, 'S'), title: 'Yliviivaus (' + shortcut('CmdOrCtrl+Shift+X') + ')', onClick: formatStrikethrough, kind: 'glyph' }
+            ] },
+            { id: 'paragraph', priority: '2', items: [
+              { key: 'heading-1', face: 'Otsikko 1', title: 'Otsikko 1 (' + shortcut('CmdOrCtrl+Alt+1') + ')', onClick: () => formatHeading(1), kind: 'word', menu: 'Otsikko 1', keys: 'CmdOrCtrl+Alt+1' },
+              { key: 'heading-2', face: 'Otsikko 2', title: 'Otsikko 2 (' + shortcut('CmdOrCtrl+Alt+2') + ')', onClick: () => formatHeading(2), kind: 'word', menu: 'Otsikko 2', keys: 'CmdOrCtrl+Alt+2' },
+              { key: 'heading-3', face: 'Otsikko 3', title: 'Otsikko 3 (' + shortcut('CmdOrCtrl+Alt+3') + ')', onClick: () => formatHeading(3), kind: 'word', menu: 'Otsikko 3', keys: 'CmdOrCtrl+Alt+3' },
+              { key: 'body-text', face: 'Leipäteksti', title: 'Leipäteksti (' + shortcut('CmdOrCtrl+Alt+0') + ')', onClick: () => formatHeading(0), kind: 'word', menu: 'Leipäteksti', keys: 'CmdOrCtrl+Alt+0' }
+            ] },
+            { id: 'blocks', priority: '3', items: [
+              { key: 'quote', face: icons.quote({ size: 14 }), name: 'Lainaus', title: 'Lainaus', onClick: formatQuote, kind: 'icon', menu: 'Lainaus' },
+              { key: 'list', face: icons.list({ size: 14 }), name: 'Luettelo', title: 'Luettelo (' + shortcut('CmdOrCtrl+Shift+8') + ')', onClick: formatList, kind: 'icon', menu: 'Luettelo', keys: 'CmdOrCtrl+Shift+8' },
+              { key: 'numbered-list', face: icons.listOrdered({ size: 14 }), name: 'Numeroitu luettelo', title: 'Numeroitu luettelo (' + shortcut('CmdOrCtrl+Shift+7') + ')', onClick: formatNumberedList, kind: 'icon', menu: 'Numeroitu luettelo', keys: 'CmdOrCtrl+Shift+7' }
+            ] },
+            { id: 'insert', priority: '3', items: [
+              { key: 'scene-break', face: '* * *', name: 'Kohtauksen erotin', title: 'Kohtauksen erotin', onClick: () => insertAtCursor('\n\n* * *\n\n'), kind: 'word', menu: 'Kohtauksen erotin' },
+              { key: 'reminder', face: 'Muistutus', title: 'Lisää tekstiin muistutus itselle muodossa [TODO: …]', onClick: insertTodo, kind: 'word', menu: 'Muistutus' }
+            ] },
+            { id: 'marks', priority: '3', items: [
+              { key: 'bookmark-add', face: icons.bookmarkAdd({ size: 14 }), name: 'Lisää kirjanmerkki', title: 'Lisää kirjanmerkki kohdistimen kohdalle', onClick: () => askAndAddBookmark(), kind: 'icon', menu: 'Kirjanmerkki…' },
+              {
+                key: 'bookmarks',
+                face: [icons.bookmark({ size: 14 }), e('span', { key: 'count', className: 'faust-chip faust-chip--count' }, bookmarkCount)],
+                name: `Kirjanmerkit (${bookmarkCount})`,
+                title: showBookmarksPanel ? 'Kätke kirjanmerkit' : 'Näytä kirjanmerkit',
+                onClick: () => setShowBookmarksPanel(prev => !prev),
+                pressed: showBookmarksPanel,
+                kind: 'word',
+                menu: `Kirjanmerkit (${bookmarkCount})`,
+                checkbox: true
+              },
+              // The anchor of the find popover; pressed while it is open
+              { key: 'find', face: icons.search({ size: 14 }), name: 'Etsi', title: 'Etsi (' + shortcut('CmdOrCtrl+F') + ')', onClick: () => (showFindDialog ? closeFindDialog() : openFind()), pressed: showFindDialog, kind: 'icon', menu: 'Etsi…', menuClick: openFind, keys: 'CmdOrCtrl+F' }
+            ] }
+          ];
+          const kindClass = { glyph: 'faust-btn--glyph', icon: 'faust-btn--icon', word: 'faust-btn--quiet' };
 
-          // Word count and AI quality bar
-          e('div', { className: 'faust-page-row faust-chapter-meta' },
-            // Word count
-            e('span', { className: 'faust-stat' },
-              e('b', null, countParts(activeChapter.wordCount || 0, 'sana')[0]), ' ', countParts(activeChapter.wordCount || 0, 'sana')[1]),
-
-            // Status chip: opens Tietopaneeli on the Luku tab (W10)
-            e('button', {
-              className: 'faust-chip ' + (STATUS_CHIP[normStatus(activeChapter.status)] || ''),
-              'aria-label': 'Tila: ' + labelOf('status', normStatus(activeChapter.status)).toLowerCase(),
-              title: 'Luvun tila. Muuta tilaa tietopaneelin Luku-välilehdellä.',
-              onClick: () => showInspectorTab('chapter')
-            }, labelOf('status', normStatus(activeChapter.status))),
-
-            // Quality score of the last analysis
-            activeChapter.aiQuality && activeChapter.aiQuality.score > 0 ? e('span', {
-              className: 'faust-stat',
-              title: 'Tekoälyn arvio luvun laadusta asteikolla 1–10'
-            }, 'Laatuarvio ', e('b', null, Number(activeChapter.aiQuality.score).toLocaleString('fi-FI', { minimumFractionDigits: 1, maximumFractionDigits: 1 })), '/10') : null,
-
-            // Tempo: only after a full analysis (Pika-arvio writes neither strengths nor tension)
-            activeChapter.aiQuality && activeChapter.aiQuality.lastAnalyzed &&
-            ((activeChapter.aiQuality.strengths || []).length > 0 || ((activeChapter.pacing || {}).tension || 0) > 0) &&
-            activeChapter.pacing && ['slow', 'medium', 'fast'].includes(activeChapter.pacing.speed) ? e('span', {
-              className: 'faust-stat',
-              title: 'Tekoälyn arvio kerronnan temposta'
-            }, 'Tempo: ', labelOf('tempo', activeChapter.pacing.speed)) : null
-          ),
-
-          // Floating AI Toolbar (absolute positioned, doesn't take document flow space)
-          e('div', {
-            style: {
-              position: 'absolute',
-              top: isGenerating ? '104px' : '80px', // Below title area and loading indicator
-              right: '20px', // Changed from left to right to avoid title
-              display: 'flex',
-              gap: '6px',
-              background: 'rgba(0, 0, 0, 0.85)',
-              backdropFilter: 'blur(8px)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '8px',
-              padding: '8px',
-              zIndex: 100,
-              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
-              animation: 'fadeIn 0.3s ease'
-            }
-          },
-            // Analysoi luku (mercury sigil). The first three tiles need 50 characters of text and
-            // wait while any of the four runs; the running one shows a spinner in place of its sigil.
-            e('button', {
-              onClick: () => runAnalyze(),
-              disabled: (activeChapter.content || '').trim().length < 50 || isGenerating || !!analysisBusy,
-              'aria-busy': analysisBusy === 'analyze',
-              'aria-label': 'Analysoi luku',
-              title: (activeChapter.content || '').trim().length < 50
+          // The four AI verbs (MV-60): sigil and caption, the tooltip in M's words and the Latin line
+          // (R-55). The first three need 50 characters of text and wait while any of the four runs.
+          const tooShort = (activeChapter.content || '').trim().length < 50;
+          const toolsOff = tooShort || isGenerating || !!analysisBusy;
+          const sigilbar = e('div', { className: 'faust-sigilbar', role: 'toolbar', 'aria-label': 'Tekoälyn työkalut tälle luvulle' },
+            e(SigilButton, {
+              key: 'analyze',
+              sigil: 'mercury',
+              label: 'Analysoi luku',
+              disabled: toolsOff,
+              busy: analysisBusy === 'analyze',
+              tooltip: tooShort
                 ? 'Analysoi luku: kirjoita ensin vähintään 50 merkkiä tekstiä.'
                 : 'Analysoi luku: tekoäly lukee koko luvun ja antaa laatuarvion (1–10), parannusehdotukset ja tiivistelmän. Luvun teksti ei muutu.',
-              className: 'ai-toolbar-btn'
-            }, analysisBusy === 'analyze' ? e('span', { className: 'faust-spinner' }) : icons.mercury({ size: 20 })),
-
-            // Pika-arvio (alembic sigil)
-            e('button', {
-              onClick: () => runQuickCheck(),
-              disabled: (activeChapter.content || '').trim().length < 50 || isGenerating || !!analysisBusy,
-              'aria-busy': analysisBusy === 'quick',
-              'aria-label': 'Pika-arvio',
-              title: (activeChapter.content || '').trim().length < 50
+              latin: 'Scrutinium profundum',
+              onClick: () => runAnalyze()
+            }),
+            e(SigilButton, {
+              key: 'quick',
+              sigil: 'alembic',
+              label: 'Pika-arvio',
+              disabled: toolsOff,
+              busy: analysisBusy === 'quick',
+              tooltip: tooShort
                 ? 'Pika-arvio: kirjoita ensin vähintään 50 merkkiä tekstiä.'
                 : 'Pika-arvio: tekoäly lukee luvun alun (noin 2 000 merkkiä) ja antaa laatuarvion (1–10) ja pari parannusehdotusta. Luvun teksti ei muutu.',
-              className: 'ai-toolbar-btn'
-            }, analysisBusy === 'quick' ? e('span', { className: 'faust-spinner' }) : icons.alembic({ size: 20 })),
-
-            // Tee tiivistelmä (sulfur sigil)
-            e('button', {
-              onClick: () => runSummary(),
-              disabled: (activeChapter.content || '').trim().length < 50 || isGenerating || !!analysisBusy,
-              'aria-busy': analysisBusy === 'summary',
-              'aria-label': 'Tee tiivistelmä',
-              title: (activeChapter.content || '').trim().length < 50
+              latin: 'Examen celeriter',
+              onClick: () => runQuickCheck()
+            }),
+            e(SigilButton, {
+              key: 'summary',
+              sigil: 'sulfur',
+              label: 'Tee tiivistelmä',
+              disabled: toolsOff,
+              busy: analysisBusy === 'summary',
+              tooltip: tooShort
                 ? 'Tee tiivistelmä: kirjoita ensin vähintään 50 merkkiä tekstiä.'
                 : 'Tee tiivistelmä: tekoäly tekee luvusta 2–3 lauseen tiivistelmän, joka näkyy korttinäkymässä ja jaetun näkymän tiivistelmissä. Luvun teksti ei muutu.',
-              className: 'ai-toolbar-btn'
-            }, analysisBusy === 'summary' ? e('span', { className: 'faust-spinner' }) : icons.sulfur({ size: 20 })),
-
-            // Magnum Opus (philosopher's stone): writes the whole chapter; generateChapter asks first
-            e('button', {
-              onClick: () => generateChapter(activeChapterId),
-              disabled: isGenerating,
-              'aria-busy': isGenerating,
-              'aria-label': 'Magnum Opus',
-              title: isGenerating
+              latin: 'Epitome brevis',
+              onClick: () => runSummary()
+            }),
+            // Magnum Opus writes the whole chapter; generateChapter asks first when the chapter has text
+            e(SigilButton, {
+              key: 'magnum-opus',
+              sigil: 'stone',
+              label: 'Magnum Opus',
+              primary: true,
+              busy: isGenerating,
+              tooltip: isGenerating
                 ? 'Magnum Opus on käynnissä: tekoäly kirjoittaa lukua…'
                 : 'Magnum Opus – kirjoita luku tekoälyllä: tekoäly kirjoittaa koko luvun ja käyttää pohjana luvun otsikkoa ja aiempia lukuja. Jos luvussa on jo tekstiä, se korvataan; tästä kysytään ensin.',
-              className: 'ai-toolbar-btn-primary'
-            }, isGenerating ? e('span', { className: 'faust-spinner' }) : icons.stone({ size: 20 }))
-          ),
+              latin: isGenerating ? 'Opus in progressu' : undefined,
+              onClick: () => generateChapter(activeChapterId)
+            })
+          );
 
-          // Generation progress indicator with progress bar
-          generationProgress && e('div', {
-            className: 'faust-page-row',
-            style: {
-              padding: 'var(--sp-3) var(--sp-4)',
-              background: 'var(--accent-tint)',
-              border: 'var(--bw) solid var(--accent-line)',
-              borderRadius: 'var(--radius-sm)',
-              font: 'var(--type-ui)',
-              color: 'var(--text)',
-              marginTop: 'var(--sp-2)'
-            }
-          },
-            e('div', {
+          // The "more" menu: the commands of the groups the bar hides, read when the menu renders
+          const bar = formatBarRef.current;
+          const hiddenGroups = formatMore.open && bar
+            ? groups.filter(group => {
+                const el = group.priority && bar.querySelector(`[data-group="${group.id}"]`);
+                return el && el.getClientRects().length === 0;
+              })
+            : [];
+
+          return e('div', { className: 'faust-formatbar', ref: formatBarRef },
+            ...groups.map(group => e('div', {
+              key: group.id,
+              className: 'faust-formatbar__group',
+              'data-group': group.id,
+              'data-priority': group.priority
+            },
+              ...group.items.map(item => e('button', {
+                key: item.key,
+                type: 'button',
+                className: 'faust-btn ' + kindClass[item.kind],
+                onClick: item.onClick,
+                // Pressing a button must not take the selection out of the text
+                onMouseDown: (ev) => ev.preventDefault(),
+                title: item.title,
+                'aria-label': item.kind === 'glyph' ? item.title : item.name,
+                'aria-pressed': item.pressed === undefined ? undefined : item.pressed
+              }, ...[].concat(item.face)))
+            )),
+            e('button', {
+              ...formatMore.triggerProps,
+              key: 'more',
+              type: 'button',
+              className: 'faust-btn faust-btn--icon faust-formatbar__more',
+              onMouseDown: (ev) => ev.preventDefault(),
+              'aria-label': 'Lisää toimintoja',
+              title: 'Lisää toimintoja',
+              'aria-haspopup': 'menu'
+            }, icons.more({ size: 14 })),
+            e('div', { key: 'end', className: 'faust-formatbar__end' }, sigilbar),
+            formatMore.open && e(Popover, { ...formatMore.popoverProps, key: 'more-menu', menu: true, label: 'Lisää toimintoja' },
+              ...hiddenGroups.flatMap((group, index) => [
+                index > 0 ? e('div', { key: 'sep-' + group.id, className: 'faust-menu__sep', role: 'separator' }) : null,
+                ...group.items.map(item => e('button', {
+                  key: item.key,
+                  type: 'button',
+                  className: 'faust-menu__item',
+                  role: item.checkbox ? 'menuitemcheckbox' : 'menuitem',
+                  'aria-checked': item.checkbox ? !!item.pressed : undefined,
+                  onMouseDown: (ev) => ev.preventDefault(),
+                  onClick: () => {
+                    formatMore.close();
+                    (item.menuClick || item.onClick)();
+                  }
+                },
+                  item.checkbox && item.pressed ? icons.check({ size: 14 }) : null,
+                  item.menu,
+                  item.keys ? e('span', { className: 'faust-menu__shortcut' }, shortcut(item.keys)) : null
+                ))
+              ]).filter(Boolean)
+            )
+          );
+        })(),
+
+        e('div', { className: 'faust-page', style: { '--ms-size': 18 * (parseInt(editorZoom) / 100) + 'px' } },
+          // The page head: title and meta row in the text's column (--page-edge)
+          e('div', { className: 'faust-page__head' },
+            // Chapter title
+            e('input', {
+              className: 'faust-chapter-title',
+              value: activeChapter.title,
+              onChange: (ev) => {
+                setProject(prev => ({
+                  ...prev,
+                  structure: prev.structure.map(ch =>
+                    ch.id === activeChapterId ? { ...ch, title: ev.target.value } : ch
+                  )
+                }));
+                setUnsavedChanges(true);
+              },
+              placeholder: 'Luvun otsikko'
+            }),
+
+            // Word count and AI quality bar
+            e('div', { className: 'faust-chapter-meta' },
+              // Word count
+              e('span', { className: 'faust-stat' },
+                e('b', null, countParts(activeChapter.wordCount || 0, 'sana')[0]), ' ', countParts(activeChapter.wordCount || 0, 'sana')[1]),
+
+              // Status chip: opens Tietopaneeli on the Luku tab (W10)
+              e('button', {
+                className: 'faust-chip ' + (STATUS_CHIP[normStatus(activeChapter.status)] || ''),
+                'aria-label': 'Tila: ' + labelOf('status', normStatus(activeChapter.status)).toLowerCase(),
+                title: 'Luvun tila. Muuta tilaa tietopaneelin Luku-välilehdellä.',
+                onClick: () => showInspectorTab('chapter')
+              }, labelOf('status', normStatus(activeChapter.status))),
+
+              // Quality score of the last analysis
+              activeChapter.aiQuality && activeChapter.aiQuality.score > 0 ? e('span', {
+                className: 'faust-stat',
+                title: 'Tekoälyn arvio luvun laadusta asteikolla 1–10'
+              }, 'Laatuarvio ', e('b', null, Number(activeChapter.aiQuality.score).toLocaleString('fi-FI', { minimumFractionDigits: 1, maximumFractionDigits: 1 })), '/10') : null,
+
+              // Tempo: only after a full analysis (Pika-arvio writes neither strengths nor tension)
+              activeChapter.aiQuality && activeChapter.aiQuality.lastAnalyzed &&
+              ((activeChapter.aiQuality.strengths || []).length > 0 || ((activeChapter.pacing || {}).tension || 0) > 0) &&
+              activeChapter.pacing && ['slow', 'medium', 'fast'].includes(activeChapter.pacing.speed) ? e('span', {
+                className: 'faust-stat',
+                title: 'Tekoälyn arvio kerronnan temposta'
+              }, 'Tempo: ', labelOf('tempo', activeChapter.pacing.speed)) : null
+            ),
+            // Generation progress indicator with progress bar
+            generationProgress && e('div', {
+              className: 'faust-page-row',
               style: {
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                gap: 'var(--sp-3)',
-                marginBottom: generationProgress.percentage > 0 ? 'var(--sp-2)' : 0
+                padding: 'var(--sp-3) var(--sp-4)',
+                background: 'var(--accent-tint)',
+                border: 'var(--bw) solid var(--accent-line)',
+                borderRadius: 'var(--radius-sm)',
+                font: 'var(--type-ui)',
+                color: 'var(--text)',
+                marginTop: 'var(--sp-2)'
               }
             },
-              e('span', null, generationProgress.message),
-              generationProgress.percentage > 0 ? e('span', { className: 'faust-stat' },
-                e('b', null, `${generationProgress.percentage} %`)) : null
+              e('div', {
+                style: {
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 'var(--sp-3)',
+                  marginBottom: generationProgress.percentage > 0 ? 'var(--sp-2)' : 0
+                }
+              },
+                e('span', null, generationProgress.message),
+                generationProgress.percentage > 0 ? e('span', { className: 'faust-stat' },
+                  e('b', null, `${generationProgress.percentage} %`)) : null
+              ),
+              // Progress bar
+              generationProgress.percentage > 0 ? e('div', {
+                className: 'faust-progress',
+                style: { '--value': `${generationProgress.percentage}%` }
+              }, e('i')) : null
             ),
-            // Progress bar
-            generationProgress.percentage > 0 ? e('div', {
-              className: 'faust-progress',
-              style: { '--value': `${generationProgress.percentage}%` }
-            }, e('i')) : null
+
+            // AI Suggestions (if any): the stored parannusehdotukset, a closed disclosure (R-39)
+            activeChapter.aiQuality && Array.isArray(activeChapter.aiQuality.suggestions) && activeChapter.aiQuality.suggestions.length > 0 ? e('details', {
+              key: activeChapterId,
+              className: 'faust-disclosure faust-page-row faust-page-row--bounded'
+            },
+              e('summary', null,
+                icons.chevronRight({ size: 14 }),
+                `Parannusehdotukset (${activeChapter.aiQuality.suggestions.length})`),
+              e('ul', {
+                className: 'faust-ui',
+                style: { paddingLeft: 'var(--sp-5)', paddingBottom: 'var(--sp-2)' }
+              },
+                ...activeChapter.aiQuality.suggestions.map((suggestion, idx) =>
+                  e('li', { key: idx }, String(suggestion))
+                )
+              )
+            ) : null
           ),
 
-          // AI Suggestions (if any): the stored parannusehdotukset, a closed disclosure (R-39)
-          activeChapter.aiQuality && Array.isArray(activeChapter.aiQuality.suggestions) && activeChapter.aiQuality.suggestions.length > 0 ? e('details', {
-            key: activeChapterId,
-            className: 'faust-disclosure faust-page-row faust-page-row--bounded'
-          },
-            e('summary', null,
-              icons.chevronRight({ size: 14 }),
-              `Parannusehdotukset (${activeChapter.aiQuality.suggestions.length})`),
-            e('ul', {
-              className: 'faust-ui',
-              style: { paddingLeft: 'var(--sp-5)', paddingBottom: 'var(--sp-2)' }
-            },
-              ...activeChapter.aiQuality.suggestions.map((suggestion, idx) =>
-                e('li', { key: idx }, String(suggestion))
-              )
-            )
-          ) : null,
-
           // Editor wrapper with AnnotationMargin
-          e('div', {
-            className: 'faust-editor-body',
-            style: {
-              position: 'relative',
-              display: 'flex',
-              width: '100%',
-              height: '100%'
-            }
-          },
+          e('div', { className: 'faust-page__body' },
             // AnnotationMargin: the marker strip beside the text. It asks before a delete through askConfirm.
             window.AnnotationMargin && e(window.AnnotationMargin, {
               annotations: activeChapter.annotations || [],
@@ -5498,184 +5610,109 @@ ${contextPrompt}`;
               editorDimensions: editorDimensions
             }),
 
-            // Editor container with formatting toolbar
-            e('div', {
+            // Bookmarks panel (floating). Becomes a Popover anchored to its button in the cross-region pass.
+            showBookmarksPanel && e('div', {
+              className: 'faust-popover',
               style: {
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                height: '100%'
+                position: 'absolute',
+                top: 'calc(var(--h-md) + var(--sp-5))',
+                right: 'calc(var(--scrollbar-w) + var(--sp-4))',
+                left: 'auto',
+                // The pane clips what overflows it: the popover ends inside the editor body (100% = its height)
+                '--popover-max-h': 'calc(100% - var(--h-md) - var(--sp-5) - var(--sp-4))'
               }
             },
-              // Formatting toolbar. The buttons call the same functions as the Muotoile menu.
-              // Faces, names and titles: menu-visual entry 61. Each item has a stable key of its own.
-              e('div', {
-                className: 'formatting-toolbar',
-                style: {
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  gap: 'var(--sp-1)',
-                  padding: 'var(--sp-2) 0',
-                  borderBottom: 'var(--bw) solid var(--rule)',
-                  marginBottom: 'var(--sp-2)'
-                }
-              },
-                ...[
-                  { key: 'bold', face: e('b', null, 'B'), title: 'Lihavointi (' + shortcut('CmdOrCtrl+B') + ')', onClick: formatBold, kind: 'glyph' },
-                  { key: 'italic', face: e('i', null, 'I'), title: 'Kursivointi (' + shortcut('CmdOrCtrl+I') + ')', onClick: formatItalic, kind: 'glyph' },
-                  { key: 'underline', face: e('u', null, 'U'), title: 'Alleviivaus (' + shortcut('CmdOrCtrl+U') + ')', onClick: formatUnderline, kind: 'glyph' },
-                  { key: 'strikethrough', face: e('s', null, 'S'), title: 'Yliviivaus (' + shortcut('CmdOrCtrl+Shift+X') + ')', onClick: formatStrikethrough, kind: 'glyph' },
-                  null,
-                  { key: 'heading-1', face: 'Otsikko 1', title: 'Otsikko 1 (' + shortcut('CmdOrCtrl+Alt+1') + ')', onClick: () => formatHeading(1), kind: 'word' },
-                  { key: 'heading-2', face: 'Otsikko 2', title: 'Otsikko 2 (' + shortcut('CmdOrCtrl+Alt+2') + ')', onClick: () => formatHeading(2), kind: 'word' },
-                  { key: 'heading-3', face: 'Otsikko 3', title: 'Otsikko 3 (' + shortcut('CmdOrCtrl+Alt+3') + ')', onClick: () => formatHeading(3), kind: 'word' },
-                  { key: 'body-text', face: 'Leipäteksti', title: 'Leipäteksti (' + shortcut('CmdOrCtrl+Alt+0') + ')', onClick: () => formatHeading(0), kind: 'word' },
-                  null,
-                  { key: 'quote', face: icons.quote({ size: 14 }), name: 'Lainaus', title: 'Lainaus', onClick: formatQuote, kind: 'icon' },
-                  { key: 'list', face: icons.list({ size: 14 }), name: 'Luettelo', title: 'Luettelo (' + shortcut('CmdOrCtrl+Shift+8') + ')', onClick: formatList, kind: 'icon' },
-                  { key: 'numbered-list', face: icons.listOrdered({ size: 14 }), name: 'Numeroitu luettelo', title: 'Numeroitu luettelo (' + shortcut('CmdOrCtrl+Shift+7') + ')', onClick: formatNumberedList, kind: 'icon' },
-                  null,
-                  { key: 'scene-break', face: '* * *', name: 'Kohtauksen erotin', title: 'Kohtauksen erotin', onClick: () => insertAtCursor('\n\n* * *\n\n'), kind: 'word' },
-                  { key: 'reminder', face: 'Muistutus', title: 'Lisää tekstiin muistutus itselle muodossa [TODO: …]', onClick: insertTodo, kind: 'word' },
-                  null,
-                  { key: 'bookmark-add', face: icons.bookmarkAdd({ size: 14 }), name: 'Lisää kirjanmerkki', title: 'Lisää kirjanmerkki kohdistimen kohdalle', onClick: () => askAndAddBookmark(), kind: 'icon' },
-                  {
-                    key: 'bookmarks',
-                    face: [
-                      icons.bookmark({ size: 14 }),
-                      e('span', { className: 'faust-chip faust-chip--count' }, (project.bookmarks || []).length)
-                    ],
-                    name: `Kirjanmerkit (${(project.bookmarks || []).length})`,
-                    title: showBookmarksPanel ? 'Kätke kirjanmerkit' : 'Näytä kirjanmerkit',
-                    onClick: () => setShowBookmarksPanel(prev => !prev),
-                    pressed: showBookmarksPanel,
-                    kind: 'word'
-                  }
-                ].map((item, index) => item === null
-                  ? e('span', {
-                      key: `separator-${index}`,
-                      'aria-hidden': 'true',
-                      style: { alignSelf: 'stretch', width: 'var(--bw)', margin: '0 var(--sp-1)', background: 'var(--rule)' }
-                    })
-                  : e('button', {
-                      key: item.key,
-                      type: 'button',
-                      className: 'faust-btn ' + (item.kind === 'glyph' ? 'faust-btn--glyph' : item.kind === 'icon' ? 'faust-btn--icon' : 'faust-btn--quiet'),
-                      onClick: item.onClick,
-                      // Pressing a button must not take the selection out of the text
-                      onMouseDown: (ev) => ev.preventDefault(),
-                      title: item.title,
-                      'aria-label': item.kind === 'glyph' ? item.title : item.name,
-                      'aria-pressed': item.pressed === undefined ? undefined : item.pressed
-                    }, ...[].concat(item.face))
-                )
+              e('div', { className: 'faust-popover__head' },
+                e('div', { className: 'faust-popover__title' }, `Kirjanmerkit (${(project.bookmarks || []).length})`),
+                e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--icon faust-btn--sm',
+                  onClick: () => setShowBookmarksPanel(false),
+                  title: 'Kätke kirjanmerkit',
+                  'aria-label': 'Kätke kirjanmerkit'
+                }, icons.close({ size: 14 }))
               ),
-
-              // Bookmarks panel (floating). Becomes a Popover anchored to its button in the cross-region pass.
-              showBookmarksPanel && e('div', {
-                className: 'faust-popover',
-                style: {
-                  position: 'absolute',
-                  top: 'calc(var(--h-md) + var(--sp-5))',
-                  right: 'calc(var(--scrollbar-w) + var(--sp-4))',
-                  left: 'auto',
-                  // The pane clips what overflows it: the popover ends inside the editor body (100% = its height)
-                  '--popover-max-h': 'calc(100% - var(--h-md) - var(--sp-5) - var(--sp-4))'
-                }
-              },
-                e('div', { className: 'faust-popover__head' },
-                  e('div', { className: 'faust-popover__title' }, `Kirjanmerkit (${(project.bookmarks || []).length})`),
-                  e('button', {
-                    type: 'button',
-                    className: 'faust-btn faust-btn--icon faust-btn--sm',
-                    onClick: () => setShowBookmarksPanel(false),
-                    title: 'Kätke kirjanmerkit',
-                    'aria-label': 'Kätke kirjanmerkit'
-                  }, icons.close({ size: 14 }))
-                ),
-                e('div', { className: 'faust-popover__body' },
-                  (project.bookmarks || []).length === 0
-                    ? e('div', { className: 'faust-empty faust-empty--compact' },
-                        e('div', { className: 'faust-empty__title' }, 'Ei vielä kirjanmerkkejä.'),
-                        e('div', { className: 'faust-empty__hint' }, 'Kirjanmerkillä palaat nopeasti tiettyyn kohtaan tekstissä.')
-                      )
-                    : (project.bookmarks || []).map(bookmark => {
-                        // The chapter line shows the chapter's current title
-                        const chapter = (project.structure || []).find(ch => ch.id === bookmark.chapterId);
-                        const chapterTitle = (chapter ? chapter.title : bookmark.chapterTitle) || 'Nimetön luku';
-                        // A row holds its delete button, so it is a div with role="button", not a button
-                        return e('div', {
-                          key: bookmark.id,
-                          className: 'faust-row faust-row--two faust-row--author',
-                          role: 'button',
-                          tabIndex: 0,
-                          onClick: () => jumpToBookmark(bookmark),
-                          onKeyDown: (ev) => {
-                            if (ev.target !== ev.currentTarget) return;
-                            if (ev.key === 'Enter' || ev.key === ' ') {
-                              ev.preventDefault();
-                              jumpToBookmark(bookmark);
-                            }
+              e('div', { className: 'faust-popover__body' },
+                (project.bookmarks || []).length === 0
+                  ? e('div', { className: 'faust-empty faust-empty--compact' },
+                      e('div', { className: 'faust-empty__title' }, 'Ei vielä kirjanmerkkejä.'),
+                      e('div', { className: 'faust-empty__hint' }, 'Kirjanmerkillä palaat nopeasti tiettyyn kohtaan tekstissä.')
+                    )
+                  : (project.bookmarks || []).map(bookmark => {
+                      // The chapter line shows the chapter's current title
+                      const chapter = (project.structure || []).find(ch => ch.id === bookmark.chapterId);
+                      const chapterTitle = (chapter ? chapter.title : bookmark.chapterTitle) || 'Nimetön luku';
+                      // A row holds its delete button, so it is a div with role="button", not a button
+                      return e('div', {
+                        key: bookmark.id,
+                        className: 'faust-row faust-row--two faust-row--author',
+                        role: 'button',
+                        tabIndex: 0,
+                        onClick: () => jumpToBookmark(bookmark),
+                        onKeyDown: (ev) => {
+                          if (ev.target !== ev.currentTarget) return;
+                          if (ev.key === 'Enter' || ev.key === ' ') {
+                            ev.preventDefault();
+                            jumpToBookmark(bookmark);
                           }
-                        },
-                          e('div', { className: 'faust-row__text' },
-                            e('span', { className: 'faust-row__title' }, bookmark.name),
-                            e('span', {
-                              className: 'faust-row__meta',
-                              style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }
-                            }, icons.hexagon({ size: 12 }), 'Luku: ' + chapterTitle),
-                            bookmark.context && e('span', { className: 'faust-quote faust-clamp-2' }, `”…${bookmark.context.trim()}…”`)
-                          ),
-                          e('div', { className: 'faust-row__actions' },
-                            e('button', {
-                              type: 'button',
-                              className: 'faust-btn faust-btn--sm faust-btn--danger',
-                              title: 'Poista kirjanmerkki',
-                              onClick: async (ev) => {
-                                ev.stopPropagation();
-                                const confirmed = await askConfirm(
-                                  'Poistetaanko kirjanmerkki?',
-                                  `Kirjanmerkki ”${bookmark.name}” poistetaan. Teksti ei muutu.`,
-                                  'Poista kirjanmerkki',
-                                  'Peruuta',
-                                  { danger: true }
-                                );
-                                if (confirmed) deleteBookmark(bookmark.id);
-                              }
-                            }, 'Poista')
-                          )
-                        );
-                      })
-                )
-              ),
+                        }
+                      },
+                        e('div', { className: 'faust-row__text' },
+                          e('span', { className: 'faust-row__title' }, bookmark.name),
+                          e('span', {
+                            className: 'faust-row__meta',
+                            style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }
+                          }, icons.hexagon({ size: 12 }), 'Luku: ' + chapterTitle),
+                          bookmark.context && e('span', { className: 'faust-quote faust-clamp-2' }, `”…${bookmark.context.trim()}…”`)
+                        ),
+                        e('div', { className: 'faust-row__actions' },
+                          e('button', {
+                            type: 'button',
+                            className: 'faust-btn faust-btn--sm faust-btn--danger',
+                            title: 'Poista kirjanmerkki',
+                            onClick: async (ev) => {
+                              ev.stopPropagation();
+                              const confirmed = await askConfirm(
+                                'Poistetaanko kirjanmerkki?',
+                                `Kirjanmerkki ”${bookmark.name}” poistetaan. Teksti ei muutu.`,
+                                'Poista kirjanmerkki',
+                                'Peruuta',
+                                { danger: true }
+                              );
+                              if (confirmed) deleteBookmark(bookmark.id);
+                            }
+                          }, 'Poista')
+                        )
+                      );
+                    })
+              )
+            ),
 
-              // Manuscript editor (CodeMirror, see src/components/FaustEditor.js).
-              // editorRef gets a textarea-compatible element. Remounted per chapter
-              // so every chapter starts with its own cursor and scroll position.
-              e(FaustEditor, {
-                key: activeChapter.id,
-                ref: editorRef,
-                value: activeChapter.content,
-                onChange: (text) => updateChapterContent(text),
-                onMouseUp: handleTextSelection,
-                onKeyUp: handleTextSelection,
-                typewriterMode: typewriterMode, // the editor keeps the cursor line centered
-                placeholder: 'Aloita kirjoittaminen…',
-                style: {
-                  flex: 1,
-                  fontFamily: editorFont,
-                  fontSize: `${18 * (parseInt(editorZoom) / 100)}px`,
-                  lineHeight: lineSpacing,
-                  textAlign: textAlign,
-                  // Space after every paragraph: 1.0 = none, 1.5 = 0.4 em, 2.0 = 0.8 em
-                  paragraphGap: `${Math.max(0, (parseFloat(paragraphSpacing) || 1) - 1) * 0.8}em`,
-                  // Typewriter mode needs room above the first and below the last line
-                  paddingTop: typewriterMode ? '40vh' : undefined,
-                  paddingBottom: typewriterMode ? '50vh' : '30vh'
-                }
-              })
-            ) // Close editor container with formatting toolbar
+            // Manuscript editor (CodeMirror, see src/components/FaustEditor.js).
+            // editorRef gets a textarea-compatible element. Remounted per chapter
+            // so every chapter starts with its own cursor and scroll position.
+            e(FaustEditor, {
+              key: activeChapter.id,
+              ref: editorRef,
+              value: activeChapter.content,
+              onChange: (text) => updateChapterContent(text),
+              onMouseUp: handleTextSelection,
+              onKeyUp: handleTextSelection,
+              typewriterMode: typewriterMode, // the editor keeps the cursor line centered
+              placeholder: 'Aloita kirjoittaminen…',
+              style: {
+                flex: 1,
+                fontFamily: editorFont,
+                fontSize: `${18 * (parseInt(editorZoom) / 100)}px`,
+                lineHeight: lineSpacing,
+                textAlign: textAlign,
+                // Space after every paragraph: 1.0 = none, 1.5 = 0.4 em, 2.0 = 0.8 em
+                paragraphGap: `${Math.max(0, (parseFloat(paragraphSpacing) || 1) - 1) * 0.8}em`,
+                // Typewriter mode needs room above the first and below the last line
+                paddingTop: typewriterMode ? '40vh' : undefined,
+                paddingBottom: typewriterMode ? '50vh' : '30vh'
+              }
+            })
           ),
 
           // Voice edit bar (appears when text is selected). Moves into .faust-dock in the cross-region pass.

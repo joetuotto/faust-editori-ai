@@ -130,11 +130,9 @@
   user-select: text;
 }
 
-/* Focus mode: only the text */
+/* Focus mode: only the text (the format bar: faust-components.css, section 15) */
 .faust-focus-mode .faust-header,
-.faust-focus-mode .faust-footer,
-.faust-focus-mode .formatting-toolbar {
-  /* !important: the toolbar sets display inline */
+.faust-focus-mode .faust-footer {
   display: none !important;
 }
 
