@@ -5,7 +5,7 @@
  */
 
 import { AIProviderSettings } from './src/components/AIProviderSettings.js';
-import { FaustEditor } from './src/components/FaustEditor.js';
+import { FaustEditor, MANUSCRIPT_FONTS } from './src/components/FaustEditor.js';
 import { ErrorBoundary } from './src/components/ErrorBoundary.js';
 import {
   TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog, CollectionDialog,
@@ -18,17 +18,14 @@ import {
   buildSearchPattern, findMatches, replaceAllMatches
 } from './src/editor/textTools.js';
 import { Icon, icons } from './src/components/icons.js';
-// Notifications and the alert shim (F7); then the shared components the cross-region packages use
+// Notifications (F7); then the shared components the cross-region packages use
 // (R-71): the header and format bar menus and the four popovers (Popover, usePopover), the sigil bar
 // (SigilButton, Tooltip), the voice buttons (VoiceButton), the shared dialog and the Esc chain
 // (Dialog, layerStack), Tietopaneeli's tab row and the version stars (Tabs, Rating)
 import {
-  ToastHost, notify, installAlertShim,
+  ToastHost, notify,
   Popover, usePopover, SigilButton, Tooltip, VoiceButton, Dialog, layerStack, Tabs, Rating
 } from './src/components/ui.js';
-
-// window.alert -> notify (src/components/ui.js). Removed when the last legacy call is gone.
-installAlertShim();
 
 const { createElement: e, useState, useEffect, useLayoutEffect, useRef } = React;
 
@@ -199,9 +196,14 @@ const storedLocationKey = (locations, location) => {
 // One plot thread: by id, or by the stored object when a thread from an old file has none
 const sameThread = (a, b) => (b && b.id ? a.id === b.id : a === b);
 
-// Money as the author reads it: noin 0,12 $
-const formatCostFi = (amount) =>
-  'noin ' + (Number(amount) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' $';
+// Money as the author reads it (lead decision 2): noin 0,12 $; an amount above zero and under half
+// a cent is alle 0,01 $ (two decimals would read 0,00); nothing at all is 0 $. Every money string uses it.
+const formatCostFi = (amount) => {
+  const value = Number(amount) || 0;
+  if (value === 0) return '0 $';
+  if (value > 0 && value < 0.005) return 'alle 0,01 $';
+  return 'noin ' + value.toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' $';
+};
 
 // CharacterGenerator, callAIProvider, and RefinementManager
 // are now loaded from src/services/ai/ as IIFE modules
@@ -378,23 +380,6 @@ const createDefaultProject = () => ({
 });
 
 // ComplexityAnalyzer is now loaded from src/services/story/ComplexityAnalyzer.js as IIFE module
-
-// Character Engine Logo Helper
-const CharacterEngineLogo = (size = 16, style = {}) => {
-  return e('img', {
-    src: './build/character-engine-logo.png',
-    alt: 'Character Engine',
-    style: {
-      width: `${size}px`,
-      height: `${size}px`,
-      display: 'inline-block',
-      verticalAlign: 'middle',
-      marginRight: '4px',
-      filter: 'brightness(0.9)',
-      ...style
-    }
-  });
-};
 
 function FAUSTApp() {
   // Project state
@@ -628,7 +613,12 @@ function FAUSTApp() {
       return fallback;
     }
   };
-  const [editorFont, setEditorFont] = useState(() => storedEditorSetting('font', 'EB Garamond'));
+  // One of the faces of MANUSCRIPT_FONTS (FaustEditor.js); a stored name it does not know falls back
+  const [editorFont, setEditorFont] = useState(() => {
+    const stored = storedEditorSetting('font', 'EB Garamond');
+    return Object.prototype.hasOwnProperty.call(MANUSCRIPT_FONTS, stored) ? stored : 'EB Garamond';
+  });
+  const manuscriptFont = MANUSCRIPT_FONTS[editorFont] || MANUSCRIPT_FONTS['EB Garamond'];
   const [textAlign, setTextAlign] = useState(() => storedEditorSetting('align', 'left'));
   const [lineSpacing, setLineSpacing] = useState(() => storedEditorSetting('line-spacing', '1.8'));
   const [editorZoom, setEditorZoom] = useState(() => storedEditorSetting('zoom', '100'));
@@ -5540,7 +5530,7 @@ ${contextPrompt}`;
           );
         })(),
 
-        e('div', { className: 'faust-page', style: { '--ms-size': 18 * (parseInt(editorZoom) / 100) + 'px' } },
+        e('div', { className: 'faust-page', style: { '--ms-size': 18 * (parseInt(editorZoom) / 100) + 'px', '--measure-face': manuscriptFont.face } },
           // The page head: title and meta row in the text's column (--page-edge)
           e('div', { className: 'faust-page__head' },
             // Chapter title
@@ -5683,7 +5673,7 @@ ${contextPrompt}`;
               placeholder: 'Aloita kirjoittaminen…',
               style: {
                 flex: 1,
-                fontFamily: editorFont,
+                fontFamily: manuscriptFont.stack,
                 fontSize: `${18 * (parseInt(editorZoom) / 100)}px`,
                 lineHeight: lineSpacing,
                 textAlign: textAlign,
@@ -6124,7 +6114,7 @@ ${contextPrompt}`;
             // text's left edge; the text is a read-only editor, the pane's one scroller, which dims the
             // Markdown markers as the main pane does. No dock: nothing is edited here (R-62).
             splitViewType === 'chapter' && refChapter
-              ? e('div', { className: 'faust-page', style: { '--ms-size': 18 * (parseInt(editorZoom) / 100) + 'px' } },
+              ? e('div', { className: 'faust-page', style: { '--ms-size': 18 * (parseInt(editorZoom) / 100) + 'px', '--measure-face': manuscriptFont.face } },
                   e('div', { className: 'faust-page__head' },
                     e('h2', { className: 'faust-chapter-title' }, refChapter.title || 'Nimetön luku'),
                     e('p', {
@@ -6140,7 +6130,7 @@ ${contextPrompt}`;
                           readOnly: true,
                           // The manuscript settings of the Ulkoasu tab, as in the main pane
                           style: {
-                            fontFamily: editorFont,
+                            fontFamily: manuscriptFont.stack,
                             fontSize: `${18 * (parseInt(editorZoom) / 100)}px`,
                             lineHeight: lineSpacing,
                             textAlign: textAlign,
@@ -6245,25 +6235,19 @@ ${contextPrompt}`;
             }, icons.panelRight({ size: 14 }))
           ),
 
-          // Tab Navigation
+          // Tab Navigation: the row only (arrow keys, Home, End); the panels below stay where they are
           e('div', { className: 'faust-panel__tabs' },
-            e('div', { className: 'faust-tabs', role: 'tablist', 'aria-label': 'Tietopaneeli' },
-              [
-                ['editor', 'Ulkoasu', 'Fontti, riviväli, zoomaus ja teema'],
-                ['chapter', 'Luku', 'Avoimen luvun tiedot ja versiot'],
-                ['project', 'Projekti', 'Projektin tiedot, tavoitteet, hahmot, juonilangat ja johdonmukaisuus'],
-                ['ai', 'Tekoäly', 'Tekoälyn lähde, avain ja malli sekä tekoälyn kirjoitustoiminnot']
-              ].map(([tab, tabName, tabTip]) =>
-                e('button', {
-                  key: tab,
-                  className: 'faust-tab',
-                  role: 'tab',
-                  'aria-selected': inspectorTab === tab,
-                  title: tabTip,
-                  onClick: () => setInspectorTab(tab)
-                }, tabName)
-              )
-            )
+            e(Tabs, {
+              label: 'Tietopaneeli',
+              value: inspectorTab,
+              onChange: setInspectorTab,
+              items: [
+                { id: 'editor', label: 'Ulkoasu', title: 'Fontti, riviväli, zoomaus ja teema' },
+                { id: 'chapter', label: 'Luku', title: 'Avoimen luvun tiedot ja versiot' },
+                { id: 'project', label: 'Projekti', title: 'Projektin tiedot, tavoitteet, hahmot, juonilangat ja johdonmukaisuus' },
+                { id: 'ai', label: 'Tekoäly', title: 'Tekoälyn lähde, avain ja malli sekä tekoälyn kirjoitustoiminnot' }
+              ]
+            })
           ),
 
           // The scrolling body holds every block of the four tabs. It is closed by the first ')' of the
@@ -6273,7 +6257,7 @@ ${contextPrompt}`;
           inspectorTab === 'editor' && e('section', { className: 'faust-section' },
             e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Ulkoasun asetukset')),
 
-            // Font selector
+            // Font selector: the faces of MANUSCRIPT_FONTS (FaustEditor.js), which also set the page's measure
             e('div', { className: 'faust-field' },
               e('label', { className: 'faust-field__label', htmlFor: 'inspector-font' }, 'Fontti'),
               e('select', {
@@ -6282,12 +6266,7 @@ ${contextPrompt}`;
                 value: editorFont,
                 onChange: (ev) => setEditorFont(ev.target.value)
               },
-                e('option', { value: 'EB Garamond' }, 'EB Garamond'),
-                e('option', { value: 'Georgia' }, 'Georgia'),
-                e('option', { value: 'SF Pro' }, 'SF Pro'),
-                e('option', { value: 'Times' }, 'Times'),
-                e('option', { value: 'Palatino' }, 'Palatino'),
-                e('option', { value: 'Courier' }, 'Courier')
+                Object.keys(MANUSCRIPT_FONTS).map((face) => e('option', { key: face, value: face }, face))
               )
             ),
 
@@ -6825,12 +6804,6 @@ ${contextPrompt}`;
           // AI Cost Tracking
           inspectorTab === 'ai' && costOptimizerRef.current && (() => {
             const stats = costOptimizerRef.current.getStats();
-            // Money (M B.13): two decimals; a positive amount under half a cent keeps one significant digit, never 0,00
-            const money = (amount) => {
-              const value = Number(amount) || 0;
-              const digits = value > 0 && value < 0.005 ? { maximumSignificantDigits: 1 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
-              return `noin ${value.toLocaleString('fi-FI', digits)} $`;
-            };
             const providers = Object.keys(stats.byProvider || {});
 
             return e('section', { className: 'faust-section' },
@@ -6840,10 +6813,10 @@ ${contextPrompt}`;
               e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
                 // Overall stats
                 e('div', { className: 'faust-card faust-card--compact' },
-                  e('div', { className: 'faust-kv' }, e('span', null, 'Yhteensä:'), e('span', null, money(stats.totalSpent))),
+                  e('div', { className: 'faust-kv' }, e('span', null, 'Yhteensä:'), e('span', null, formatCostFi(stats.totalSpent))),
                   e('div', { className: 'faust-kv' }, e('span', null, 'Pyyntöjä:'), e('span', null, (stats.totalRequests || 0).toLocaleString('fi-FI'))),
                   e('div', { className: 'faust-kv' }, e('span', null, 'Käsiteltyä tekstiä (tokenia):'), e('span', null, (stats.totalTokens || 0).toLocaleString('fi-FI'))),
-                  e('div', { className: 'faust-kv' }, e('span', null, 'Keskimäärin / pyyntö:'), e('span', null, money(stats.averageCostPerRequest)))
+                  e('div', { className: 'faust-kv' }, e('span', null, 'Keskimäärin / pyyntö:'), e('span', null, formatCostFi(stats.averageCostPerRequest)))
                 ),
 
                 // By source: not rendered while every request is booked under one source
@@ -6853,7 +6826,7 @@ ${contextPrompt}`;
                     providers.map(provider => {
                       const providerStats = stats.byProvider[provider] || {};
                       return e('div', { key: provider, className: 'faust-card faust-card--compact' },
-                        e('div', { className: 'faust-kv' }, e('span', null, labelOf('costSource', provider)), e('span', null, money(providerStats.cost))),
+                        e('div', { className: 'faust-kv' }, e('span', null, labelOf('costSource', provider)), e('span', null, formatCostFi(providerStats.cost))),
                         e('div', { className: 'faust-meta' },
                           `${count(providerStats.requests || 0, 'pyyntö')} · ${(providerStats.tokens || 0).toLocaleString('fi-FI')} tokenia`)
                       );
@@ -6940,12 +6913,6 @@ ${contextPrompt}`;
           inspectorTab === 'chapter' && activeChapter && (() => {
             const versions = activeChapter.versions || [];
             const [versionTotal, versionNoun] = countParts(versions.length, 'versio');
-            // Money (M B.13): two decimals; a positive amount under half a cent keeps one significant digit, never 0,00
-            const money = (amount) => {
-              const value = Number(amount) || 0;
-              const digits = value > 0 && value < 0.005 ? { maximumSignificantDigits: 1 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
-              return `noin ${value.toLocaleString('fi-FI', digits)} $`;
-            };
 
             return e('section', { className: 'faust-section' },
               e('div', { className: 'faust-section__head' },
@@ -6983,24 +6950,17 @@ ${contextPrompt}`;
                     e('div', { className: 'faust-meta' }, origin),
                     e('div', { className: 'faust-meta' },
                       count(version.wordCount || 0, 'sana') +
-                      (version.cost > 0 ? ` · ${money(version.cost)}` : '')),
+                      (version.cost > 0 ? ` · ${formatCostFi(version.cost)}` : '')),
                     version.userFeedback && e('div', { className: 'faust-meta' }, `Oma kommentti: ”${version.userFeedback}”`),
 
-                    // Own rating: five stars; each keeps the comment (third argument)
+                    // Own rating: five stars (Rating); each keeps the comment (third argument)
                     e('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' } },
                       e('span', { className: 'faust-meta' }, 'Oma arvio:'),
-                      e('div', { className: 'faust-rating', role: 'radiogroup', 'aria-label': 'Oma arvio' },
-                        [1, 2, 3, 4, 5].map(n => e('button', {
-                          key: n,
-                          type: 'button',
-                          className: 'faust-rating__star' + (n <= rating ? ' is-on' : ''),
-                          role: 'radio',
-                          'aria-checked': n === rating,
-                          'aria-label': 'Anna ' + count(n, 'tähti'),
-                          title: 'Anna ' + count(n, 'tähti'),
-                          onClick: () => rateVersion(version.id, n, version.userFeedback || null)
-                        }, icons.star({ size: 14, filled: n <= rating })))
-                      )
+                      e(Rating, {
+                        label: 'Oma arvio',
+                        value: rating,
+                        onChange: (n) => rateVersion(version.id, n, version.userFeedback || null)
+                      })
                     ),
 
                     e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)' } },
@@ -8123,23 +8083,14 @@ ${contextPrompt}`;
                     origin ? e('div', { className: 'faust-meta faust-clamp-2', title: origin }, origin) : null,
                     e('div', { className: 'faust-meta faust-num' }, count(words, 'sana')),
 
-                    // Oma arvio: five stars; each keeps the version's comment (W17)
+                    // Oma arvio: five stars (Rating); each keeps the version's comment (W17)
                     e('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--sp-2)' } },
                       e('span', { className: 'faust-meta' }, 'Oma arvio:'),
-                      e('span', { className: 'faust-rating', role: 'group', 'aria-label': 'Oma arvio' },
-                        [1, 2, 3, 4, 5].map(star => {
-                          const on = !!version.userRating && star <= version.userRating;
-                          return e('button', {
-                            key: star,
-                            type: 'button',
-                            className: 'faust-rating__star' + (on ? ' is-on' : ''),
-                            title: 'Anna ' + count(star, 'tähti'),
-                            'aria-label': 'Anna ' + count(star, 'tähti'),
-                            'aria-pressed': on,
-                            onClick: () => rateVersion(version.id, star, version.userFeedback || null)
-                          }, icons.star({ size: 14, filled: on }));
-                        })
-                      ),
+                      e(Rating, {
+                        label: 'Oma arvio',
+                        value: version.userRating || 0,
+                        onChange: (star) => rateVersion(version.id, star, version.userFeedback || null)
+                      }),
                       e('button', {
                         type: 'button',
                         className: 'faust-btn faust-btn--quiet faust-btn--sm',

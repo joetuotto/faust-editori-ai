@@ -35,6 +35,20 @@ import { continueList } from '../editor/textTools.js';
 
 const { createElement: e, useRef, useLayoutEffect, forwardRef } = React;
 
+// The manuscript faces of Tietopaneeli ▸ Ulkoasu ▸ Fontti, in the order of that select: the key is
+// the stored setting and the option's text, `stack` the family the editor is set in, `face` the
+// width of the face relative to EB Garamond (V 2.2, measured on Finnish prose). The page element
+// carries `face` as --measure-face beside --ms-size, so every face holds the same number of
+// characters per line.
+export const MANUSCRIPT_FONTS = {
+  'EB Garamond': { stack: 'var(--font-serif)', face: 1 },
+  'Georgia': { stack: 'Georgia, "Times New Roman", serif', face: 1.15 },
+  'SF Pro': { stack: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif', face: 1.15 },
+  'Times': { stack: '"Times New Roman", Times, serif', face: 1.05 },
+  'Palatino': { stack: 'Palatino, "Palatino Linotype", "Book Antiqua", serif', face: 1.15 },
+  'Courier': { stack: '"Courier Prime", "Courier New", Courier, monospace', face: 1.6 }
+};
+
 // Marks a transaction that mirrors a change made elsewhere in the app
 const External = Annotation.define();
 

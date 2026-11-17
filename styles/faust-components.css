@@ -223,8 +223,11 @@ input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--text-di
 .faust-rating__star { display: inline-grid; place-items: center; width: 20px; height: 20px; padding: 0; background: none; border: 0; border-radius: var(--radius-xs); color: var(--text-3); cursor: pointer; }
 .faust-rating__star:hover { color: var(--text); }
 .faust-rating__star.is-on { color: var(--accent-line); }
-/* a chosen star stays a star: no pressed-toggle fill behind it (Rating sets aria-pressed) */
-.faust-rating .faust-rating__star:is([aria-pressed="true"], [aria-pressed="true"]:not(:disabled):is(:hover, :active)) { background: transparent; }
+/* Rating draws each star as a faust-btn faust-btn--icon faust-btn--sm with aria-pressed (R-71): the button
+   keeps the recipe's 20px, and a star stays a star, with no pressed-toggle or hover fill behind it */
+.faust-rating .faust-rating__star { width: 20px; min-width: 0; }
+.faust-rating .faust-rating__star:is([aria-pressed], [aria-pressed]:not(:disabled):is(:hover, :active)) { background: transparent; }
+.faust-rating .faust-rating__star.is-on:not(:disabled):is([aria-pressed], [aria-pressed]:is(:hover, :active)) { color: var(--accent-line); }
 .faust-rating__star:disabled { color: var(--text-disabled); cursor: default; }
 
 /* ============ 5 Tabs and segmented control ============ */

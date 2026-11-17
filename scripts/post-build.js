@@ -12,7 +12,6 @@ const CRITICAL_FILES = [
   { src: 'styles/faust-tokens.css', dst: 'dist/styles/faust-tokens.css' },
   { src: 'styles/faust-simple-layout.css', dst: 'dist/styles/faust-simple-layout.css' },
   { src: 'styles/faust-components.css', dst: 'dist/styles/faust-components.css' },
-  { src: 'build/character-engine-logo.png', dst: 'dist/build/character-engine-logo.png' },
   { src: 'node_modules/react/umd/react.production.min.js', dst: 'dist/vendor/react.production.min.js' },
   { src: 'node_modules/react-dom/umd/react-dom.production.min.js', dst: 'dist/vendor/react-dom.production.min.js' },
   { src: 'src/utils/constants.js', dst: 'dist/src/utils/constants.js' },
