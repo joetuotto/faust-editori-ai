@@ -5455,6 +5455,8 @@ ${contextPrompt}`;
                 ? 'Pika-arvio: kirjoita ensin vähintään 50 merkkiä tekstiä.'
                 : 'Pika-arvio: tekoäly lukee luvun alun (noin 2 000 merkkiä) ja antaa laatuarvion (1–10) ja pari parannusehdotusta. Luvun teksti ei muutu.',
               latin: 'Examen celeriter',
+              // Its result opens under it, where the tooltip would stand
+              tooltipOff: resultPop.open && !!sigilResult && sigilResult.kind === 'quick',
               onClick: () => runQuickCheck()
             }),
             e(SigilButton, {
@@ -5467,6 +5469,7 @@ ${contextPrompt}`;
                 ? 'Tee tiivistelmä: kirjoita ensin vähintään 50 merkkiä tekstiä.'
                 : 'Tee tiivistelmä: tekoäly tekee luvusta 2–3 lauseen tiivistelmän, joka näkyy korttinäkymässä ja jaetun näkymän tiivistelmissä. Luvun teksti ei muutu.',
               latin: 'Epitome brevis',
+              tooltipOff: resultPop.open && !!sigilResult && sigilResult.kind === 'summary',
               onClick: () => runSummary()
             }),
             // Magnum Opus writes the whole chapter; generateChapter asks first when the chapter has text
@@ -5944,13 +5947,15 @@ ${contextPrompt}`;
               className: 'faust-voicebar',
               'data-state': voiceState === 'listening' ? 'listening' : undefined
             },
-              // Pressed while it listens, the button stops listening (V 4.1); what was heard so far is used
+              // Pressed while it listens, the button stops listening (V 4.1); what was heard so far is used.
+              // The Liminal Engine's dictation shares the one VoiceInput and shows here as listening too,
+              // so a stop here also puts the engine's dictation button back to rest, as its own stop does.
               e(VoiceButton, {
                 state: voiceState,
                 label: voiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Muokkaa valintaa puhumalla',
                 disabled: voiceState === 'error',
                 onToggle: voiceState === 'listening'
-                  ? () => { if (voiceInputRef.current) voiceInputRef.current.stop(); }
+                  ? () => { if (voiceInputRef.current) voiceInputRef.current.stop(); setAiChatVoiceState('idle'); }
                   : handleVoiceEdit
               }),
               voiceState === 'listening'

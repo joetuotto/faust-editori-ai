@@ -180,9 +180,10 @@ export function IconButton({ icon, label, title, size, danger, pressed, classNam
 
 /**
  * One of FAUST's own AI verbs: the sigil and its caption (the command's name, also the aria-label).
- * tooltip is the Finnish text, latin the second line of the tooltip; busy shows the spinner.
+ * tooltip is the Finnish text, latin the second line of the tooltip; busy shows the spinner;
+ * tooltipOff keeps the tooltip away while the tile's own result popover stands where it would show.
  */
-export function SigilButton({ sigil, label, primary, busy = false, tooltip, latin, caption = true, size, className, disabled, ...props }) {
+export function SigilButton({ sigil, label, primary, busy = false, tooltip, latin, tooltipOff = false, caption = true, size, className, disabled, ...props }) {
   const draw = icons[sigil];
   const button = e('button', {
     type: 'button',
@@ -195,7 +196,7 @@ export function SigilButton({ sigil, label, primary, busy = false, tooltip, lati
     busy ? e('span', { className: 'faust-spinner' }) : draw ? draw({ size: 20 }) : null,
     caption && e('span', { className: 'faust-sigil-btn__caption' }, label)
   );
-  return tooltip || latin ? e(Tooltip, { text: tooltip, title: latin }, button) : button;
+  return tooltip || latin ? e(Tooltip, { text: tooltip, title: latin, off: tooltipOff }, button) : button;
 }
 
 /**
@@ -713,7 +714,8 @@ export function usePopover() {
 
 /**
  * A popover in the layer host, placed from its anchor's rectangle (below it, or above when there is
- * no room; right-aligned at the window edge) and placed again on resize and scroll. When the anchor
+ * no room; right-aligned at the window edge) and placed again on resize, on scroll and when the anchor
+ * or a box around it changes size (a panel opening beside it, a container rule of its bar). When the anchor
  * is missing or hidden (an empty rectangle, as in focus mode) it carries data-anchor="none" and no
  * inline top or left: the stylesheet gives it a fixed place. Closes on Esc (bubble phase; with
  * layer 'modal' through the layer stack), on a press outside it and its anchor, and by its close
@@ -761,14 +763,34 @@ function PopoverFrame({ anchorRef, title, width, onClose, footer, layer, menu = 
       el.style.left = left + 'px';
       el.style.top = (upwards ? rect.top - gap - el.offsetHeight : rect.bottom + gap) + 'px';
     };
+    // The anchor moves without a window resize when a panel opens or closes beside it, or when a
+    // container rule changes its bar: the popover also follows the anchor and every box around it.
+    // The ref may give another anchor later (a "more" button while the own button is hidden); the
+    // boxes watched follow it a frame later, outside the observer's own callback.
+    let watched;
+    let frame = 0;
+    const anchorNow = () => (anchorRef && anchorRef.current) || null;
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => {
+        place();
+        if (anchorNow() !== watched && !frame) frame = requestAnimationFrame(() => { frame = 0; watch(); });
+      })
+      : null;
+    const watch = () => {
+      if (!observer) return;
+      watched = anchorNow();
+      observer.disconnect();
+      observer.observe(el);
+      for (let node = watched; node && node !== document.body; node = node.parentElement) observer.observe(node);
+    };
+    watch();
     place();
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(place) : null;
-    if (observer) observer.observe(el);
     return () => {
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
+      cancelAnimationFrame(frame);
       if (observer) observer.disconnect();
     };
   }, []);
@@ -846,10 +868,12 @@ function PopoverFrame({ anchorRef, title, width, onClose, footer, layer, menu = 
 /**
  * The custom tooltip, for the four sigil tiles only (everything else keeps the native title).
  * text first, then the title as a second line (the Latin name), then kbd. It listens on a
- * wrapping span, so it also works on a disabled control; shown after 500 ms, at once on focus;
- * gone on pointer out, blur and Esc. Rendered in the layer host, 6px from its anchor.
+ * wrapping span, so it also works on a disabled control; shown after 500 ms, at once on keyboard
+ * focus; gone on pointer out, blur and Esc, and whenever neither the pointer nor the focus is on
+ * its control any more or the control has no box. off hides it (the control's own popover is open
+ * where it would stand). Rendered in the layer host, 6px from its anchor.
  */
-export function Tooltip({ title, text, kbd, children }) {
+export function Tooltip({ title, text, kbd, off = false, children }) {
   const [shown, setShown] = useState(false);
   const wrapRef = useRef(null);
   const tipRef = useRef(null);
@@ -866,6 +890,33 @@ export function Tooltip({ title, text, kbd, children }) {
     setShown(false);
   };
   useEffect(() => () => clearTimeout(timer.current), []);
+
+  // A control that turns disabled under the pointer or the focus (a sigil tile starting its run) gets
+  // no pointerleave or blur: Chromium moves the focus to the body silently. A control hidden by a
+  // parent (focus mode) gets nothing at all. So while shown, every render, pointer move, press and
+  // focus change asks again whether the pointer or the focus is still on the control.
+  const stale = () => {
+    const wrap = wrapRef.current;
+    if (off || !wrap || !wrap.isConnected) return true;
+    const rect = wrap.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return true;
+    return !wrap.matches(':hover') && !wrap.contains(document.activeElement);
+  };
+  useLayoutEffect(() => {
+    if (shown && stale()) hide();
+  });
+  useEffect(() => {
+    if (!shown) return undefined;
+    const check = () => { if (stale()) hide(); };
+    document.addEventListener('pointermove', check, true);
+    document.addEventListener('pointerdown', check, true);
+    document.addEventListener('focusin', check, true);
+    return () => {
+      document.removeEventListener('pointermove', check, true);
+      document.removeEventListener('pointerdown', check, true);
+      document.removeEventListener('focusin', check, true);
+    };
+  }, [shown, off]);
 
   useLayoutEffect(() => {
     if (!shown) return;
@@ -885,7 +936,8 @@ export function Tooltip({ title, text, kbd, children }) {
     tip.style.left = left + 'px';
   }, [shown, text, title, kbd]);
 
-  const child = isValidElement(children) && shown
+  const visible = shown && !off;
+  const child = isValidElement(children) && visible
     ? cloneElement(children, { 'aria-describedby': id })
     : children;
 
@@ -894,12 +946,14 @@ export function Tooltip({ title, text, kbd, children }) {
     style: { display: 'inline-flex' },
     onPointerEnter: () => show(false),
     onPointerLeave: hide,
-    onFocus: () => show(true),
+    // At once on keyboard focus only (V 4.9): a press, or the focus a closing popover gives back
+    // after a press, waits for the pointer like a hover
+    onFocus: () => { if (!lastInputWasPointer) show(true); },
     onBlur: hide,
     onKeyDown: (ev) => { if (ev.key === 'Escape') hide(); }
   },
     child,
-    shown && (text || title || kbd) && inLayer(e('div', { ref: tipRef, id, role: 'tooltip', className: 'faust-tooltip' },
+    visible && (text || title || kbd) && inLayer(e('div', { ref: tipRef, id, role: 'tooltip', className: 'faust-tooltip' },
       text,
       title && e('span', { className: 'faust-tooltip__title' }, title),
       kbd && e('span', { className: 'faust-tooltip__kbd' }, kbd)

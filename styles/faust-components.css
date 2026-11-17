@@ -587,9 +587,6 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-tooltip__title { font: italic var(--w-serif) var(--fs-serif)/20px var(--font-serif); letter-spacing: 0; }      /* the Latin name of a sigil action: the one place the interface speaks in italic Garamond */
 .faust-tooltip__title { display: block; margin-top: var(--sp-1); }      /* its own last line, after the Finnish text */
 .faust-tooltip__kbd { margin-left: var(--sp-2); opacity: 0.7; }
-/* A sigil result opens under its tile, where the tile's tooltip stands while the pointer rests on it:
-   while a result is open, no sigil tooltip covers it */
-.faust-layer:has(> .faust-popover .faust-result) > .faust-tooltip { display: none; }
 
 /* ============ 11 Marks in text: diff, suggestions, findings, search ============
  * Every mark has its own line style, so no two are told apart by colour alone.
