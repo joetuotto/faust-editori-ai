@@ -550,6 +550,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-popover--modal  { z-index: calc(var(--z-dialog) + 10); }            /* anchored inside a dialog */
 .faust-popover__head  { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-height: 40px; padding: 0 var(--sp-2) 0 var(--sp-4); }
 .faust-popover__title { font: var(--type-title-pop); color: var(--text); }
+.faust-popover__title > .faust-icon { color: var(--accent-line); margin-right: var(--sp-2); }      /* the sigil before a sigil result's caption, as in a panel title */
 .faust-popover__body  { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 var(--sp-2) var(--sp-2); }
 .faust-popover__foot  { flex: none; display: flex; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-top: var(--bw) solid var(--rule); }
 /* Fallback place when the anchor is hidden (focus mode hides the format bar and the sigil bar):
@@ -586,6 +587,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-tooltip__title { font: italic var(--w-serif) var(--fs-serif)/20px var(--font-serif); letter-spacing: 0; }      /* the Latin name of a sigil action: the one place the interface speaks in italic Garamond */
 .faust-tooltip__title { display: block; margin-top: var(--sp-1); }      /* its own last line, after the Finnish text */
 .faust-tooltip__kbd { margin-left: var(--sp-2); opacity: 0.7; }
+/* A sigil result opens under its tile, where the tile's tooltip stands while the pointer rests on it:
+   while a result is open, no sigil tooltip covers it */
+.faust-layer:has(> .faust-popover .faust-result) > .faust-tooltip { display: none; }
 
 /* ============ 11 Marks in text: diff, suggestions, findings, search ============
  * Every mark has its own line style, so no two are told apart by colour alone.
@@ -990,11 +994,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-aipanel .faust-panel__foot .faust-input { text-overflow: ellipsis; }
 
 /* ---- Editor pane ---- */
-/* A box of the page in the text's column, classic scrollbars included. Inside the page head (the
-   progress box and the stored AI suggestions, until they move to the busy notification and the
-   Luku tab) the head's padding already makes the column. */
+/* A box of the page in the text's column, classic scrollbars included. (The progress box and the
+   stored AI suggestions that stood in the page head are the busy notification and the Luku tab's
+   Parannusehdotukset since XR-8; nothing in app.js uses .faust-page-row now, XR-15 removes it.) */
 .faust-page-row { display: block; box-sizing: border-box; flex: none; width: 100%; max-width: min(calc(100% - 2 * (var(--page-gutter) + var(--scrollbar-w))), var(--measure)); margin-inline: auto; }
-.faust-page__head > .faust-page-row { max-width: none; margin-top: var(--sp-2); }
 /* A row whose content has no bound (the stored AI suggestions) is a closed disclosure; open, it scrolls inside itself and never takes more than a quarter of the window from the manuscript. */
 .faust-page-row--bounded { flex: 0 1 auto; min-height: var(--h-sm); max-height: min(180px, 25vh); overflow-y: auto; overscroll-behavior: contain; }
 .faust-editor-area:has(> .faust-editor-split) .faust-page { --page-pad-top: 24px; }

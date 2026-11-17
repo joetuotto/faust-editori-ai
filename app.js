@@ -671,7 +671,18 @@ function FAUSTApp() {
 
   // AI Generation state
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState(null); // {stage, message}
+  // The one busy notification of a running Magnum Opus, rewrite or analysis (R-61): its handle is held
+  // here, its text (and the batch progress, when the main process reports one) follows the run, and it
+  // closes before the run's result is shown. Never a box above the text as well.
+  const busyRef = useRef(null);
+  const showBusy = (text, progress) => {
+    if (!busyRef.current) busyRef.current = notify('busy', text);
+    busyRef.current.update({ text, progress });
+  };
+  const closeBusy = () => {
+    if (busyRef.current) busyRef.current.close();
+    busyRef.current = null;
+  };
   // Which Magnum Opus command runs (the busy face goes on its button): null | 'one' | 'all'
   const [magnumOpusRun, setMagnumOpusRun] = useState(null);
   // Which of Analysoi luku, Pika-arvio and Tee tiivistelmä runs: null | 'analyze' | 'quick' | 'summary'
@@ -872,19 +883,14 @@ function FAUSTApp() {
 
     const cleanup = window.electronAPI.onBatchProgress((progress) => {
       console.log('[Batch Progress]', progress);
-      setGenerationProgress({
-        stage: 'batch',
-        current: progress.current,
-        total: progress.total,
-        percentage: progress.percentage,
-        message: progress.message || `Magnum Opus: tekoäly kirjoittaa lukua ${progress.current}/${progress.total}…`
-      });
+      showBusy(
+        progress.message || `Magnum Opus: tekoäly kirjoittaa lukua ${progress.current}/${progress.total}…`,
+        progress.percentage > 0 ? progress.percentage : undefined
+      );
 
       // Clear progress when complete
       if (progress.current >= progress.total) {
-        setTimeout(() => {
-          setGenerationProgress(null);
-        }, 2000);
+        setTimeout(closeBusy, 2000);
       }
     });
 
@@ -1273,6 +1279,51 @@ function FAUSTApp() {
   const shownElement = (ref) => (ref.current && ref.current.getClientRects().length > 0 ? ref.current : null);
   const formatBarAnchor = (ownRef) => ({
     get current() { return shownElement(ownRef) || shownElement(formatMore.anchorRef) || ownRef.current; }
+  });
+
+  // Pika-arvio and Tee tiivistelmä show their result in a popover under the tile that started them
+  // (R-61, MV-84). When that tile has no box (focus mode, the card view) or another chapter is open by
+  // then, the result is a notification that stays until closed instead. Never both, and never a popover
+  // at the fallback place: an open result closes when its tile loses its box or the chapter changes.
+  const resultPop = usePopover();
+  const [sigilResult, setSigilResult] = useState(null); // { kind: 'quick' | 'summary', chapterId, score, suggestions, synopsis }
+  const sigilBarRef = useRef(null);
+  const resultFocusRef = useRef(null);
+  const sigilTile = (kind) => {
+    const tile = sigilBarRef.current &&
+      sigilBarRef.current.querySelector(`[aria-label="${kind === 'quick' ? 'Pika-arvio' : 'Tee tiivistelmä'}"]`);
+    return tile && tile.getClientRects().length > 0 ? tile : null;
+  };
+  const formatScore = (score) => Number(score).toLocaleString('fi-FI', { maximumFractionDigits: 1 });
+  const showSigilResult = (result) => {
+    if (liveContentRef.current.chapterId !== result.chapterId || !sigilTile(result.kind)) {
+      if (result.kind === 'quick') {
+        notify('success', `Pika-arvio valmis. Laatuarvio: ${formatScore(result.score)}/10.`, { duration: 0 });
+      } else {
+        notify('success', 'Tiivistelmä valmis', {
+          detail: result.synopsis + '\n\nSe näkyy myös luvun kortissa korttinäkymässä.',
+          duration: 0
+        });
+      }
+      return;
+    }
+    // A result that arrives while the author types does not take the caret out of the field
+    const active = document.activeElement;
+    resultFocusRef.current = active && active.matches && active.matches('input, textarea, [contenteditable="true"]') ? active : null;
+    setSigilResult(result);
+    resultPop.setOpen(true);
+  };
+  useEffect(() => {
+    const keep = resultFocusRef.current;
+    resultFocusRef.current = null;
+    if (!resultPop.open || !keep || !document.contains(keep) || document.activeElement === keep) return;
+    if (keep.closest('.cm-editor') && editorRef.current) editorRef.current.focus();
+    else keep.focus();
+  }, [resultPop.open, sigilResult]);
+  useEffect(() => {
+    if (resultPop.open && (!sigilResult || sigilResult.chapterId !== (activeChapter && activeChapter.id) || !sigilTile(sigilResult.kind))) {
+      resultPop.close();
+    }
   });
 
   // The right column holds one docked panel: Tietopaneeli or the Liminal Engine (R-42). The panel
@@ -2787,46 +2838,46 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
     return true;
   };
 
-  // Run one of the three with its busy flag and its line in the progress box; both cleared in finally
-  const runChapterAnalysis = async (kind, progressText, work) => {
+  // Run one of the three with its busy flag and its busy notification. The notification closes before
+  // the result is shown (report); both are cleared in finally.
+  const runChapterAnalysis = async (kind, progressText, request, report) => {
     if (isGenerating || analysisBusy || !activeChapter) return;
     if (!chapterHasEnoughText()) return;
+    const chapterId = activeChapter.id;
     setAnalysisBusy(kind);
-    setGenerationProgress({ stage: 'analysis', message: progressText });
+    showBusy(progressText);
     try {
-      await work(activeChapter.id);
+      const result = await request(chapterId);
+      closeBusy();
+      report(result, chapterId);
     } finally {
+      closeBusy();
       setAnalysisBusy(null);
-      setGenerationProgress(prev => (prev && prev.stage === 'analysis' ? null : prev));
     }
   };
 
-  const runAnalyze = () => runChapterAnalysis('analyze', 'Tekoäly analysoi lukua…', async (chapterId) => {
-    const result = await analyzeChapterContent(chapterId);
+  // The stored parannusehdotukset are listed on Tietopaneeli's Luku tab (R-39)
+  const runAnalyze = () => runChapterAnalysis('analyze', 'Tekoäly analysoi lukua…', analyzeChapterContent, (result) => {
     if (result) {
-      notify('success', 'Analyysi valmis.', { detail: 'Laatuarvio ja parannusehdotukset näkyvät luvun otsikon alla.' });
+      notify('success', 'Analyysi valmis.', { detail: 'Laatuarvio näkyy luvun otsikon alla ja parannusehdotukset tietopaneelin Luku-välilehdellä.' });
     } else {
       notify('error', 'Analyysi epäonnistui.', { detail: ANALYSIS_DETAIL });
     }
   });
 
-  const runQuickCheck = () => runChapterAnalysis('quick', 'Tekoäly arvioi luvun alkua…', async (chapterId) => {
-    const result = await quickQualityCheck(chapterId);
+  const runQuickCheck = () => runChapterAnalysis('quick', 'Tekoäly arvioi luvun alkua…', quickQualityCheck, (result, chapterId) => {
     const score = result ? Number(result.score) : NaN;
     if (Number.isFinite(score)) {
-      notify('success', `Pika-arvio valmis. Laatuarvio: ${score.toLocaleString('fi-FI', { maximumFractionDigits: 1 })}/10.`);
+      const suggestions = Array.isArray(result.suggestions) ? result.suggestions.map(String) : [];
+      showSigilResult({ kind: 'quick', chapterId, score, suggestions });
     } else {
       notify('error', 'Pika-arvio epäonnistui.', { detail: ANALYSIS_DETAIL });
     }
   });
 
-  const runSummary = () => runChapterAnalysis('summary', 'Tekoäly tekee tiivistelmää…', async (chapterId) => {
-    const synopsis = await generateSynopsis(chapterId);
+  const runSummary = () => runChapterAnalysis('summary', 'Tekoäly tekee tiivistelmää…', generateSynopsis, (synopsis, chapterId) => {
     if (synopsis) {
-      notify('success', 'Tiivistelmä valmis', {
-        detail: synopsis + '\n\nSe näkyy myös luvun kortissa korttinäkymässä.',
-        duration: 0
-      });
+      showSigilResult({ kind: 'summary', chapterId, synopsis });
     } else {
       notify('error', 'Tiivistelmän tekeminen epäonnistui.', { detail: ANALYSIS_DETAIL });
     }
@@ -2892,7 +2943,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
 
     setIsGenerating(true);
     setMagnumOpusRun('one');
-    setGenerationProgress({ stage: 'preparing', message: 'Magnum Opus: valmistellaan…' });
+    showBusy('Magnum Opus: valmistellaan…');
 
     try {
       // Find chapter index
@@ -2904,7 +2955,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
       const chapter = project.structure[chapterIndex];
 
       // Use BatchProcessor to generate chapter
-      setGenerationProgress({ stage: 'generating', message: 'Magnum Opus: tekoäly kirjoittaa lukua…' });
+      showBusy('Magnum Opus: tekoäly kirjoittaa lukua…');
 
       const result = await batchProcessorRef.current.generateChapter(
         chapter.title,
@@ -2913,12 +2964,12 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
       );
 
       if (result.success) {
-        setGenerationProgress({ stage: 'updating', message: 'Tallennetaan luvun tekstiä…' });
+        showBusy('Tallennetaan luvun tekstiä…');
 
         // Extract continuity data if available
         let continuityData = null;
         if (continuityTrackerRef.current && result.content) {
-          setGenerationProgress({ stage: 'updating', message: 'Päivitetään tarinan tietoja…' });
+          showBusy('Päivitetään tarinan tietoja…');
           await continuityTrackerRef.current.extractFromChapter(chapterIndex, result.content);
           continuityData = continuityTrackerRef.current.getContextForChapter(chapterIndex + 1);
         }
@@ -2968,7 +3019,8 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
 
         setUnsavedChanges(true);
 
-        // Show cost info if available
+        // Show cost info if available (after the busy notification has closed)
+        closeBusy();
         notify('success', `Valmis: ${count(result.wordCount || 0, 'sana')}.` +
           (result.cost ? ` Hinta: ${formatCostFi(result.cost)}.` : ''));
 
@@ -2979,9 +3031,10 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
 
     } catch (error) {
       console.error('[Generate] Exception:', error);
+      closeBusy();
       notify('error', 'Luvun kirjoittaminen epäonnistui: ' + failureReason(error) + '.');
     } finally {
-      setGenerationProgress(null);
+      closeBusy();
       setIsGenerating(false);
       setMagnumOpusRun(null);
     }
@@ -3024,21 +3077,15 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
 
     setIsGenerating(true);
     setMagnumOpusRun('all');
-    setGenerationProgress({ stage: 'preparing', message: 'Magnum Opus: valmistellaan…' });
+    showBusy('Magnum Opus: valmistellaan…');
 
     try {
       // Set up progress callback
       batchProcessorRef.current.onProgress = (current, total, status, info) => {
         if (status === 'starting') {
-          setGenerationProgress({
-            stage: 'generating',
-            message: `Magnum Opus: tekoäly kirjoittaa lukua ${current + 1}/${total}…`
-          });
+          showBusy(`Magnum Opus: tekoäly kirjoittaa lukua ${current + 1}/${total}…`);
         } else if (status === 'completed') {
-          setGenerationProgress({
-            stage: 'generating',
-            message: `Luku ${current + 1}/${total} valmis: ${count((info && info.wordCount) || 0, 'sana')}.`
-          });
+          showBusy(`Luku ${current + 1}/${total} valmis: ${count((info && info.wordCount) || 0, 'sana')}.`);
         } else if (status === 'error') {
           // A failed chapter stays on screen; the run goes on with the next one
           notify('error', `Luvun ${current + 1} kirjoittaminen epäonnistui: ${failureReason(info && info.error)}.`);
@@ -3062,11 +3109,11 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
       );
 
       if (results.success) {
-        setGenerationProgress({ stage: 'updating', message: 'Tallennetaan lukujen tekstiä…' });
+        showBusy('Tallennetaan lukujen tekstiä…');
 
         // Extract continuity data for all chapters
         if (continuityTrackerRef.current) {
-          setGenerationProgress({ stage: 'updating', message: 'Päivitetään tarinan tietoja…' });
+          showBusy('Päivitetään tarinan tietoja…');
           for (let idx = 0; idx < results.results.length; idx++) {
             const result = results.results[idx];
             if (result?.content) {
@@ -3132,6 +3179,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
         const totalCost = results.totalCost || 0;
         const successCount = results.completedChapters || results.results.length;
 
+        closeBusy();
         notify('success',
           `Valmis: ${successCount}/${project.structure.length} lukua, ${count(totalWords, 'sana')}. Hinta: ${formatCostFi(totalCost)}.`);
 
@@ -3142,9 +3190,10 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
 
     } catch (error) {
       console.error('[Batch Generate] Exception:', error);
+      closeBusy();
       notify('error', 'Lukujen kirjoittaminen epäonnistui: ' + failureReason(error) + '.');
     } finally {
-      setGenerationProgress(null);
+      closeBusy();
       setIsGenerating(false);
       setMagnumOpusRun(null);
     }
@@ -3171,7 +3220,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
     const mode = base.ai.currentMode;
 
     setIsGenerating(true);
-    setGenerationProgress({ stage: 'preparing', message: 'Valmistellaan…' });
+    showBusy('Valmistellaan…');
 
     try {
       // A copy: the manager pushes into the versions of the chapter it is given
@@ -3185,7 +3234,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
         structure: base.structure.map(ch => (ch.id === chapter.id ? prepared : ch))
       };
 
-      setGenerationProgress({ stage: 'generating', message: 'Tekoäly kirjoittaa lukua uudelleen…' });
+      showBusy('Tekoäly kirjoittaa lukua uudelleen…');
 
       const version = await refinementManagerRef.current.regenerateChapter(chapter.id, regenerateFeedback, mode);
 
@@ -3201,14 +3250,16 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
       setShowRegenerateDialog(false);
       setRegenerateFeedback('');
       const number = String((version && version.id) || '').replace(/\D/g, '');
+      closeBusy();
       notify('success', `Valmis: luvun uusi teksti tallennettiin versioksi ${number}.`);
     } catch (error) {
       console.error('[Regenerate] Exception:', error);
+      closeBusy();
       notify('error', 'Luvun kirjoittaminen uudelleen epäonnistui: ' + failureReason(error) + '.');
     } finally {
       // The manager follows the rendered project again
       if (refinementManagerRef.current) refinementManagerRef.current.project = projectRef.current;
-      setGenerationProgress(null);
+      closeBusy();
       setIsGenerating(false);
     }
   };
@@ -5381,7 +5432,7 @@ ${contextPrompt}`;
           // (R-55). The first three need 50 characters of text and wait while any of the four runs.
           const tooShort = (activeChapter.content || '').trim().length < 50;
           const toolsOff = tooShort || isGenerating || !!analysisBusy;
-          const sigilbar = e('div', { className: 'faust-sigilbar', role: 'toolbar', 'aria-label': 'Tekoälyn työkalut tälle luvulle' },
+          const sigilbar = e('div', { className: 'faust-sigilbar', ref: sigilBarRef, role: 'toolbar', 'aria-label': 'Tekoälyn työkalut tälle luvulle' },
             e(SigilButton, {
               key: 'analyze',
               sigil: 'mercury',
@@ -5493,6 +5544,29 @@ ${contextPrompt}`;
                   item.keys ? e('span', { className: 'faust-menu__shortcut' }, shortcut(item.keys)) : null
                 ))
               ]).filter(Boolean)
+            ),
+            // The result of Pika-arvio or Tee tiivistelmä under its tile (R-61, MV-84): the sigil and a
+            // caption, no Latin line. Closed by its button, Esc or a press outside (usePopover).
+            resultPop.open && sigilResult && e(Popover, {
+              ...resultPop.popoverProps,
+              key: 'sigil-result-' + sigilResult.kind,
+              anchorRef: { get current() { return sigilTile(sigilResult.kind); } },
+              title: sigilResult.kind === 'quick'
+                ? e(React.Fragment, null, icons.alembic({ size: 16 }), e('span', { className: 'faust-label' }, 'Pika-arvio'))
+                : e(React.Fragment, null, icons.sulfur({ size: 16 }), e('span', { className: 'faust-label' }, 'Tiivistelmä valmis'))
+            },
+              // The result block (V 4.10) without a head of its own: the popover's head carries it
+              sigilResult.kind === 'quick'
+                ? e('div', { className: 'faust-result', style: { gap: 'var(--sp-3)', padding: '0 var(--sp-2) var(--sp-2)' } },
+                    e('span', { className: 'faust-stat faust-stat--hero' }, 'Laatuarvio ', e('b', null, formatScore(sigilResult.score)), '/10'),
+                    sigilResult.suggestions.length > 0 && e('ul', { className: 'faust-ui', style: { margin: 0, paddingLeft: 'var(--sp-5)' } },
+                      ...sigilResult.suggestions.map((suggestion, idx) => e('li', { key: idx }, suggestion))
+                    )
+                  )
+                : e('div', { className: 'faust-result', style: { gap: 'var(--sp-3)', padding: '0 var(--sp-2) var(--sp-2)' } },
+                    e('p', { className: 'faust-serif', style: { margin: 0, whiteSpace: 'pre-wrap' } }, sigilResult.synopsis),
+                    e('div', { className: 'faust-meta' }, 'Se näkyy myös luvun kortissa korttinäkymässä.')
+                  )
             )
           );
         })(),
@@ -5543,57 +5617,7 @@ ${contextPrompt}`;
                 className: 'faust-stat',
                 title: 'Tekoälyn arvio kerronnan temposta'
               }, 'Tempo: ', labelOf('tempo', activeChapter.pacing.speed)) : null
-            ),
-            // Generation progress indicator with progress bar
-            generationProgress && e('div', {
-              className: 'faust-page-row',
-              style: {
-                padding: 'var(--sp-3) var(--sp-4)',
-                background: 'var(--accent-tint)',
-                border: 'var(--bw) solid var(--accent-line)',
-                borderRadius: 'var(--radius-sm)',
-                font: 'var(--type-ui)',
-                color: 'var(--text)',
-                marginTop: 'var(--sp-2)'
-              }
-            },
-              e('div', {
-                style: {
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: 'var(--sp-3)',
-                  marginBottom: generationProgress.percentage > 0 ? 'var(--sp-2)' : 0
-                }
-              },
-                e('span', null, generationProgress.message),
-                generationProgress.percentage > 0 ? e('span', { className: 'faust-stat' },
-                  e('b', null, `${generationProgress.percentage} %`)) : null
-              ),
-              // Progress bar
-              generationProgress.percentage > 0 ? e('div', {
-                className: 'faust-progress',
-                style: { '--value': `${generationProgress.percentage}%` }
-              }, e('i')) : null
-            ),
-
-            // AI Suggestions (if any): the stored parannusehdotukset, a closed disclosure (R-39)
-            activeChapter.aiQuality && Array.isArray(activeChapter.aiQuality.suggestions) && activeChapter.aiQuality.suggestions.length > 0 ? e('details', {
-              key: activeChapterId,
-              className: 'faust-disclosure faust-page-row faust-page-row--bounded'
-            },
-              e('summary', null,
-                icons.chevronRight({ size: 14 }),
-                `Parannusehdotukset (${activeChapter.aiQuality.suggestions.length})`),
-              e('ul', {
-                className: 'faust-ui',
-                style: { paddingLeft: 'var(--sp-5)', paddingBottom: 'var(--sp-2)' }
-              },
-                ...activeChapter.aiQuality.suggestions.map((suggestion, idx) =>
-                  e('li', { key: idx }, String(suggestion))
-                )
-              )
-            ) : null
+            )
           ),
 
           // Editor wrapper with AnnotationMargin
@@ -6539,7 +6563,18 @@ ${contextPrompt}`;
             }, 'Kaikki luvun tiedot…')
           ),
 
-          // The section Parannusehdotukset of the Luku tab stands here, after Kaikki luvun tiedot… (XR-8, R-39)
+          // Parannusehdotukset: the advice stored by the last Analysoi luku or Pika-arvio, always listed
+          // (R-39, MV-66); the page above the text shows only the score
+          inspectorTab === 'chapter' && activeChapter && activeChapter.aiQuality &&
+          Array.isArray(activeChapter.aiQuality.suggestions) && activeChapter.aiQuality.suggestions.length > 0 &&
+          e('section', { className: 'faust-section' },
+            e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Parannusehdotukset')),
+            e('ul', { className: 'faust-ui', style: { margin: 0, paddingLeft: 'var(--sp-5)' } },
+              ...activeChapter.aiQuality.suggestions.map((suggestion, idx) =>
+                e('li', { key: idx }, String(suggestion))
+              )
+            )
+          ),
 
           // PROJECT TAB
           inspectorTab === 'project' && e('section', { className: 'faust-section' },
