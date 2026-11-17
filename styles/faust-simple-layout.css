@@ -121,29 +121,8 @@
   padding: 24px;
 }
 
-/* Right inspector - fixed width, hidden by default */
-.faust-inspector {
-  width: 300px;
-  flex-shrink: 0;
-  background: var(--bg-secondary, #100F0D);
-  border-left: 1px solid var(--border-color, rgba(255,255,255,0.05));
-  overflow-y: auto;
-  display: none;
-  -webkit-app-region: no-drag;
-  -webkit-user-select: text;
-  user-select: text;
-  transition: width 0.3s ease;
-  position: relative;
-}
-
-.faust-inspector.visible {
-  display: block;
-}
-
-.faust-inspector.collapsed {
-  width: 40px;
-  overflow: hidden;
-}
+/* Right column: Tietopaneeli and the Liminal Engine are side panels of the shared shell
+   (faust-components.css, ":is(.faust-sidebar, .faust-inspector, .faust-aipanel)[data-state]") */
 
 /* Manuscript editor host (CodeMirror, src/components/FaustEditor.js) */
 .faust-editor-host {
@@ -182,10 +161,6 @@
 
   .faust-editor-content {
     padding: 40px 24px;
-  }
-
-  .faust-inspector {
-    width: 250px;
   }
 }
 

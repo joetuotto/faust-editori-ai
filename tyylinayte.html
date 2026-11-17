@@ -91,8 +91,6 @@
 .tn-cm .cm-faust-sugg-del { background-color: var(--sugg-del-bg); color: var(--sugg-del-text); text-decoration-line: line-through; }
 .tn-cm .cm-faust-target { background-color: var(--target-bg); }
 .tn-cm .cm-faust-underline { text-decoration-line: underline; }
-/* The S5 sample stays in the flow: the bridge pins the real panel between header and status bar */
-.tn-section .liminal-engine-panel { position: relative; top: auto !important; bottom: auto !important; }
 /* the whole shell in a frame: the frame is the containing block of its fixed layers, and the
    app fills the frame instead of the window */
 .tn-frame { height: 640px; contain: layout; overflow: hidden; border: var(--bw) solid var(--border); border-radius: var(--radius-md); }
@@ -870,8 +868,7 @@ Nyt: 13 450 sanaa</span></div>
     <select style="padding: 6px 8px; background: var(--bg-2); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text); font-family: &quot;IBM Plex Mono&quot;; font-size: 12px;"><option>vanha valinta</option></select>
     <input type="text" value="virhe" aria-invalid="true" style="padding: 8px 10px; background: var(--bg-2); border: 1px solid var(--error); border-radius: 4px; color: var(--text); font-family: &quot;IBM Plex Mono&quot;; font-size: 13px;">
   </div>
-  <div class="tn-row"><span class="tn-cap tn-cap--w">S5, S9</span>
-    <div class="liminal-engine-panel" style="width: 260px; padding: 12px; background: rgb(10, 10, 10); font-family: &quot;IBM Plex Mono&quot;; font-size: 12px;">Liminal Engine -paneeli (S5: paneelin pinta ja reuna)</div>
+  <div class="tn-row"><span class="tn-cap tn-cap--w">S9</span>
     <div style="padding: 8px 12px; border-radius: 4px; background: var(--bg-tertiary, rgba(143,122,83,0.1));"><div style="font-family: &quot;EB Garamond&quot;; font-size: 15px;">Saapuminen</div><div style="font-size: 11px; color: var(--text-3);">186 sanaa (valitun rivin metateksti, S9)</div></div>
   </div>
   <div class="tn-row"><span class="tn-cap tn-cap--w">S6, S7</span>

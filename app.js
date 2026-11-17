@@ -30,7 +30,7 @@ import {
 // window.alert -> notify (src/components/ui.js). Removed when the last legacy call is gone.
 installAlertShim();
 
-const { createElement: e, useState, useEffect, useRef } = React;
+const { createElement: e, useState, useEffect, useLayoutEffect, useRef } = React;
 
 // Classic scrollbars take room on both sides of the manuscript scroller: their width is
 // measured at start and on window focus and written as --scrollbar-w (0px with overlay bars).
@@ -682,7 +682,6 @@ function FAUSTApp() {
 
   // Panel collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
 
   // Split View state
   const [splitViewEnabled, setSplitViewEnabled] = useState(false);
@@ -1226,7 +1225,6 @@ function FAUSTApp() {
   // button) close it themselves when it is already shown.
   const showInspectorTab = (tab) => {
     setShowInspector(true);
-    setInspectorCollapsed(false);
     if (tab) setInspectorTab(tab);
   };
 
@@ -1236,6 +1234,29 @@ function FAUSTApp() {
   // The Liminal Engine panel and the keskustelu are never open together
   const openLiminalEngine = () => { setClaudeChatOpen(false); setAiAssistantOpen(true); };
   const openChat = () => { setAiAssistantOpen(false); setClaudeChatOpen(true); };
+
+  // The right column holds one docked panel: Tietopaneeli or the Liminal Engine (R-42). The panel
+  // opened last stays and closes the other; closing one reopens nothing. Leaving focus mode restores
+  // the panels as they were before it, so that render is compared with that state: a command given in
+  // focus mode (⌘2, ⇧⌘K) then counts as the panel opened last, not the one the restore brought back.
+  const rightNow = { inspector: showInspector, engine: aiAssistantOpen /* I-06 adds: , language: !!languagePanel */ };
+  const rightPrevRef = useRef(rightNow);
+  const rightFocusRef = useRef(focusMode);
+  useLayoutEffect(() => {
+    const before = rightFocusRef.current && !focusMode ? (panelsBeforeFocusRef.current || {}) : null;
+    const prev = before
+      ? { inspector: !!before.showInspector, engine: !!before.aiAssistantOpen /* I-06 adds: , language: !!before.languagePanel */ }
+      : rightPrevRef.current;
+    const opened = Object.keys(rightNow).find((key) => rightNow[key] && !prev[key]);
+    if (opened) {
+      if (opened !== 'inspector' && rightNow.inspector) setShowInspector(false);
+      if (opened !== 'engine' && rightNow.engine) setAiAssistantOpen(false);
+      /* I-06 adds: if (opened !== 'language' && rightNow.language) setLanguagePanel(null); */
+    }
+    rightPrevRef.current = rightNow;
+    rightFocusRef.current = focusMode;
+  });
+  const rightColumnOpen = rightNow.inspector || rightNow.engine; /* I-06 adds: || rightNow.language */
 
   // Jaettu näkymä. Opening shows a chapter other than the open one, as the header button always
   // did; the second pane also opens in a one-chapter project, where it shows that chapter.
@@ -4522,7 +4543,7 @@ ${contextPrompt}`;
     // (notifications, launcher, chat window). The sidebar's are today's; var(--sidebar-w) and 0px after region C.
     style: {
       '--left-col-w': sidebarCollapsed ? (focusMode ? '0px' : '40px') : '220px',   // focus mode hides the collapsed rail
-      '--right-col-w': showInspector ? 'var(--inspector-w)' : '0px'
+      '--right-col-w': rightNow.engine /* I-06 adds: || rightNow.language */ ? 'var(--aipanel-w)' : rightNow.inspector ? 'var(--inspector-w)' : '0px'
     }
   },
     // Dialogs that can appear over anything else
@@ -6112,7 +6133,8 @@ ${contextPrompt}`;
       ),
 
       // Right inspector (hidden by default)
-      e(ErrorBoundary, { label: 'Tietopaneeli', onDismiss: () => setShowInspector(false) }, showInspector && e('div', { className: 'faust-inspector visible', 'data-state': 'open' },
+      // Always mounted: closed is width 0 (the shell's 300 ms motion); the inner panel keeps its width
+      e(ErrorBoundary, { label: 'Tietopaneeli', onDismiss: () => setShowInspector(false) }, e('div', { className: 'faust-inspector', 'data-state': showInspector ? 'open' : 'closed' },
         e('div', { className: 'faust-panel' },
           e('div', { className: 'faust-panel__head' },
             e('h3', { className: 'faust-panel__title' }, 'Tietopaneeli'),
@@ -7160,7 +7182,190 @@ ${contextPrompt}`;
           })(),
 
         ))
-      ))
+      )),
+
+      // AI Assistant Panel (Cursor-style) - Slides in from right
+      // Docked in the right column beside Tietopaneeli (R-42): one of the two is open at a time. Always
+      // mounted, like Tietopaneeli: closed is width 0, and the conversation is kept while it is closed.
+      e(ErrorBoundary, { label: 'Liminal Engine', onDismiss: () => setAiAssistantOpen(false) }, e('div', { className: 'faust-aipanel', 'data-state': aiAssistantOpen ? 'open' : 'closed' },
+        e('div', { className: 'faust-panel' },
+        [
+          // Header
+          e('div', { key: 'header', className: 'faust-panel__head' },
+            e('div', { style: { minWidth: 0 } },
+              e('div', { className: 'faust-panel__title' }, icons.star8({ size: 14 }), 'Liminal Engine'),
+              e('div', { className: 'faust-meta' }, 'Tekoälyavustaja')
+            ),
+            e('button', {
+              className: 'faust-btn faust-btn--icon faust-btn--sm',
+              onClick: () => setAiAssistantOpen(false),
+              'aria-label': 'Kätke Liminal Engine (' + shortcut('CmdOrCtrl+Shift+K') + ')',
+              title: 'Kätke Liminal Engine (' + shortcut('CmdOrCtrl+Shift+K') + ')'
+            }, icons.close({ size: 14 }))
+          ),
+
+          // Model selector dropdown
+          e('div', {
+            key: 'model-selector',
+            style: {
+              padding: 'var(--sp-3) var(--sp-4)',
+              borderTop: 'var(--bw) solid var(--rule)',
+              borderBottom: 'var(--bw) solid var(--rule)'
+            }
+          },
+          e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-1)' } }, 'Claude-malli'),
+          e('select', {
+            className: 'faust-select faust-select--sm',
+            value: project.ai?.model || 'claude-sonnet-4-20250514',
+            onChange: (ev) => {
+              setProject(prev => ({
+                ...prev,
+                ai: {
+                  ...prev.ai,
+                  model: ev.target.value
+                }
+              }));
+              setUnsavedChanges(true);
+            },
+            style: { marginBottom: 'var(--sp-2)' }
+          },
+            e('option', { value: 'claude-sonnet-4-20250514' }, 'Claude Sonnet 4 (suositeltu)'),
+            e('option', { value: 'claude-3-5-sonnet-20241022' }, 'Claude 3.5 Sonnet'),
+            e('option', { value: 'claude-3-5-haiku-20241022' }, 'Claude 3.5 Haiku (nopea)'),
+            e('option', { value: 'claude-opus-4-20250514' }, 'Claude Opus 4 (tehokas)'),
+            e('option', { value: 'claude-opus-4-5-20250514' }, 'Claude Opus 4.5 (uusin)')
+          ),
+          e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-1)' } }, 'Mukautettu malli (valinnainen)'),
+          e('input', {
+            className: 'faust-input faust-input--sm',
+            type: 'text',
+            value: '',
+            onChange: (ev) => {
+              if (ev.target.value.trim()) {
+                setProject(prev => ({
+                  ...prev,
+                  ai: {
+                    ...prev.ai,
+                    model: ev.target.value.trim()
+                  }
+                }));
+                setUnsavedChanges(true);
+              }
+            },
+            placeholder: 'Liitä mallin tunnus'
+          }),
+          e('div', { className: 'faust-field__hint', style: { marginTop: 'var(--sp-2)' } },
+            'Koskee vain Claudea. Lähteen ja mallin voi vaihtaa tietopaneelin Tekoäly-välilehdellä.')
+          ),
+
+          // Selected text context badge
+          textSelection ? e('div', {
+            key: 'text-selection',
+            className: 'faust-excerpt',
+            style: { margin: 'var(--sp-3) var(--sp-4) 0' }
+          },
+            e('span', { className: 'faust-excerpt__caption' }, 'Valittu teksti'),
+            e('span', { className: 'faust-excerpt__text' }, textSelection.text.slice(0, 400))
+          ) : null,
+
+          // Chat messages
+          e('div', {
+            key: 'chat-messages',
+            className: 'faust-panel__body',
+            style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }
+          },
+            aiChatMessages.length === 0
+              ? e('div', { className: 'faust-empty' },
+                  e('span', { className: 'faust-empty__icon' }, icons.star8({ size: 40 })),
+                  e('div', { className: 'faust-empty__title' }, 'Valitse tekstiä ja pyydä siihen muutoksia, tai kysy neuvoa kirjoittamiseen.')
+                )
+              : aiChatMessages.map((msg, idx) =>
+                  e('div', { key: idx, className: 'chat-message ' + msg.role },
+                    e('div', { className: 'message-role' },
+                      msg.role === 'user' ? 'Sinä' : msg.role === 'error' ? 'Virhe' : 'Tekoäly'),
+                    msg.selectedText ? e('div', { className: 'faust-excerpt', style: { marginBottom: 'var(--sp-2)' } },
+                      e('span', { className: 'faust-excerpt__text' }, msg.selectedText.slice(0, 400))
+                    ) : null,
+                    e('div', { className: 'message-content' }, msg.content)
+                  )
+                ),
+            // Waiting for the answer
+            aiChatProcessing ? e('div', { className: 'streaming-indicator' },
+              e('span', { className: 'dot' }),
+              e('span', { className: 'dot' }),
+              e('span', { className: 'dot' })
+            ) : null
+          ),
+
+          // AI Suggestion diff preview
+          aiSuggestion && !aiSuggestion.applied ? e('div', {
+            key: 'suggestion',
+            className: 'faust-result',
+            style: { maxHeight: '50%', borderTop: 'var(--bw) solid var(--rule)' }
+          },
+            e('div', { className: 'faust-result__head' },
+              e('span', { className: 'faust-label' }, 'Ehdotus valitun tekstin tilalle')
+            ),
+            e('div', { className: 'faust-result__body' },
+              e('div', { className: 'faust-prose' }, aiSuggestion.revised)
+            ),
+            e('div', { className: 'faust-result__actions' },
+              e('button', {
+                className: 'faust-btn faust-btn--quiet',
+                onClick: () => setAiSuggestion(null)
+              }, 'Hylkää'),
+              // BUG-6: enabled at I-03 (reconcile R-18)
+              false && e('button', {
+                className: 'faust-btn faust-btn--primary',
+                onClick: applyAiSuggestion
+              }, 'Korvaa valittu teksti')
+            )
+          ) : null,
+
+          // Input area
+          e('div', { key: 'input', className: 'faust-panel__foot' },
+            e('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' } },
+              voiceInputAvailable ? e('button', {
+                className: 'faust-btn faust-btn--icon faust-btn--lg',
+                onClick: handleAiAssistantVoice,
+                disabled: aiChatVoiceState !== 'idle',
+                'aria-pressed': aiChatVoiceState === 'listening',
+                'aria-busy': aiChatVoiceState === 'listening',
+                'data-state': aiChatVoiceState === 'listening' ? 'listening' : undefined,
+                'aria-label': aiChatVoiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Sanele viesti',
+                title: aiChatVoiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Sanele viesti'
+              }, icons.mic({ size: 16 })) : null,
+              e('input', {
+                className: 'faust-input',
+                type: 'text',
+                value: aiChatInput,
+                onChange: (ev) => setAiChatInput(ev.target.value),
+                onKeyDown: (ev) => {
+                  if (ev.key === 'Enter' && !ev.shiftKey) {
+                    ev.preventDefault();
+                    sendAiAssistantMessage();
+                  }
+                },
+                placeholder: textSelection ? 'Kerro, miten valittua tekstiä muutetaan…' : 'Kirjoita viesti…',
+                disabled: aiChatProcessing,
+                style: { flex: 1 }
+              }),
+              e('button', {
+                className: 'faust-btn faust-btn--primary faust-btn--lg',
+                onClick: sendAiAssistantMessage,
+                disabled: aiChatProcessing || !aiChatInput.trim(),
+                'aria-busy': aiChatProcessing,
+                title: 'Lähetä (Enter)'
+              },
+                aiChatProcessing ? e('span', { className: 'faust-spinner faust-spinner--sm' }) : null,
+                aiChatProcessing ? 'Lähetetään…' : 'Lähetä'
+              )
+            ),
+            e('div', { className: 'faust-meta', style: { marginTop: 'var(--sp-2)', textAlign: 'center' } },
+              shortcut('CmdOrCtrl+Shift+K') + ' kätkee paneelin · Enter lähettää')
+          )
+        ]
+      )))
     ),
 
     // Footer / Status bar
@@ -7669,199 +7874,6 @@ ${contextPrompt}`;
         )
       );
     })() : null),
-
-    // AI Assistant Panel (Cursor-style) - Slides in from right
-    e(ErrorBoundary, { label: 'Liminal Engine', onDismiss: () => setAiAssistantOpen(false) }, aiAssistantOpen && e('div', {
-      className: 'liminal-engine-panel',
-      style: {
-        position: 'fixed',
-        right: 0,
-        top: 0,
-        bottom: 0,
-        width: '500px',
-        display: 'flex',
-        flexDirection: 'column',
-        zIndex: 9999,
-        overflow: 'hidden'
-      }
-    },
-      [
-        // Header
-        e('div', { key: 'header', className: 'faust-panel__head' },
-          e('div', { style: { minWidth: 0 } },
-            e('div', { className: 'faust-panel__title' }, icons.star8({ size: 14 }), 'Liminal Engine'),
-            e('div', { className: 'faust-meta' }, 'Tekoälyavustaja')
-          ),
-          e('button', {
-            className: 'faust-btn faust-btn--icon faust-btn--sm',
-            onClick: () => setAiAssistantOpen(false),
-            'aria-label': 'Kätke Liminal Engine (' + shortcut('CmdOrCtrl+Shift+K') + ')',
-            title: 'Kätke Liminal Engine (' + shortcut('CmdOrCtrl+Shift+K') + ')'
-          }, icons.close({ size: 14 }))
-        ),
-
-        // Model selector dropdown
-        e('div', {
-          key: 'model-selector',
-          style: {
-            padding: 'var(--sp-3) var(--sp-4)',
-            borderTop: 'var(--bw) solid var(--rule)',
-            borderBottom: 'var(--bw) solid var(--rule)'
-          }
-        },
-        e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-1)' } }, 'Claude-malli'),
-        e('select', {
-          className: 'faust-select faust-select--sm',
-          value: project.ai?.model || 'claude-sonnet-4-20250514',
-          onChange: (ev) => {
-            setProject(prev => ({
-              ...prev,
-              ai: {
-                ...prev.ai,
-                model: ev.target.value
-              }
-            }));
-            setUnsavedChanges(true);
-          },
-          style: { marginBottom: 'var(--sp-2)' }
-        },
-          e('option', { value: 'claude-sonnet-4-20250514' }, 'Claude Sonnet 4 (suositeltu)'),
-          e('option', { value: 'claude-3-5-sonnet-20241022' }, 'Claude 3.5 Sonnet'),
-          e('option', { value: 'claude-3-5-haiku-20241022' }, 'Claude 3.5 Haiku (nopea)'),
-          e('option', { value: 'claude-opus-4-20250514' }, 'Claude Opus 4 (tehokas)'),
-          e('option', { value: 'claude-opus-4-5-20250514' }, 'Claude Opus 4.5 (uusin)')
-        ),
-        e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-1)' } }, 'Mukautettu malli (valinnainen)'),
-        e('input', {
-          className: 'faust-input faust-input--sm',
-          type: 'text',
-          value: '',
-          onChange: (ev) => {
-            if (ev.target.value.trim()) {
-              setProject(prev => ({
-                ...prev,
-                ai: {
-                  ...prev.ai,
-                  model: ev.target.value.trim()
-                }
-              }));
-              setUnsavedChanges(true);
-            }
-          },
-          placeholder: 'Liitä mallin tunnus'
-        }),
-        e('div', { className: 'faust-field__hint', style: { marginTop: 'var(--sp-2)' } },
-          'Koskee vain Claudea. Lähteen ja mallin voi vaihtaa tietopaneelin Tekoäly-välilehdellä.')
-        ),
-
-        // Selected text context badge
-        textSelection ? e('div', {
-          key: 'text-selection',
-          className: 'faust-excerpt',
-          style: { margin: 'var(--sp-3) var(--sp-4) 0' }
-        },
-          e('span', { className: 'faust-excerpt__caption' }, 'Valittu teksti'),
-          e('span', { className: 'faust-excerpt__text' }, textSelection.text.slice(0, 400))
-        ) : null,
-
-        // Chat messages
-        e('div', {
-          key: 'chat-messages',
-          className: 'faust-panel__body',
-          style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }
-        },
-          aiChatMessages.length === 0
-            ? e('div', { className: 'faust-empty' },
-                e('span', { className: 'faust-empty__icon' }, icons.star8({ size: 40 })),
-                e('div', { className: 'faust-empty__title' }, 'Valitse tekstiä ja pyydä siihen muutoksia, tai kysy neuvoa kirjoittamiseen.')
-              )
-            : aiChatMessages.map((msg, idx) =>
-                e('div', { key: idx, className: 'chat-message ' + msg.role },
-                  e('div', { className: 'message-role' },
-                    msg.role === 'user' ? 'Sinä' : msg.role === 'error' ? 'Virhe' : 'Tekoäly'),
-                  msg.selectedText ? e('div', { className: 'faust-excerpt', style: { marginBottom: 'var(--sp-2)' } },
-                    e('span', { className: 'faust-excerpt__text' }, msg.selectedText.slice(0, 400))
-                  ) : null,
-                  e('div', { className: 'message-content' }, msg.content)
-                )
-              ),
-          // Waiting for the answer
-          aiChatProcessing ? e('div', { className: 'streaming-indicator' },
-            e('span', { className: 'dot' }),
-            e('span', { className: 'dot' }),
-            e('span', { className: 'dot' })
-          ) : null
-        ),
-
-        // AI Suggestion diff preview
-        aiSuggestion && !aiSuggestion.applied ? e('div', {
-          key: 'suggestion',
-          className: 'faust-result',
-          style: { maxHeight: '50%', borderTop: 'var(--bw) solid var(--rule)' }
-        },
-          e('div', { className: 'faust-result__head' },
-            e('span', { className: 'faust-label' }, 'Ehdotus valitun tekstin tilalle')
-          ),
-          e('div', { className: 'faust-result__body' },
-            e('div', { className: 'faust-prose' }, aiSuggestion.revised)
-          ),
-          e('div', { className: 'faust-result__actions' },
-            e('button', {
-              className: 'faust-btn faust-btn--quiet',
-              onClick: () => setAiSuggestion(null)
-            }, 'Hylkää'),
-            // BUG-6: enabled at I-03 (reconcile R-18)
-            false && e('button', {
-              className: 'faust-btn faust-btn--primary',
-              onClick: applyAiSuggestion
-            }, 'Korvaa valittu teksti')
-          )
-        ) : null,
-
-        // Input area
-        e('div', { key: 'input', className: 'faust-panel__foot' },
-          e('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' } },
-            voiceInputAvailable ? e('button', {
-              className: 'faust-btn faust-btn--icon faust-btn--lg',
-              onClick: handleAiAssistantVoice,
-              disabled: aiChatVoiceState !== 'idle',
-              'aria-pressed': aiChatVoiceState === 'listening',
-              'aria-busy': aiChatVoiceState === 'listening',
-              'data-state': aiChatVoiceState === 'listening' ? 'listening' : undefined,
-              'aria-label': aiChatVoiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Sanele viesti',
-              title: aiChatVoiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Sanele viesti'
-            }, icons.mic({ size: 16 })) : null,
-            e('input', {
-              className: 'faust-input',
-              type: 'text',
-              value: aiChatInput,
-              onChange: (ev) => setAiChatInput(ev.target.value),
-              onKeyDown: (ev) => {
-                if (ev.key === 'Enter' && !ev.shiftKey) {
-                  ev.preventDefault();
-                  sendAiAssistantMessage();
-                }
-              },
-              placeholder: textSelection ? 'Kerro, miten valittua tekstiä muutetaan…' : 'Kirjoita viesti…',
-              disabled: aiChatProcessing,
-              style: { flex: 1 }
-            }),
-            e('button', {
-              className: 'faust-btn faust-btn--primary faust-btn--lg',
-              onClick: sendAiAssistantMessage,
-              disabled: aiChatProcessing || !aiChatInput.trim(),
-              'aria-busy': aiChatProcessing,
-              title: 'Lähetä (Enter)'
-            },
-              aiChatProcessing ? e('span', { className: 'faust-spinner faust-spinner--sm' }) : null,
-              aiChatProcessing ? 'Lähetetään…' : 'Lähetä'
-            )
-          ),
-          e('div', { className: 'faust-meta', style: { marginTop: 'var(--sp-2)', textAlign: 'center' } },
-            shortcut('CmdOrCtrl+Shift+K') + ' kätkee paneelin · Enter lähettää')
-        )
-      ]
-    )),
 
     // The four dialogs below used to be children of the AI assistant panel,
     // so they only opened while that panel was open. They belong to the window.

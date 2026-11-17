@@ -1160,16 +1160,6 @@ button:disabled:not([aria-busy="true"]):not([class*="faust-"]):not(.ai-toolbar-b
 }
 button[aria-busy="true"]:disabled:not([class*="faust-"]) { opacity: 1 !important; cursor: progress !important; }
 
-/* S5  The Liminal Engine panel covered the header and the status bar and shared z-index 9999
-       with the modals. Confined until it is docked as .faust-aipanel (region E). The
-       launcher is not rendered while the panel is open (F7), so it never sits on the panel. */
-.liminal-engine-panel {
-  top: var(--header-h) !important; bottom: var(--footer-h) !important;
-  z-index: var(--z-panel) !important; max-width: 42vw;
-  background: var(--surface-panel) !important;
-  border-left: var(--bw) solid var(--border) !important; box-shadow: var(--shadow-2) !important;
-}
-
 /* S6  Formatting toolbar: no band now that its --bg-2 has a value.
        Delete when it becomes .faust-formatbar. */
 .formatting-toolbar:not(.faust-formatbar) { background: transparent !important; border-radius: 0 !important; padding-inline: 0 !important; }
