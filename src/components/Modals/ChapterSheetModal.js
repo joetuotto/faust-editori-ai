@@ -1,141 +1,214 @@
 /**
- * ChapterSheetModal - Full Chapter Form with Validation
+ * ChapterSheetModal - the chapter form (Luvun tiedot)
  * DEVELOPMENT_ROADMAP.md:117 - Complete implementation
- * 
- * Script-tag compatible version for app.js integration
+ *
+ * Script-tag compatible version for app.js integration. index.html loads this file in <head>,
+ * before the bundle that assigns window.FaustIcons and window.FaustUI, so those globals are read
+ * only inside the render function (R-89). The look comes from the dialog, field, section and row
+ * classes of styles/faust-components.css. Esc is registered by the cross-region pass (XR-9).
+ *
+ * Saving hands onSave only the form's own fields (W22): the chapter's text, versions and word
+ * count are never part of the payload, and synopsisManual is computed by the parent
+ * (handleChapterSheetSave), which alone sees synopsisAI.
  */
 
 (function(window) {
   'use strict';
 
-  const { createElement: e, useState, useEffect } = React;
+  const { createElement: e, useState, useEffect, useRef } = React;
 
-  // Access constants from window (loaded from constants.js)
+  // Read at render time only: the bundle has not run yet when this file loads.
+  const icons = () => window.FaustIcons || {};
+  const icon = (name, size) => (icons()[name] ? icons()[name]({ size }) : null);
 
-  // Option lists come from window.CONSTANTS as { value, label } objects, or as
-  // plain strings in the fallback. Rendering the object itself as an <option>
-  // child throws.
-  const toOptions = (items) => (items || []).map(item => (
-    typeof item === 'string' ? { value: item, label: item } : item
-  ));
-  const CHAPTER_STATUS = toOptions(window.CONSTANTS?.CHAPTER_STATUS || ['Suunniteltu', 'Keskeneräinen', 'Valmis']);
-  const POV_TYPES = toOptions(window.CONSTANTS?.POV_TYPES || ['Ensimmäinen persoona', 'Kolmas persoona', 'Toiseen persoonaan']);
+  // Display maps for the stored values (menu spec A.4). A plain script cannot import the bundle's
+  // maps, so this file keeps a copy of the ones it needs; constants.js is not touched. The stored
+  // values stay English; a missing status counts as `plan`.
+  const CHAPTER_STATE = { plan: 'Suunnitteilla', draft: 'Luonnos', revision: 'Muokattavana', final: 'Valmis' };
+  // The narrator options keep the labels of constants.js; the keys are the fallback list.
+  const NARRATOR = {
+    first: '1. persoona', third_limited: '3. persoona (rajoitettu)',
+    third_omniscient: '3. persoona (kaikkitietävä)', second: '2. persoona'
+  };
+
+  // The lists come from window.CONSTANTS as { value, label } objects; without it, from the map's keys.
+  // Labels are overridden by value with the maps above (menu spec C.13 row 18).
+  const toOptions = (items, map) => (items || Object.keys(map)).map(item => {
+    const value = typeof item === 'string' ? item : item.value;
+    const fallback = typeof item === 'string' ? String(item).replace(/_/g, ' ') : item.label;
+    return { value, label: map[value] || fallback };
+  });
+  // A stored value outside the list (an older entry) stays selectable under its own name, so that
+  // opening and saving the form never changes it.
+  const withCurrent = (options, value) => (value && !options.some(option => option.value === value)
+    ? [{ value, label: String(value).replace(/_/g, ' ') }, ...options]
+    : options);
+
+  const CHAPTER_STATUS = toOptions(window.CONSTANTS?.CHAPTER_STATUS, CHAPTER_STATE);
+  const POV_TYPES = toOptions(window.CONSTANTS?.POV_TYPES, NARRATOR);
   const VALIDATION_RULES = window.CONSTANTS?.VALIDATION_RULES || {
     DESCRIPTION_MAX_LENGTH: 5000
   };
+  const TITLE_MAX = 200;
+  const PLACE_MAX = 200;
 
-  function ChapterSheetModal({ 
-    isOpen, 
-    onClose, 
-    chapter = null, 
-    chapters = [],
-    onSave,
-    mode = 'create' // 'create', 'edit', 'view'
-  }) {
-    if (!isOpen) return null;
+  // A small copy of count() in Dialogs.js, for the one word this form needs (menu spec B.13).
+  const FORMS = { merkki: ['merkki', 'merkkiä'] };
+  const count = (n, word) => {
+    const forms = FORMS[word] || [word, word];
+    return Number(n).toLocaleString('fi-FI') + ' ' + (Number(n) === 1 ? forms[0] : forms[1]);
+  };
+  const tooLong = (what, max) => `${what} on liian pitkä (enintään ${count(max, 'merkki')}).`;
+  const tooLongPlural = (what, max) => `${what} ovat liian pitkät (enintään ${count(max, 'merkki')}).`;
 
-    const [formData, setFormData] = useState({
-      title: '',
-      number: '',
-      status: CHAPTER_STATUS[0].value,
-      pov: '',
-      povType: POV_TYPES[0].value,
-      location: '',
-      wordCountTarget: '',
-      actualWordCount: 0,
-      synopsis: '',
-      keyScenes: [],
-      goals: '',
-      conflicts: '',
-      outcome: '',
-      emotionalArc: '',
-      notes: ''
-    });
+  const ID = 'faust-chapter';
 
+  // The fields of the form, and nothing else: they are also the save payload. Not rendered and
+  // not written: the free-text point of view (Näkökulmahahmo lives on the Luku tab), the number,
+  // the word-count goal and the word count (menu spec C.13 rows 13 and 15).
+  // A chapter without a narrator keeps none: the select shows the first option as its default, and
+  // povType is written only once the author picks one (menu spec E: no pass invents stored values).
+  const fromChapter = (chapter) => ({
+    title: chapter?.title || '',
+    status: chapter?.status || CHAPTER_STATUS[0].value,
+    povType: chapter?.povType || '',
+    location: chapter?.location || '',
+    synopsis: chapter?.synopsis || '',
+    keyScenes: chapter?.keyScenes || [],
+    goals: chapter?.goals || '',
+    conflicts: chapter?.conflicts || '',
+    outcome: chapter?.outcome || '',
+    emotionalArc: chapter?.emotionalArc || '',
+    notes: chapter?.notes || ''
+  });
+
+  // ---- Markup helpers ----
+
+  // aria-invalid draws the error edge (the stylesheet), aria-describedby links the message.
+  const invalid = (id, error) => (error ? { 'aria-invalid': 'true', 'aria-describedby': id + '-error' } : {});
+
+  // One field: the label above, the control, the message under it. `reserve` keeps the message's
+  // line under a required field, so the form does not jump when it appears.
+  const field = (id, label, control, error, reserve) => e('div', { className: 'faust-field' },
+    label && e('label', { className: 'faust-field__label', htmlFor: id }, label),
+    control,
+    (error || reserve) && e('div', { className: 'faust-field__error', id: id + '-error' }, error || null)
+  );
+
+  // Fields side by side; the row stands in the dialog's vertical rhythm as one field.
+  const fieldRow = (columns, cells) => e('div', {
+    className: 'faust-field',
+    style: { display: 'grid', gridTemplateColumns: columns, gap: 'var(--sp-4)', alignItems: 'start' }
+  }, cells.map((cell, index) => e('div', { key: index }, cell)));
+
+  const section = (title, ...children) => e('section', { className: 'faust-section' },
+    e('div', { className: 'faust-section__head' }, e('h3', { className: 'faust-section__title' }, title)),
+    ...children
+  );
+
+  // A list the author adds items to: the field and Lisää, then one row per item with its delete.
+  const tagEditor = ({ id, label, input, setInput, onAdd, items, onRemove, placeholder, emptyText, isViewMode }) => [
+    !isViewMode && e('div', { key: 'add', style: { display: 'flex', gap: 'var(--sp-2)' } },
+      e('input', {
+        id,
+        type: 'text',
+        className: 'faust-input faust-input--author',
+        style: { flex: '1 1 auto' },
+        value: input,
+        onChange: (ev) => setInput(ev.target.value),
+        onKeyPress: (ev) => {
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            onAdd();
+          }
+        },
+        placeholder,
+        'aria-label': label
+      }),
+      e('button', { type: 'button', className: 'faust-btn faust-btn--lg', onClick: onAdd }, 'Lisää')
+    ),
+    e('div', { key: 'list', style: { marginTop: isViewMode ? 0 : 'var(--sp-2)' } },
+      items.length > 0
+        ? items.map(item => e('div', { key: item, className: 'faust-row faust-row--static faust-row--author' },
+            e('span', { className: 'faust-row__text' }, e('span', { className: 'faust-row__title', title: item }, item)),
+            !isViewMode && e('span', { className: 'faust-row__actions' },
+              e('button', {
+                type: 'button',
+                className: 'faust-btn faust-btn--icon faust-btn--sm faust-btn--danger',
+                title: 'Poista',
+                'aria-label': 'Poista',
+                onClick: () => onRemove(item)
+              }, icon('trash', 14))
+            )
+          ))
+        : e('div', { className: 'faust-meta' }, emptyText)
+    )
+  ];
+
+  function ChapterSheetModal(props) {
+    const {
+      isOpen,
+      onClose,
+      chapter = null,
+      onSave,
+      mode = 'create' // 'create', 'edit', 'view'
+    } = props;
+
+    // Hooks run on every render, also while the form is closed (isOpen is checked after them).
+    const [formData, setFormData] = useState(() => fromChapter(chapter));
     const [errors, setErrors] = useState({});
     const [sceneInput, setSceneInput] = useState('');
     const [isSaving, setIsSaving] = useState(false);
+    const [scrollRequest, setScrollRequest] = useState(0);
+    const dialogRef = useRef(null);
 
+    // Loaded once per chapter: a change to the chapter object while the form is open (an analysis
+    // finishing in the background) does not wipe what the author has typed.
+    const chapterId = chapter ? chapter.id : null;
     useEffect(() => {
-      if (chapter) {
-        setFormData({
-          title: chapter.title || '',
-          number: chapter.number || '',
-          status: chapter.status || CHAPTER_STATUS[0].value,
-          pov: chapter.pov || '',
-          povType: chapter.povType || POV_TYPES[0].value,
-          location: chapter.location || '',
-          wordCountTarget: chapter.wordCountTarget || '',
-          actualWordCount: chapter.actualWordCount || 0,
-          synopsis: chapter.synopsis || '',
-          keyScenes: chapter.keyScenes || [],
-          goals: chapter.goals || '',
-          conflicts: chapter.conflicts || '',
-          outcome: chapter.outcome || '',
-          emotionalArc: chapter.emotionalArc || '',
-          notes: chapter.notes || ''
-        });
-      }
-    }, [chapter]);
+      if (chapter) setFormData(fromChapter(chapter));
+    }, [chapterId]);
+
+    // A failed save brings its first invalid field (or the save error) into view (BUG-3, C.13 row 8).
+    useEffect(() => {
+      if (!scrollRequest || !dialogRef.current) return;
+      const target = dialogRef.current.querySelector('[aria-invalid="true"], .faust-callout--error');
+      if (!target) return;
+      target.scrollIntoView({ block: 'center' });
+      if (typeof target.focus === 'function') target.focus({ preventScroll: true });
+    }, [scrollRequest]);
+
+    if (!isOpen) return null;
 
     const validateForm = () => {
       const newErrors = {};
+      const max = VALIDATION_RULES.DESCRIPTION_MAX_LENGTH;
 
-      // Title validation (required)
       if (!formData.title.trim()) {
-        newErrors.title = 'Otsikko on pakollinen';
-      } else if (formData.title.length > 200) {
-        newErrors.title = 'Otsikko on liian pitkä (max 200 merkkiä)';
+        newErrors.title = 'Otsikko puuttuu.';
+      } else if (formData.title.length > TITLE_MAX) {
+        newErrors.title = tooLong('Otsikko', TITLE_MAX);
       }
-
-      // Number validation
-      if (formData.number && isNaN(formData.number)) {
-        newErrors.number = 'Luvun numeron on oltava numero';
+      if (formData.location.length > PLACE_MAX) {
+        newErrors.location = tooLong('Tapahtumapaikka', PLACE_MAX);
       }
-
-      // POV validation
-      if (formData.pov.length > 100) {
-        newErrors.pov = 'POV on liian pitkä (max 100 merkkiä)';
+      if (formData.synopsis.length > max) {
+        newErrors.synopsis = tooLong('Tiivistelmä', max);
       }
-
-      // Location validation
-      if (formData.location.length > 200) {
-        newErrors.location = 'Sijainti on liian pitkä (max 200 merkkiä)';
+      if (formData.goals.length > max) {
+        newErrors.goals = tooLongPlural('Hahmojen tavoitteet', max);
       }
-
-      // Word count target validation
-      if (formData.wordCountTarget && isNaN(formData.wordCountTarget)) {
-        newErrors.wordCountTarget = 'Sanamäärätavoitteen on oltava numero';
+      if (formData.conflicts.length > max) {
+        newErrors.conflicts = tooLongPlural('Konfliktit', max);
       }
-
-      // Synopsis validation
-      if (formData.synopsis.length > VALIDATION_RULES.DESCRIPTION_MAX_LENGTH) {
-        newErrors.synopsis = `Yhteenveto on liian pitkä (max ${VALIDATION_RULES.DESCRIPTION_MAX_LENGTH} merkkiä)`;
+      if (formData.outcome.length > max) {
+        newErrors.outcome = tooLong('Lopputulos', max);
       }
-
-      // Goals validation
-      if (formData.goals.length > VALIDATION_RULES.DESCRIPTION_MAX_LENGTH) {
-        newErrors.goals = `Tavoitteet ovat liian pitkät (max ${VALIDATION_RULES.DESCRIPTION_MAX_LENGTH} merkkiä)`;
-      }
-
-      // Conflicts validation
-      if (formData.conflicts.length > VALIDATION_RULES.DESCRIPTION_MAX_LENGTH) {
-        newErrors.conflicts = `Konfliktit ovat liian pitkät (max ${VALIDATION_RULES.DESCRIPTION_MAX_LENGTH} merkkiä)`;
-      }
-
-      // Outcome validation
-      if (formData.outcome.length > VALIDATION_RULES.DESCRIPTION_MAX_LENGTH) {
-        newErrors.outcome = `Lopputulos on liian pitkä (max ${VALIDATION_RULES.DESCRIPTION_MAX_LENGTH} merkkiä)`;
-      }
-
-      // Emotional arc validation
       if (formData.emotionalArc.length > 2000) {
-        newErrors.emotionalArc = 'Tunnekaari on liian pitkä (max 2000 merkkiä)';
+        newErrors.emotionalArc = tooLong('Tunnekaari', 2000);
       }
-
-      // Notes validation
-      if (formData.notes.length > VALIDATION_RULES.DESCRIPTION_MAX_LENGTH) {
-        newErrors.notes = `Muistiinpanot ovat liian pitkät (max ${VALIDATION_RULES.DESCRIPTION_MAX_LENGTH} merkkiä)`;
+      if (formData.notes.length > max) {
+        newErrors.notes = tooLongPlural('Muistiinpanot', max);
       }
 
       setErrors(newErrors);
@@ -144,32 +217,36 @@
 
     const handleSubmit = async (ev) => {
       ev.preventDefault();
-      
+
       if (mode === 'view') {
         onClose();
         return;
       }
 
       if (!validateForm()) {
+        setScrollRequest(n => n + 1);
         return;
       }
 
       setIsSaving(true);
 
       try {
+        // The form's fields only (synopsis among them); the parent merges them into the chapter.
+        // An empty narrator is left out, so the chapter's own (missing) value stays as it was.
+        const { povType, ...fields } = formData;
         const chapterData = {
-          ...chapter,
-          ...formData,
-          id: chapter?.id || `chapter_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          modified: new Date().toISOString(),
-          created: chapter?.created || new Date().toISOString()
+          ...(chapter && chapter.id ? { id: chapter.id } : {}),
+          ...fields,
+          ...(povType ? { povType } : {})
         };
 
         await onSave(chapterData);
         onClose();
       } catch (error) {
         console.error('[ChapterSheet] Save error:', error);
-        setErrors({ submit: 'Tallennus epäonnistui: ' + error.message });
+        const reason = String((error && error.message) || 'tuntematon virhe').replace(/\.\s*$/, '');
+        setErrors({ submit: 'Tallennus epäonnistui: ' + reason + '.' });
+        setScrollRequest(n => n + 1);
       } finally {
         setIsSaving(false);
       }
@@ -207,898 +284,160 @@
     };
 
     const isViewMode = mode === 'view';
-    const title = mode === 'create' ? '📖 Luo Luku' : 
-                  mode === 'edit' ? '✏️ Muokkaa Lukua' : 
-                  '📖 Luvun Tiedot';
+    const title = 'Luvun tiedot';
+
+    // The first message in the order of the form, repeated beside the footer buttons.
+    const firstError = ['title', 'location', 'synopsis', 'goals', 'conflicts', 'outcome', 'emotionalArc', 'notes']
+      .map(key => errors[key]).find(Boolean);
+
+    const input = (id, key, placeholder) => e('input', {
+      id,
+      type: 'text',
+      className: 'faust-input faust-input--author',
+      value: formData[key],
+      onChange: (ev) => handleInputChange(key, ev.target.value),
+      disabled: isViewMode,
+      placeholder,
+      ...invalid(id, errors[key])
+    });
+
+    const textarea = (id, key, placeholder, rows, label) => e('textarea', {
+      id,
+      className: 'faust-textarea faust-textarea--author',
+      value: formData[key],
+      onChange: (ev) => handleInputChange(key, ev.target.value),
+      disabled: isViewMode,
+      placeholder,
+      rows,
+      'aria-label': label,
+      ...invalid(id, errors[key])
+    });
+
+    // An empty value shows the first option without storing it (the narrator of a chapter that has none).
+    const select = (id, key, options) => e('select', {
+      id,
+      className: 'faust-select',
+      value: formData[key] || (options[0] ? options[0].value : ''),
+      onChange: (ev) => handleInputChange(key, ev.target.value),
+      disabled: isViewMode
+    },
+      withCurrent(options, formData[key]).map(option =>
+        e('option', { key: option.value, value: option.value }, option.label)
+      )
+    );
 
     return e('div', {
-      className: 'modal-overlay',
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.85)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10000,
-        padding: '20px'
-      },
-      onClick: (ev) => {
-        if (ev.target.className === 'modal-overlay') {
-          onClose();
-        }
+      className: 'faust-scrim',
+      // A press on the scrim closes the view-only window, never the form (R-69).
+      onMouseDown: (ev) => {
+        if (isViewMode && ev.target === ev.currentTarget) onClose();
       }
     },
-      e('div', {
-        style: {
-          background: 'var(--bg-primary)',
-          border: '2px solid var(--bronze)',
-          borderRadius: '8px',
-          width: '100%',
-          maxWidth: '900px',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          padding: '32px',
-          position: 'relative'
-        }
+      e('form', {
+        ref: dialogRef,
+        className: 'faust-dialog faust-dialog--lg',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-labelledby': ID + '-heading',
+        noValidate: true,
+        onSubmit: handleSubmit
       },
         // Header
-        e('div', {
-          style: {
-            marginBottom: '24px',
-            paddingBottom: '16px',
-            borderBottom: '1px solid var(--border-color)'
-          }
-        },
-          e('h2', {
-            style: {
-              fontFamily: 'EB Garamond',
-              fontSize: '28px',
-              color: 'var(--text)',
-              margin: 0
-            }
-          }, title),
-
-          // Close button
+        e('div', { className: 'faust-dialog__header' },
+          e('div', { className: 'faust-dialog__heading' },
+            e('h2', { className: 'faust-dialog__title', id: ID + '-heading' }, icon('book', 20), title)
+          ),
           e('button', {
-            onClick: onClose,
-            style: {
-              position: 'absolute',
-              top: '24px',
-              right: '24px',
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-2)',
-              cursor: 'pointer',
-              fontSize: '32px',
-              padding: '0',
-              width: '32px',
-              height: '32px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }
-          }, '×')
+            type: 'button',
+            className: 'faust-btn faust-btn--icon',
+            'aria-label': 'Sulje',
+            title: 'Sulje',
+            onClick: onClose
+          }, icon('close', 16))
         ),
 
-        // Form
-        e('form', {
-          onSubmit: handleSubmit,
-          style: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '24px'
-          }
-        },
-          // Basic Information Section
-          e('div', {
-            style: {
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              padding: '20px'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '16px'
-              }
-            }, '📋 Perustiedot'),
-
-            // Title and Number row
-            e('div', {
-              style: {
-                display: 'grid',
-                gridTemplateColumns: '3fr 1fr 2fr',
-                gap: '16px',
-                marginBottom: '16px'
-              }
-            },
-              // Title
-              e('div', null,
-                e('label', {
-                  style: {
-                    display: 'block',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '6px'
-                  }
-                }, 'Otsikko *'),
-                e('input', {
-                  type: 'text',
-                  value: formData.title,
-                  onChange: (ev) => handleInputChange('title', ev.target.value),
-                  disabled: isViewMode,
-                  placeholder: 'Luvun otsikko',
-                  style: {
-                    width: '100%',
-                    padding: '10px',
-                    background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                    border: errors.title ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'EB Garamond',
-                    fontSize: '16px'
-                  }
-                }),
-                errors.title && e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: '#ff4444',
-                    marginTop: '4px'
-                  }
-                }, errors.title)
-              ),
-
-              // Number
-              e('div', null,
-                e('label', {
-                  style: {
-                    display: 'block',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '6px'
-                  }
-                }, 'Numero'),
-                e('input', {
-                  type: 'text',
-                  value: formData.number,
-                  onChange: (ev) => handleInputChange('number', ev.target.value),
-                  disabled: isViewMode,
-                  placeholder: '1',
-                  style: {
-                    width: '100%',
-                    padding: '10px',
-                    background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                    border: errors.number ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '14px'
-                  }
-                }),
-                errors.number && e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: '#ff4444',
-                    marginTop: '4px'
-                  }
-                }, errors.number)
-              ),
-
-              // Status
-              e('div', null,
-                e('label', {
-                  style: {
-                    display: 'block',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '6px'
-                  }
-                }, 'Tila'),
-                e('select', {
-                  value: formData.status,
-                  onChange: (ev) => handleInputChange('status', ev.target.value),
-                  disabled: isViewMode,
-                  style: {
-                    width: '100%',
-                    padding: '10px',
-                    background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '14px'
-                  }
-                },
-                  CHAPTER_STATUS.map(option =>
-                    e('option', { key: option.value, value: option.value }, option.label)
-                  )
-                )
-              )
-            ),
-
-            // POV, POV Type, Location row
-            e('div', {
-              style: {
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1fr',
-                gap: '16px',
-                marginBottom: '16px'
-              }
-            },
-              // POV
-              e('div', null,
-                e('label', {
-                  style: {
-                    display: 'block',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '6px'
-                  }
-                }, 'POV-hahmo'),
-                e('input', {
-                  type: 'text',
-                  value: formData.pov,
-                  onChange: (ev) => handleInputChange('pov', ev.target.value),
-                  disabled: isViewMode,
-                  placeholder: 'Hahmon nimi',
-                  style: {
-                    width: '100%',
-                    padding: '10px',
-                    background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                    border: errors.pov ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'EB Garamond',
-                    fontSize: '14px'
-                  }
-                }),
-                errors.pov && e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: '#ff4444',
-                    marginTop: '4px'
-                  }
-                }, errors.pov)
-              ),
-
-              // POV Type
-              e('div', null,
-                e('label', {
-                  style: {
-                    display: 'block',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '6px'
-                  }
-                }, 'POV-tyyppi'),
-                e('select', {
-                  value: formData.povType,
-                  onChange: (ev) => handleInputChange('povType', ev.target.value),
-                  disabled: isViewMode,
-                  style: {
-                    width: '100%',
-                    padding: '10px',
-                    background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '14px'
-                  }
-                },
-                  POV_TYPES.map(option =>
-                    e('option', { key: option.value, value: option.value }, option.label)
-                  )
-                )
-              ),
-
-              // Location
-              e('div', null,
-                e('label', {
-                  style: {
-                    display: 'block',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '6px'
-                  }
-                }, 'Pääsijainti'),
-                e('input', {
-                  type: 'text',
-                  value: formData.location,
-                  onChange: (ev) => handleInputChange('location', ev.target.value),
-                  disabled: isViewMode,
-                  placeholder: 'Missä luku tapahtuu',
-                  style: {
-                    width: '100%',
-                    padding: '10px',
-                    background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                    border: errors.location ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'EB Garamond',
-                    fontSize: '14px'
-                  }
-                }),
-                errors.location && e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: '#ff4444',
-                    marginTop: '4px'
-                  }
-                }, errors.location)
-              )
-            ),
-
-            // Word Count row
-            e('div', {
-              style: {
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '16px'
-              }
-            },
-              // Word Count Target
-              e('div', null,
-                e('label', {
-                  style: {
-                    display: 'block',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '6px'
-                  }
-                }, 'Sanamäärätavoite'),
-                e('input', {
-                  type: 'text',
-                  value: formData.wordCountTarget,
-                  onChange: (ev) => handleInputChange('wordCountTarget', ev.target.value),
-                  disabled: isViewMode,
-                  placeholder: '3000',
-                  style: {
-                    width: '100%',
-                    padding: '10px',
-                    background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                    border: errors.wordCountTarget ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '14px'
-                  }
-                }),
-                errors.wordCountTarget && e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: '#ff4444',
-                    marginTop: '4px'
-                  }
-                }, errors.wordCountTarget)
-              ),
-
-              // Actual Word Count
-              e('div', null,
-                e('label', {
-                  style: {
-                    display: 'block',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '6px'
-                  }
-                }, 'Todellinen sanamäärä'),
-                e('input', {
-                  type: 'text',
-                  value: formData.actualWordCount,
-                  disabled: true,
-                  placeholder: '0',
-                  style: {
-                    width: '100%',
-                    padding: '10px',
-                    background: 'var(--bg-1)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text-3)',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '14px'
-                  }
-                }),
-                e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '10px',
-                    color: 'var(--text-3)',
-                    marginTop: '4px'
-                  }
-                }, 'Lasketaan automaattisesti')
-              )
-            )
+        // Body
+        e('div', { className: 'faust-dialog__body' },
+          errors.submit && e('div', { className: 'faust-callout faust-callout--error', role: 'alert' },
+            e('span', { className: 'faust-callout__icon' }, icon('error', 16)),
+            e('div', { className: 'faust-callout__body' }, errors.submit)
           ),
 
-          // Synopsis Section
-          e('div', {
-            style: {
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              padding: '20px'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '16px'
-              }
-            }, '📝 Yhteenveto'),
-
-            e('textarea', {
-              value: formData.synopsis,
-              onChange: (ev) => handleInputChange('synopsis', ev.target.value),
-              disabled: isViewMode,
-              placeholder: 'Lyhyt yhteenveto luvun tapahtumista...',
-              rows: 4,
-              style: {
-                width: '100%',
-                padding: '10px',
-                background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                border: errors.synopsis ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'EB Garamond',
-                fontSize: '14px',
-                resize: 'vertical'
-              }
-            }),
-            errors.synopsis && e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: '#ff4444',
-                marginTop: '4px'
-              }
-            }, errors.synopsis)
+          section('Perustiedot',
+            fieldRow('minmax(0, 2fr) minmax(0, 1fr)', [
+              field(ID + '-title', 'Otsikko *', input(ID + '-title', 'title', 'Luvun otsikko'), errors.title, true),
+              field(ID + '-status', 'Tila', select(ID + '-status', 'status', CHAPTER_STATUS))
+            ]),
+            fieldRow('repeat(2, minmax(0, 1fr))', [
+              field(ID + '-narrator', 'Kertoja', select(ID + '-narrator', 'povType', POV_TYPES)),
+              field(ID + '-place', 'Tapahtumapaikka', input(ID + '-place', 'location', 'Missä luku tapahtuu?'), errors.location)
+            ])
           ),
 
-          // Key Scenes Section
-          e('div', {
-            style: {
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              padding: '20px'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '16px'
-              }
-            }, '🎬 Keskeiset Kohtaukset'),
-
-            !isViewMode && e('div', { style: { display: 'flex', gap: '8px', marginBottom: '12px' } },
-              e('input', {
-                type: 'text',
-                value: sceneInput,
-                onChange: (ev) => setSceneInput(ev.target.value),
-                onKeyPress: (ev) => {
-                  if (ev.key === 'Enter') {
-                    ev.preventDefault();
-                    addScene();
-                  }
-                },
-                placeholder: 'Lisää kohtaus ja paina Enter',
-                style: {
-                  flex: 1,
-                  padding: '8px',
-                  background: 'var(--bg-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '13px'
-                }
-              }),
-              e('button', {
-                type: 'button',
-                onClick: addScene,
-                style: {
-                  padding: '8px 16px',
-                  background: 'var(--bronze)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#000',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '13px',
-                  fontWeight: 600
-                }
-              }, 'Lisää')
-            ),
-
-            e('div', {
-              style: {
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px'
-              }
-            },
-              formData.keyScenes.length > 0 ?
-                formData.keyScenes.map((scene, index) =>
-                  e('div', {
-                    key: index,
-                    style: {
-                      padding: '8px 12px',
-                      background: 'var(--bg-primary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '13px',
-                      color: 'var(--text)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }
-                  },
-                    e('span', null, scene),
-                    !isViewMode && e('button', {
-                      type: 'button',
-                      onClick: () => removeScene(scene),
-                      style: {
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-3)',
-                        cursor: 'pointer',
-                        fontSize: '16px',
-                        padding: 0
-                      }
-                    }, '×')
-                  )
-                ) :
-                e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px',
-                    color: 'var(--text-3)',
-                    fontStyle: 'italic'
-                  }
-                }, 'Ei keskeisiä kohtauksia')
-            )
+          section('Tiivistelmä',
+            field(ID + '-synopsis', null,
+              textarea(ID + '-synopsis', 'synopsis', 'Lyhyt tiivistelmä luvun tapahtumista…', 4, 'Tiivistelmä'),
+              errors.synopsis)
           ),
 
-          // Plot Details Section
-          e('div', {
-            style: {
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              padding: '20px'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '16px'
-              }
-            }, '🎭 Juonitiedot'),
-
-            // Goals
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', {
-                style: {
-                  display: 'block',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-2)',
-                  marginBottom: '6px'
-                }
-              }, 'Tavoitteet'),
-              e('textarea', {
-                value: formData.goals,
-                onChange: (ev) => handleInputChange('goals', ev.target.value),
-                disabled: isViewMode,
-                placeholder: 'Mitä hahmot yrittävät saavuttaa tässä luvussa?',
-                rows: 3,
-                style: {
-                  width: '100%',
-                  padding: '10px',
-                  background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                  border: errors.goals ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'EB Garamond',
-                  fontSize: '14px',
-                  resize: 'vertical'
-                }
-              }),
-              errors.goals && e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: '#ff4444',
-                  marginTop: '4px'
-                }
-              }, errors.goals)
-            ),
-
-            // Conflicts
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', {
-                style: {
-                  display: 'block',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-2)',
-                  marginBottom: '6px'
-                }
-              }, 'Konfliktit'),
-              e('textarea', {
-                value: formData.conflicts,
-                onChange: (ev) => handleInputChange('conflicts', ev.target.value),
-                disabled: isViewMode,
-                placeholder: 'Mitä esteitä tai ongelmia ilmenee?',
-                rows: 3,
-                style: {
-                  width: '100%',
-                  padding: '10px',
-                  background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                  border: errors.conflicts ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'EB Garamond',
-                  fontSize: '14px',
-                  resize: 'vertical'
-                }
-              }),
-              errors.conflicts && e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: '#ff4444',
-                  marginTop: '4px'
-                }
-              }, errors.conflicts)
-            ),
-
-            // Outcome
-            e('div', null,
-              e('label', {
-                style: {
-                  display: 'block',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-2)',
-                  marginBottom: '6px'
-                }
-              }, 'Lopputulos'),
-              e('textarea', {
-                value: formData.outcome,
-                onChange: (ev) => handleInputChange('outcome', ev.target.value),
-                disabled: isViewMode,
-                placeholder: 'Miten luku päättyy?',
-                rows: 3,
-                style: {
-                  width: '100%',
-                  padding: '10px',
-                  background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                  border: errors.outcome ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'EB Garamond',
-                  fontSize: '14px',
-                  resize: 'vertical'
-                }
-              }),
-              errors.outcome && e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: '#ff4444',
-                  marginTop: '4px'
-                }
-              }, errors.outcome)
-            )
+          section('Keskeiset kohtaukset',
+            ...tagEditor({
+              id: ID + '-scene',
+              label: 'Keskeiset kohtaukset',
+              input: sceneInput,
+              setInput: setSceneInput,
+              onAdd: addScene,
+              items: formData.keyScenes,
+              onRemove: removeScene,
+              placeholder: 'Kirjoita kohtaus ja paina Enter',
+              emptyText: 'Ei keskeisiä kohtauksia',
+              isViewMode
+            })
           ),
 
-          // Emotional Arc Section
-          e('div', {
-            style: {
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              padding: '20px'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '16px'
-              }
-            }, '💫 Tunnekaari'),
-
-            e('textarea', {
-              value: formData.emotionalArc,
-              onChange: (ev) => handleInputChange('emotionalArc', ev.target.value),
-              disabled: isViewMode,
-              placeholder: 'Miten hahmojen tunnelmat muuttuvat luvun aikana?',
-              rows: 3,
-              style: {
-                width: '100%',
-                padding: '10px',
-                background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                border: errors.emotionalArc ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'EB Garamond',
-                fontSize: '14px',
-                resize: 'vertical'
-              }
-            }),
-            errors.emotionalArc && e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: '#ff4444',
-                marginTop: '4px'
-              }
-            }, errors.emotionalArc)
+          section('Juoni',
+            field(ID + '-goals', 'Hahmojen tavoitteet',
+              textarea(ID + '-goals', 'goals', 'Mitä hahmot yrittävät saavuttaa tässä luvussa?', 3),
+              errors.goals),
+            field(ID + '-conflicts', 'Konfliktit',
+              textarea(ID + '-conflicts', 'conflicts', 'Mitä esteitä tai ongelmia ilmenee?', 3),
+              errors.conflicts),
+            field(ID + '-outcome', 'Lopputulos',
+              textarea(ID + '-outcome', 'outcome', 'Miten luku päättyy?', 3),
+              errors.outcome)
           ),
 
-          // Notes Section
-          e('div', {
-            style: {
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              padding: '20px'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '16px'
-              }
-            }, '📝 Muistiinpanot'),
-
-            e('textarea', {
-              value: formData.notes,
-              onChange: (ev) => handleInputChange('notes', ev.target.value),
-              disabled: isViewMode,
-              placeholder: 'Vapaat muistiinpanot...',
-              rows: 3,
-              style: {
-                width: '100%',
-                padding: '10px',
-                background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                border: errors.notes ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'EB Garamond',
-                fontSize: '14px',
-                resize: 'vertical'
-              }
-            }),
-            errors.notes && e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: '#ff4444',
-                marginTop: '4px'
-              }
-            }, errors.notes)
+          section('Tunnekaari',
+            field(ID + '-arc', null,
+              textarea(ID + '-arc', 'emotionalArc', 'Miten hahmojen tunnelmat muuttuvat luvun aikana?', 3, 'Tunnekaari'),
+              errors.emotionalArc)
           ),
 
-          // Submit error
-          errors.submit && e('div', {
-            style: {
-              padding: '12px',
-              background: 'rgba(255, 68, 68, 0.1)',
-              border: '1px solid rgba(255, 68, 68, 0.3)',
-              borderRadius: '4px',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              color: '#ff4444'
-            }
-          }, errors.submit),
+          section('Muistiinpanot',
+            field(ID + '-notes', null,
+              textarea(ID + '-notes', 'notes', 'Vapaat muistiinpanot…', 3, 'Muistiinpanot'),
+              errors.notes)
+          )
+        ),
 
-          // Form actions
-          !isViewMode && e('div', {
-            style: {
-              display: 'flex',
-              gap: '12px',
-              justifyContent: 'flex-end',
-              paddingTop: '16px',
-              borderTop: '1px solid var(--border-color)'
-            }
-          },
-            e('button', {
-              type: 'button',
-              onClick: onClose,
-              style: {
-                padding: '12px 24px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px'
-              }
-            }, 'Peruuta'),
-
-            e('button', {
-              type: 'submit',
-              disabled: isSaving,
-              style: {
-                padding: '12px 24px',
-                background: isSaving ? 'var(--bg-2)' : 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: isSaving ? 'var(--text-3)' : '#000',
-                cursor: isSaving ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                fontWeight: 600
-              }
-            }, isSaving ? 'Tallennetaan...' : mode === 'create' ? 'Luo' : 'Tallenna')
+        // Footer: Peruuta, then Tallenna. A view-only window has no footer.
+        !isViewMode && e('div', { className: 'faust-dialog__footer' },
+          e('div', { className: 'faust-dialog__footer-start' },
+            firstError && e('span', { className: 'faust-field__error' }, firstError)
           ),
-
-          // View mode close button
-          isViewMode && e('div', {
-            style: {
-              display: 'flex',
-              justifyContent: 'flex-end',
-              paddingTop: '16px',
-              borderTop: '1px solid var(--border-color)'
-            }
+          e('button', {
+            type: 'button',
+            className: 'faust-btn faust-btn--lg',
+            onClick: onClose
+          }, 'Peruuta'),
+          e('button', {
+            type: 'submit',
+            className: 'faust-btn faust-btn--lg faust-btn--primary',
+            disabled: isSaving,
+            'aria-busy': isSaving ? 'true' : undefined
           },
-            e('button', {
-              type: 'button',
-              onClick: onClose,
-              style: {
-                padding: '12px 24px',
-                background: 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: '#000',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                fontWeight: 600
-              }
-            }, 'Sulje')
+            isSaving && e('span', { className: 'faust-spinner faust-spinner--sm', 'aria-hidden': 'true' }),
+            isSaving ? 'Tallennetaan…' : 'Tallenna'
           )
         )
       )

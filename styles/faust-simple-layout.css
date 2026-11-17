@@ -164,27 +164,7 @@
   display: none !important;
 }
 
-.faust-focus-exit {
-  position: fixed;
-  top: 12px;
-  right: 16px;
-  z-index: 500;
-  padding: 6px 12px;
-  background: transparent;
-  border: 1px solid var(--border-color, rgba(128,128,128,0.3));
-  border-radius: 4px;
-  color: var(--text-3, rgba(128,128,128,0.8));
-  font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
-  cursor: pointer;
-  opacity: 0.25;
-  transition: opacity 0.2s ease;
-  -webkit-app-region: no-drag;
-}
-
-.faust-focus-exit:hover {
-  opacity: 1;
-}
+/* The focus-mode exit button: faust-components.css, section 15 (.faust-focus-exit.faust-btn) */
 
 /* Footer/status bar */
 .faust-footer {

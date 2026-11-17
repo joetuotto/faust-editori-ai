@@ -1,13 +1,49 @@
 /**
  * AnnotationMargin Component
- * Displays annotations (AI suggestions, user notes, highlights) in the editor margin
- * Uses window.AnnotationUtils from annotationTypes.js
+ * Displays annotations (merkinnät: AI findings, the author's own notes, highlights) in the
+ * strip beside the text: one 20px marker each, an icon in the colour of its priority.
+ * Uses window.AnnotationUtils from annotationTypes.js.
+ *
+ * Loaded as a plain script before the bundle: window.FaustIcons (icons.js) is read only inside
+ * the render, never at the top of this file.
  */
 
 (function(window) {
   'use strict';
 
   const { createElement: e } = React;
+
+  // The icon module is assigned by the bundle, which loads after this file
+  const icons = () => window.FaustIcons || {};
+  const icon = (name, size) => {
+    const draw = icons()[name];
+    return draw ? draw({ size }) : null;
+  };
+
+  // Display names of the stored values (menu spec A.4); an unknown value is shown as it is stored.
+  // nameOf takes a table, so it is not the app's shared labelOf(group, value).
+  const TYPE_LABEL = {
+    ai_consistency: 'Ristiriita',
+    ai_quality: 'Laatu',
+    ai_suggestion: 'Parannusehdotus',
+    ai_plot_thread: 'Juonilanka',
+    user_note: 'Reunahuomautus',
+    user_comment: 'Kommentti',
+    highlight: 'Korostus'
+  };
+  const PRIORITY_LABEL = {
+    critical: 'Kriittinen',
+    high: 'Suuri',
+    medium: 'Tavallinen',
+    low: 'Pieni',
+    info: 'Tiedoksi'
+  };
+  const nameOf = (table, value) => table[value] || String(value).replace(/_/g, ' ');
+
+  // The one noun this file counts: '1 merkintä', '3 merkintää'
+  const countMerkinta = (n) => `${Number(n).toLocaleString('fi-FI')} ${n === 1 ? 'merkintä' : 'merkintää'}`;
+
+  const clip = (text, length) => (text.length > length ? text.substring(0, length) + '…' : text);
 
   /**
    * AnnotationMargin Component
@@ -18,6 +54,8 @@
    * @param {Function} props.onCreateAnnotation - Callback to create new annotation
    * @param {Function} props.onUpdateAnnotation - Callback to update annotation
    * @param {Function} props.onDeleteAnnotation - Callback to delete annotation
+   * @param {Function} props.askConfirm - The app's question dialog (askConfirm in app.js); without it
+   *   the delete control is not offered
    * @param {Object} props.editorDimensions - { scrollTop, clientHeight, scrollHeight }
    */
   const AnnotationMargin = (props) => {
@@ -28,10 +66,10 @@
       onCreateAnnotation,
       onUpdateAnnotation,
       onDeleteAnnotation,
+      askConfirm,
       editorDimensions = { scrollTop: 0, clientHeight: 600, scrollHeight: 1000 }
     } = props;
 
-    const [hoveredAnnotationId, setHoveredAnnotationId] = React.useState(null);
     const [expandedAnnotationId, setExpandedAnnotationId] = React.useState(null);
 
     // Access AnnotationUtils from global scope
@@ -78,13 +116,13 @@
 
       // Calculate position ratio based on annotation position in content
       const positionRatio = annotation.position / contentLength;
-      
+
       // Convert to scroll position
       const annotationScrollPos = positionRatio * scrollHeight;
-      
+
       // Calculate relative position in viewport
       const relativePos = annotationScrollPos - scrollTop;
-      
+
       // Clamp to visible area
       return Math.max(0, Math.min(clientHeight - 40, relativePos));
     };
@@ -100,10 +138,10 @@
 
       sorted.forEach(annotation => {
         const pos = calculateAnnotationTop(annotation);
-        
+
         // Find group within 30px
         const group = groups.find(g => Math.abs(g.position - pos) < 30);
-        
+
         if (group) {
           group.annotations.push(annotation);
           // Update group position to average
@@ -125,7 +163,7 @@
     // Handle annotation click
     const handleAnnotationClick = (annotation, event) => {
       event.stopPropagation();
-      
+
       if (expandedAnnotationId === annotation.id) {
         setExpandedAnnotationId(null);
       } else {
@@ -137,194 +175,120 @@
       }
     };
 
-    // Render annotation marker
-    const renderAnnotationMarker = (annotation, isGrouped = false) => {
-      const isExpanded = expandedAnnotationId === annotation.id;
-      const isHovered = hoveredAnnotationId === annotation.id;
-      const color = AnnotationUtils.getAnnotationColor(annotation);
-      const icon = AnnotationUtils.getAnnotationIcon(annotation);
+    const handleDelete = async (annotation, event) => {
+      event.stopPropagation();
+      if (!askConfirm || !onDeleteAnnotation) return;
+      const confirmed = await askConfirm(
+        'Poistetaanko merkintä?',
+        'Merkintä poistuu marginaalista. Luvun teksti ei muutu.',
+        'Poista merkintä',
+        'Peruuta',
+        { danger: true }
+      );
+      if (confirmed) onDeleteAnnotation(annotation.id);
+    };
+
+    // The opened merkintä: a card to the left of its marker
+    const renderAnnotationCard = (annotation, typeLabel) => {
+      const priority = annotation.priority && annotation.priority !== 'info'
+        ? nameOf(PRIORITY_LABEL, annotation.priority).toLowerCase()
+        : null;
+      const canResolve = !annotation.resolved && annotation.source === 'ai' && !!onUpdateAnnotation;
+      const canDelete = !!askConfirm && !!onDeleteAnnotation;
 
       return e('div', {
-        key: annotation.id,
-        onClick: (ev) => handleAnnotationClick(annotation, ev),
-        onMouseEnter: () => setHoveredAnnotationId(annotation.id),
-        onMouseLeave: () => setHoveredAnnotationId(null),
-        style: {
-          display: 'flex',
-          alignItems: 'center',
-          gap: isExpanded ? '8px' : '4px',
-          padding: isExpanded ? '8px' : '4px',
-          background: isExpanded ? color + '22' : (isHovered ? color + '11' : 'transparent'),
-          border: `1px solid ${color}`,
-          borderRadius: '4px',
-          cursor: 'pointer',
-          transition: 'all 0.2s',
-          marginBottom: isGrouped ? '4px' : '0',
-          minWidth: isExpanded ? '200px' : '32px'
-        }
+        className: 'faust-card faust-card--compact',
+        style: { width: '240px' },
+        onClick: (ev) => ev.stopPropagation()
       },
-        // Icon
-        e('div', {
-          style: {
-            fontSize: '14px',
-            lineHeight: '1',
-            flexShrink: 0
-          }
-        }, icon),
-
-        // Expanded content
-        isExpanded && e('div', {
-          style: {
-            flex: 1,
-            overflow: 'hidden'
-          }
-        },
-          // Type badge
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '9px',
-              color: 'var(--text-3)',
-              marginBottom: '4px',
-              textTransform: 'uppercase'
-            }
-          }, annotation.type.replace(/_/g, ' ')),
-
-          // Content preview
-          annotation.content && e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text)',
-              marginBottom: '4px',
-              maxHeight: '60px',
-              overflow: 'hidden',
-              lineHeight: '1.4'
-            }
-          }, annotation.content.substring(0, 100) + (annotation.content.length > 100 ? '...' : '')),
-
-          // AI Suggestion preview
-          annotation.aiSuggestion && e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '10px',
-              color: 'var(--sigil)',
-              fontStyle: 'italic',
-              marginBottom: '4px'
-            }
-          }, '💡 ' + annotation.aiSuggestion.substring(0, 80) + '...'),
-
-          // Priority indicator
-          annotation.priority && annotation.priority !== 'INFO' && e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '9px',
-              color: color,
-              fontWeight: 600
-            }
-          }, annotation.priority),
-
-          // Action buttons
-          e('div', {
-            style: {
-              display: 'flex',
-              gap: '4px',
-              marginTop: '8px'
-            }
-          },
-            // Resolve button (for AI annotations)
-            !annotation.resolved && annotation.source === 'ai' && e('button', {
+        e('div', { className: 'faust-card__head' },
+          e('span', { className: 'faust-card__title' }, typeLabel),
+          (canResolve || canDelete) && e('span', { style: { display: 'flex', gap: 'var(--sp-half)' } },
+            // Resolve (for AI findings)
+            canResolve && e('button', {
+              type: 'button',
+              className: 'faust-btn faust-btn--icon faust-btn--sm',
+              title: 'Merkitse käsitellyksi',
+              'aria-label': 'Merkitse käsitellyksi',
               onClick: (ev) => {
                 ev.stopPropagation();
-                if (onUpdateAnnotation) {
-                  onUpdateAnnotation(annotation.id, { resolved: true });
-                }
-              },
-              style: {
-                padding: '2px 6px',
-                background: 'var(--sigil)',
-                border: 'none',
-                borderRadius: '2px',
-                color: '#000',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '9px',
-                fontWeight: 600
+                onUpdateAnnotation(annotation.id, { resolved: true });
               }
-            }, '✓'),
-
-            // Delete button
-            e('button', {
-              onClick: (ev) => {
-                ev.stopPropagation();
-                if (confirm('Delete this annotation?')) {
-                  if (onDeleteAnnotation) {
-                    onDeleteAnnotation(annotation.id);
-                  }
-                }
-              },
-              style: {
-                padding: '2px 6px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '2px',
-                color: 'var(--text-3)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '9px'
-              }
-            }, '×')
+            }, icon('check', 14)),
+            canDelete && e('button', {
+              type: 'button',
+              className: 'faust-btn faust-btn--icon faust-btn--sm faust-btn--danger',
+              title: 'Poista merkintä',
+              'aria-label': 'Poista merkintä',
+              onClick: (ev) => handleDelete(annotation, ev)
+            }, icon('trash', 14))
           )
-        )
+        ),
+
+        priority && e('div', { className: 'faust-meta' }, 'Tärkeys: ' + priority),
+
+        annotation.content && e('div', { className: 'faust-card__body' }, clip(annotation.content, 100)),
+
+        annotation.aiSuggestion && e('div', { className: 'faust-card__body' },
+          'Korjausehdotus: ' + clip(annotation.aiSuggestion, 80))
       );
     };
 
-    // Render annotation group
+    // One merkintä: its marker and, while it is open, its card
+    const renderAnnotationMarker = (annotation) => {
+      const isExpanded = expandedAnnotationId === annotation.id;
+      const typeLabel = nameOf(TYPE_LABEL, annotation.type);
+
+      return e('div', {
+        key: annotation.id,
+        style: { display: 'flex', flexDirection: 'row-reverse', alignItems: 'flex-start', gap: 'var(--sp-2)' }
+      },
+        e('button', {
+          type: 'button',
+          className: 'faust-annot-marker' + (isExpanded ? ' is-active' : ''),
+          'data-priority': annotation.priority || 'info',
+          title: `${typeLabel}: avaa merkintä`,
+          'aria-label': `${typeLabel}: avaa merkintä`,
+          'aria-expanded': isExpanded,
+          onClick: (ev) => handleAnnotationClick(annotation, ev)
+        }, icon(AnnotationUtils.getAnnotationIcon(annotation), 14)),
+        isExpanded && renderAnnotationCard(annotation, typeLabel)
+      );
+    };
+
+    // Render annotation group: the markers one under another; several carry their count
     const renderAnnotationGroup = (group) => {
       const { position, annotations: groupAnnotations } = group;
       const isMultiple = groupAnnotations.length > 1;
+      const holdsExpanded = groupAnnotations.some(annotation => annotation.id === expandedAnnotationId);
 
       return e('div', {
         key: `group-${position}`,
+        role: isMultiple ? 'group' : undefined,
+        'aria-label': isMultiple ? countMerkinta(groupAnnotations.length) : undefined,
         style: {
           position: 'absolute',
           top: `${position}px`,
-          right: '8px',
-          zIndex: expandedAnnotationId ? 200 : 100,
-          maxWidth: '300px'
+          right: 0,
+          zIndex: holdsExpanded ? 'var(--z-float)' : 'var(--z-raised)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          gap: 'var(--sp-1)',
+          pointerEvents: 'auto' // Markers and their cards take the pointer; the strip itself does not
         }
       },
-        isMultiple ? e('div', {
-          style: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '4px',
-            padding: '4px',
-            background: 'var(--bg-1)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '6px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-          }
-        },
-          // Group header
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '9px',
-              color: 'var(--text-3)',
-              padding: '4px',
-              borderBottom: '1px solid var(--border-color)'
-            }
-          }, `${groupAnnotations.length} annotations`),
-
-          // Individual annotations
-          ...groupAnnotations.map(annotation => renderAnnotationMarker(annotation, true))
-        ) : renderAnnotationMarker(groupAnnotations[0], false)
+        isMultiple && e('span', {
+          className: 'faust-chip faust-chip--count',
+          title: countMerkinta(groupAnnotations.length)
+        }, groupAnnotations.length.toLocaleString('fi-FI')),
+        ...groupAnnotations.map(annotation => renderAnnotationMarker(annotation))
       );
     };
 
     // Render the margin
     return e('div', {
+      className: 'faust-annot-margin',
       style: {
         position: 'absolute',
         top: 0,
@@ -332,16 +296,15 @@
         width: '40px',
         height: '100%',
         pointerEvents: 'none', // Allow clicks to pass through to editor
-        zIndex: 50
+        zIndex: 'var(--z-raised)'
       }
     },
-      // Annotation markers (with pointer events enabled)
+      // Annotation markers (each group takes pointer events itself)
       e('div', {
         style: {
           position: 'relative',
           width: '100%',
-          height: '100%',
-          pointerEvents: 'auto' // Re-enable pointer events for markers
+          height: '100%'
         }
       },
         annotationGroups.map(group => renderAnnotationGroup(group))

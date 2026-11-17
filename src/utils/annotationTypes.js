@@ -26,17 +26,15 @@
     INFO: 'info'
   };
 
-  // Annotation colors
+  // Annotation colours by priority, on the review scale: critical and high are errors, medium a
+  // warning, low and info a note. Design tokens, resolved when the marker is drawn, so they follow
+  // the theme; the margin marker takes the same colours from its data-priority attribute.
   const ANNOTATION_COLORS = {
-    critical: '#ff4444',      // Red
-    high: '#ff9800',          // Orange
-    medium: '#ffc107',        // Yellow
-    low: '#4caf50',           // Green
-    info: '#2196f3',          // Blue
-    user_yellow: '#ffeb3b',   // Post-it yellow
-    user_green: '#8bc34a',    // Post-it green
-    user_blue: '#03a9f4',     // Post-it blue
-    user_pink: '#e91e63'      // Post-it pink
+    critical: 'var(--error)',
+    high: 'var(--error)',
+    medium: 'var(--warning)',
+    low: 'var(--info)',
+    info: 'var(--info)'
   };
 
   /**
@@ -62,7 +60,8 @@
       length,
       content,
       priority,
-      color: color || ANNOTATION_COLORS[priority],
+      // The priority decides the colour when the marker is drawn; a colour is stored only if one was given
+      color: color || null,
       source,
       aiSuggestion,
       metadata,
@@ -73,27 +72,27 @@
   }
 
   /**
-   * Get annotation color based on priority
+   * Get annotation colour (a design token) based on priority. A colour stored in older projects
+   * (a hex value from the time before the tokens) is not used: the priority decides.
    */
   function getAnnotationColor(annotation) {
-    if (annotation.color) return annotation.color;
     return ANNOTATION_COLORS[annotation.priority] || ANNOTATION_COLORS.info;
   }
 
   /**
-   * Get annotation icon based on type
+   * Get the name of the annotation's icon (src/components/icons.js, window.FaustIcons) by type
    */
   function getAnnotationIcon(annotation) {
     const icons = {
-      [ANNOTATION_TYPES.AI_CONSISTENCY]: '⚠️',
-      [ANNOTATION_TYPES.AI_QUALITY]: '💡',
-      [ANNOTATION_TYPES.AI_SUGGESTION]: '✨',
-      [ANNOTATION_TYPES.AI_PLOT_THREAD]: '🧵',
-      [ANNOTATION_TYPES.USER_NOTE]: '📝',
-      [ANNOTATION_TYPES.USER_COMMENT]: '💬',
-      [ANNOTATION_TYPES.HIGHLIGHT]: '🖍️'
+      [ANNOTATION_TYPES.AI_CONSISTENCY]: 'warning',
+      [ANNOTATION_TYPES.AI_QUALITY]: 'idea',
+      [ANNOTATION_TYPES.AI_SUGGESTION]: 'star8',
+      [ANNOTATION_TYPES.AI_PLOT_THREAD]: 'lemniscate',
+      [ANNOTATION_TYPES.USER_NOTE]: 'note',
+      [ANNOTATION_TYPES.USER_COMMENT]: 'comment',
+      [ANNOTATION_TYPES.HIGHLIGHT]: 'highlighter'
     };
-    return icons[annotation.type] || '📌';
+    return icons[annotation.type] || 'pin';
   }
 
   /**

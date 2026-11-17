@@ -5,6 +5,17 @@
 (function (window) {
   'use strict';
 
+  // This file loads as a plain script in <head>, before the bundle that assigns
+  // window.FaustIcons: the icon set is read when an icon is drawn, never here at load.
+  function icon(name, size) {
+    const set = window.FaustIcons;
+    return set && set[name] ? set[name]({ size }) : null;
+  }
+
+  // Key hints are built for the platform here: this file cannot import shortcut().
+  const SHIFT = /Mac/i.test(navigator.platform) ? '⇧' : 'Shift+';
+  const HINT = `Enter lähettää · ${SHIFT}Enter vaihtaa riviä · Esc sulkee`;
+
   // Helper: Build context from project and chapter
   function buildContext(project, activeChapter) {
     if (!project) return '';
@@ -162,10 +173,13 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
         }
       } catch (err) {
         console.error('Claude chat error:', err);
-        setError(err.message || 'Virhe viestin lähetyksessä');
+        // One sentence: the reason loses its own full stop before the template adds one
+        const reason = String((err && err.message) || 'tuntematon virhe').trim().replace(/\.+$/, '');
+        const failure = `Viestin lähetys epäonnistui: ${reason}.`;
+        setError(failure);
         setMessages((prev) => [
           ...prev,
-          { role: 'error', content: err.message || 'Tuntematon virhe' },
+          { role: 'error', content: failure },
         ]);
       } finally {
         setIsStreaming(false);
@@ -180,6 +194,8 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
         sendMessage();
       }
       if (e.key === 'Escape') {
+        // Esc closes this box only, not the layers under it
+        e.stopPropagation();
         onClose && onClose();
       }
     };
@@ -210,41 +226,45 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
         React.createElement(
           'div',
           { className: 'claude-chat-title' },
-          React.createElement('span', { className: 'claude-icon' }, '\u2728'),
-          'Claude Assistentti'
+          React.createElement('span', { className: 'claude-icon' }, icon('star8', 14)),
+          'Liminal Engine – keskustelu'
         ),
         React.createElement(
           'div',
           { className: 'claude-chat-controls' },
           React.createElement(
             'label',
-            { className: 'thinking-toggle' },
+            {
+              className: 'thinking-toggle',
+              title: 'Tekoäly pohtii vastausta tavallista pidempään. Hitaampi ja kalliimpi; sopii juonen ja rakenteen arviointiin.',
+            },
             React.createElement('input', {
               type: 'checkbox',
               checked: useExtendedThinking,
               onChange: (e) => setUseExtendedThinking(e.target.checked),
               disabled: isStreaming,
             }),
-            React.createElement('span', null, 'Syvä analyysi')
+            React.createElement('span', null, 'Perusteellinen vastaus')
           ),
           React.createElement(
             'button',
             {
-              className: 'clear-btn',
+              className: 'clear-btn faust-btn faust-btn--quiet faust-btn--sm',
               onClick: clearChat,
               disabled: isStreaming,
               title: 'Tyhjennä keskustelu',
             },
-            '\u{1F5D1}'
+            'Tyhjennä'
           ),
           React.createElement(
             'button',
             {
-              className: 'close-btn',
+              className: 'close-btn faust-btn faust-btn--icon faust-btn--sm',
               onClick: onClose,
-              title: 'Sulje',
+              'aria-label': 'Sulje',
+              title: 'Sulje (Esc)',
             },
-            '\u2715'
+            icon('close', 14)
           )
         )
       ),
@@ -253,6 +273,18 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
       React.createElement(
         'div',
         { className: 'claude-chat-messages' },
+        messages.length === 0 &&
+          !isStreaming &&
+          React.createElement(
+            'div',
+            { className: 'faust-empty' },
+            React.createElement('span', { className: 'faust-empty__icon' }, icon('star8', 40)),
+            React.createElement(
+              'div',
+              { className: 'faust-empty__title' },
+              'Kysy juonesta tai hahmoista, tai pyydä luonnos kohtauksesta.'
+            )
+          ),
         messages.map((msg, i) =>
           React.createElement(
             'div',
@@ -263,24 +295,25 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
             msg.role === 'user' &&
               React.createElement('div', { className: 'message-role' }, 'Sinä'),
             msg.role === 'assistant' &&
-              React.createElement('div', { className: 'message-role' }, 'Claude'),
+              React.createElement('div', { className: 'message-role' }, 'Tekoäly'),
             msg.role === 'error' &&
               React.createElement('div', { className: 'message-role error' }, 'Virhe'),
             React.createElement(
               'div',
               { className: 'message-content' },
-              msg.content,
-              msg.role === 'assistant' &&
-                React.createElement(
-                  'button',
-                  {
-                    className: 'insert-btn',
-                    onClick: () => handleInsertText(msg.content),
-                    title: 'Lisää editoriin',
-                  },
-                  '\u{1F4CB} Lisää'
-                )
-            )
+              msg.content
+            ),
+            msg.role === 'assistant' &&
+              React.createElement(
+                'button',
+                {
+                  className: 'insert-btn faust-btn faust-btn--sm',
+                  onClick: () => handleInsertText(msg.content),
+                  title: 'Lisää vastaus avoimen luvun loppuun',
+                },
+                icon('insert', 12),
+                'Lisää luvun loppuun'
+              )
           )
         ),
 
@@ -290,7 +323,7 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
           React.createElement(
             'div',
             { className: 'chat-message thinking' },
-            React.createElement('div', { className: 'message-role' }, '\u{1F9E0} Ajattelen...'),
+            React.createElement('div', { className: 'message-role' }, 'Tekoäly pohtii…'),
             React.createElement(
               'div',
               { className: 'thinking-content' },
@@ -330,21 +363,29 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
           value: input,
           onChange: (e) => setInput(e.target.value),
           onKeyDown: handleKeyDown,
-          placeholder: useExtendedThinking
-            ? 'Kysy syvällistä analyysiä...'
-            : 'Kirjoita viesti...',
+          placeholder: 'Kirjoita viesti…',
           disabled: isStreaming,
           rows: 3,
         }),
         React.createElement(
           'button',
           {
-            className: 'send-btn',
+            className: 'send-btn faust-btn faust-btn--primary',
             onClick: sendMessage,
             disabled: isStreaming || !input.trim(),
+            'aria-busy': isStreaming,
+            title: 'Lähetä (Enter)',
           },
-          isStreaming ? '\u23F3' : '\u27A4'
+          isStreaming && React.createElement('span', { className: 'faust-spinner faust-spinner--sm' }),
+          isStreaming ? 'Lähetetään…' : 'Lähetä'
         )
+      ),
+
+      // Key hint under the field
+      React.createElement(
+        'div',
+        { className: 'faust-meta', style: { padding: '0 var(--sp-3) var(--sp-2)' } },
+        HINT
       )
     );
   }

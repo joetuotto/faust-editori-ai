@@ -160,6 +160,11 @@ input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--text-di
 :is(.faust-btn, .faust-sigil-btn) .faust-spinner { color: inherit; }
 /* the sigil bar: the four sigils as one instrument, at the right end of the format bar */
 .faust-sigilbar { display: inline-flex; align-items: center; gap: var(--sp-half); padding: 1px; flex: none; border: var(--bw) solid var(--rule); border-radius: calc(var(--radius-sm) + 2px); }
+/* a tile with its visible one-line caption (a sigil never stands alone): sigil and caption side by side.
+   The caption leaves in a narrow format bar (section 15); the aria-label and the tooltip remain. */
+.faust-sigil-btn--captioned { width: auto; grid-auto-flow: column; column-gap: var(--sp-1); padding: 0 var(--sp-2) 0 var(--sp-1); }
+.faust-sigil-btn__caption { font: var(--type-meta); color: var(--text-2); white-space: nowrap; }
+.faust-sigil-btn:is(:disabled, [aria-busy="true"], .faust-sigil-btn--primary:hover, .faust-sigil-btn--primary:focus-visible) .faust-sigil-btn__caption { color: inherit; }
 
 /* ============ 4 Fields ============ */
 .faust-field { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
@@ -517,6 +522,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-popover__title { font: var(--type-title-pop); color: var(--text); }
 .faust-popover__body  { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 var(--sp-2) var(--sp-2); }
 .faust-popover__foot  { flex: none; display: flex; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-top: var(--bw) solid var(--rule); }
+/* Fallback place when the anchor is hidden (focus mode hides the format bar and the sigil bar):
+   Popover writes no inline top and left and sets data-anchor="none"; the popover then stands
+   under the top edge, left of the right column. */
+.faust-popover[data-anchor="none"] { top: calc(var(--header-h) + var(--sp-3)); left: auto; right: calc(var(--right-col-w) + var(--sp-4)); }
 
 .faust-menu { --popover-w: max-content; min-width: 200px; padding: var(--sp-1); }
 .faust-menu__item {
@@ -545,6 +554,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
   animation: faust-fade var(--dur-fast) var(--ease-out);
 }
 .faust-tooltip__title { font: italic var(--w-serif) var(--fs-serif)/20px var(--font-serif); letter-spacing: 0; }      /* the Latin name of a sigil action: the one place the interface speaks in italic Garamond */
+.faust-tooltip__title { display: block; margin-top: var(--sp-1); }      /* its own last line, after the Finnish text */
 .faust-tooltip__kbd { margin-left: var(--sp-2); opacity: 0.7; }
 
 /* ============ 11 Marks in text: diff, suggestions, findings, search ============
@@ -759,19 +769,36 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-editor-host .cm-editor .cm-faust-avoid:hover { background-color: var(--hl-avoid-bg); }
 .faust-editor-host .cm-editor .cm-faust-mention { text-decoration: underline dotted var(--border-control); text-decoration-thickness: var(--mark-line); text-underline-offset: 0.2em; }
 .faust-editor-host .cm-editor .cm-faust-mention:hover { text-decoration-color: var(--accent-line); }
+/* review findings (reviewHighlightsCore.js): the wavy line of section 11; the module's border becomes a text decoration */
+.faust-editor-host .cm-editor .cm-faust-finding { border-bottom: 0; color: var(--ink); text-decoration: underline wavy var(--hl-finding-line); text-decoration-thickness: var(--mark-line); text-underline-offset: 0.2em; text-decoration-skip-ink: none; }
+.faust-editor-host .cm-editor .cm-faust-finding:hover,
+.faust-editor-host .cm-editor .cm-faust-finding.cm-faust-finding-active { background-color: var(--hl-finding-bg); border-radius: var(--radius-xs); }
+.faust-editor-host .cm-editor .cm-faust-finding *:not(.cm-faust-match, .cm-faust-match-current, .faust-mark--search, .faust-mark--search-current) { color: inherit; }
+/* a finding on an avoid-word or a mention: one line, the finding's (CodeMirror nests the two spans either way) */
+.faust-editor-host .cm-editor .cm-faust-finding :is(.cm-faust-avoid, .cm-faust-mention),
+.faust-editor-host .cm-editor :is(.cm-faust-avoid, .cm-faust-mention):has(.cm-faust-finding) { text-decoration-line: none; }
 /* Suggestions (suggestionsCore.js). Its colour hooks (--sugg-*, --target-bg) are defined in
    the token file; these rules say what a colour hook cannot: the line weights, the mark
    under review as a stronger ground instead of an outline, the passage a suggestion refers
    to as the AI anchor's heavy dotted line, and the block. */
 .faust-editor-host .cm-editor .cm-faust-sugg-del { text-decoration-color: var(--diff-del-line); text-decoration-thickness: var(--mark-line); border-radius: var(--radius-xs); }
 .faust-editor-host .cm-editor .cm-faust-sugg-ins { color: var(--ink); border-bottom-width: var(--mark-line); border-radius: var(--radius-xs) var(--radius-xs) 0 0; }
-.faust-editor-host .cm-editor .cm-faust-sugg-new { color: var(--ink); border-bottom-style: solid; border-bottom-width: var(--mark-line); }      /* new text that replaces nothing: the insertion's line without its ground */
+.faust-editor-host .cm-editor .cm-faust-sugg-new { color: var(--ink); border-bottom-style: solid; border-bottom-width: var(--mark-line); }      /* new text that replaces nothing: the insertion's line */
+.faust-editor-host .cm-editor .cm-faust-sugg-new { background-color: var(--diff-ins-bg); }      /* and its ground: for new text the ground is the meaning, and a line alone would read as the author's own underline */
 .faust-editor-host .cm-editor .cm-faust-sugg-orig { border-bottom: calc(var(--mark-line) * 2) dotted var(--hl-ai-line); }
 .faust-editor-host .cm-editor .cm-faust-target { color: var(--ink); border-radius: var(--radius-xs); }
 .faust-editor-host .cm-editor .cm-faust-sugg-current { outline: none; }
 .faust-editor-host .cm-editor :is(.cm-faust-sugg-ins, .cm-faust-sugg-new).cm-faust-sugg-current { background-color: var(--diff-ins-bg-active); }
 .faust-editor-host .cm-editor .cm-faust-sugg-del.cm-faust-sugg-current { background-color: var(--diff-del-bg); color: var(--diff-del-text); }
 .faust-editor-host .cm-editor .cm-faust-sugg-orig.cm-faust-sugg-current { background-color: var(--hl-ai-bg); }
+/* under the pointer a suggestion mark shows the ground it has under review */
+.faust-editor-host .cm-editor .cm-faust-sugg-del:hover { background-color: var(--diff-del-bg); color: var(--diff-del-text); }
+.faust-editor-host .cm-editor :is(.cm-faust-sugg-ins, .cm-faust-sugg-new):hover { background-color: var(--diff-ins-bg-active); }
+.faust-editor-host .cm-editor .cm-faust-sugg-orig:hover { background-color: var(--hl-ai-bg); }
+/* insertion point in the view "Alkuperäinen": a drawn gold caret, not the glyph (the character stays in the DOM for the tests) */
+.faust-editor-host .cm-editor .cm-faust-sugg-point { font-size: 0; }
+.faust-editor-host .cm-editor .cm-faust-sugg-point::before { content: ""; display: inline-block; width: 0; height: calc(var(--ms-size) * 0.9); margin: 0 1px; vertical-align: text-bottom; border-left: var(--bw-strong) solid var(--accent-line); }
+.faust-editor-host .cm-editor .cm-faust-sugg-point.cm-faust-sugg-current::before { box-shadow: 0 0 0 2px var(--hl-ai-bg); }
 .faust-editor-host .cm-editor :is(.cm-faust-sugg-del, .cm-faust-sugg-ins, .cm-faust-sugg-new, .cm-faust-sugg-orig, .cm-faust-target, .cm-faust-avoid, .cm-faust-mention) *:not(.cm-faust-match, .cm-faust-match-current, .faust-mark--search, .faust-mark--search-current) { color: inherit; }
 /* The suggestion block is a CodeMirror block widget: no vertical margin (CodeMirror does not
    measure it); the space above and below is a transparent border, which it does measure.
@@ -785,6 +812,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-editor-host .cm-editor .cm-faust-block.cm-faust-sugg-current { background-image: linear-gradient(90deg, var(--accent-line) 0 2px, transparent 2px), linear-gradient(var(--accent-tint), var(--accent-tint)); }
 .faust-editor-host .cm-editor .cm-faust-block :is(.cm-faust-block-head, .cm-faust-block-note, .cm-faust-block-bar, .cm-faust-block-label, .cm-faust-block-hint) { font: var(--type-meta); color: var(--text-3); }
 .faust-editor-host .cm-editor .cm-faust-block.cm-faust-sugg-current :is(.cm-faust-block-head, .cm-faust-block-note, .cm-faust-block-bar, .cm-faust-block-label, .cm-faust-block-hint, .cm-faust-block-text[data-placeholder]) { color: var(--text-2); }
+/* the block is FAUST's own voice: the star before its caption; an error note in the error text colour */
+.faust-editor-host .cm-editor .cm-faust-block-head::before { content: ""; display: inline-block; width: 14px; height: 14px; margin-right: var(--sp-1); vertical-align: -2px; background: var(--accent-line); -webkit-mask: var(--icon-star8) center / contain no-repeat; mask: var(--icon-star8) center / contain no-repeat; }
+.faust-editor-host .cm-editor .cm-faust-block[data-status="error"] .cm-faust-block-note { color: var(--error-text); }
 .faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button { min-height: var(--h-sm); padding: 0 var(--sp-2); background: transparent; color: var(--text); border: var(--bw) solid var(--border); border-radius: var(--radius-sm); font: var(--type-meta); }
 .faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:not(:disabled):hover { background: var(--fill-hover); border-color: var(--border-control); }
 .faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:disabled { opacity: 1; color: var(--text-disabled); border-color: var(--rule); }
@@ -795,6 +825,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
    editor it is a descendant of the page, which is a size container with overflow hidden. */
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt { padding: var(--sp-3); background: var(--surface-raised); color: var(--text); border: var(--bw) solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-2); font: var(--type-meta); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt.cm-faust-prompt-busy { border-color: var(--accent-line); }
+/* the inline prompt is FAUST's own voice: the star in its top left corner (the tooltip is positioned, so the pseudo-element anchors to it) */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt { padding-left: calc(var(--sp-3) + 14px + var(--sp-2)); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt::before { content: ""; position: absolute; left: var(--sp-3); top: calc(var(--sp-3) + 3px); width: 14px; height: 14px; background: var(--accent-line); -webkit-mask: var(--icon-star8) center / contain no-repeat; mask: var(--icon-star8) center / contain no-repeat; }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-field { padding: var(--sp-2) var(--sp-3); background: var(--surface-sunken); color: var(--text); border: var(--bw) solid var(--border-control); border-radius: var(--radius-sm); font: var(--type-input); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-field:focus { border-color: var(--focus-ring); outline: var(--bw-strong) solid var(--focus-ring); outline-offset: 0; }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-field[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 2px var(--error-bg); }
@@ -813,6 +846,18 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(.cm-faust-prompt-summary, .cm-faust-prompt-instruction, .cm-faust-prompt-note, .cm-faust-prompt-status) { color: var(--text-2); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(.cm-faust-prompt-error, .cm-faust-prompt-blocked) { color: var(--error-text); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(.cm-faust-prompt-preview, .cm-faust-prompt-detail) { padding: var(--sp-2) var(--sp-3); background: var(--surface-sunken); color: var(--text); border: var(--bw) solid var(--rule); border-radius: var(--radius-sm); font: var(--type-serif); }
+/* Glyph buttons of the plain-DOM widgets (pendingInsertView.js, inlinePromptView.js): the character
+   stays in the DOM (tests, and the buttons have their names), the icon is drawn from a mask token.
+   --glyph is set per button by its data-role (no rule competes for it), and one ::before rule draws it.
+   The two long selectors stand one class above the rules they must beat (.cm-faust-block .cm-faust-block-button
+   and the prompt's :is(button, select, input) both set font, which would undo font-size: 0). */
+:is(.cm-faust-block-button, .cm-faust-prompt button):is([data-role="block-prev"], [data-role="attempt-prev"]) { --glyph: var(--icon-chevron-left); }
+:is(.cm-faust-block-button, .cm-faust-prompt button):is([data-role="block-next"], [data-role="attempt-next"]) { --glyph: var(--icon-chevron-right); }
+.cm-faust-prompt button[data-role="delete-prompt"] { --glyph: var(--icon-trash); }
+.faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:is([data-role="block-prev"], [data-role="block-next"]),
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:is([data-role="attempt-prev"], [data-role="attempt-next"], [data-role="delete-prompt"]) { width: var(--h-sm); padding: 0; font-size: 0; }
+.faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:is([data-role="block-prev"], [data-role="block-next"])::before,
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:is([data-role="attempt-prev"], [data-role="attempt-next"], [data-role="delete-prompt"])::before { content: ""; display: block; width: 14px; height: 14px; margin: auto; background: currentColor; -webkit-mask: var(--glyph) center / contain no-repeat; mask: var(--glyph) center / contain no-repeat; }
 
 /* The page: one measure, one left edge, one scroller. The page element is the primary
    editor content box (today .faust-editor-content with the added --main class, later
@@ -936,8 +981,12 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-formatbar__group + .faust-formatbar__group { margin-left: var(--sp-1); padding-left: var(--sp-2); border-left: var(--bw) solid var(--rule); }
 .faust-formatbar__end { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 .faust-formatbar__more { display: none; }
-@container formatbar (max-width: 760px) { .faust-formatbar [data-priority="2"] { display: none; } .faust-formatbar__more { display: inline-flex; } }
-@container formatbar (max-width: 560px) { .faust-formatbar [data-priority="3"] { display: none; } }
+/* Thresholds for the menu spec's word faces and the captioned sigil bar: estimates from the metrics,
+   measured in the cross-region pass at pane widths 400 to 1700 px (pass: scrollWidth <= clientWidth).
+   The heading group leaves first, then the sigil captions, then the priority-3 groups. */
+@container formatbar (max-width: 1429px) { .faust-formatbar [data-priority="2"] { display: none; } .faust-formatbar__more { display: inline-flex; } }
+@container formatbar (max-width: 1059px) { .faust-sigil-btn__caption { display: none; } .faust-sigil-btn--captioned { width: var(--h-lg); padding: 0; } }
+@container formatbar (max-width: 704px) { .faust-formatbar [data-priority="3"] { display: none; } }
 .faust-page { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 .faust-page__head { flex: none; padding: var(--page-pad-top) var(--page-edge) var(--sp-5); }
 .faust-chapter-title {
@@ -960,6 +1009,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-savestate[data-state="saving"] > .faust-dot { color: var(--warning); }
 .faust-savestate[data-state="saved"]  > .faust-dot { color: var(--success); }
 .faust-savestate[data-state="error"]  > .faust-dot { color: var(--error); }
+.faust-savestate[data-state="unsaved"] > .faust-dot { color: var(--accent-line); }
 .faust-savestate[data-state="error"] { color: var(--error-text); }
 @media (max-width: 1119px) { .faust-statusbar [data-priority="3"] { display: none; } }
 

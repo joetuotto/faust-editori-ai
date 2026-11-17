@@ -42,57 +42,34 @@ export class ErrorBoundary extends React.Component {
       this.setState({ error: null });
     };
 
+    // The notice is a small dialog panel (styles/faust-components.css, section 9). Around the
+    // whole app nothing is left to dim, so the scrim is transparent on the page surface.
     const card = e('div', {
       role: 'alert',
-      style: {
-        maxWidth: '460px',
-        padding: '20px 24px',
-        background: 'var(--bg-secondary, #f4efe6)',
-        color: 'var(--text, #222)',
-        border: '1px solid var(--border-color, rgba(128,128,128,0.4))',
-        borderRadius: '8px',
-        boxShadow: '0 12px 40px rgba(0, 0, 0, 0.35)',
-        fontFamily: 'EB Garamond, Georgia, serif',
-        fontSize: '15px',
-        lineHeight: '1.5'
-      }
+      className: 'faust-dialog faust-dialog--sm faust-dialog--plain',
+      style: { '--dialog-w': '460px' }
     },
-      e('div', { style: { fontSize: '19px', fontWeight: 600, marginBottom: '8px' } },
+      e('div', { className: 'faust-dialog__title' },
         root ? 'FAUSTissa tapahtui virhe' : `Näkymä ”${label}” ei auennut`),
-      e('div', null, root
+      e('div', { className: 'faust-serif' }, root
         ? 'Ikkunan sisältöä ei voitu näyttää. Lataa sovellus uudelleen: tallentamaton työ tarjotaan palautettavaksi käynnistyksessä.'
         : 'Näkymässä tapahtui virhe. Käsikirjoituksesi on tallessa ja muu sovellus toimii.'),
       e('div', {
-        style: { marginTop: '10px', fontFamily: 'IBM Plex Mono, monospace', fontSize: '11px', color: 'var(--text-3, #777)', wordBreak: 'break-word' }
+        className: 'faust-meta',
+        style: { marginTop: 'var(--sp-3)', overflowWrap: 'anywhere' }
       }, String((error && error.message) || error)),
-      e('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' } },
+      e('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-2)', marginTop: 'var(--sp-4)' } },
         e('button', {
-          onClick: root ? () => window.location.reload() : dismiss,
-          style: {
-            padding: '8px 16px',
-            background: 'var(--sigil, var(--bronze, #b08d57))',
-            border: 'none',
-            borderRadius: '4px',
-            color: '#000',
-            cursor: 'pointer',
-            fontFamily: 'IBM Plex Mono, monospace',
-            fontSize: '12px',
-            fontWeight: 600
-          }
+          type: 'button',
+          className: 'faust-btn faust-btn--lg faust-btn--primary',
+          onClick: root ? () => window.location.reload() : dismiss
         }, root ? 'Lataa uudelleen' : 'Sulje näkymä')
       )
     );
 
     return e('div', {
-      style: {
-        position: 'fixed',
-        inset: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: root ? 'var(--bg, #fff)' : 'rgba(0, 0, 0, 0.45)',
-        zIndex: 20000
-      }
+      className: root ? 'faust-scrim is-stacked' : 'faust-scrim',
+      style: { zIndex: 'var(--z-fatal)' }
     }, card);
   }
 }

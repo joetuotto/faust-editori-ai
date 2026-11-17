@@ -135,6 +135,7 @@
   --z-sticky: 50;
   --z-float: 100;            /* suggestion bar, floating result, selection bubble */
   --z-popover: 300;          /* popovers anchored in the editor pane (they render in the layer host, 4.9) */
+  /* 500: the inline prompt (a CodeMirror tooltip in the layer host) keeps CodeMirror's own z-index: 500; no token, no rule sets it */
   --z-dock: 900;             /* chat window, launcher */
   --z-panel: 950;            /* a side panel that still overlays (legacy Liminal Engine) */
   --z-dropdown: 1000;        /* menus and popovers anchored in the header */
@@ -163,6 +164,17 @@
   --fe-pad-left: 0px;
   --fe-para-gap: 0px;
   --fe-align: left;
+
+  /* Mask icons for the two plain-DOM widgets (src/editor/pendingInsertView.js,
+     src/editor/inlinePromptView.js), which cannot import icons.js: their glyph characters
+     stay in the DOM and these images are drawn instead (faust-components.css, section 14).
+     Only the alpha of a mask is used, so the stroke colour inside is irrelevant. Paths:
+     icons.js star8, chevronLeft, chevronRight, trash; a stroke of 2 in 24 units draws about 1.2px at 14px,
+     the on-screen weight of icons.js at that size. */
+  --icon-star8: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 2l8 29 26-15-15 26 29 8-29 8 15 26-26-15-8 29-8-29-26 15 15-26-29-8 29-8-15-26 26 15z'/%3E%3C/svg%3E");
+  --icon-chevron-left: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 6l-6 6 6 6'/%3E%3C/svg%3E");
+  --icon-chevron-right: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 6l6 6-6 6'/%3E%3C/svg%3E");
+  --icon-trash: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5'/%3E%3C/svg%3E");
 }
 
 @media (min-width: 1680px) {
@@ -422,6 +434,9 @@
   --sugg-current: var(--accent-line);   /* the line of the passage a suggestion refers to, and of the suggestion under review */
   --sugg-block-bg: var(--surface-sunken);
   --target-bg: var(--hl-ai-bg);         /* the passage the open prompt will act on */
+  /* Hooks of the review findings (src/editor/reviewHighlightsCore.js): the finding mark of section 11 */
+  --finding-line: var(--hl-finding-line);       /* src/editor/reviewHighlightsCore.js */
+  --finding-active-bg: var(--hl-finding-bg);
   /* names from faust-theme.css that no code references; kept defined until the file is deleted */
   --shadow: var(--surface-sunken);
   --paper-shadow: var(--shadow-1);

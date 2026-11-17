@@ -6,38 +6,38 @@
  *              (Cherry Studio: Settings → API Gateway)
  *
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
+ * Look: the section, field, segmented-control and chip classes of styles/faust-components.css.
  */
 
-const { createElement: e, useState, useEffect, useCallback } = React;
+import { icons } from './icons.js';
+import { count } from './Dialogs.js';
 
-const mono = { fontFamily: 'IBM Plex Mono' };
+const { createElement: e, useState, useEffect, useCallback, useId } = React;
 
-const labelStyle = { ...mono, fontSize: '10px', color: 'var(--text-3)', marginBottom: '4px' };
+const SOURCES = [
+  ['anthropic', 'Claude (Anthropic)'],
+  ['cherry', 'Cherry Studio (omat mallit)']
+];
 
-const inputStyle = {
-  ...mono,
-  width: '100%',
-  boxSizing: 'border-box',
-  padding: '8px 12px',
-  background: 'var(--bg)',
-  border: '1px solid var(--border-color)',
-  borderRadius: '4px',
-  color: 'var(--text)',
-  fontSize: '11px'
-};
+// '<Toiminto> epäonnistui: <syy>.' with one full stop
+const failed = (action, reason) =>
+  `${action} epäonnistui: ${String(reason || 'tuntematon virhe').trim().replace(/\.+$/, '')}.`;
 
-const buttonStyle = (enabled) => ({
-  ...mono,
-  padding: '8px 12px',
-  background: enabled ? 'var(--sigil)' : 'var(--bg-2)',
-  border: '1px solid var(--sigil)',
-  borderRadius: '4px',
-  color: enabled ? '#000' : 'var(--text-3)',
-  cursor: enabled ? 'pointer' : 'not-allowed',
-  fontSize: '11px',
-  fontWeight: 600,
-  whiteSpace: 'nowrap'
-});
+// A field's own action: the field at full width, the button right-aligned on the next line.
+// reason: why the button is disabled (rule B.8), shown as its title; a busy-only disable is
+// silent (R-68), so it passes no reason.
+const actionButton = ({ label, onClick, disabled, busy, reason }) => e('button', {
+  type: 'button',
+  className: 'faust-btn faust-btn--sm',
+  onClick,
+  disabled: disabled || !!reason,
+  title: reason || undefined,
+  'aria-busy': busy || undefined
+}, busy && e('span', { className: 'faust-spinner faust-spinner--sm' }), label);
+
+// The two sentences of the model field's placeholder (M C.15 row 14) also give the reasons
+const NEEDS_KEY = 'Tallenna ensin API-avain';
+const NEEDS_MODELS = 'Hae mallit ensin';
 
 export function AIProviderSettings({ onProviderChange }) {
   const api = window.electronAPI;
@@ -47,7 +47,10 @@ export function AIProviderSettings({ onProviderChange }) {
   const [keyInput, setKeyInput] = useState('');
   const [models, setModels] = useState([]);
   const [status, setStatus] = useState(null); // { kind: 'ok' | 'error' | 'info', text }
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(null);     // null | 'models' | 'test'
+  const keyId = useId();
+  const modelId = useId();
+  const urlId = useId();
 
   const applyConfig = useCallback((next) => {
     setConfig(next);
@@ -57,9 +60,9 @@ export function AIProviderSettings({ onProviderChange }) {
 
   const loadModels = useCallback(async (current) => {
     if (!api?.aiListCherryModels) return;
-    setBusy(true);
+    setBusy('models');
     const result = await api.aiListCherryModels();
-    setBusy(false);
+    setBusy(null);
 
     if (!result.success) {
       setModels([]);
@@ -68,7 +71,7 @@ export function AIProviderSettings({ onProviderChange }) {
     }
 
     setModels(result.models);
-    setStatus({ kind: 'info', text: `${result.models.length} mallia Cherry Studiosta` });
+    setStatus({ kind: 'info', text: 'Löytyi ' + count(result.models.length, 'malli') });
 
     // Pick the first model if none is selected or the selected one is gone
     const selected = current?.model;
@@ -98,6 +101,7 @@ export function AIProviderSettings({ onProviderChange }) {
   const isCherry = config.provider === 'cherry';
 
   const changeProvider = async (provider) => {
+    if (provider === config.provider) return;
     const saved = await api.aiSetProvider({ provider });
     if (!saved.success) {
       setStatus({ kind: 'error', text: saved.error });
@@ -126,7 +130,7 @@ export function AIProviderSettings({ onProviderChange }) {
     const existing = await api.loadApiKeys();
     const result = await api.saveApiKeys({ ...(existing.keys || {}), CHERRY_API_KEY: key });
     if (!result.success) {
-      setStatus({ kind: 'error', text: 'Virhe tallennuksessa: ' + result.error });
+      setStatus({ kind: 'error', text: failed('Avaimen tallennus', result.error) });
       return;
     }
 
@@ -144,116 +148,125 @@ export function AIProviderSettings({ onProviderChange }) {
   };
 
   const testConnection = async () => {
-    setBusy(true);
-    setStatus({ kind: 'info', text: 'Testataan...' });
+    setBusy('test');
+    setStatus({ kind: 'info', text: 'Testataan…' });
     const result = await api.aiTestProvider();
-    setBusy(false);
+    setBusy(null);
+    const seconds = (result.ms / 1000).toLocaleString('fi-FI', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     setStatus(result.success
-      ? { kind: 'ok', text: `Toimii: malli vastasi ${(result.ms / 1000).toFixed(1)} sekunnissa` }
+      ? { kind: 'ok', text: `Yhteys toimii: malli vastasi ${seconds} sekunnissa.` }
       : { kind: 'error', text: result.error });
   };
 
-  const statusColor = status?.kind === 'error' ? 'var(--error, #c0392b)'
-    : status?.kind === 'ok' ? 'var(--sigil)'
-    : 'var(--text-3)';
+  const keyChip = config.hasCherryKey
+    ? e('span', { className: 'faust-chip faust-chip--plain faust-chip--dot faust-chip--success' }, 'Avain tallennettu')
+    : e('span', { className: 'faust-chip faust-chip--plain faust-chip--hollow' }, 'Avain puuttuu');
 
-  return e('div', {
-    className: 'faust-ai-provider',
-    style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' }
-  },
-    e('div', { style: { ...mono, fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'TEKOÄLYN LÄHDE'),
+  const modelPlaceholder = config.model
+    ? (config.model.split(':').slice(1).join(':') || config.model)
+    : config.hasCherryKey ? NEEDS_MODELS : NEEDS_KEY;
 
-    e('select', {
-      'aria-label': 'Tekoälyn lähde',
-      value: config.provider,
-      disabled: config.providerFromEnv,
-      onChange: (ev) => changeProvider(ev.target.value),
-      style: inputStyle
-    },
-      e('option', { value: 'anthropic' }, 'Claude (Anthropic)'),
-      e('option', { value: 'cherry' }, 'Cherry Studio (omat mallit)')
+  return e('div', { className: 'faust-ai-provider faust-section' },
+    e('div', { className: 'faust-section__head' },
+      e('div', { className: 'faust-section__title' }, 'Tekoälyn lähde')
     ),
 
-    config.providerFromEnv && e('div', { style: { ...mono, fontSize: '10px', color: 'var(--text-3)', marginTop: '6px' } },
+    e('div', { className: 'faust-segmented faust-segmented--block', role: 'group', 'aria-label': 'Tekoälyn lähde' },
+      SOURCES.map(([value, label]) => e('button', {
+        key: value,
+        type: 'button',
+        className: 'faust-segmented__option',
+        'aria-pressed': config.provider === value,
+        disabled: config.providerFromEnv,
+        onClick: () => changeProvider(value)
+      }, label))
+    ),
+
+    config.providerFromEnv && e('div', { className: 'faust-field__hint', style: { marginTop: 'var(--sp-2)' } },
       'Lähde on asetettu ympäristömuuttujalla FAUST_AI_PROVIDER.'),
 
-    isCherry && e('div', { style: { marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' } },
+    isCherry && e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', marginTop: 'var(--sp-3)' } },
 
-      e('div', { style: { ...mono, fontSize: '10px', color: 'var(--text-2)', lineHeight: '1.4' } },
-        'Kaikki kirjoitustoiminnot käyttävät alla valittua mallia. Cherry Studion pitää olla käynnissä ja sen API Gatewayn päällä (Settings → API Gateway).'),
+      e('div', { className: 'faust-field__hint' },
+        'Cherry Studion pitää olla käynnissä ja sen API Gateway päällä (Cherry Studiossa: Settings → API Gateway).'),
 
-      // Gateway address
-      e('div', null,
-        e('div', { style: labelStyle }, 'Yhdyskäytävän osoite:'),
+      // API key of the gateway
+      e('div', { className: 'faust-field' },
+        e('label', { className: 'faust-field__label', htmlFor: keyId }, 'Cherry Studion API-avain'),
         e('input', {
-          type: 'text',
-          'aria-label': 'Yhdyskäytävän osoite',
-          value: gatewayUrl,
-          onChange: (ev) => setGatewayUrl(ev.target.value),
-          onBlur: saveGatewayUrl,
-          placeholder: 'http://127.0.0.1:23333',
-          style: inputStyle
-        })
-      ),
-
-      // Gateway key
-      e('div', null,
-        e('div', { style: labelStyle }, 'Yhdyskäytävän avain:'),
-        e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
-          e('input', {
-            type: 'password',
-            'aria-label': 'Cherry Studion yhdyskäytävän avain',
-            value: keyInput,
-            onChange: (ev) => setKeyInput(ev.target.value),
-            onKeyDown: (ev) => { if (ev.key === 'Enter') saveKey(); },
-            placeholder: 'Cherry Studio → API Gateway → API Key',
-            style: { ...inputStyle, flex: 1, width: 'auto', minWidth: 0 }
-          }),
-          e('button', {
-            onClick: saveKey,
-            disabled: !keyInput.trim(),
-            style: buttonStyle(!!keyInput.trim())
-          }, 'Tallenna')
-        ),
-        e('div', { style: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' } },
-          e('span', { style: { fontSize: '12px' } }, config.hasCherryKey ? '◉' : '○'),
-          e('span', { style: { ...mono, fontSize: '10px', color: config.hasCherryKey ? 'var(--sigil)' : 'var(--text-3)' } },
-            config.hasCherryKey ? 'Avain asetettu' : 'Avain puuttuu')
+          id: keyId,
+          type: 'password',
+          className: 'faust-input faust-input--sm',
+          value: keyInput,
+          onChange: (ev) => setKeyInput(ev.target.value),
+          onKeyDown: (ev) => { if (ev.key === 'Enter') saveKey(); },
+          placeholder: 'Liitä avain Cherry Studiosta'
+        }),
+        e('div', { className: 'faust-field__row', style: { justifyContent: 'space-between', alignItems: 'center' } },
+          keyChip,
+          actionButton({ label: 'Tallenna avain', onClick: saveKey, disabled: !keyInput.trim() })
         )
       ),
 
       // Model
-      e('div', null,
-        e('div', { style: labelStyle }, 'Malli:'),
-        e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
-          e('select', {
-            'aria-label': 'Cherry Studion malli',
-            value: config.model || '',
-            disabled: models.length === 0,
-            onChange: (ev) => changeModel(ev.target.value),
-            style: { ...inputStyle, flex: 1, width: 'auto', minWidth: 0 }
-          },
-            models.length === 0
-              ? e('option', { value: config.model || '' },
-                  config.model ? (config.model.split(':').slice(1).join(':') || config.model) : 'Hae mallit ensin')
-              : models.map(m => e('option', { key: m.id, value: m.id }, m.name))
-          ),
-          e('button', {
+      e('div', { className: 'faust-field' },
+        e('label', { className: 'faust-field__label', htmlFor: modelId }, 'Malli'),
+        e('select', {
+          id: modelId,
+          className: 'faust-select faust-select--sm',
+          value: config.model || '',
+          disabled: models.length === 0,
+          onChange: (ev) => changeModel(ev.target.value)
+        },
+          models.length === 0
+            ? e('option', { value: config.model || '' }, modelPlaceholder)
+            : models.map(m => e('option', { key: m.id, value: m.id }, m.name))
+        ),
+        e('div', { className: 'faust-field__row' },
+          actionButton({
+            label: 'Hae mallit',
             onClick: () => loadModels(config),
-            disabled: busy || !config.hasCherryKey,
-            style: buttonStyle(!busy && config.hasCherryKey)
-          }, 'Hae mallit')
+            disabled: !!busy,
+            reason: config.hasCherryKey ? null : NEEDS_KEY,
+            busy: busy === 'models'
+          })
         )
       ),
 
       // Connection test
-      e('button', {
-        onClick: testConnection,
-        disabled: busy || !config.hasCherryKey || !config.model,
-        style: { ...buttonStyle(!busy && config.hasCherryKey && !!config.model), width: '100%' }
-      }, 'Testaa yhteys'),
+      e('div', { className: 'faust-field__row' },
+        actionButton({
+          label: 'Testaa yhteys',
+          onClick: testConnection,
+          disabled: !!busy,
+          reason: !config.hasCherryKey ? NEEDS_KEY : !config.model ? NEEDS_MODELS : null,
+          busy: busy === 'test'
+        })
+      ),
 
-      status && e('div', { role: 'status', style: { ...mono, fontSize: '10px', color: statusColor, lineHeight: '1.4' } }, status.text)
+      status && e('div', {
+        role: 'status',
+        className: status.kind === 'error' ? 'faust-field__error' : 'faust-field__hint'
+      }, status.text),
+
+      // Address of the gateway, rarely changed
+      e('details', { className: 'faust-disclosure' },
+        e('summary', null, icons.chevronRight({ size: 14 }), 'Lisäasetukset'),
+        e('div', { className: 'faust-field', style: { marginTop: 'var(--sp-2)' } },
+          e('label', { className: 'faust-field__label', htmlFor: urlId }, 'Cherry Studion osoite'),
+          e('input', {
+            id: urlId,
+            type: 'text',
+            className: 'faust-input faust-input--sm',
+            value: gatewayUrl,
+            onChange: (ev) => setGatewayUrl(ev.target.value),
+            onBlur: saveGatewayUrl,
+            placeholder: 'http://127.0.0.1:23333'
+          }),
+          e('div', { className: 'faust-field__hint' },
+            'Oletus: http://127.0.0.1:23333. Muuta vain, jos vaihdoit osoitteen Cherry Studiossa.')
+        )
+      )
     )
   );
 }

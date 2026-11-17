@@ -162,16 +162,16 @@ function getClaudeClient() {
 
   if (cfg.provider === 'cherry') {
     if (!cfg.cherryKey) {
-      throw new Error('Cherry Studion yhdyskäytävän avain puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain.');
+      throw new Error('Cherry Studion API-avain puuttuu. Lisää se tietopaneelin Tekoäly-välilehdellä.');
     }
     if (!cfg.model) {
-      throw new Error('Cherry Studion mallia ei ole valittu. Mene Asetuksiin (Cmd+,) ja valitse malli.');
+      throw new Error('Cherry Studion mallia ei ole valittu. Valitse malli tietopaneelin Tekoäly-välilehdellä.');
     }
     return createCherryClient({ apiKey: cfg.cherryKey, baseURL: cfg.gatewayUrl, model: cfg.model });
   }
 
   if (!cfg.anthropicKey) {
-    throw new Error('ANTHROPIC_API_KEY puuttuu. Mene Asetuksiin (Cmd+,) ja syötä avain, tai luo .env tiedosto.');
+    throw new Error('Clauden API-avain puuttuu. Lisää se tietopaneelin Tekoäly-välilehdellä.');
   }
   return new Anthropic({ apiKey: cfg.anthropicKey });
 }
@@ -184,10 +184,10 @@ function describeAIError(error) {
 
   const status = error && error.status;
   if (status === 401 || status === 403) {
-    return 'Cherry Studion yhdyskäytävä hylkäsi avaimen. Kopioi avain Cherry Studiosta (Settings → API Gateway → API Key) ja tallenna se FAUSTin asetuksiin.';
+    return 'Cherry Studio hylkäsi API-avaimen. Kopioi avain Cherry Studiosta (Settings → API Gateway → API Key) ja tallenna se tietopaneelin Tekoäly-välilehdellä.';
   }
   if (!status && /connect|ECONNREFUSED|fetch failed|network/i.test(message)) {
-    return `Cherry Studion yhdyskäytävään ei saada yhteyttä (${cfg.gatewayUrl}). Varmista, että Cherry Studio on käynnissä ja API Gateway on päällä.`;
+    return `Cherry Studioon ei saada yhteyttä (${cfg.gatewayUrl}). Varmista, että Cherry Studio on käynnissä ja sen API Gateway päällä.`;
   }
   return message;
 }
@@ -245,7 +245,7 @@ async function saveUiPrefs(next) {
 async function withTimeout(promise, ms = 30000) {
   let timeoutId;
   const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(`Timeout (${ms}ms)`)), ms);
+    timeoutId = setTimeout(() => reject(new Error(`Aikakatkaisu (${Math.round(ms / 1000)} s)`)), ms);
   });
   try {
     return await Promise.race([promise, timeoutPromise]);
@@ -373,8 +373,8 @@ function attachContextMenu(win) {
 const UNSAVED_DIALOG = {
   type: 'warning',
   message: 'Projektissa on tallentamattomia muutoksia.',
-  detail: 'Jos et tallenna, viimeisimmät muutokset menetetään.',
-  buttons: ['Tallenna', 'Älä tallenna', 'Kumoa'],
+  detail: 'Jos et tallenna, tallentamattomat muutokset menetetään. Jos projektia ei ole vielä tallennettu tiedostoon, koko teksti menetetään.',
+  buttons: ['Tallenna', 'Älä tallenna', 'Peruuta'],
   defaultId: 0,
   cancelId: 2
 };
@@ -392,10 +392,14 @@ function attachCloseGuard(win) {
       // answers with project:close-confirmed or project:close-cancelled
       win.webContents.send('menu-action', 'save-and-close');
     } else if (choice === 1) {
-      // Discarded on purpose: there is nothing to recover next time
-      fs.unlink(getRecoveryPath()).catch(() => {});
+      // Discarded on purpose: there is nothing to recover next time. Once the recovery copy is
+      // gone, finish what was asked: Lopeta FAUST quits, a closed window closes. Deferred like
+      // the 'Tallenna' path, because a quit issued inside the close it has just cancelled is lost.
       rendererDirty = false;
-      win.close();
+      fs.unlink(getRecoveryPath()).catch(() => {}).then(() => {
+        if (quitRequested) app.quit();
+        else if (!win.isDestroyed()) win.close();
+      });
     } else {
       quitRequested = false;
     }
@@ -466,15 +470,16 @@ function createMenu() {
     ...(isMac ? [{
       label: app.name,
       submenu: [
-        { label: `Tietoja - ${app.name}`, role: 'about' },
+        // The name is written out: app.name can be the lower-case package name
+        { label: 'Tietoja: FAUST', role: 'about' },
         separator,
-        item('Asetukset...', 'show-settings', 'CmdOrCtrl+,'),
+        item('Asetukset…', 'show-settings', 'CmdOrCtrl+,'),
         separator,
-        { label: 'Piilota', role: 'hide' },
-        { label: 'Piilota muut', role: 'hideOthers' },
+        { label: 'Kätke FAUST', role: 'hide' },
+        { label: 'Kätke muut', role: 'hideOthers' },
         { label: 'Näytä kaikki', role: 'unhide' },
         separator,
-        { label: 'Lopeta', role: 'quit' }
+        { label: 'Lopeta FAUST', role: 'quit' }
       ]
     }] : []),
 
@@ -482,19 +487,22 @@ function createMenu() {
       label: 'Tiedosto',
       submenu: [
         item('Uusi projekti', 'new-project', 'CmdOrCtrl+N'),
-        item('Avaa...', 'open-project', 'CmdOrCtrl+O'),
+        item('Avaa…', 'open-project', 'CmdOrCtrl+O'),
         separator,
         item('Tallenna', 'save-project', 'CmdOrCtrl+S'),
-        item('Tallenna nimellä...', 'save-project-as', 'CmdOrCtrl+Shift+S'),
+        item('Tallenna nimellä…', 'save-project-as', 'CmdOrCtrl+Shift+S'),
+        item('Tilannekuvat', 'show-snapshots'),
         separator,
-        item('Tuo tekstiä...', 'import-document'),
-        item('Vie...', 'show-export', 'CmdOrCtrl+E'),
-        item('Tulosta...', 'print', 'CmdOrCtrl+P'),
+        item('Projektin asetukset…', 'show-project-settings'),
+        separator,
+        item('Tuo tekstiä…', 'import-document'),
+        item('Vie…', 'show-export', 'CmdOrCtrl+E'),
+        item('Tulosta…', 'print', 'CmdOrCtrl+P'),
         separator,
         { label: 'Sulje ikkuna', accelerator: 'CmdOrCtrl+W', role: 'close' },
         ...(isMac ? [] : [
           separator,
-          item('Asetukset...', 'show-settings', 'CmdOrCtrl+,'),
+          item('Asetukset…', 'show-settings', 'CmdOrCtrl+,'),
           { label: 'Lopeta', role: 'quit' }
         ])
       ]
@@ -511,10 +519,10 @@ function createMenu() {
         { label: 'Liitä', role: 'paste' },
         { label: 'Valitse kaikki', role: 'selectAll' },
         separator,
-        item('Etsi...', 'show-find', 'CmdOrCtrl+F'),
+        item('Etsi…', 'show-find', 'CmdOrCtrl+F'),
         item('Etsi seuraava', 'find-next', 'CmdOrCtrl+G'),
         item('Etsi edellinen', 'find-previous', 'CmdOrCtrl+Shift+G'),
-        item('Etsi ja korvaa...', 'show-find-replace', 'CmdOrCtrl+Alt+F')
+        item('Etsi ja korvaa…', 'show-find-replace', 'CmdOrCtrl+Alt+F')
       ]
     },
 
@@ -537,8 +545,9 @@ function createMenu() {
         separator,
         item('Isoiksi kirjaimiksi', 'text-uppercase', 'CmdOrCtrl+Shift+U'),
         item('Pieniksi kirjaimiksi', 'text-lowercase', 'CmdOrCtrl+Shift+L'),
-        item('Poista ylimääräiset välit', 'text-trim-spaces'),
-        item('Poista tyhjät rivit', 'text-remove-empty-lines')
+        separator,
+        item('Poista luvusta ylimääräiset välilyönnit', 'text-trim-spaces'),
+        item('Poista luvusta ylimääräiset tyhjät rivit', 'text-remove-empty-lines')
       ]
     },
 
@@ -552,6 +561,8 @@ function createMenu() {
           click: () => menuAction('insert-text', new Date().toLocaleDateString('fi-FI'))
         },
         insertText('Kohtauksen erotin', '\n\n* * *\n\n'),
+        item('Muistutus', 'insert-todo'),
+        item('Kirjanmerkki…', 'add-bookmark'),
         separator,
         {
           label: 'Erikoismerkki',
@@ -559,8 +570,8 @@ function createMenu() {
             insertText('Ajatusviiva –', '–'),
             insertText('Pitkä ajatusviiva —', '—'),
             insertText('Kolme pistettä …', '…'),
-            insertText('Lainausmerkit ””', '”'),
-            insertText('Kulmalainausmerkit »»', '»'),
+            insertText('Lainausmerkki ”', '”'),
+            insertText('Kulmalainausmerkki »', '»'),
             insertText('Sitova välilyönti', ' ')
           ]
         }
@@ -571,27 +582,24 @@ function createMenu() {
       label: 'Näytä',
       submenu: [
         item('Sivupalkki', 'toggle-sidebar', 'CmdOrCtrl+1'),
-        item('Inspector', 'toggle-inspector', 'CmdOrCtrl+2'),
-        item('AI-avustaja', 'toggle-ai-panel', 'CmdOrCtrl+K'),
+        item('Tietopaneeli', 'toggle-inspector', 'CmdOrCtrl+2'),
+        { ...item('Liminal Engine (tekoälyavustaja)', 'toggle-ai-panel', 'CmdOrCtrl+Shift+K'), toolTip: 'Näytä tai kätke tekoälyavustajan paneeli' },
+        item('Keskustelu', 'toggle-chat-window'),
+        separator,
+        item('Korttinäkymä', 'toggle-corkboard'),
+        item('Jaettu näkymä', 'toggle-split-view'),
+        item('Kirjanmerkit', 'toggle-bookmarks'),
         separator,
         item('Keskittymistila', 'toggle-focus-mode', 'CmdOrCtrl+Shift+F'),
         item('Kirjoituskonetila', 'toggle-typewriter'),
         separator,
-        item('Suurenna', 'zoom-in', 'CmdOrCtrl+Plus'),
-        item('Pienennä', 'zoom-out', 'CmdOrCtrl+-'),
+        item('Lähennä', 'zoom-in', 'CmdOrCtrl+Plus'),
+        item('Loitonna', 'zoom-out', 'CmdOrCtrl+-'),
         item('Todellinen koko', 'zoom-reset', 'CmdOrCtrl+0'),
         separator,
-        item('Vaihda teema (NOX / DEIS)', 'toggle-theme', 'CmdOrCtrl+Shift+D'),
+        { ...item('Teema: NOX (tumma) / DEIS (vaalea)', 'toggle-theme', 'CmdOrCtrl+Shift+D'), toolTip: 'Vaihda tumman NOX-teeman ja vaalean DEIS-teeman välillä' },
         separator,
-        item('Aikajana', 'show-timeline', 'CmdOrCtrl+Shift+T'),
-        item('Tutkimuskansio', 'show-research', 'CmdOrCtrl+Shift+R'),
-        separator,
-        { label: 'Koko näyttö', accelerator: isMac ? 'Ctrl+Command+F' : 'F11', role: 'togglefullscreen' },
-        {
-          label: 'Kehittäjätyökalut',
-          accelerator: isMac ? 'Alt+Command+I' : 'Ctrl+Shift+I',
-          click: () => mainWindow && mainWindow.webContents.toggleDevTools()
-        }
+        { label: 'Koko näyttö', accelerator: isMac ? 'Ctrl+Command+F' : 'F11', role: 'togglefullscreen' }
       ]
     },
 
@@ -608,7 +616,42 @@ function createMenu() {
           }
         },
         separator,
-        item('Projektin asetukset ja tavoitteet...', 'show-project-settings')
+        item('Hahmot', 'show-characters'),
+        item('Paikat', 'show-locations'),
+        item('Juonilangat', 'show-threads'),
+        item('Aikajana', 'show-timeline', 'CmdOrCtrl+Shift+T'),
+        item('Tutkimuskansio', 'show-research', 'CmdOrCtrl+Shift+R'),
+        separator,
+        item('Suunnittele hahmot…', 'show-cast-plan'),
+        item('Uusi hahmo…', 'show-character-builder'),
+        item('Luvun versiot', 'show-version-history'),
+        separator,
+        {
+          label: 'Tekoäly',
+          submenu: [
+            // The action items are one array, so that they can be left out as one
+            // while the settings group below stays (reconcile R-4, R-6)
+            ...[
+              item('Analysoi luku', 'ai-analyze'),
+              item('Pika-arvio', 'ai-quick-check'),
+              item('Tee tiivistelmä', 'ai-summary'),
+              separator,
+              {
+                label: 'Magnum Opus',
+                toolTip: 'Tekoäly kirjoittaa kokonaisia lukuja alusta loppuun',
+                submenu: [
+                  item('Kirjoita luku…', 'magnum-opus-chapter'),
+                  item('Kirjoita kaikki luvut…', 'magnum-opus-all')
+                ]
+              },
+              separator,
+              item('Kirjoita tekoälyn kanssa…', 'show-ai-writing'),
+              item('Muokkaa valintaa puhumalla', 'voice-edit')
+            ],
+            separator,
+            item('Tekoälyasetukset…', 'show-ai-settings')
+          ]
+        }
       ]
     },
 
@@ -616,20 +659,26 @@ function createMenu() {
       label: 'Ikkuna',
       submenu: [
         { label: 'Pienennä', role: 'minimize' },
-        { label: 'Suurenna', role: 'zoom' },
+        { label: isMac ? 'Zoomaa' : 'Suurenna', role: 'zoom' },
+        // Closing is Tiedosto ▸ Sulje ikkuna
         ...(isMac ? [
           separator,
-          { label: 'Tuo etualalle', role: 'front' }
-        ] : [
-          { label: 'Sulje', role: 'close' }
-        ])
+          { label: 'Tuo kaikki eteen', role: 'front' }
+        ] : [])
       ]
     },
 
     {
       label: 'Ohje',
       submenu: [
-        item('Pikanäppäimet', 'show-shortcuts')
+        item('Pikanäppäimet', 'show-shortcuts'),
+        separator,
+        // Kept in every build: the owner runs his own packaged app and needs it there
+        {
+          label: 'Kehittäjätyökalut',
+          accelerator: isMac ? 'Alt+Command+I' : 'Ctrl+Shift+I',
+          click: () => mainWindow && mainWindow.webContents.toggleDevTools()
+        }
       ]
     }
   ];
@@ -671,12 +720,14 @@ ipcMain.handle('save-project', async (event, projectData, options = {}) => {
     let filePath = options.saveAs ? null : options.filePath;
 
     if (!filePath) {
+      // One file type: a project opened from an old .json file is offered under its .faust name
       const result = await dialog.showSaveDialog(mainWindow, {
         title: 'Tallenna projekti',
-        defaultPath: options.filePath || `${projectData.title || 'projekti'}.faust`,
+        message: 'Anna projektille nimi ja valitse tallennuspaikka.',
+        buttonLabel: 'Tallenna',
+        defaultPath: options.filePath ? options.filePath.replace(/\.json$/i, '.faust') : `${projectData.title || 'projekti'}.faust`,
         filters: [
-          { name: 'FAUST projektit', extensions: ['faust'] },
-          { name: 'JSON (legacy)', extensions: ['json'] }
+          { name: 'FAUST-projekti', extensions: ['faust'] }
         ]
       });
       filePath = result.filePath;
@@ -705,8 +756,10 @@ ipcMain.handle('load-project', async () => {
   try {
     const { filePaths } = await dialog.showOpenDialog(mainWindow, {
       title: 'Avaa projekti',
+      message: 'Valitse avattava FAUST-projekti.',
+      buttonLabel: 'Avaa',
       filters: [
-        { name: 'FAUST projektit', extensions: ['faust', 'json'] }
+        { name: 'FAUST-projektit', extensions: ['faust', 'json'] }
       ],
       properties: ['openFile']
     });
@@ -733,7 +786,7 @@ ipcMain.handle('load-project', async () => {
 ipcMain.handle('load-project-from-path', async (event, filePath) => {
   try {
     if (!filePath) {
-      return { success: false, error: 'No file path provided' };
+      return { success: false, error: 'tiedoston polku puuttuu' };
     }
 
     const data = await fs.readFile(filePath, 'utf-8');
@@ -754,7 +807,7 @@ ipcMain.handle('load-project-from-path', async (event, filePath) => {
 ipcMain.handle('autosave-project', async (event, { projectData, filePath }) => {
   try {
     if (!filePath) {
-      return { success: false, error: 'No file path' };
+      return { success: false, error: 'tiedoston polku puuttuu' };
     }
 
     // Add metadata
@@ -779,7 +832,7 @@ const EXPORT_FORMATS = {
   txt: { name: 'Tekstitiedosto', extension: 'txt' },
   md: { name: 'Markdown', extension: 'md' },
   html: { name: 'HTML', extension: 'html' },
-  rtf: { name: 'Rich Text Format', extension: 'rtf' },
+  rtf: { name: 'RTF-asiakirja', extension: 'rtf' },
   docx: { name: 'Word-asiakirja', extension: 'docx' },
   pdf: { name: 'PDF', extension: 'pdf' },
   epub: { name: 'EPUB-e-kirja', extension: 'epub' }
@@ -826,7 +879,9 @@ ipcMain.handle('export-manuscript', async (_event, { project, format, chapterIds
 
     const baseName = safeFileName(book.single ? book.chapters[0].title : book.title);
     const { filePath } = await dialog.showSaveDialog(mainWindow, {
-      title: 'Vie',
+      title: 'Vie käsikirjoitus',
+      message: 'Anna vietävälle tiedostolle nimi ja valitse tallennuspaikka.',
+      buttonLabel: 'Vie',
       defaultPath: `${baseName}.${target.extension}`,
       filters: [{ name: target.name, extensions: [target.extension] }]
     });
@@ -890,6 +945,8 @@ ipcMain.handle('import-document', async () => {
   try {
     const { filePaths } = await dialog.showOpenDialog(mainWindow, {
       title: 'Tuo tekstiä',
+      message: 'Valitse tuotava tiedosto (.txt, .md tai .docx). Teksti jaetaan luvuiksi otsikoiden kohdalta ja lisätään avoimeen projektiin.',
+      buttonLabel: 'Tuo',
       filters: [{ name: 'Tekstit ja Word-asiakirjat', extensions: ['txt', 'md', 'markdown', 'docx'] }],
       properties: ['openFile']
     });
@@ -962,7 +1019,7 @@ ipcMain.handle('ai:set-provider', async (_event, next = {}) => {
 ipcMain.handle('ai:list-cherry-models', async () => {
   const cfg = getAIProviderConfig();
   if (!cfg.cherryKey) {
-    return { success: false, error: 'Cherry Studion yhdyskäytävän avain puuttuu.' };
+    return { success: false, error: 'Cherry Studion API-avain puuttuu.' };
   }
 
   try {
@@ -977,7 +1034,7 @@ ipcMain.handle('ai:list-cherry-models', async () => {
       return { success: false, error: describeAIError({ status: response.status, message: 'Forbidden' }) };
     }
     if (!response.ok) {
-      return { success: false, error: `Yhdyskäytävä vastasi virheellä ${response.status}.` };
+      return { success: false, error: `Cherry Studio vastasi virheellä ${response.status}.` };
     }
 
     const body = await response.json();
@@ -990,7 +1047,7 @@ ipcMain.handle('ai:list-cherry-models', async () => {
   } catch (error) {
     return {
       success: false,
-      error: `Cherry Studion yhdyskäytävään ei saada yhteyttä (${cfg.gatewayUrl}). Varmista, että Cherry Studio on käynnissä ja API Gateway on päällä.`
+      error: `Cherry Studioon ei saada yhteyttä (${cfg.gatewayUrl}). Varmista, että Cherry Studio on käynnissä ja sen API Gateway päällä.`
     };
   }
 });
@@ -1088,11 +1145,24 @@ function getRecoveryPath() {
   return path.join(app.getPath('userData'), 'recovery.json');
 }
 
+// A copy is kept only while the project is dirty. The close question blocks this process, so a
+// write the renderer sent meanwhile can arrive after 'Älä tallenna' (or a save) has removed the
+// copy; it is dropped, before it starts or before its rename, so the discarded work never returns.
+const NOT_DIRTY = { success: false, error: 'ei tallentamattomia muutoksia' };
+
 ipcMain.handle('save-backup', async (event, { project, filePath = null } = {}) => {
   try {
-    if (!project) return { success: false, error: 'No project' };
+    if (!rendererDirty) return NOT_DIRTY;
+    if (!project) return { success: false, error: 'projekti puuttuu' };
     const recovery = { savedAt: new Date().toISOString(), filePath, project };
-    await writeFileAtomic(getRecoveryPath(), JSON.stringify(recovery));
+    const recoveryPath = getRecoveryPath();
+    const tempPath = `${recoveryPath}.tmp-${process.pid}`;
+    await fs.writeFile(tempPath, JSON.stringify(recovery), 'utf-8');
+    if (!rendererDirty) {
+      await fs.unlink(tempPath).catch(() => {});
+      return NOT_DIRTY;
+    }
+    await fs.rename(tempPath, recoveryPath);
     return { success: true };
   } catch (error) {
     console.error('[Recovery] Save error:', error);

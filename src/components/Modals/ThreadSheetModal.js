@@ -1,99 +1,194 @@
 /**
- * ThreadSheetModal - Full Thread Form with Validation
+ * ThreadSheetModal - the plot thread form (Juonilanka)
  * DEVELOPMENT_ROADMAP.md:93 - Complete implementation
- * 
- * Script-tag compatible version for app.js integration
+ *
+ * Script-tag compatible version for app.js integration. index.html loads this file in <head>,
+ * before the bundle that assigns window.FaustIcons and window.FaustUI, so those globals are read
+ * only inside the render function (R-89). The look comes from the dialog, field, section and row
+ * classes of styles/faust-components.css. Esc is registered by the cross-region pass (XR-9).
  */
 
 (function(window) {
   'use strict';
 
-  const { createElement: e, useState, useEffect } = React;
+  const { createElement: e, useState, useEffect, useRef } = React;
 
-  // Access constants from window (loaded from constants.js)
+  // Read at render time only: the bundle has not run yet when this file loads.
+  const icons = () => window.FaustIcons || {};
+  const icon = (name, size) => (icons()[name] ? icons()[name]({ size }) : null);
 
-  // Option lists come from window.CONSTANTS as { value, label } objects, or as
-  // plain strings in the fallback. Rendering the object itself as an <option>
-  // child throws and took the whole window down.
-  const toOptions = (items) => (items || []).map(item => (
-    typeof item === 'string' ? { value: item, label: item } : item
-  ));
-  const THREAD_TYPES = toOptions(window.CONSTANTS?.THREAD_TYPES || ['Pääjuoni', 'Sivujuoni', 'Hahmon kehitys']);
-  const THREAD_STATUS = toOptions(window.CONSTANTS?.THREAD_STATUS || ['Aktiivinen', 'Odottaa', 'Ratkaistu']);
-  const THREAD_PRIORITY = toOptions(window.CONSTANTS?.THREAD_PRIORITY || ['Korkea', 'Keskitaso', 'Matala']);
+  // Display maps for the stored values (menu spec A.4). A plain script cannot import the bundle's
+  // maps, so this file keeps a copy of the ones it needs; constants.js is not touched. The stored
+  // values stay English.
+  const THREAD_TYPE = {
+    main_plot: 'Pääjuoni', subplot: 'Sivujuoni', character_arc: 'Hahmon kehityskaari',
+    theme: 'Teema', mystery: 'Arvoitus', romance: 'Rakkausjuoni'
+  };
+  const THREAD_STATE = {
+    planned: 'Suunniteltu', active: 'Avoin', developing: 'Kehittyvä', resolved: 'Ratkaistu', abandoned: 'Hylätty'
+  };
+  const PRIORITY = { critical: 'Kriittinen', high: 'Suuri', medium: 'Tavallinen', low: 'Pieni' };
+
+  // The lists come from window.CONSTANTS as { value, label } objects; without it, from the map's keys.
+  // Labels are overridden by value with the map above (menu spec C.13 row 10).
+  const toOptions = (items, map) => (items || Object.keys(map)).map(item => {
+    const value = typeof item === 'string' ? item : item.value;
+    const fallback = typeof item === 'string' ? String(item).replace(/_/g, ' ') : item.label;
+    return { value, label: map[value] || fallback };
+  });
+  // A stored value outside the list (an older entry) stays selectable under its own name, so that
+  // opening and saving the form never changes it.
+  const withCurrent = (options, value) => (value && !options.some(option => option.value === value)
+    ? [{ value, label: String(value).replace(/_/g, ' ') }, ...options]
+    : options);
+
+  const THREAD_TYPES = toOptions(window.CONSTANTS?.THREAD_TYPES, THREAD_TYPE);
+  const THREAD_STATUS = toOptions(window.CONSTANTS?.THREAD_STATUS, THREAD_STATE);
+  const THREAD_PRIORITY = toOptions(window.CONSTANTS?.THREAD_PRIORITY, PRIORITY);
   const VALIDATION_RULES = window.CONSTANTS?.VALIDATION_RULES || {
     DESCRIPTION_MAX_LENGTH: 5000
   };
+  const NAME_MAX = 200;
 
-  function ThreadSheetModal({ 
-    isOpen, 
-    onClose, 
-    thread = null, 
-    threads = [],
-    onSave,
-    mode = 'create' // 'create', 'edit', 'view'
-  }) {
-    if (!isOpen) return null;
+  // A small copy of count() in Dialogs.js, for the one word this form needs (menu spec B.13).
+  const FORMS = { merkki: ['merkki', 'merkkiä'] };
+  const count = (n, word) => {
+    const forms = FORMS[word] || [word, word];
+    return Number(n).toLocaleString('fi-FI') + ' ' + (Number(n) === 1 ? forms[0] : forms[1]);
+  };
+  const tooLong = (what, max) => `${what} on liian pitkä (enintään ${count(max, 'merkki')}).`;
+  const tooLongPlural = (what, max) => `${what} ovat liian pitkät (enintään ${count(max, 'merkki')}).`;
 
-    const [formData, setFormData] = useState({
-      name: '',
-      type: THREAD_TYPES[0].value,
-      status: THREAD_STATUS[0].value,
-      priority: THREAD_PRIORITY[0].value,
-      description: '',
-      relatedCharacters: [],
-      relatedLocations: [],
-      keyEvents: [],
-      resolution: '',
-      notes: ''
-    });
+  const ID = 'faust-thread';
 
+  const fromThread = (thread) => ({
+    name: thread?.name || '',
+    type: thread?.type || THREAD_TYPES[0].value,
+    status: thread?.status || THREAD_STATUS[0].value,
+    priority: thread?.priority || THREAD_PRIORITY[0].value,
+    description: thread?.description || '',
+    relatedCharacters: thread?.relatedCharacters || [],
+    relatedLocations: thread?.relatedLocations || [],
+    keyEvents: thread?.keyEvents || [],
+    resolution: thread?.resolution || '',
+    notes: thread?.notes || ''
+  });
+
+  // ---- Markup helpers ----
+
+  // aria-invalid draws the error edge (the stylesheet), aria-describedby links the message.
+  const invalid = (id, error) => (error ? { 'aria-invalid': 'true', 'aria-describedby': id + '-error' } : {});
+
+  // One field: the label above, the control, the message under it. `reserve` keeps the message's
+  // line under a required field, so the form does not jump when it appears.
+  const field = (id, label, control, error, reserve) => e('div', { className: 'faust-field' },
+    label && e('label', { className: 'faust-field__label', htmlFor: id }, label),
+    control,
+    (error || reserve) && e('div', { className: 'faust-field__error', id: id + '-error' }, error || null)
+  );
+
+  // Fields side by side; the row stands in the dialog's vertical rhythm as one field.
+  const fieldRow = (columns, cells) => e('div', {
+    className: 'faust-field',
+    style: { display: 'grid', gridTemplateColumns: columns, gap: 'var(--sp-4)', alignItems: 'start' }
+  }, cells.map((cell, index) => e('div', { key: index }, cell)));
+
+  const section = (title, ...children) => e('section', { className: 'faust-section' },
+    e('div', { className: 'faust-section__head' }, e('h3', { className: 'faust-section__title' }, title)),
+    ...children
+  );
+
+  // A list the author adds items to: the field and Lisää, then one row per item with its delete.
+  const tagEditor = ({ id, label, input, setInput, onAdd, items, onRemove, placeholder, emptyText, isViewMode }) => [
+    !isViewMode && e('div', { key: 'add', style: { display: 'flex', gap: 'var(--sp-2)' } },
+      e('input', {
+        id,
+        type: 'text',
+        className: 'faust-input faust-input--author',
+        style: { flex: '1 1 auto' },
+        value: input,
+        onChange: (ev) => setInput(ev.target.value),
+        onKeyPress: (ev) => {
+          if (ev.key === 'Enter') {
+            ev.preventDefault();
+            onAdd();
+          }
+        },
+        placeholder,
+        'aria-label': label
+      }),
+      e('button', { type: 'button', className: 'faust-btn faust-btn--lg', onClick: onAdd }, 'Lisää')
+    ),
+    e('div', { key: 'list', style: { marginTop: isViewMode ? 0 : 'var(--sp-2)' } },
+      items.length > 0
+        ? items.map(item => e('div', { key: item, className: 'faust-row faust-row--static faust-row--author' },
+            e('span', { className: 'faust-row__text' }, e('span', { className: 'faust-row__title', title: item }, item)),
+            !isViewMode && e('span', { className: 'faust-row__actions' },
+              e('button', {
+                type: 'button',
+                className: 'faust-btn faust-btn--icon faust-btn--sm faust-btn--danger',
+                title: 'Poista',
+                'aria-label': 'Poista',
+                onClick: () => onRemove(item)
+              }, icon('trash', 14))
+            )
+          ))
+        : e('div', { className: 'faust-meta' }, emptyText)
+    )
+  ];
+
+  function ThreadSheetModal(props) {
+    const {
+      isOpen,
+      onClose,
+      thread = null,
+      onSave,
+      onDelete,
+      mode = 'create' // 'create', 'edit', 'view'
+    } = props;
+
+    // Hooks run on every render, also while the form is closed (isOpen is checked after them).
+    const [formData, setFormData] = useState(() => fromThread(thread));
     const [errors, setErrors] = useState({});
     const [characterInput, setCharacterInput] = useState('');
     const [locationInput, setLocationInput] = useState('');
     const [eventInput, setEventInput] = useState('');
     const [isSaving, setIsSaving] = useState(false);
+    const [scrollRequest, setScrollRequest] = useState(0);
+    const dialogRef = useRef(null);
 
     useEffect(() => {
-      if (thread) {
-        setFormData({
-          name: thread.name || '',
-          type: thread.type || THREAD_TYPES[0].value,
-          status: thread.status || THREAD_STATUS[0].value,
-          priority: thread.priority || THREAD_PRIORITY[0].value,
-          description: thread.description || '',
-          relatedCharacters: thread.relatedCharacters || [],
-          relatedLocations: thread.relatedLocations || [],
-          keyEvents: thread.keyEvents || [],
-          resolution: thread.resolution || '',
-          notes: thread.notes || ''
-        });
-      }
+      if (thread) setFormData(fromThread(thread));
     }, [thread]);
+
+    // A failed save brings its first invalid field (or the save error) into view (BUG-3, C.13 row 8).
+    useEffect(() => {
+      if (!scrollRequest || !dialogRef.current) return;
+      const target = dialogRef.current.querySelector('[aria-invalid="true"], .faust-callout--error');
+      if (!target) return;
+      target.scrollIntoView({ block: 'center' });
+      if (typeof target.focus === 'function') target.focus({ preventScroll: true });
+    }, [scrollRequest]);
+
+    if (!isOpen) return null;
 
     const validateForm = () => {
       const newErrors = {};
+      const max = VALIDATION_RULES.DESCRIPTION_MAX_LENGTH;
 
-      // Name validation (required)
       if (!formData.name.trim()) {
-        newErrors.name = 'Nimi on pakollinen';
-      } else if (formData.name.length > 200) {
-        newErrors.name = 'Nimi on liian pitkä (max 200 merkkiä)';
+        newErrors.name = 'Nimi puuttuu.';
+      } else if (formData.name.length > NAME_MAX) {
+        newErrors.name = tooLong('Nimi', NAME_MAX);
       }
-
-      // Description validation
-      if (formData.description.length > VALIDATION_RULES.DESCRIPTION_MAX_LENGTH) {
-        newErrors.description = `Kuvaus on liian pitkä (max ${VALIDATION_RULES.DESCRIPTION_MAX_LENGTH} merkkiä)`;
+      if (formData.description.length > max) {
+        newErrors.description = tooLong('Kuvaus', max);
       }
-
-      // Resolution validation
-      if (formData.resolution.length > VALIDATION_RULES.DESCRIPTION_MAX_LENGTH) {
-        newErrors.resolution = `Ratkaisu on liian pitkä (max ${VALIDATION_RULES.DESCRIPTION_MAX_LENGTH} merkkiä)`;
+      if (formData.resolution.length > max) {
+        newErrors.resolution = tooLong('Ratkaisu', max);
       }
-
-      // Notes validation
-      if (formData.notes.length > VALIDATION_RULES.DESCRIPTION_MAX_LENGTH) {
-        newErrors.notes = `Muistiinpanot ovat liian pitkät (max ${VALIDATION_RULES.DESCRIPTION_MAX_LENGTH} merkkiä)`;
+      if (formData.notes.length > max) {
+        newErrors.notes = tooLongPlural('Muistiinpanot', max);
       }
 
       setErrors(newErrors);
@@ -102,13 +197,14 @@
 
     const handleSubmit = async (ev) => {
       ev.preventDefault();
-      
+
       if (mode === 'view') {
         onClose();
         return;
       }
 
       if (!validateForm()) {
+        setScrollRequest(n => n + 1);
         return;
       }
 
@@ -127,7 +223,9 @@
         onClose();
       } catch (error) {
         console.error('[ThreadSheet] Save error:', error);
-        setErrors({ submit: 'Tallennus epäonnistui: ' + error.message });
+        const reason = String((error && error.message) || 'tuntematon virhe').replace(/\.\s*$/, '');
+        setErrors({ submit: 'Tallennus epäonnistui: ' + reason + '.' });
+        setScrollRequest(n => n + 1);
       } finally {
         setIsSaving(false);
       }
@@ -194,802 +292,186 @@
     const removeEvent = (event) => {
       setFormData(prev => ({
         ...prev,
-        keyEvents: prev.keyEvents.filter(e => e !== event)
+        keyEvents: prev.keyEvents.filter(item => item !== event)
       }));
     };
 
     const isViewMode = mode === 'view';
-    const title = mode === 'create' ? '🧵 Luo Juonilanka' : 
-                  mode === 'edit' ? '✏️ Muokkaa Juonilankaa' : 
-                  '🧵 Juonilangan Tiedot';
+    const title = mode === 'create' ? 'Uusi juonilanka' :
+                  mode === 'edit' ? 'Muokkaa juonilankaa' :
+                  'Juonilanka';
+    const canDelete = Boolean(onDelete) && mode === 'edit';
+
+    // The first message in the order of the form, repeated beside the footer buttons.
+    const firstError = ['name', 'description', 'resolution', 'notes'].map(key => errors[key]).find(Boolean);
+
+    const textarea = (id, key, placeholder, rows, label) => e('textarea', {
+      id,
+      className: 'faust-textarea faust-textarea--author',
+      value: formData[key],
+      onChange: (ev) => handleInputChange(key, ev.target.value),
+      disabled: isViewMode,
+      placeholder,
+      rows,
+      'aria-label': label,
+      ...invalid(id, errors[key])
+    });
+
+    const select = (id, key, options) => e('select', {
+      id,
+      className: 'faust-select',
+      value: formData[key],
+      onChange: (ev) => handleInputChange(key, ev.target.value),
+      disabled: isViewMode
+    },
+      withCurrent(options, formData[key]).map(option =>
+        e('option', { key: option.value, value: option.value }, option.label)
+      )
+    );
 
     return e('div', {
-      className: 'modal-overlay',
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.85)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10000,
-        padding: '20px'
-      },
-      onClick: (ev) => {
-        if (ev.target.className === 'modal-overlay') {
-          onClose();
-        }
+      className: 'faust-scrim',
+      // A press on the scrim closes the view-only window, never the form (R-69).
+      onMouseDown: (ev) => {
+        if (isViewMode && ev.target === ev.currentTarget) onClose();
       }
     },
-      e('div', {
-        style: {
-          background: 'var(--bg-primary)',
-          border: '2px solid var(--bronze)',
-          borderRadius: '8px',
-          width: '100%',
-          maxWidth: '900px',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          padding: '32px',
-          position: 'relative'
-        }
+      e('form', {
+        ref: dialogRef,
+        className: 'faust-dialog faust-dialog--lg',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-labelledby': ID + '-heading',
+        noValidate: true,
+        onSubmit: handleSubmit
       },
         // Header
-        e('div', {
-          style: {
-            marginBottom: '24px',
-            paddingBottom: '16px',
-            borderBottom: '1px solid var(--border-color)'
-          }
-        },
-          e('h2', {
-            style: {
-              fontFamily: 'EB Garamond',
-              fontSize: '28px',
-              color: 'var(--text)',
-              margin: 0
-            }
-          }, title),
-
-          // Close button
+        e('div', { className: 'faust-dialog__header' },
+          e('div', { className: 'faust-dialog__heading' },
+            e('h2', { className: 'faust-dialog__title', id: ID + '-heading' }, icon('lemniscate', 20), title)
+          ),
           e('button', {
-            onClick: onClose,
-            style: {
-              position: 'absolute',
-              top: '24px',
-              right: '24px',
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-2)',
-              cursor: 'pointer',
-              fontSize: '32px',
-              padding: '0',
-              width: '32px',
-              height: '32px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center'
-            }
-          }, '×')
+            type: 'button',
+            className: 'faust-btn faust-btn--icon',
+            'aria-label': 'Sulje',
+            title: 'Sulje',
+            onClick: onClose
+          }, icon('close', 16))
         ),
 
-        // Form
-        e('form', {
-          onSubmit: handleSubmit,
-          style: {
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '24px'
-          }
-        },
-          // Basic Information Section
-          e('div', {
-            style: {
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              padding: '20px'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '16px'
-              }
-            }, '📋 Perustiedot'),
-
-            // Name
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', {
-                style: {
-                  display: 'block',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-2)',
-                  marginBottom: '6px'
-                }
-              }, 'Nimi *'),
-              e('input', {
-                type: 'text',
-                value: formData.name,
-                onChange: (ev) => handleInputChange('name', ev.target.value),
-                disabled: isViewMode,
-                placeholder: 'Esim. Sankarin matka, Romanttinen juonilanka',
-                style: {
-                  width: '100%',
-                  padding: '10px',
-                  background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                  border: errors.name ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'EB Garamond',
-                  fontSize: '16px'
-                }
-              }),
-              errors.name && e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: '#ff4444',
-                  marginTop: '4px'
-                }
-              }, errors.name)
-            ),
-
-            // Type, Status, Priority row
-            e('div', {
-              style: {
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1fr',
-                gap: '16px',
-                marginBottom: '16px'
-              }
-            },
-              // Type
-              e('div', null,
-                e('label', {
-                  style: {
-                    display: 'block',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '6px'
-                  }
-                }, 'Tyyppi'),
-                e('select', {
-                  value: formData.type,
-                  onChange: (ev) => handleInputChange('type', ev.target.value),
-                  disabled: isViewMode,
-                  style: {
-                    width: '100%',
-                    padding: '10px',
-                    background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '14px'
-                  }
-                },
-                  THREAD_TYPES.map(option =>
-                    e('option', { key: option.value, value: option.value }, option.label)
-                  )
-                )
-              ),
-
-              // Status
-              e('div', null,
-                e('label', {
-                  style: {
-                    display: 'block',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '6px'
-                  }
-                }, 'Tila'),
-                e('select', {
-                  value: formData.status,
-                  onChange: (ev) => handleInputChange('status', ev.target.value),
-                  disabled: isViewMode,
-                  style: {
-                    width: '100%',
-                    padding: '10px',
-                    background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '14px'
-                  }
-                },
-                  THREAD_STATUS.map(option =>
-                    e('option', { key: option.value, value: option.value }, option.label)
-                  )
-                )
-              ),
-
-              // Priority
-              e('div', null,
-                e('label', {
-                  style: {
-                    display: 'block',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '6px'
-                  }
-                }, 'Prioriteetti'),
-                e('select', {
-                  value: formData.priority,
-                  onChange: (ev) => handleInputChange('priority', ev.target.value),
-                  disabled: isViewMode,
-                  style: {
-                    width: '100%',
-                    padding: '10px',
-                    background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '14px'
-                  }
-                },
-                  THREAD_PRIORITY.map(option =>
-                    e('option', { key: option.value, value: option.value }, option.label)
-                  )
-                )
-              )
-            ),
-
-            // Description
-            e('div', null,
-              e('label', {
-                style: {
-                  display: 'block',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-2)',
-                  marginBottom: '6px'
-                }
-              }, 'Kuvaus'),
-              e('textarea', {
-                value: formData.description,
-                onChange: (ev) => handleInputChange('description', ev.target.value),
-                disabled: isViewMode,
-                placeholder: 'Mitä tässä juonilangassa tapahtuu?',
-                rows: 4,
-                style: {
-                  width: '100%',
-                  padding: '10px',
-                  background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                  border: errors.description ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'EB Garamond',
-                  fontSize: '14px',
-                  resize: 'vertical'
-                }
-              }),
-              errors.description && e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: '#ff4444',
-                  marginTop: '4px'
-                }
-              }, errors.description)
-            )
+        // Body
+        e('div', { className: 'faust-dialog__body' },
+          errors.submit && e('div', { className: 'faust-callout faust-callout--error', role: 'alert' },
+            e('span', { className: 'faust-callout__icon' }, icon('error', 16)),
+            e('div', { className: 'faust-callout__body' }, errors.submit)
           ),
 
-          // Related Characters Section
-          e('div', {
-            style: {
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              padding: '20px'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '16px'
-              }
-            }, '👥 Liittyvät Hahmot'),
-
-            !isViewMode && e('div', { style: { display: 'flex', gap: '8px', marginBottom: '12px' } },
-              e('input', {
-                type: 'text',
-                value: characterInput,
-                onChange: (ev) => setCharacterInput(ev.target.value),
-                onKeyPress: (ev) => {
-                  if (ev.key === 'Enter') {
-                    ev.preventDefault();
-                    addCharacter();
-                  }
-                },
-                placeholder: 'Lisää hahmo ja paina Enter',
-                style: {
-                  flex: 1,
-                  padding: '8px',
-                  background: 'var(--bg-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '13px'
-                }
-              }),
-              e('button', {
-                type: 'button',
-                onClick: addCharacter,
-                style: {
-                  padding: '8px 16px',
-                  background: 'var(--bronze)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#000',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '13px',
-                  fontWeight: 600
-                }
-              }, 'Lisää')
-            ),
-
-            e('div', {
-              style: {
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '8px'
-              }
-            },
-              formData.relatedCharacters.length > 0 ?
-                formData.relatedCharacters.map(character =>
-                  e('div', {
-                    key: character,
-                    style: {
-                      padding: '6px 12px',
-                      background: 'var(--bronze)',
-                      color: '#000',
-                      borderRadius: '16px',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }
-                  },
-                    e('span', null, character),
-                    !isViewMode && e('button', {
-                      type: 'button',
-                      onClick: () => removeCharacter(character),
-                      style: {
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#000',
-                        cursor: 'pointer',
-                        fontSize: '16px',
-                        padding: 0,
-                        display: 'flex',
-                        alignItems: 'center'
-                      }
-                    }, '×')
-                  )
-                ) :
-                e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px',
-                    color: 'var(--text-3)',
-                    fontStyle: 'italic'
-                  }
-                }, 'Ei liittyviä hahmoja')
-            )
-          ),
-
-          // Related Locations Section
-          e('div', {
-            style: {
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              padding: '20px'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '16px'
-              }
-            }, '📍 Liittyvät Paikat'),
-
-            !isViewMode && e('div', { style: { display: 'flex', gap: '8px', marginBottom: '12px' } },
-              e('input', {
-                type: 'text',
-                value: locationInput,
-                onChange: (ev) => setLocationInput(ev.target.value),
-                onKeyPress: (ev) => {
-                  if (ev.key === 'Enter') {
-                    ev.preventDefault();
-                    addLocation();
-                  }
-                },
-                placeholder: 'Lisää paikka ja paina Enter',
-                style: {
-                  flex: 1,
-                  padding: '8px',
-                  background: 'var(--bg-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '13px'
-                }
-              }),
-              e('button', {
-                type: 'button',
-                onClick: addLocation,
-                style: {
-                  padding: '8px 16px',
-                  background: 'var(--bronze)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#000',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '13px',
-                  fontWeight: 600
-                }
-              }, 'Lisää')
-            ),
-
-            e('div', {
-              style: {
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: '8px'
-              }
-            },
-              formData.relatedLocations.length > 0 ?
-                formData.relatedLocations.map(location =>
-                  e('div', {
-                    key: location,
-                    style: {
-                      padding: '6px 12px',
-                      background: 'var(--bronze)',
-                      color: '#000',
-                      borderRadius: '16px',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '12px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }
-                  },
-                    e('span', null, location),
-                    !isViewMode && e('button', {
-                      type: 'button',
-                      onClick: () => removeLocation(location),
-                      style: {
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#000',
-                        cursor: 'pointer',
-                        fontSize: '16px',
-                        padding: 0,
-                        display: 'flex',
-                        alignItems: 'center'
-                      }
-                    }, '×')
-                  )
-                ) :
-                e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px',
-                    color: 'var(--text-3)',
-                    fontStyle: 'italic'
-                  }
-                }, 'Ei liittyviä paikkoja')
-            )
-          ),
-
-          // Key Events Section
-          e('div', {
-            style: {
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              padding: '20px'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '16px'
-              }
-            }, '⚡ Keskeiset Tapahtumat'),
-
-            !isViewMode && e('div', { style: { display: 'flex', gap: '8px', marginBottom: '12px' } },
-              e('input', {
-                type: 'text',
-                value: eventInput,
-                onChange: (ev) => setEventInput(ev.target.value),
-                onKeyPress: (ev) => {
-                  if (ev.key === 'Enter') {
-                    ev.preventDefault();
-                    addEvent();
-                  }
-                },
-                placeholder: 'Lisää tapahtuma ja paina Enter',
-                style: {
-                  flex: 1,
-                  padding: '8px',
-                  background: 'var(--bg-primary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '13px'
-                }
-              }),
-              e('button', {
-                type: 'button',
-                onClick: addEvent,
-                style: {
-                  padding: '8px 16px',
-                  background: 'var(--bronze)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#000',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '13px',
-                  fontWeight: 600
-                }
-              }, 'Lisää')
-            ),
-
-            e('div', {
-              style: {
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px'
-              }
-            },
-              formData.keyEvents.length > 0 ?
-                formData.keyEvents.map((event, index) =>
-                  e('div', {
-                    key: index,
-                    style: {
-                      padding: '8px 12px',
-                      background: 'var(--bg-primary)',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '13px',
-                      color: 'var(--text)',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }
-                  },
-                    e('span', null, event),
-                    !isViewMode && e('button', {
-                      type: 'button',
-                      onClick: () => removeEvent(event),
-                      style: {
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-3)',
-                        cursor: 'pointer',
-                        fontSize: '16px',
-                        padding: 0
-                      }
-                    }, '×')
-                  )
-                ) :
-                e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px',
-                    color: 'var(--text-3)',
-                    fontStyle: 'italic'
-                  }
-                }, 'Ei keskeisiä tapahtumia')
-            )
-          ),
-
-          // Resolution Section
-          e('div', {
-            style: {
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              padding: '20px'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '16px'
-              }
-            }, '✅ Ratkaisu'),
-
-            e('textarea', {
-              value: formData.resolution,
-              onChange: (ev) => handleInputChange('resolution', ev.target.value),
+          section('Perustiedot',
+            field(ID + '-name', 'Nimi *', e('input', {
+              id: ID + '-name',
+              type: 'text',
+              className: 'faust-input faust-input--author',
+              value: formData.name,
+              onChange: (ev) => handleInputChange('name', ev.target.value),
               disabled: isViewMode,
-              placeholder: 'Miten juonilanka ratkeaa?',
-              rows: 4,
-              style: {
-                width: '100%',
-                padding: '10px',
-                background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                border: errors.resolution ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'EB Garamond',
-                fontSize: '14px',
-                resize: 'vertical'
-              }
-            }),
-            errors.resolution && e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: '#ff4444',
-                marginTop: '4px'
-              }
-            }, errors.resolution)
+              placeholder: 'Esim. Sankarin matka, Romanttinen juonilanka',
+              ...invalid(ID + '-name', errors.name)
+            }), errors.name, true),
+
+            fieldRow('repeat(3, minmax(0, 1fr))', [
+              field(ID + '-type', 'Tyyppi', select(ID + '-type', 'type', THREAD_TYPES)),
+              field(ID + '-status', 'Tila', select(ID + '-status', 'status', THREAD_STATUS)),
+              field(ID + '-priority', 'Tärkeys', select(ID + '-priority', 'priority', THREAD_PRIORITY))
+            ]),
+
+            field(ID + '-description', 'Kuvaus',
+              textarea(ID + '-description', 'description', 'Mitä tässä juonilangassa tapahtuu?', 4),
+              errors.description)
           ),
 
-          // Notes Section
-          e('div', {
-            style: {
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '6px',
-              padding: '20px'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '16px'
-              }
-            }, '📝 Muistiinpanot'),
-
-            e('textarea', {
-              value: formData.notes,
-              onChange: (ev) => handleInputChange('notes', ev.target.value),
-              disabled: isViewMode,
-              placeholder: 'Vapaat muistiinpanot...',
-              rows: 3,
-              style: {
-                width: '100%',
-                padding: '10px',
-                background: isViewMode ? 'var(--bg-1)' : 'var(--bg-primary)',
-                border: errors.notes ? '2px solid #ff4444' : '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'EB Garamond',
-                fontSize: '14px',
-                resize: 'vertical'
-              }
-            }),
-            errors.notes && e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: '#ff4444',
-                marginTop: '4px'
-              }
-            }, errors.notes)
+          section('Liittyvät hahmot',
+            ...tagEditor({
+              id: ID + '-character',
+              label: 'Liittyvät hahmot',
+              input: characterInput,
+              setInput: setCharacterInput,
+              onAdd: addCharacter,
+              items: formData.relatedCharacters,
+              onRemove: removeCharacter,
+              placeholder: 'Kirjoita hahmon nimi ja paina Enter',
+              emptyText: 'Ei liittyviä hahmoja',
+              isViewMode
+            })
           ),
 
-          // Submit error
-          errors.submit && e('div', {
-            style: {
-              padding: '12px',
-              background: 'rgba(255, 68, 68, 0.1)',
-              border: '1px solid rgba(255, 68, 68, 0.3)',
-              borderRadius: '4px',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              color: '#ff4444'
-            }
-          }, errors.submit),
+          section('Liittyvät paikat',
+            ...tagEditor({
+              id: ID + '-location',
+              label: 'Liittyvät paikat',
+              input: locationInput,
+              setInput: setLocationInput,
+              onAdd: addLocation,
+              items: formData.relatedLocations,
+              onRemove: removeLocation,
+              placeholder: 'Kirjoita paikan nimi ja paina Enter',
+              emptyText: 'Ei liittyviä paikkoja',
+              isViewMode
+            })
+          ),
 
-          // Form actions
-          !isViewMode && e('div', {
-            style: {
-              display: 'flex',
-              gap: '12px',
-              justifyContent: 'flex-end',
-              paddingTop: '16px',
-              borderTop: '1px solid var(--border-color)'
-            }
-          },
-            e('button', {
+          section('Keskeiset tapahtumat',
+            ...tagEditor({
+              id: ID + '-event',
+              label: 'Keskeiset tapahtumat',
+              input: eventInput,
+              setInput: setEventInput,
+              onAdd: addEvent,
+              items: formData.keyEvents,
+              onRemove: removeEvent,
+              placeholder: 'Kirjoita tapahtuma ja paina Enter',
+              emptyText: 'Ei keskeisiä tapahtumia',
+              isViewMode
+            })
+          ),
+
+          section('Ratkaisu',
+            field(ID + '-resolution', null,
+              textarea(ID + '-resolution', 'resolution', 'Miten juonilanka ratkeaa?', 4, 'Ratkaisu'),
+              errors.resolution)
+          ),
+
+          section('Muistiinpanot',
+            field(ID + '-notes', null,
+              textarea(ID + '-notes', 'notes', 'Vapaat muistiinpanot…', 3, 'Muistiinpanot'),
+              errors.notes)
+          )
+        ),
+
+        // Footer: a delete at the left (edit mode, when the parent can delete); Peruuta, then the action.
+        // A view-only window has no footer.
+        !isViewMode && e('div', { className: 'faust-dialog__footer' },
+          e('div', { className: 'faust-dialog__footer-start' },
+            canDelete && e('button', {
               type: 'button',
-              onClick: onClose,
-              style: {
-                padding: '12px 24px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px'
-              }
-            }, 'Peruuta'),
-
-            e('button', {
-              type: 'submit',
+              className: 'faust-btn faust-btn--sm faust-btn--danger',
               disabled: isSaving,
-              style: {
-                padding: '12px 24px',
-                background: isSaving ? 'var(--bg-2)' : 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: isSaving ? 'var(--text-3)' : '#000',
-                cursor: isSaving ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                fontWeight: 600
-              }
-            }, isSaving ? 'Tallennetaan...' : mode === 'create' ? 'Luo' : 'Tallenna')
+              onClick: () => onDelete(thread)
+            }, 'Poista juonilanka'),
+            firstError && e('span', { className: 'faust-field__error' }, firstError)
           ),
-
-          // View mode close button
-          isViewMode && e('div', {
-            style: {
-              display: 'flex',
-              justifyContent: 'flex-end',
-              paddingTop: '16px',
-              borderTop: '1px solid var(--border-color)'
-            }
+          e('button', {
+            type: 'button',
+            className: 'faust-btn faust-btn--lg',
+            onClick: onClose
+          }, 'Peruuta'),
+          e('button', {
+            type: 'submit',
+            className: 'faust-btn faust-btn--lg faust-btn--primary',
+            disabled: isSaving,
+            'aria-busy': isSaving ? 'true' : undefined
           },
-            e('button', {
-              type: 'button',
-              onClick: onClose,
-              style: {
-                padding: '12px 24px',
-                background: 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: '#000',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                fontWeight: 600
-              }
-            }, 'Sulje')
+            isSaving && e('span', { className: 'faust-spinner faust-spinner--sm', 'aria-hidden': 'true' }),
+            isSaving ? 'Tallennetaan…' : mode === 'create' ? 'Luo juonilanka' : 'Tallenna'
           )
         )
       )

@@ -7,7 +7,10 @@
 import { AIProviderSettings } from './src/components/AIProviderSettings.js';
 import { FaustEditor } from './src/components/FaustEditor.js';
 import { ErrorBoundary } from './src/components/ErrorBoundary.js';
-import { TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog } from './src/components/Dialogs.js';
+import {
+  TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog, CollectionDialog,
+  shortcut, shortcutKeys, count, countParts
+} from './src/components/Dialogs.js';
 import {
   countWords, countCharacters, countProjectWords, estimatePages,
   toggleInline, setHeading, toggleLinePrefix, insertText, transformSelection,
@@ -62,6 +65,125 @@ function applyTheme(next, animate) {
     ]
   };
 }
+
+// ---------------------------------------------------------------------
+// Display maps for stored values (menu spec A.4). The code stores and compares the
+// English keys; the screen shows these words. Inside a running line a label is written
+// in lower case (.toLowerCase()).
+// ---------------------------------------------------------------------
+const LABELS = {
+  status: { plan: 'Suunnitteilla', draft: 'Luonnos', revision: 'Muokattavana', final: 'Valmis' },
+  mode: { exploration: 'Ideointi', production: 'Kirjoitus', polish: 'Viimeistely' },
+  genre: {
+    fiction: 'Kaunokirjallisuus (yleinen)', fantasy: 'Fantasia', scifi: 'Scifi', mystery: 'Dekkari',
+    thriller: 'Trilleri', romance: 'Romantiikka', horror: 'Kauhu', literary: 'Taideproosa', nonfiction: 'Tietokirja'
+  },
+  threadType: {
+    main_plot: 'Pääjuoni', subplot: 'Sivujuoni', character_arc: 'Hahmon kehityskaari',
+    theme: 'Teema', mystery: 'Arvoitus', romance: 'Rakkausjuoni'
+  },
+  threadStatus: { planned: 'Suunniteltu', active: 'Avoin', developing: 'Kehittyvä', resolved: 'Ratkaistu', abandoned: 'Hylätty' },
+  priority: { critical: 'Kriittinen', high: 'Suuri', medium: 'Tavallinen', low: 'Pieni', info: 'Tiedoksi' },
+  severity: { critical: 'Vakavia', high: 'Tärkeitä', medium: 'Lieviä', low: 'Lieviä' },
+  tempo: { slow: 'hidas', medium: 'keskinopea', fast: 'nopea' },
+  placeType: {
+    home: 'Koti', city: 'Kaupunki', nature: 'Luonto', building: 'Rakennus',
+    vehicle: 'Ajoneuvo', fantasy: 'Fantasiamaailma', other: 'Muu'
+  },
+  placeAtmosphere: {
+    peaceful: 'Rauhallinen', tense: 'Jännittävä', mysterious: 'Mystinen', dangerous: 'Vaarallinen',
+    cozy: 'Viihtyisä', eerie: 'Aavemainen', busy: 'Vilkas', abandoned: 'Hylätty'
+  },
+  placeImportance: { major: 'Pääpaikka', minor: 'Sivupaikka', mentioned: 'Mainittu' },
+  bigFive: {
+    openness: 'Avoimuus', conscientiousness: 'Tunnollisuus', extraversion: 'Ulospäinsuuntautuneisuus',
+    agreeableness: 'Sovinnollisuus', neuroticism: 'Tunne-elämän epävakaus'
+  },
+  annotationType: {
+    ai_consistency: 'Ristiriita', ai_quality: 'Laatu', ai_suggestion: 'Parannusehdotus', ai_plot_thread: 'Juonilanka',
+    user_note: 'Reunahuomautus', user_comment: 'Kommentti', highlight: 'Korostus'
+  },
+  researchType: { note: 'Muistiinpano', link: 'Linkki', image: 'Tiedostoviite', pdf: 'Tiedostoviite' },
+  costSource: { anthropic: 'Claude', cherry: 'Cherry Studio' }
+};
+
+// A stored value of a closed list as the author reads it; an unknown value as it is, without underscores
+const labelOf = (group, value) =>
+  (LABELS[group] && LABELS[group][value]) || String(value == null ? '' : value).replace(/_/g, ' ');
+
+// The values of a character profile (Uusi hahmo, Hahmot, the split view), menu spec A.4
+const PROFILE_LABELS = {
+  // Rooli tarinassa, rooli ryhmässä
+  protagonist: 'päähenkilö', antagonist: 'vastustaja', supporting: 'sivuhenkilö',
+  leader: 'johtaja', mediator: 'sovittelija', rebel: 'kapinallinen', outsider: 'ulkopuolinen', follower: 'seuraaja',
+  // Minätilat, draamakolmio, viestintätyyli
+  parent: 'vanhempi', adult: 'aikuinen', child: 'lapsi',
+  victim: 'uhri', rescuer: 'pelastaja', persecutor: 'vainoaja',
+  assertive: 'jämäkkä', passive: 'passiivinen', aggressive: 'hyökkäävä', passive_aggressive: 'passiivis-aggressiivinen',
+  // Psyykkinen oireilu, selviytymiskeino, trauma, maailmankuva
+  anxiety: 'ahdistuneisuus', mood: 'mielialahäiriö', personality: 'persoonallisuushäiriö', trauma_related: 'traumaperäinen',
+  heroism: 'sankaruus', religiosity: 'uskonnollisuus', creativity: 'luovuus', relationships: 'ihmissuhteet', denial: 'kieltäminen',
+  childhood: 'lapsuus', loss: 'menetys', violence: 'väkivalta', betrayal: 'petos', other: 'muu',
+  optimistic: 'optimistinen', pessimistic: 'pessimistinen', realistic: 'realistinen', cynical: 'kyyninen',
+  // Arkkityyppi
+  hero: 'sankari', mentor: 'mentori', threshold_guardian: 'kynnyksen vartija', herald: 'sanansaattaja',
+  shapeshifter: 'muodonmuuttaja', shadow: 'varjo', ally: 'liittolainen', trickster: 'veijari', innocent: 'viaton',
+  sage: 'viisas', explorer: 'tutkimusmatkailija', outlaw: 'lainsuojaton', magician: 'maagi', lover: 'rakastaja',
+  jester: 'narri', caregiver: 'hoivaaja', creator: 'luoja', ruler: 'hallitsija',
+  // Sankarin matka
+  ordinary_world: 'tavallinen maailma', call_to_adventure: 'kutsu seikkailuun', refusal: 'kutsusta kieltäytyminen',
+  meeting_mentor: 'mentorin kohtaaminen', crossing_threshold: 'kynnyksen ylitys', tests: 'koetukset',
+  approach: 'lähestyminen', ordeal: 'koettelemus', reward: 'palkinto', road_back: 'paluumatka',
+  resurrection: 'ylösnousemus', return_with_elixir: 'paluu eliksiirin kanssa'
+};
+const label = (value) => PROFILE_LABELS[value] || String(value == null ? '' : value).replace(/_/g, ' ');
+
+// Chapter status as stored: the legacy collection filter 'revised' is 'revision', a missing status is 'plan'
+const normStatus = (value) => (value === 'revised' ? 'revision' : (value || 'plan'));
+
+// Status chip classes (visual foundations 4.4), used with LABELS.status
+const STATUS_CHIP = {
+  plan: 'faust-chip--hollow',
+  draft: 'faust-chip--hollow',
+  revision: 'faust-chip--accent faust-chip--dot',
+  final: 'faust-chip--success faust-chip--dot'
+};
+
+// Menu commands that show a docked panel leave focus mode first: a panel is never open inside it
+const LEAVES_FOCUS = [
+  'toggle-sidebar', 'toggle-inspector', 'toggle-ai-panel', 'toggle-chat-window', 'toggle-corkboard',
+  'toggle-split-view', 'toggle-bookmarks', 'show-snapshots', 'show-settings', 'show-ai-settings'
+];
+
+// 16.11.2026 klo 14.32
+const formatDateTimeFi = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString('fi-FI') + ' klo ' + date.toLocaleTimeString('fi-FI', { hour: 'numeric', minute: '2-digit' });
+};
+
+// The reason in '<Toiminto> epäonnistui: <syy>.' (menu spec B.12): one trailing full stop is
+// left to the template, and a missing or English placeholder reason reads 'tuntematon virhe'
+const failureReason = (error) => {
+  const text = String((error && error.message) || error || '').trim().replace(/\.+$/, '');
+  if (!text || /^unknown error$/i.test(text)) return 'tuntematon virhe';
+  return text;
+};
+
+// The reason of a failed listen() in the same form: voiceInput.js rejects with Finnish sentences,
+// recognition.start() with the browser's English DOMException, which is never shown as it is
+const voiceFailureReason = (error) => {
+  if (window.DOMException && error instanceof window.DOMException) return 'puheentunnistusta ei voitu käynnistää';
+  if (error && error.name && error.name !== 'Error') return 'tuntematon virhe';
+  const text = failureReason(error);
+  if (/^tuntematon äänivirhe$/i.test(text)) return 'tuntematon virhe';
+  if (/^äänitunnistus keskeytetty$/i.test(text)) return 'puheentunnistus keskeytyi';
+  return text.charAt(0).toLowerCase() + text.slice(1);
+};
+
+// Money as the author reads it: noin 0,12 $
+const formatCostFi = (amount) =>
+  'noin ' + (Number(amount) || 0).toLocaleString('fi-FI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' $';
 
 // CharacterGenerator, callAIProvider, and RefinementManager
 // are now loaded from src/services/ai/ as IIFE modules
@@ -327,11 +449,22 @@ function FAUSTApp() {
   const [showExportModal, setShowExportModal] = useState(false);
 
   // Handler to save chapter data from modal
+  // A tiivistelmä the author edits here is theirs: it goes to synopsisManual too, so that
+  // Analysoi luku and Tee tiivistelmä (synopsis: ch.synopsisManual || ...) keep it next time.
   const handleChapterSheetSave = (chapterData) => {
     setProject(prev => ({
       ...prev,
       structure: prev.structure.map(ch =>
-        ch.id === activeChapterId ? { ...ch, ...chapterData, modified: new Date().toISOString() } : ch
+        ch.id === activeChapterId
+          ? {
+              ...ch,
+              ...chapterData,
+              ...(chapterData.synopsis !== undefined
+                ? { synopsisManual: chapterData.synopsis !== ch.synopsisAI ? chapterData.synopsis : ch.synopsisManual }
+                : {}),
+              modified: new Date().toISOString()
+            }
+          : ch
       )
     }));
     setUnsavedChanges(true);
@@ -382,10 +515,47 @@ function FAUSTApp() {
     console.log('[ThreadSheet] Thread saved:', threadData.name);
   };
 
+  // Delete a place from its form. Places are keyed by their stored name, not the edited one.
+  const deleteLocation = async (location) => {
+    if (!location) return;
+    if (!(await askConfirm(
+      'Poistetaanko paikka?',
+      'Paikka ”' + location.name + '” poistetaan. Poistoa ei voi kumota.',
+      'Poista paikka',
+      'Peruuta',
+      { danger: true }
+    ))) return;
+    setProject(prev => {
+      const locations = { ...((prev.continuity && prev.continuity.locations) || {}) };
+      delete locations[location.name];
+      return { ...prev, continuity: { ...(prev.continuity || {}), locations } };
+    });
+    setUnsavedChanges(true);
+    setShowLocationFormModal(false);
+    setSelectedLocation(null);
+  };
+
+  // Delete a plot thread from its form
+  const deleteThread = async (thread) => {
+    if (!thread) return;
+    if (!(await askConfirm(
+      'Poistetaanko juonilanka?',
+      'Juonilanka ”' + thread.name + '” poistetaan. Poistoa ei voi kumota.',
+      'Poista juonilanka',
+      'Peruuta',
+      { danger: true }
+    ))) return;
+    setProject(prev => ({ ...prev, plotThreads: (prev.plotThreads || []).filter((t) => t.id !== thread.id) }));
+    // The copy for the panels follows the project only while it has threads: keep it in step
+    setPlotThreads(prev => prev.filter((t) => t.id !== thread.id));
+    setUnsavedChanges(true);
+    setShowThreadFormModal(false);
+    setSelectedThread(null);
+  };
+
   // Refinement state
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [regenerateFeedback, setRegenerateFeedback] = useState('');
-  const [regenerateMode, setRegenerateMode] = useState('production');
   const [showVersionHistory, setShowVersionHistory] = useState(false);
   const [showVersionComparison, setShowVersionComparison] = useState(false);
   const [comparisonVersionId, setComparisonVersionId] = useState(null);
@@ -416,7 +586,6 @@ function FAUSTApp() {
 
   // AI Assistant Chat state (Cursor-style)
   const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
-  const [aiAssistantCollapsed, setAiAssistantCollapsed] = useState(false);
   const [aiChatMessages, setAiChatMessages] = useState([]);
   const [aiChatInput, setAiChatInput] = useState('');
   const [aiChatVoiceState, setAiChatVoiceState] = useState('idle');
@@ -470,6 +639,12 @@ function FAUSTApp() {
   // AI Generation state
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(null); // {stage, message}
+  // Which of Analysoi luku, Pika-arvio and Tee tiivistelmä runs: null | 'analyze' | 'quick' | 'summary'
+  const [analysisBusy, setAnalysisBusy] = useState(null);
+
+  // The tekoälyn lähde as the main process reports it ({ provider, model, ... }); null until known,
+  // which counts as "not Cherry Studio". AIProviderSettings keeps it current (onProviderChange).
+  const [aiSource, setAiSource] = useState(null);
 
   // API key input state
   const [apiKeyInputValue, setApiKeyInputValue] = useState('');
@@ -481,6 +656,9 @@ function FAUSTApp() {
   // Split View state
   const [splitViewEnabled, setSplitViewEnabled] = useState(false);
   const [splitViewChapterId, setSplitViewChapterId] = useState(null);
+  // Each type of the second pane keeps its own selection
+  const [splitViewCharacterId, setSplitViewCharacterId] = useState(null);
+  const [splitViewLocationId, setSplitViewLocationId] = useState(null);
   const [splitViewType, setSplitViewType] = useState('chapter'); // 'chapter', 'character', 'location', 'outline'
 
   // Corkboard state
@@ -494,12 +672,13 @@ function FAUSTApp() {
   const [showSnapshotsPanel, setShowSnapshotsPanel] = useState(false);
 
   const [activeCollectionId, setActiveCollectionId] = useState(null);
+  const [showCollectionDialog, setShowCollectionDialog] = useState(false); // the dialog Uusi kokoelma
 
   // Claude Chat state
   const [claudeChatOpen, setClaudeChatOpen] = useState(false);
 
-  // Inspector tabs state
-  const [inspectorTab, setInspectorTab] = useState('editor'); // editor, chapter, project, ai
+  // Tietopaneeli tabs: editor (Ulkoasu), chapter (Luku), project (Projekti), ai (Tekoäly). Opens on Luku.
+  const [inspectorTab, setInspectorTab] = useState('chapter');
   const [apiKeysStatus, setApiKeysStatus] = useState({}); // { anthropic: true }
 
   // Find & Replace state
@@ -523,6 +702,8 @@ function FAUSTApp() {
   const [searchGlobally, setSearchGlobally] = useState(false); // Search in chapters, characters, locations, threads
   const [searchResults, setSearchResults] = useState([]); // Array of {type, start, end, text, chapterId, chapterTitle, itemId, itemName}
   const [currentSearchIndex, setCurrentSearchIndex] = useState(-1);
+  // The regular expression in the find field does not compile (shown under the field)
+  const [findPatternError, setFindPatternError] = useState(false);
   const [searchHistory, setSearchHistory] = useState(() => {
     const saved = localStorage.getItem('faust-search-history');
     return saved ? JSON.parse(saved) : [];
@@ -535,8 +716,20 @@ function FAUSTApp() {
   const menuHandlerRef = useRef(null);        // see the menu handler
   const lastSearchRef = useRef('');           // the term the current search results belong to
   const panelsBeforeFocusRef = useRef(null);  // panel visibility to restore after focus mode
+  const [focusExitIdle, setFocusExitIdle] = useState(false); // the exit button fades after 2 s without pointer movement
   const [autosaveError, setAutosaveError] = useState(null);
   const voiceInputRef = useRef(null);
+
+  // Suunnittele hahmot: the text of the field Hahmotyypit, kept across steps and pre-filled on reopen
+  const [castTypesDraft, setCastTypesDraft] = useState('');
+  // A request whose dialog was closed or reopened meanwhile is dropped: each run takes a number,
+  // and only the current number may write its result.
+  const castPlanRunRef = useRef(0);
+  const castPlanOpenRef = useRef(false);
+  castPlanOpenRef.current = showCastPlanDialog;
+  const builderRunRef = useRef(0);             // the same for Uusi hahmo (questions and profile)
+  const builderOpenRef = useRef(false);
+  builderOpenRef.current = showCharacterBuilder;
 
   // AI Modules refs
   const commandManagerRef = useRef(null);
@@ -623,6 +816,21 @@ function FAUSTApp() {
     loadApiKeysStatus();
   }, []);
 
+  // The tekoälyn lähde once at start-up (AIProviderSettings reports later changes)
+  useEffect(() => {
+    if (!window.electronAPI || !window.electronAPI.aiGetProvider) return;
+    let cancelled = false;
+    window.electronAPI.aiGetProvider()
+      .then((result) => {
+        if (cancelled || !result || !result.success) return;
+        const config = { ...result };
+        delete config.success;
+        setAiSource(config);
+      })
+      .catch((error) => console.error('[AI Source] Load error:', error));
+    return () => { cancelled = true; };
+  }, []);
+
   // Listen for batch progress updates
   useEffect(() => {
     if (!window.electronAPI?.onBatchProgress) return;
@@ -634,7 +842,7 @@ function FAUSTApp() {
         current: progress.current,
         total: progress.total,
         percentage: progress.percentage,
-        message: progress.message || `Käsitellään lukua ${progress.current}/${progress.total}...`
+        message: progress.message || `Magnum Opus: tekoäly kirjoittaa lukua ${progress.current}/${progress.total}…`
       });
 
       // Clear progress when complete
@@ -706,21 +914,6 @@ function FAUSTApp() {
         }
         return;
       }
-
-      // Cmd+Shift+V for voice dictation
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === 'v') {
-        event.preventDefault();
-
-        if (voiceInputAvailable && textSelection && voiceState === 'idle') {
-          console.log('[Shortcut] Cmd+Shift+V - Starting voice dictation');
-          handleVoiceEdit();
-        } else if (!voiceInputAvailable) {
-          alert('Äänisyöte ei ole käytettävissä tässä selaimessa.');
-        } else if (!textSelection) {
-          alert('Valitse ensin tekstiä jonka haluat muuttaa äänellä.');
-        }
-        return;
-      }
     };
 
     // Add event listener
@@ -743,16 +936,17 @@ function FAUSTApp() {
     showProjectSettings,
     showVersionHistory,
     showVersionComparison,
-    showRecentFilesMenu,
-    voiceInputAvailable,
-    textSelection,
-    voiceState
+    showRecentFilesMenu
   ]);
 
   // Menu events. The IPC listener is registered once, so it calls through a
   // ref that always holds the handler of the latest render. A handler captured
   // at mount would keep seeing the first render's empty project.
   menuHandlerRef.current = (action, arg) => {
+    // A command that shows a docked panel leaves focus mode first, then shows its panel (never hides it)
+    const wasFocus = focusMode && LEAVES_FOCUS.includes(action);
+    if (wasFocus) toggleFocusMode();
+
     switch (action) {
       // File
       case 'new-project': newProject(); break;
@@ -763,6 +957,7 @@ function FAUSTApp() {
       case 'import-document': importDocument(); break;
       case 'show-export': setShowExportModal(true); break;
       case 'print': printManuscript(); break;
+      case 'show-snapshots': setShowSnapshotsPanel(true); break;
 
       // Edit
       case 'undo': undo(); break;
@@ -795,22 +990,46 @@ function FAUSTApp() {
       // Insert
       case 'new-chapter': addChapter(); break;
       case 'insert-text': insertAtCursor(arg); break;
+      case 'insert-todo': insertTodo(); break;
+      case 'add-bookmark': askAndAddBookmark(); break;
 
       // View
-      case 'toggle-sidebar': setSidebarCollapsed(prev => !prev); break;
-      case 'toggle-inspector': setShowInspector(prev => !prev); break;
-      case 'toggle-ai-panel': setAiAssistantOpen(prev => !prev); break;
+      case 'toggle-sidebar': wasFocus ? setSidebarCollapsed(false) : setSidebarCollapsed(prev => !prev); break;
+      case 'toggle-inspector': if (!wasFocus && showInspector) setShowInspector(false); else showInspectorTab(); break;
+      case 'toggle-ai-panel': if (wasFocus || !aiAssistantOpen) openLiminalEngine(); else setAiAssistantOpen(false); break;
+      case 'toggle-chat-window': if (wasFocus || !claudeChatOpen) openChat(); else setClaudeChatOpen(false); break;
+      case 'toggle-corkboard': wasFocus ? setCorkboardEnabled(true) : setCorkboardEnabled(prev => !prev); break;
+      case 'toggle-split-view': if (wasFocus) { setCorkboardEnabled(false); if (!splitViewEnabled) openSplitView(); } else toggleSplitView(); break;
+      case 'toggle-bookmarks': wasFocus ? setShowBookmarksPanel(true) : setShowBookmarksPanel(prev => !prev); break;
       case 'toggle-focus-mode': toggleFocusMode(); break;
       case 'toggle-typewriter': setTypewriterMode(prev => !prev); break;
       case 'zoom-in': changeZoom(10); break;
       case 'zoom-out': changeZoom(-10); break;
       case 'zoom-reset': setEditorZoom('100'); break;
       case 'toggle-theme': setIsDarkMode(prev => !prev); break;
-      case 'show-timeline': setShowTimelineView(true); break;
-      case 'show-research': setShowResearchFolder(true); break;
+
+      // Tools
+      case 'show-characters': openCharacterList(); break;
+      case 'show-locations': setShowLocationSheet(true); break;
+      case 'show-threads': setShowThreadSheet(true); break;
+      case 'show-timeline': setShowTimelineView(prev => !prev); break;
+      case 'show-research': setShowResearchFolder(prev => !prev); break;
+      case 'show-cast-plan': openCastPlan(); break;
+      case 'show-character-builder': openCharacterBuilder(); break;
+      case 'show-version-history': if (activeChapter) setShowVersionHistory(true); break;
+
+      // Tools ▸ Tekoäly (the functions carry the busy, text-length and readiness guards themselves)
+      case 'ai-analyze': runAnalyze(); break;
+      case 'ai-quick-check': runQuickCheck(); break;
+      case 'ai-summary': runSummary(); break;
+      case 'magnum-opus-chapter': if (activeChapter) generateChapter(activeChapter.id); break;
+      case 'magnum-opus-all': askAndGenerateAllChapters(); break;
+      case 'show-ai-writing': openAiWriting(); break;
+      case 'voice-edit': if (voiceState === 'idle') handleVoiceEdit(); break;
+      case 'show-ai-settings': openAISettings(); break;
 
       // Settings and help
-      case 'show-settings': openAISettings(); break;
+      case 'show-settings': showInspectorTab('editor'); break;
       case 'show-project-settings': setShowProjectSettings(true); break;
       case 'show-shortcuts': setShowShortcuts(true); break;
 
@@ -937,37 +1156,95 @@ function FAUSTApp() {
   // Focus mode: only the text. Leaving it brings the panels back as they were.
   const toggleFocusMode = () => {
     if (!focusMode) {
-      panelsBeforeFocusRef.current = { sidebarCollapsed, showInspector, aiAssistantOpen };
+      panelsBeforeFocusRef.current = { sidebarCollapsed, showInspector, aiAssistantOpen, claudeChatOpen, corkboardEnabled };
       setSidebarCollapsed(true);
       setShowInspector(false);
       setAiAssistantOpen(false);
+      setClaudeChatOpen(false);
+      setCorkboardEnabled(false);
       setFocusMode(true);
     } else {
       const before = panelsBeforeFocusRef.current || {};
       setSidebarCollapsed(!!before.sidebarCollapsed);
       setShowInspector(!!before.showInspector);
       setAiAssistantOpen(!!before.aiAssistantOpen);
+      setClaudeChatOpen(!!before.claudeChatOpen);
+      setCorkboardEnabled(!!before.corkboardEnabled);
       setFocusMode(false);
     }
   };
 
-  // AI source, keys and model live in the Inspector's AI tab
-  const openAISettings = () => {
+  // In focus mode the exit button fades after 2 s without pointer movement and comes back on the next one
+  useEffect(() => {
+    if (!focusMode) {
+      setFocusExitIdle(false);
+      return undefined;
+    }
+    let timer = null;
+    const wake = () => {
+      setFocusExitIdle(false);
+      clearTimeout(timer);
+      timer = setTimeout(() => setFocusExitIdle(true), 2000);
+    };
+    wake();
+    window.addEventListener('pointermove', wake);
+    window.addEventListener('pointerdown', wake);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('pointermove', wake);
+      window.removeEventListener('pointerdown', wake);
+    };
+  }, [focusMode]);
+
+  // Show Tietopaneeli, optionally on one tab. Only opens; the two toggles (⌘2 and the header
+  // button) close it themselves when it is already shown.
+  const showInspectorTab = (tab) => {
     setShowInspector(true);
     setInspectorCollapsed(false);
-    setInspectorTab('ai');
+    if (tab) setInspectorTab(tab);
+  };
+
+  // AI source, keys and model live on Tietopaneeli's Tekoäly tab
+  const openAISettings = () => showInspectorTab('ai');
+
+  // The Liminal Engine panel and the keskustelu are never open together
+  const openLiminalEngine = () => { setClaudeChatOpen(false); setAiAssistantOpen(true); };
+  const openChat = () => { setAiAssistantOpen(false); setClaudeChatOpen(true); };
+
+  // Jaettu näkymä. Opening shows a chapter other than the open one, as the header button always
+  // did; the second pane also opens in a one-chapter project, where it shows that chapter.
+  const openSplitView = () => {
+    const other = project.structure.find(ch => ch.id !== activeChapterId) || project.structure[0];
+    setSplitViewChapterId(other ? other.id : null);
+    setSplitViewType('chapter');
+    setSplitViewEnabled(true);
+  };
+
+  // The header button and Näytä ▸ Jaettu näkymä. From the card view it leaves the card view and
+  // shows the pane (the pane is hidden under the card view, so toggling it there did nothing visible);
+  // a pane that was already open under the card view keeps what it showed.
+  const toggleSplitView = () => {
+    if (corkboardEnabled) {
+      setCorkboardEnabled(false);
+      if (!splitViewEnabled) openSplitView();
+      return;
+    }
+    if (splitViewEnabled) setSplitViewEnabled(false);
+    else openSplitView();
   };
 
   // A yes/no question that does not freeze the window (window.confirm() does).
-  // Resolves with true or false.
-  const askConfirm = (title, message, confirmLabel, cancelLabel) => new Promise((resolve) => {
-    setConfirmRequest({ title, message, confirmLabel, cancelLabel, resolve });
+  // Resolves with true or false. Options: danger (the action deletes, replaces or discards
+  // the author's text or data), requireChoice (Esc and the scrim answer nothing),
+  // dangerCancel (the cancel button is the destructive one).
+  const askConfirm = (title, message, confirmLabel, cancelLabel = 'Peruuta', options = {}) => new Promise((resolve) => {
+    setConfirmRequest({ title, message, confirmLabel, cancelLabel, ...options, resolve });
   });
 
   // In-app replacement for window.prompt(), which Electron does not provide.
   // Resolves with the text, or null if the dialog is cancelled.
-  const askText = (title, defaultValue = '', placeholder = '') => new Promise((resolve) => {
-    setTextPrompt({ title, defaultValue, placeholder, resolve });
+  const askText = (title, defaultValue = '', placeholder = '', confirmLabel) => new Promise((resolve) => {
+    setTextPrompt({ title, defaultValue, placeholder, confirmLabel, resolve });
   });
 
   // Undo/Redo. In an ordinary text field (titles, notes, search) the field's
@@ -1033,18 +1310,22 @@ function FAUSTApp() {
       });
     });
 
-    // Global search also looks at characters, locations and plot threads
+    // Global search also looks at characters, places and plot threads. A character saved by the
+    // builder has its fields at the top level, an older one inside basicInfo; places are kept by
+    // name in project.continuity.locations.
     if (searchGlobally) {
-      const searchItems = (items, type, fields) => {
+      const searchItems = (items, type, fields, unnamed) => {
         (items || []).forEach(item => {
-          const searchable = fields.map(field => item[field]).filter(Boolean).join(' ');
+          if (!item) return;
+          const info = item.basicInfo || {};
+          const searchable = fields.map(field => item[field] || info[field]).filter(Boolean).join(' ');
           findMatches(searchable, term, options).forEach(match => {
             results.push({
               ...match,
               type,
               context: snippet(searchable, match.start, match.end, 30),
-              itemId: item.id,
-              itemName: item.name,
+              itemId: item.id || item.name,
+              itemName: info.name || item.name || unnamed,
               chapterId: null,
               chapterTitle: null
             });
@@ -1052,9 +1333,10 @@ function FAUSTApp() {
         });
       };
 
-      searchItems(project.characters, 'character', ['name', 'description', 'background', 'occupation', 'notes']);
-      searchItems(project.locations, 'location', ['name', 'description', 'historicalContext', 'notes']);
-      searchItems(project.plotThreads, 'thread', ['name', 'description', 'resolution', 'notes']);
+      searchItems(project.characters, 'character', ['name', 'description', 'background', 'occupation', 'notes'], 'Nimetön hahmo');
+      searchItems(Object.values((project.continuity && project.continuity.locations) || {}), 'location',
+        ['name', 'description', 'historicalContext', 'notes'], 'Nimetön paikka');
+      searchItems(project.plotThreads, 'thread', ['name', 'description', 'resolution', 'notes'], 'Nimetön juonilanka');
     }
 
     return results;
@@ -1070,12 +1352,14 @@ function FAUSTApp() {
       return;
     }
 
+    // An invalid regular expression is the field's error state, not a notification
     if (!buildSearchPattern(term, searchOptions())) {
       setSearchResults([]);
       setCurrentSearchIndex(-1);
-      alert('Hakulauseke ei ole kelvollinen. Tarkista regex-syntaksi.');
+      setFindPatternError(true);
       return;
     }
+    setFindPatternError(false);
 
     addToSearchHistory(term);
 
@@ -1119,6 +1403,18 @@ function FAUSTApp() {
     } else if (editorRef.current) {
       editorRef.current.scrollToPos(result.start);
     }
+  };
+
+  // + Kirjanmerkki… in the toolbar and Lisää ▸ Kirjanmerkki…: ask for a name, then add
+  const askAndAddBookmark = async () => {
+    if (!editorRef.current || !activeChapterId) return;
+    const name = await askText(
+      'Kirjanmerkin nimi',
+      `Kirjanmerkki ${(project.bookmarks || []).length + 1}`,
+      '',
+      'Lisää kirjanmerkki'
+    );
+    if (name !== null) addBookmark(name);
   };
 
   // Bookmark functions
@@ -1233,7 +1529,7 @@ function FAUSTApp() {
     // Deep copy of current project structure
     const snapshotData = {
       id: `snapshot-${Date.now()}`,
-      name: name || `Snapshot ${new Date().toLocaleString('fi-FI')}`,
+      name: name || `Tilannekuva ${formatDateTimeFi(new Date())}`,
       description: description,
       created: new Date().toISOString(),
       totalWords: totalWords,
@@ -1259,12 +1555,18 @@ function FAUSTApp() {
     setUnsavedChanges(true);
   };
 
-  const restoreSnapshot = (snapshotId) => {
+  const restoreSnapshot = async (snapshotId) => {
     const snapshot = (project.snapshots || []).find(s => s.id === snapshotId);
     if (!snapshot) return;
 
-    // Confirm restoration
-    if (!confirm(`Palauta snapshot "${snapshot.name}"?\n\nTämä korvaa nykyisen tekstin. Suosittelemme luomaan uuden snapshotin ennen palautusta.`)) {
+    if (!(await askConfirm(
+      'Palautetaanko tilannekuva?',
+      `Kaikki käsikirjoituksen luvut korvataan tilannekuvalla ”${snapshot.name}”. ` +
+        'Nykyinen tila tallennetaan ensin omaksi tilannekuvakseen, joten voit palata siihen.',
+      'Palauta tilannekuva',
+      'Peruuta',
+      { danger: true }
+    ))) {
       return;
     }
 
@@ -1291,20 +1593,23 @@ function FAUSTApp() {
     // Find the same chapter in snapshot
     const snapshotChapter = snapshot.structure.find(ch => ch.id === activeChapterId);
     if (!snapshotChapter) {
-      alert('Tämä luku ei löydy valitusta snapshotista.');
+      notify('warning', 'Tätä lukua ei ole valitussa tilannekuvassa.');
       return;
     }
 
-    // Show comparison in a simple alert (could be improved with a modal)
-    const currentWords = (activeChapter.content || '').split(/\s+/).filter(Boolean).length;
-    const snapshotWords = (snapshotChapter.content || '').split(/\s+/).filter(Boolean).length;
+    // Word counts of the open chapter now and in the tilannekuva
+    const currentWords = countWords(chapterText(activeChapter));
+    const snapshotWords = countWords(snapshotChapter.content);
     const diff = currentWords - snapshotWords;
+    const sign = diff > 0 ? '+' : diff < 0 ? '−' : '';
 
-    alert(`Vertailu: "${snapshot.name}"\n\n` +
-          `Luku: ${activeChapter.title}\n\n` +
-          `Nykyinen: ${currentWords} sanaa\n` +
-          `Snapshot: ${snapshotWords} sanaa\n` +
-          `Ero: ${diff > 0 ? '+' : ''}${diff} sanaa`);
+    notify('info', 'Sanamäärän muutos', {
+      detail: `Luku: ${activeChapter.title || 'Nimetön luku'}\n` +
+        `Nyt: ${count(currentWords, 'sana')}\n` +
+        `Tilannekuvassa: ${count(snapshotWords, 'sana')}\n` +
+        `Muutos: ${sign}${count(Math.abs(diff), 'sana')}`,
+      duration: 0
+    });
   };
 
   // Collection functions (dynamic chapter groupings)
@@ -1346,9 +1651,11 @@ function FAUSTApp() {
       return project.structure.filter(ch => collection.chapterIds.includes(ch.id));
     }
 
-    // Dynamic collections based on filter
+    // Dynamic collections based on filter. Status values are compared normalised: an old
+    // filter 'revised' means 'revision', a chapter without a status is 'plan'. Nothing stored changes.
     if (collection.type === 'status' && collection.filter) {
-      return project.structure.filter(ch => ch.status === collection.filter);
+      const wanted = normStatus(collection.filter);
+      return project.structure.filter(ch => normStatus(ch.status) === wanted);
     }
 
     if (collection.type === 'character' && collection.filter) {
@@ -1377,8 +1684,8 @@ function FAUSTApp() {
       return;
     }
 
-    const count = searchResults.length;
-    const index = (currentSearchIndex + direction + count) % count;
+    const hitCount = searchResults.length;
+    const index = (currentSearchIndex + direction + hitCount) % hitCount;
     setCurrentSearchIndex(index);
     showResult(searchResults[index]);
   };
@@ -1440,7 +1747,7 @@ function FAUSTApp() {
     updateChapterContent(content.slice(0, result.start) + replaceTerm + content.slice(result.end));
 
     // Search again in the new text and go on from the replaced spot
-    const results = collectSearchResults(lastSearchRef.current || searchTerm);
+    const results = collectSearchResults(searchTerm);
     const after = result.start + replaceTerm.length;
     const next = Math.max(0, results.findIndex(r => r.chapterId === result.chapterId && r.start >= after));
 
@@ -1450,8 +1757,9 @@ function FAUSTApp() {
   };
 
   // Replace every match in the searched chapters. Each chapter is its own undo step.
-  const replaceAll = () => {
-    const term = lastSearchRef.current || searchTerm;
+  // Always the term now in the field (old hits are cleared when it changes).
+  const replaceAll = async () => {
+    const term = searchTerm;
     if (!term) return;
 
     const options = searchOptions();
@@ -1470,8 +1778,16 @@ function FAUSTApp() {
 
     if (total === 0) return;
 
-    if (changes.length > 1 &&
-        !confirm(`Korvataanko ${total} osumaa ${changes.length} luvussa?`)) {
+    const where = `${total} kohdassa ${changes.length} luvussa`;
+    if (!(await askConfirm(
+      'Korvataanko kaikki osumat?',
+      (replaceTerm
+        ? `Teksti ”${term}” korvataan tekstillä ”${replaceTerm}” ${where}.`
+        : `Teksti ”${term}” poistetaan ${where}.`) + ' Kumoa palauttaa yhden luvun kerrallaan.',
+      'Korvaa kaikki',
+      'Peruuta',
+      { danger: true }
+    ))) {
       return;
     }
 
@@ -1488,6 +1804,24 @@ function FAUSTApp() {
     setSearchResults([]);
     setCurrentSearchIndex(-1);
   };
+
+  // Hits belong to the term and the options they were found with. A new term clears them
+  // (unless it is the term just searched, as after a click in Aiemmat haut); a changed option
+  // clears them and the record of the last search, so that the next Enter searches again.
+  useEffect(() => {
+    setFindPatternError(false);
+    if (searchTerm !== lastSearchRef.current) {
+      setSearchResults([]);
+      setCurrentSearchIndex(-1);
+    }
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setFindPatternError(false);
+    lastSearchRef.current = '';
+    setSearchResults([]);
+    setCurrentSearchIndex(-1);
+  }, [caseSensitive, matchWholeWord, useRegex, searchInAllChapters, searchGlobally]);
 
   // Save project
   // Update recent files list
@@ -1574,14 +1908,23 @@ function FAUSTApp() {
         return false;
       }
 
-      throw new Error(result.error || 'Tuntematon virhe');
+      throw new Error(result.error || 'tuntematon virhe');
     } catch (error) {
       console.error('[Save] Error:', error);
       setSavingState('error');
-      alert('Tallennus epäonnistui: ' + error.message);
+      notify('error', 'Tallennus epäonnistui: ' + saveFailureReason(error) + '.');
       setTimeout(() => setSavingState('idle'), 3000);
       return false;
     }
+  };
+
+  // The three commonest file errors in the author's words; any other reason as it came
+  const saveFailureReason = (error) => {
+    const text = failureReason(error);
+    if (/ENOENT/.test(text)) return 'tiedostoa tai kansiota ei löydy';
+    if (/EACCES|EPERM/.test(text)) return 'kansioon ei ole kirjoitusoikeutta';
+    if (/ENOSPC/.test(text)) return 'levy on täynnä';
+    return text;
   };
 
   // Something is about to replace the open project: offer to save first.
@@ -1608,7 +1951,7 @@ function FAUSTApp() {
   const showLoadedProject = (rawData, filePath) => {
     const data = normalizeProject(rawData);
     if (!data) {
-      alert('Tiedosto ei ole FAUST-projekti.');
+      notify('error', 'Avaaminen epäonnistui: tiedosto on vioittunut tai se ei ole FAUST-projekti.');
       return false;
     }
     openProject(data, filePath);
@@ -1629,7 +1972,8 @@ function FAUSTApp() {
     if (result.success) {
       showLoadedProject(result.data, result.filePath);
     } else if (result.error) {
-      alert('Avaaminen epäonnistui: ' + result.error);
+      console.error('[Load] Error:', result.error);
+      notify('error', 'Avaaminen epäonnistui: tiedosto on vioittunut tai se ei ole FAUST-projekti.');
     }
   };
 
@@ -1642,7 +1986,7 @@ function FAUSTApp() {
     if (result.success && showLoadedProject(result.data, filePath)) return;
 
     // The file is gone or unreadable: say so and drop it from the list
-    if (!result.success) alert('Tiedostoa ei voitu avata:\n' + filePath);
+    if (!result.success) notify('error', `Tiedostoa ei löytynyt: ${filePath}. Se poistettiin Viimeisimmät-valikosta.`);
     setRecentFiles(prev => {
       const updated = prev.filter(f => f.path !== filePath);
       localStorage.setItem('faust-recent-files', JSON.stringify(updated));
@@ -1663,7 +2007,7 @@ function FAUSTApp() {
 
     const result = await window.electronAPI.importDocument();
     if (!result.success) {
-      if (result.error) alert('Tuonti epäonnistui: ' + result.error);
+      if (result.error) notify('error', 'Tuonti epäonnistui: ' + failureReason(result.error) + '.');
       return;
     }
 
@@ -1690,7 +2034,8 @@ function FAUSTApp() {
     if (!window.electronAPI) return;
     const result = await window.electronAPI.printManuscript({ project });
     if (!result.success && result.error) {
-      alert('Tulostus epäonnistui: ' + result.error);
+      console.error('[Print] Error:', result.error);
+      notify('error', 'Tulostus epäonnistui. Tarkista tulostin ja yritä uudelleen.');
     }
   };
 
@@ -1779,13 +2124,21 @@ function FAUSTApp() {
   };
 
   // Delete chapter
-  const deleteChapter = (chapterId) => {
+  const deleteChapter = async (chapterId) => {
     if (project.structure.length === 1) {
-      alert('Et voi poistaa viimeistä lukua');
+      notify('warning', 'Ainoaa lukua ei voi poistaa. Projektissa on oltava vähintään yksi luku.');
       return;
     }
 
-    const confirmed = confirm('Haluatko varmasti poistaa tämän luvun?');
+    const chapter = project.structure.find(ch => ch.id === chapterId);
+    if (!chapter) return;
+    const confirmed = await askConfirm(
+      'Poistetaanko luku?',
+      `Luku ”${chapter.title || 'Nimetön luku'}” ja sen teksti (${count(countWords(chapterText(chapter)), 'sana')}) poistetaan. Poistoa ei voi kumota.`,
+      'Poista luku',
+      'Peruuta',
+      { danger: true }
+    );
     if (!confirmed) return;
 
     const deletedIndex = project.structure.findIndex(ch => ch.id === chapterId);
@@ -1857,7 +2210,7 @@ function FAUSTApp() {
   // Save API key
   const saveApiKey = async (providerName, apiKey) => {
     if (!window.electronAPI) {
-      alert('Electron API ei käytettävissä');
+      notify('error', 'Toiminto ei ole käytettävissä tässä ikkunassa.');
       return;
     }
 
@@ -1890,13 +2243,13 @@ function FAUSTApp() {
           [providerName]: true
         }));
 
-        alert(`API-avain tallennettu: ${providerName}`);
+        notify('success', 'Clauden API-avain tallennettu.');
       } else {
-        alert('Virhe tallennuksessa: ' + result.error);
+        notify('error', 'Avaimen tallennus epäonnistui: ' + failureReason(result.error) + '.');
       }
     } catch (error) {
       console.error('[API Key] Save error:', error);
-      alert('Virhe tallennuksessa: ' + error.message);
+      notify('error', 'Avaimen tallennus epäonnistui: ' + failureReason(error) + '.');
     }
   };
 
@@ -1908,7 +2261,8 @@ function FAUSTApp() {
   // Helper function: Call AI with current mode settings
   const callAIWithMode = async (userPrompt, options = {}) => {
     if (!window.electronAPI) {
-      throw new Error('Electron API not available');
+      // Shown after a colon: '<Toiminto> epäonnistui: <syy>.'
+      throw new Error('toiminto ei ole käytettävissä tässä ikkunassa');
     }
 
     // Read the project at call time through the ref. This function is also held
@@ -1975,6 +2329,21 @@ function FAUSTApp() {
   callAIRef.current = callAIWithMode;
   const callAIStable = (...args) => callAIRef.current(...args);
 
+  // RefinementManager reads the reply as a string (or .content / .text), while callAIWithMode
+  // answers { success, data }. This hands it the text and turns a failed or empty answer into
+  // an error, so that a failure never becomes an empty new text of the chapter.
+  const refinementCall = async (prompt, options) => {
+    const response = await callAIStable(prompt, options);
+    if (typeof response === 'string') {
+      if (!response.trim()) throw new Error('tekoäly ei palauttanut tekstiä');
+      return response;
+    }
+    if (!response || response.success === false) throw new Error(failureReason(response && response.error));
+    const text = response.data || response.content || response.text || '';
+    if (!String(text).trim()) throw new Error('tekoäly ei palauttanut tekstiä');
+    return text;
+  };
+
   // AI Cast Analysis
   const analyzeCast = async (characterTypes) => {
     const prompt = `You are a character psychologist analyzing a book's cast.
@@ -2036,17 +2405,18 @@ Return ONLY valid JSON (no markdown, no extra text):
           if (jsonMatch) {
             return JSON.parse(jsonMatch[0]);
           }
-          return null;
+          throw new Error('tekoälyn vastausta ei voitu lukea');
         }
       } else {
         console.error('[AI] API error:', result.error);
-        alert('AI-virhe: ' + result.error);
-        return null;
+        throw new Error(failureReason(result.error));
       }
     } catch (error) {
+      // The caller (Suunnittele hahmot) shows the one failure notice with this reason
       console.error('[AI] Exception:', error);
-      alert('AI-virhe: ' + error.message);
-      return null;
+      // A reply that is not JSON, or not text at all, never shows the engine's English message
+      const unreadable = error instanceof SyntaxError || error instanceof TypeError;
+      throw new Error(unreadable ? 'tekoälyn vastausta ei voitu lukea' : failureReason(error));
     }
   };
 
@@ -2163,7 +2533,7 @@ Return ONLY valid JSON.`;
   const generateSynopsis = async (chapterId) => {
     const chapter = project.structure.find(ch => ch.id === chapterId);
     if (!chapter || !chapter.content || chapter.content.trim().length < 50) {
-      return 'Tyhjä tai liian lyhyt';
+      return null;
     }
 
     if (!window.electronAPI) return null;
@@ -2205,7 +2575,7 @@ Return ONLY the summary, no extra text.`;
   const quickQualityCheck = async (chapterId) => {
     const chapter = project.structure.find(ch => ch.id === chapterId);
     if (!chapter || !chapter.content || chapter.content.trim().length < 50) {
-      return { score: 0, issues: [], suggestions: [] };
+      return null;
     }
 
     if (!window.electronAPI) return null;
@@ -2248,8 +2618,97 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
     return null;
   };
 
-  // AI Generate Chapter
+  // ---------------------------------------------------------------------
+  // Analysoi luku, Pika-arvio, Tee tiivistelmä. The sigil buttons and the menu call these.
+  // Menu items cannot be disabled, so the guards a button's disabled gives stand here too:
+  // a busy guard (silent) and the 50-character guard (a notice).
+  // ---------------------------------------------------------------------
+  const ANALYSIS_DETAIL = 'Tarkista tekoälyn lähde, avain ja malli tietopaneelin Tekoäly-välilehdeltä.';
+
+  const chapterHasEnoughText = () => {
+    if (chapterText(activeChapter).trim().length < 50) {
+      notify('warning', 'Luvussa on liian vähän tekstiä. Kirjoita ensin vähintään 50 merkkiä.');
+      return false;
+    }
+    return true;
+  };
+
+  // Run one of the three with its busy flag and its line in the progress box; both cleared in finally
+  const runChapterAnalysis = async (kind, progressText, work) => {
+    if (isGenerating || analysisBusy || !activeChapter) return;
+    if (!chapterHasEnoughText()) return;
+    setAnalysisBusy(kind);
+    setGenerationProgress({ stage: 'analysis', message: progressText });
+    try {
+      await work(activeChapter.id);
+    } finally {
+      setAnalysisBusy(null);
+      setGenerationProgress(prev => (prev && prev.stage === 'analysis' ? null : prev));
+    }
+  };
+
+  const runAnalyze = () => runChapterAnalysis('analyze', 'Tekoäly analysoi lukua…', async (chapterId) => {
+    const result = await analyzeChapterContent(chapterId);
+    if (result) {
+      notify('success', 'Analyysi valmis.', { detail: 'Laatuarvio ja parannusehdotukset näkyvät luvun otsikon alla.' });
+    } else {
+      notify('error', 'Analyysi epäonnistui.', { detail: ANALYSIS_DETAIL });
+    }
+  });
+
+  const runQuickCheck = () => runChapterAnalysis('quick', 'Tekoäly arvioi luvun alkua…', async (chapterId) => {
+    const result = await quickQualityCheck(chapterId);
+    const score = result ? Number(result.score) : NaN;
+    if (Number.isFinite(score)) {
+      notify('success', `Pika-arvio valmis. Laatuarvio: ${score.toLocaleString('fi-FI', { maximumFractionDigits: 1 })}/10.`);
+    } else {
+      notify('error', 'Pika-arvio epäonnistui.', { detail: ANALYSIS_DETAIL });
+    }
+  });
+
+  const runSummary = () => runChapterAnalysis('summary', 'Tekoäly tekee tiivistelmää…', async (chapterId) => {
+    const synopsis = await generateSynopsis(chapterId);
+    if (synopsis) {
+      notify('success', 'Tiivistelmä valmis', {
+        detail: synopsis + '\n\nSe näkyy myös luvun kortissa korttinäkymässä.',
+        duration: 0
+      });
+    } else {
+      notify('error', 'Tiivistelmän tekeminen epäonnistui.', { detail: ANALYSIS_DETAIL });
+    }
+  });
+
+  // BUG-18: before tekoäly replaces a chapter, the author's text is kept. When the text differs
+  // from the chapter's current version (or there is none), it is added to the versions as
+  // 'Oma teksti' (generatedFrom.mode 'manual'); the next version's id counts this one too.
+  const versionsKeepingOwnText = (chapter) => {
+    const versions = chapter.versions || [];
+    const text = chapter.content || '';
+    if (!text.trim()) return versions;
+    const current = versions.find(v => v.id === chapter.currentVersion) || versions[versions.length - 1];
+    if (current && current.content === text) return versions;
+    return [...versions, {
+      id: `v${versions.length + 1}`,
+      content: text,
+      timestamp: new Date().toISOString(),
+      generatedFrom: {
+        mode: 'manual',
+        prompt: null,
+        model: null,
+        basedOn: chapter.currentVersion || (current ? current.id : null)
+      },
+      userRating: null,
+      userFeedback: null,
+      wordCount: countWords(text)
+    }];
+  };
+
+  const AI_NOT_READY = 'Tekoälytoiminnot latautuvat vielä. Odota hetki ja yritä uudelleen.';
+
+  // Magnum Opus, one chapter. Asks before it replaces a chapter that has text; nothing is
+  // marked busy before the answer, so Peruuta and Esc leave no busy state.
   const generateChapter = async (chapterId) => {
+    if (isGenerating || analysisBusy) return;
     if (!window.electronAPI) {
       console.error('[Generate] Electron API not available');
       return;
@@ -2257,24 +2716,40 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
 
     if (!batchProcessorRef.current) {
       console.error('[Generate] BatchProcessor not initialized');
-      alert('AI-moduulit eivät ole valmiina. Odota hetki ja yritä uudelleen.');
+      notify('warning', AI_NOT_READY);
       return;
     }
 
+    const target = project.structure.find(ch => ch.id === chapterId);
+    if (!target) return;
+    const targetText = chapterText(target);
+    if (targetText.trim()) {
+      const replace = await askConfirm(
+        'Korvataanko luvun teksti?',
+        `Magnum Opus: luvussa ”${target.title || 'Nimetön luku'}” on jo tekstiä (${count(countWords(targetText), 'sana')}). ` +
+          'Tekoäly ei jatka sitä, vaan kirjoittaa luvun alusta ja korvaa nykyisen tekstin.\n\n' +
+          'Nykyinen teksti tallennetaan ensin luvun versioksi (Oma teksti), joten voit palauttaa sen luvun versioista.',
+        'Korvaa teksti',
+        'Peruuta',
+        { danger: true }
+      );
+      if (!replace) return;
+    }
+
     setIsGenerating(true);
-    setGenerationProgress({ stage: 'preparing', message: 'Valmistellaan generointia...' });
+    setGenerationProgress({ stage: 'preparing', message: 'Magnum Opus: valmistellaan…' });
 
     try {
       // Find chapter index
       const chapterIndex = project.structure.findIndex(ch => ch.id === chapterId);
       if (chapterIndex === -1) {
-        throw new Error('Chapter not found');
+        throw new Error('lukua ei löytynyt');
       }
 
       const chapter = project.structure[chapterIndex];
 
       // Use BatchProcessor to generate chapter
-      setGenerationProgress({ stage: 'generating', message: 'AI generoi lukua...' });
+      setGenerationProgress({ stage: 'generating', message: 'Magnum Opus: tekoäly kirjoittaa lukua…' });
 
       const result = await batchProcessorRef.current.generateChapter(
         chapter.title,
@@ -2283,12 +2758,12 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
       );
 
       if (result.success) {
-        setGenerationProgress({ stage: 'updating', message: 'Päivitetään sisältöä...' });
+        setGenerationProgress({ stage: 'updating', message: 'Tallennetaan luvun tekstiä…' });
 
         // Extract continuity data if available
         let continuityData = null;
         if (continuityTrackerRef.current && result.content) {
-          setGenerationProgress({ stage: 'updating', message: 'Analysoidaan jatkuvuutta...' });
+          setGenerationProgress({ stage: 'updating', message: 'Päivitetään tarinan tietoja…' });
           await continuityTrackerRef.current.extractFromChapter(chapterIndex, result.content);
           continuityData = continuityTrackerRef.current.getContextForChapter(chapterIndex + 1);
         }
@@ -2299,16 +2774,18 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
           structure: prev.structure.map(ch => {
             if (ch.id !== chapterId) return ch;
 
+            const versions = versionsKeepingOwnText(ch);
+
             // Create version object
             const newVersion = {
-              id: `v${(ch.versions?.length || 0) + 1}`,
+              id: `v${versions.length + 1}`,
               content: result.content,
               timestamp: new Date().toISOString(),
               generatedFrom: {
                 mode: project.ai.currentMode,
                 model: result.model || project.ai?.model || 'claude-sonnet-4-20250514',
                 prompt: result.prompt || 'Chapter generation',
-                basedOn: ch.versions?.length > 0 ? ch.versions[ch.versions.length - 1].id : null
+                basedOn: versions.length > 0 ? versions[versions.length - 1].id : null
               },
               userRating: null,
               userFeedback: null,
@@ -2320,7 +2797,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
               ...ch,
               content: result.content,
               wordCount: result.wordCount,
-              versions: [...(ch.versions || []), newVersion],
+              versions: [...versions, newVersion],
               currentVersion: newVersion.id,
               continuityData: continuityData,
               modified: new Date().toISOString()
@@ -2337,30 +2814,43 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
         setUnsavedChanges(true);
 
         // Show cost info if available
-        const costMsg = result.cost
-          ? `Generoitu ${result.wordCount} sanaa! Hinta: $${result.cost.toFixed(4)}`
-          : `Generoitu ${result.wordCount} sanaa!`;
-
-        setGenerationProgress({ stage: 'complete', message: costMsg });
+        notify('success', `Valmis: ${count(result.wordCount || 0, 'sana')}.` +
+          (result.cost ? ` Hinta: ${formatCostFi(result.cost)}.` : ''));
 
         console.log('[Generate] Success:', result.wordCount, 'words', result.cost ? `$${result.cost}` : '');
-
-        // Clear progress after 3 seconds
-        setTimeout(() => {
-          setGenerationProgress(null);
-          setIsGenerating(false);
-        }, 3000);
-
       } else {
-        throw new Error(result.error || 'Generation failed');
+        throw new Error(result.error || 'tuntematon virhe');
       }
 
     } catch (error) {
       console.error('[Generate] Exception:', error);
-      alert('Generointi epäonnistui: ' + error.message);
+      notify('error', 'Luvun kirjoittaminen epäonnistui: ' + failureReason(error) + '.');
+    } finally {
       setGenerationProgress(null);
       setIsGenerating(false);
     }
+  };
+
+  // Magnum Opus, all chapters: the question first (the button and the menu call this)
+  const askAndGenerateAllChapters = async () => {
+    if (isGenerating || analysisBusy) return;
+    if (!batchProcessorRef.current) {
+      notify('warning', AI_NOT_READY);
+      return;
+    }
+    const price = aiSource && aiSource.provider === 'cherry'
+      ? 'Hinta riippuu Cherry Studiossa valitusta mallista.'
+      : 'Hinta: ei arviota tälle mallille.';
+    const confirmed = await askConfirm(
+      'Korvataanko kaikkien lukujen teksti?',
+      `Magnum Opus: tekoäly kirjoittaa jokaisen luvun (${project.structure.length} kpl) alusta ja korvaa lukujen nykyisen tekstin.\n\n` +
+        price + '\n\n' +
+        'Tallenna ensin tilannekuva, niin voit palata nykyiseen tekstiin.',
+      'Kirjoita kaikki luvut',
+      'Peruuta',
+      { danger: true }
+    );
+    if (confirmed) generateAllChapters();
   };
 
   // AI Generate All Chapters (Batch)
@@ -2372,12 +2862,12 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
 
     if (!batchProcessorRef.current) {
       console.error('[Batch Generate] BatchProcessor not initialized');
-      alert('AI-moduulit eivät ole valmiina. Odota hetki ja yritä uudelleen.');
+      notify('warning', AI_NOT_READY);
       return;
     }
 
     setIsGenerating(true);
-    setGenerationProgress({ stage: 'preparing', message: 'Valmistellaan batch-generointia...' });
+    setGenerationProgress({ stage: 'preparing', message: 'Magnum Opus: valmistellaan…' });
 
     try {
       // Set up progress callback
@@ -2385,19 +2875,16 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
         if (status === 'starting') {
           setGenerationProgress({
             stage: 'generating',
-            message: `Generoidaan lukua ${current + 1}/${total}...`
+            message: `Magnum Opus: tekoäly kirjoittaa lukua ${current + 1}/${total}…`
           });
         } else if (status === 'completed') {
-          const percentage = Math.round(((current + 1) / total) * 100);
           setGenerationProgress({
             stage: 'generating',
-            message: `Valmis: ${current + 1}/${total} (${percentage}%) - ${info.wordCount} sanaa`
+            message: `Luku ${current + 1}/${total} valmis: ${count((info && info.wordCount) || 0, 'sana')}.`
           });
         } else if (status === 'error') {
-          setGenerationProgress({
-            stage: 'error',
-            message: `Virhe luvussa ${current + 1}: ${info.error}`
-          });
+          // A failed chapter stays on screen; the run goes on with the next one
+          notify('error', `Luvun ${current + 1} kirjoittaminen epäonnistui: ${failureReason(info && info.error)}.`);
         }
       };
 
@@ -2418,11 +2905,11 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
       );
 
       if (results.success) {
-        setGenerationProgress({ stage: 'updating', message: 'Päivitetään sisältöä...' });
+        setGenerationProgress({ stage: 'updating', message: 'Tallennetaan lukujen tekstiä…' });
 
         // Extract continuity data for all chapters
         if (continuityTrackerRef.current) {
-          setGenerationProgress({ stage: 'updating', message: 'Analysoidaan jatkuvuutta...' });
+          setGenerationProgress({ stage: 'updating', message: 'Päivitetään tarinan tietoja…' });
           for (let idx = 0; idx < results.results.length; idx++) {
             const result = results.results[idx];
             if (result?.content) {
@@ -2438,16 +2925,18 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
             const result = results.results[idx];
             if (!result) return ch;
 
+            const versions = versionsKeepingOwnText(ch);
+
             // Create version object
             const newVersion = {
-              id: `v${(ch.versions?.length || 0) + 1}`,
+              id: `v${versions.length + 1}`,
               content: result.content,
               timestamp: new Date().toISOString(),
               generatedFrom: {
                 mode: project.ai.currentMode,
                 model: result.model || project.ai?.model || 'claude-sonnet-4-20250514',
                 prompt: result.prompt || `Batch generation - Chapter ${idx + 1}`,
-                basedOn: ch.versions?.length > 0 ? ch.versions[ch.versions.length - 1].id : null,
+                basedOn: versions.length > 0 ? versions[versions.length - 1].id : null,
                 batchGeneration: true
               },
               userRating: null,
@@ -2465,7 +2954,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
               ...ch,
               content: result.content,
               wordCount: result.wordCount,
-              versions: [...(ch.versions || []), newVersion],
+              versions: [...versions, newVersion],
               currentVersion: newVersion.id,
               continuityData: continuityData,
               modified: new Date().toISOString()
@@ -2486,101 +2975,81 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
         const totalCost = results.totalCost || 0;
         const successCount = results.completedChapters || results.results.length;
 
-        setGenerationProgress({
-          stage: 'complete',
-          message: `Valmis! ${successCount}/${project.structure.length} lukua generoitu. ${totalWords} sanaa. Hinta: $${totalCost.toFixed(4)}`
-        });
+        notify('success',
+          `Valmis: ${successCount}/${project.structure.length} lukua, ${count(totalWords, 'sana')}. Hinta: ${formatCostFi(totalCost)}.`);
 
         console.log('[Batch Generate] Success:', successCount, 'chapters', totalWords, 'words', `$${totalCost.toFixed(4)}`);
-
-        // Clear progress after 5 seconds
-        setTimeout(() => {
-          setGenerationProgress(null);
-          setIsGenerating(false);
-        }, 5000);
-
       } else {
-        throw new Error(results.error || 'Batch generation failed');
+        throw new Error(results.error || 'tuntematon virhe');
       }
 
     } catch (error) {
       console.error('[Batch Generate] Exception:', error);
-      alert('Batch-generointi epäonnistui: ' + error.message);
+      notify('error', 'Lukujen kirjoittaminen epäonnistui: ' + failureReason(error) + '.');
+    } finally {
       setGenerationProgress(null);
       setIsGenerating(false);
     }
   };
 
-  // Regenerate Chapter with Feedback (Iterative Refinement)
+  // Kirjoita luku uudelleen (the rewrite dialog). The työtapa is the project's current one.
+  // RefinementManager finds the chapter in the project it holds and writes the new version itself;
+  // it is handed the project with the author's own text already kept as a version (BUG-18),
+  // so the new version's number counts that one too.
   const regenerateChapter = async () => {
+    if (isGenerating || analysisBusy) return;
     if (!refinementManagerRef.current) {
-      alert('RefinementManager ei ole valmis. Odota hetki ja yritä uudelleen.');
+      notify('warning', AI_NOT_READY);
       return;
     }
 
-    if (!regenerateFeedback.trim()) {
-      alert('Anna palaute ennen regenerointia.');
-      return;
-    }
+    // The button is disabled while the field is empty
+    const feedback = regenerateFeedback.trim();
+    if (!feedback) return;
+
+    const base = projectRef.current || project;
+    const chapter = base.structure.find(ch => ch.id === activeChapterId);
+    if (!chapter) return;
+    const mode = base.ai.currentMode;
 
     setIsGenerating(true);
-    setGenerationProgress({ stage: 'preparing', message: 'Valmistellaan regenerointia...' });
+    setGenerationProgress({ stage: 'preparing', message: 'Valmistellaan…' });
 
     try {
-      const chapter = project.structure.find(ch => ch.id === activeChapterId);
-      if (!chapter) {
-        throw new Error('Chapter not found');
+      // A copy: the manager pushes into the versions of the chapter it is given
+      const kept = versionsKeepingOwnText(chapter);
+      const prepared = { ...chapter, versions: [...kept] };
+      if (kept.length > (chapter.versions || []).length) {
+        prepared.currentVersion = kept[kept.length - 1].id;
       }
+      refinementManagerRef.current.project = {
+        ...base,
+        structure: base.structure.map(ch => (ch.id === chapter.id ? prepared : ch))
+      };
 
-      setGenerationProgress({ stage: 'generating', message: 'AI generoi parannettua versiota...' });
+      setGenerationProgress({ stage: 'generating', message: 'Tekoäly kirjoittaa lukua uudelleen…' });
 
-      const result = await refinementManagerRef.current.regenerateChapter(
-        chapter,
-        regenerateFeedback,
-        regenerateMode
-      );
+      const version = await refinementManagerRef.current.regenerateChapter(chapter.id, regenerateFeedback, mode);
 
-      if (result.success) {
-        // Extract continuity data
-        if (continuityTrackerRef.current && result.content) {
-          const chapterIndex = project.structure.findIndex(ch => ch.id === activeChapterId);
-          if (chapterIndex !== -1) {
-            await continuityTrackerRef.current.extractFromChapter(chapterIndex, result.content);
-          }
+      // Extract continuity data
+      if (continuityTrackerRef.current && version && version.content) {
+        const chapterIndex = base.structure.findIndex(ch => ch.id === chapter.id);
+        if (chapterIndex !== -1) {
+          await continuityTrackerRef.current.extractFromChapter(chapterIndex, version.content);
         }
-
-        // Update chapter with new version
-        setProject(prev => ({
-          ...prev,
-          structure: prev.structure.map(ch => {
-            if (ch.id !== activeChapterId) return ch;
-
-            return {
-              ...ch,
-              content: result.content,
-              wordCount: result.wordCount,
-              versions: [...(ch.versions || []), result.version],
-              currentVersion: result.version.id,
-              modified: new Date().toISOString()
-            };
-          })
-        }));
-
-        setUnsavedChanges(true);
-        setGenerationProgress({ stage: 'complete', message: `Uusi versio ${result.version.id} generoitu!` });
-        setShowRegenerateDialog(false);
-        setRegenerateFeedback('');
-
-        setTimeout(() => {
-          setGenerationProgress(null);
-          setIsGenerating(false);
-        }, 2000);
-      } else {
-        throw new Error(result.error || 'Regeneration failed');
       }
+
+      setUnsavedChanges(true);
+      setShowRegenerateDialog(false);
+      setRegenerateFeedback('');
+      const number = String((version && version.id) || '').replace(/\D/g, '');
+      notify('success', `Valmis: luvun uusi teksti tallennettiin versioksi ${number}.`);
     } catch (error) {
       console.error('[Regenerate] Exception:', error);
-      alert('Regenerointi epäonnistui: ' + error.message);
+      notify('error', 'Luvun kirjoittaminen uudelleen epäonnistui: ' + failureReason(error) + '.');
+    } finally {
+      // The manager follows the rendered project again
+      if (refinementManagerRef.current) refinementManagerRef.current.project = projectRef.current;
       setGenerationProgress(null);
       setIsGenerating(false);
     }
@@ -2589,7 +3058,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
   // Restore Previous Version
   const restoreVersion = (versionId) => {
     if (!refinementManagerRef.current) {
-      alert('RefinementManager ei ole valmis.');
+      notify('warning', AI_NOT_READY);
       return;
     }
 
@@ -2599,7 +3068,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
       setUnsavedChanges(true);
     } catch (error) {
       console.error('[Restore] Error:', error);
-      alert('Version palautus epäonnistui: ' + error.message);
+      notify('error', 'Version palautus epäonnistui: ' + failureReason(error) + '.');
     }
   };
 
@@ -2615,14 +3084,14 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
       setUnsavedChanges(true);
     } catch (error) {
       console.error('[Rate] Error:', error);
-      alert('Arvostelu epäonnistui: ' + error.message);
+      notify('error', 'Oman arvion tallennus epäonnistui: ' + failureReason(error) + '.');
     }
   };
 
-  // Run Consistency Check
+  // Run Consistency Check. A clean result shows in the panel (Ristiriitoja ei löytynyt.), not here.
   const runConsistencyCheck = async () => {
     if (!consistencyCheckerRef.current) {
-      alert('ConsistencyChecker ei ole valmis.');
+      notify('warning', AI_NOT_READY);
       return;
     }
 
@@ -2637,17 +3106,33 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
 
         const failures = consistencyCheckerRef.current.failures || [];
         if (failures.length > 0) {
-          alert(`Tarkistus jäi kesken: ${failures.length} tekoälykutsua epäonnistui, joten tulos ei ole täydellinen.\n\n` +
-            failures.slice(0, 5).join('\n'));
-        } else if (result.errors.length === 0) {
-          alert('✅ Ei ristiriitoja havaittu!');
+          notify('warning', `Tarkistus jäi kesken: ${count(failures.length, 'pyyntö')} epäonnistui, joten tulos ei ole täydellinen.`, {
+            detail: failures.slice(0, 5).join('\n'),
+            duration: 0
+          });
         }
+
+        // The checker writes its margin merkinnät into the chapters of the project it holds.
+        // Carry them into the project state by chapter id, keeping every other annotation.
+        const AI_CONSISTENCY = window.AnnotationUtils.ANNOTATION_TYPES.AI_CONSISTENCY;
+        const checked = consistencyCheckerRef.current.project;
+        setProject(prev => ({
+          ...prev,
+          structure: prev.structure.map(ch => {
+            const stale = checked.structure.find(s => s.id === ch.id);
+            return stale ? { ...ch, annotations: [
+              ...(ch.annotations || []).filter(a => a.type !== AI_CONSISTENCY),
+              ...(stale.annotations || []).filter(a => a.type === AI_CONSISTENCY)
+            ] } : ch;
+          })
+        }));
+        setUnsavedChanges(true);
       } else {
-        throw new Error(result.error || 'Consistency check failed');
+        throw new Error(result.error || 'tuntematon virhe');
       }
     } catch (error) {
       console.error('[Consistency] Error:', error);
-      alert('Johdonmukaisuustarkistus epäonnistui: ' + error.message);
+      notify('error', 'Johdonmukaisuuden tarkistus epäonnistui: ' + failureReason(error) + '.');
     } finally {
       setCheckingConsistency(false);
     }
@@ -2656,7 +3141,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
   // Detect Plot Threads
   const detectPlotThreads = async () => {
     if (!plotThreadTrackerRef.current) {
-      alert('PlotThreadTracker ei ole valmis.');
+      notify('warning', AI_NOT_READY);
       return;
     }
 
@@ -2677,33 +3162,37 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
 
         console.log('[Plot Threads] Detected:', result.threads.length, 'threads');
       } else {
-        throw new Error(result.error || 'Thread detection failed');
+        throw new Error(result.error || 'tuntematon virhe');
       }
     } catch (error) {
       console.error('[Plot Threads] Error:', error);
-      alert('Juonilankahavainnointivir epäonnistui: ' + error.message);
+      notify('error', 'Juonilankojen tunnistus epäonnistui: ' + failureReason(error) + '.');
     } finally {
       setDetectingThreads(false);
     }
   };
 
-  // Character Builder Phase 2 - Generate clarifying questions
+  // Character Builder Phase 2 - Generate clarifying questions.
+  // On failure: one message here, where the reason is known, and null to the caller.
   const generateCharacterQuestions = async (characterType, realPeople, archetypeInfo) => {
     if (!window.electronAPI) {
       console.error('[Character Builder] Electron API not available');
       return null;
     }
 
+    // A type the cast analysis gave no suggestion for has an empty archetype
+    const archetype = archetypeInfo || {};
+
     const prompt = `You are a character psychologist helping an author create a detailed fictional character.
 
 CHARACTER TYPE: ${characterType}
-ARCHETYPE: ${archetypeInfo.archetypeFamily}
+ARCHETYPE: ${archetype.archetypeFamily || ''}
 REAL PEOPLE INSPIRATION: ${realPeople}
 
 Based on the cast analysis, this character:
-- Function: ${archetypeInfo.functionInStory}
-- Examples: ${archetypeInfo.examples.join(', ')}
-- Potential flaws: ${archetypeInfo.flaws}
+- Function: ${archetype.functionInStory || ''}
+- Examples: ${(archetype.examples || []).join(', ')}
+- Potential flaws: ${archetype.flaws || ''}
 
 Generate 5-7 clarifying questions to help define this character's unique traits.
 Questions should explore:
@@ -2737,21 +3226,22 @@ Return ONLY valid JSON:
           console.error('[Character Builder] Parse error:', parseError);
           const jsonMatch = result.data.match(/\{[\s\S]*\}/);
           if (jsonMatch) return JSON.parse(jsonMatch[0]);
-          return null;
+          throw new Error('tekoälyn vastausta ei voitu lukea');
         }
       } else {
         console.error('[Character Builder] API error:', result.error);
-        alert('AI-virhe: ' + result.error);
-        return null;
+        throw new Error(failureReason(result.error));
       }
     } catch (error) {
       console.error('[Character Builder] Exception:', error);
-      alert('Hahmovirhe: ' + error.message);
+      const reason = error instanceof SyntaxError ? 'tekoälyn vastausta ei voitu lukea' : failureReason(error);
+      notify('error', 'Kysymysten laatiminen epäonnistui: ' + reason + '.');
       return null;
     }
   };
 
-  // Character Builder Phase 2 - Generate full profile
+  // Character Builder Phase 2 - Generate full profile.
+  // On failure: one message here and null, so the builder returns to the questions with the answers kept.
   const generateCharacterProfile = async (characterType, realPeople, archetypeInfo, answers) => {
     console.log('[Character Builder] Generating profile with 4-layer model...');
 
@@ -2770,10 +3260,16 @@ Return ONLY valid JSON:
         characterType: characterType,
         realPeople: realPeople,
         answers: answers,
-        archetypeInfo: archetypeInfo
+        archetypeInfo: archetypeInfo || {}
       });
 
       if (result.success) {
+        // An answer the generator could not read comes back as a placeholder character: never a profile
+        if (!result.character || result.character.name === 'Unnamed Character') {
+          notify('error', 'Hahmon profiilin luonti epäonnistui: tekoälyn vastausta ei voitu lukea. Yritä uudelleen.');
+          return null;
+        }
+
         // Add additional metadata
         result.character.characterType = characterType;
         result.character.realPeopleInspiration = realPeople;
@@ -2784,21 +3280,66 @@ Return ONLY valid JSON:
         return result.character;
       } else {
         console.error('[Character Builder] Generation failed:', result.error);
-        alert('Profiilin generointi epäonnistui: ' + result.error);
+        notify('error', 'Hahmon profiilin luonti epäonnistui: ' + failureReason(result.error) + '.');
         return null;
       }
     } catch (error) {
       console.error('[Character Builder] Exception:', error);
-      alert('Profiilivirhe: ' + error.message);
+      notify('error', 'Hahmon profiilin luonti epäonnistui: ' + failureReason(error) + '.');
       return null;
     }
   };
 
+  // Empty every field of Uusi hahmo and go back to its first step. A request still running
+  // for the earlier character is dropped (its run number is no longer current).
+  const resetCharacterBuilder = () => {
+    builderRunRef.current += 1;
+    setCharacterBuilderStep(1);
+    setSelectedCharacterType(null);
+    setCharacterRealPeople('');
+    setCharacterQuestions([]);
+    setCharacterAnswers({});
+    setCharacterProfile(null);
+  };
+
+  // Suunnittele hahmot… (and Muokkaa hahmosuunnitelmaa…): the field holds the types of the plan
+  const openCastPlan = () => {
+    setCastTypesDraft(((project.castPlan && project.castPlan.characterTypes) || []).join('\n'));
+    castPlanRunRef.current += 1;
+    setCastPlanStep(1);
+    setShowCastPlanDialog(true);
+  };
+
+  // + Uusi hahmo…: always a fresh builder. Without a hahmosuunnitelma there is nothing to build
+  // from, so Suunnittele hahmot opens instead.
+  const openCharacterBuilder = () => {
+    const plan = project.castPlan || {};
+    if (!plan.defined || (plan.characterTypes || []).length === 0) {
+      openCastPlan();
+      return;
+    }
+    resetCharacterBuilder();
+    setShowCharacterBuilder(true);
+  };
+
+  // Hahmot: the window always opens on its list, never on a profile left open earlier
+  const openCharacterList = () => {
+    setSelectedCharacter(null);
+    setCharacterSheetMode('list');
+    setShowCharacterSheet(true);
+  };
+
   // Character Builder - Handler functions
   const startCharacterBuilder = (characterType) => {
-    const typeIndex = project.castPlan.characterTypes.indexOf(characterType);
-    const archetypeInfo = project.castPlan.suggestedArchetypes[typeIndex];
+    const plan = project.castPlan || {};
+    const typeIndex = (plan.characterTypes || []).indexOf(characterType);
+    const archetypeInfo = (plan.suggestedArchetypes || [])[typeIndex] || {};
 
+    // Questions, answers and a profile belong to one type: a new type starts them afresh
+    builderRunRef.current += 1;
+    setCharacterQuestions([]);
+    setCharacterAnswers({});
+    setCharacterProfile(null);
     setSelectedCharacterType({ type: characterType, archetype: archetypeInfo });
     setCharacterBuilderStep(2);
     setShowCharacterBuilder(true);
@@ -2807,11 +3348,12 @@ Return ONLY valid JSON:
 
   const handleCharacterPeopleSubmit = async () => {
     if (!characterRealPeople.trim()) {
-      alert('Syötä vähintään yksi henkilö (esim. "Ernst Jünger + C.G. Jung")');
+      notify('warning', 'Kirjoita vähintään yksi nimi, esimerkiksi ”Ernst Jünger + C. G. Jung”.');
       return;
     }
 
     // Move to step 3 (AI generates questions)
+    const run = ++builderRunRef.current;
     setCharacterBuilderStep(3);
 
     const questions = await generateCharacterQuestions(
@@ -2820,11 +3362,16 @@ Return ONLY valid JSON:
       selectedCharacterType.archetype
     );
 
+    // The builder was closed, reset or moved on meanwhile: the result belongs to nobody
+    if (run !== builderRunRef.current || !builderOpenRef.current) return;
+
     if (questions && questions.questions) {
       setCharacterQuestions(questions.questions);
+      // Answers belong to the questions they were given for
+      setCharacterAnswers({});
+      setCharacterProfile(null);
       setCharacterBuilderStep(4); // Move to questions step
     } else {
-      alert('Kysymysten generointi epäonnistui');
       setCharacterBuilderStep(2);
     }
   };
@@ -2834,14 +3381,17 @@ Return ONLY valid JSON:
     const unanswered = characterQuestions.filter(q => !characterAnswers[q.id] || !characterAnswers[q.id].trim());
 
     if (unanswered.length > 0) {
-      const confirmed = confirm(
-        `${unanswered.length} kysymystä vastausta. Jatketaanko silti?\n\n` +
-        `Paremmat vastaukset = parempi hahmo.`
+      const confirmed = await askConfirm(
+        'Jatketaanko ilman kaikkia vastauksia?',
+        `${unanswered.length} kysymykseen ei ole vastattu. Mitä tarkemmat vastaukset, sitä parempi hahmo.`,
+        'Jatka silti',
+        'Palaa vastaamaan'
       );
       if (!confirmed) return;
     }
 
     // Move to step 5 (AI generates profile)
+    const run = ++builderRunRef.current;
     setCharacterBuilderStep(5);
 
     const profile = await generateCharacterProfile(
@@ -2851,11 +3401,13 @@ Return ONLY valid JSON:
       characterAnswers
     );
 
+    if (run !== builderRunRef.current || !builderOpenRef.current) return;
+
     if (profile) {
       setCharacterProfile(profile);
       setCharacterBuilderStep(6); // Move to review step
     } else {
-      alert('Profiilin generointi epäonnistui');
+      // The message was shown where the reason is known; the answers stay
       setCharacterBuilderStep(4);
     }
   };
@@ -2870,28 +3422,30 @@ Return ONLY valid JSON:
 
     // Reset builder
     setShowCharacterBuilder(false);
-    setCharacterBuilderStep(1);
-    setSelectedCharacterType(null);
-    setCharacterRealPeople('');
-    setCharacterQuestions([]);
-    setCharacterAnswers({});
-    setCharacterProfile(null);
+    resetCharacterBuilder();
     setUnsavedChanges(true);
 
     console.log('[Character Builder] Profile saved:', characterProfile.name);
   };
 
-  const cancelCharacterBuilder = () => {
-    const confirmed = confirm('Haluatko varmasti peruuttaa? Kaikki syötetyt tiedot katoavat.');
-    if (!confirmed) return;
+  // Peruuta in Uusi hahmo: asks only when something would be lost
+  const cancelCharacterBuilder = async () => {
+    const hasInput = characterRealPeople.trim() ||
+      Object.values(characterAnswers).some(answer => answer && String(answer).trim()) ||
+      characterProfile;
+    if (hasInput) {
+      const discard = await askConfirm(
+        'Hylätäänkö keskeneräinen hahmo?',
+        'Antamasi tiedot ja vastaukset häviävät.',
+        'Hylkää hahmo',
+        'Jatka muokkausta',
+        { danger: true }
+      );
+      if (!discard) return;
+    }
 
     setShowCharacterBuilder(false);
-    setCharacterBuilderStep(1);
-    setSelectedCharacterType(null);
-    setCharacterRealPeople('');
-    setCharacterQuestions([]);
-    setCharacterAnswers({});
-    setCharacterProfile(null);
+    resetCharacterBuilder();
   };
 
   // Voice Edit Selected Text
@@ -2932,28 +3486,27 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         };
       } else {
         console.error('[Voice] AI error:', result.error);
-        alert('AI-virhe: ' + result.error);
+        notify('error', 'Tekstin muokkaus epäonnistui: ' + failureReason(result.error) + '.');
         setVoiceState('error');
-        setTimeout(() => setVoiceState('idle'), 2000);
         return null;
       }
     } catch (error) {
       console.error('[Voice] Exception:', error);
-      alert('Äänivirhe: ' + error.message);
+      notify('error', 'Tekstin muokkaus epäonnistui: ' + failureReason(error) + '.');
       setVoiceState('error');
       return null;
     }
   };
 
-  // Handle voice command for selected text
+  // Muokkaa valintaa puhumalla: the voice button and Työkalut ▸ Tekoäly call this
   const handleVoiceEdit = async () => {
     if (!textSelection || !textSelection.text.trim()) {
-      alert('Ei valittua tekstiä. Valitse ensin teksti jota haluat muuttaa.');
+      notify('warning', 'Valitse ensin teksti, jota haluat muokata.');
       return;
     }
 
     if (!voiceInputRef.current) {
-      alert('Äänisyöte ei ole käytettävissä tässä selaimessa.');
+      notify('error', 'Puheentunnistus ei ole käytettävissä.');
       return;
     }
 
@@ -2967,14 +3520,16 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         console.log('[Voice] Heard:', result.transcript);
 
         if (result.confidence < 0.5) {
-          const confirmed = confirm(
-            `Kuulin: "${result.transcript}"\n\n` +
-            `Luotettavuus alhainen (${Math.round(result.confidence * 100)}%). Jatketaanko?`
+          // Nothing is busy while the question is open
+          setVoiceState('idle');
+          const confirmed = await askConfirm(
+            'Käytetäänkö tätä ohjetta?',
+            `Puheesta tunnistettiin: ”${result.transcript}”\n\n` +
+              'Jos ohje on oikein, valittua tekstiä muokataan sen mukaan ja saat ehdotuksen hyväksyttäväksi.',
+            'Käytä ohjetta',
+            'Peruuta'
           );
-          if (!confirmed) {
-            setVoiceState('idle');
-            return;
-          }
+          if (!confirmed) return;
         }
 
         // Send to AI
@@ -2982,11 +3537,17 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
 
         if (diffResult) {
           setVoiceDiffView(diffResult);
+        } else {
+          // editByVoice left the button in its error state: back to idle as after any error
+          setTimeout(() => setVoiceState('idle'), 2000);
         }
+      } else {
+        // Nothing was heard
+        setVoiceState('idle');
       }
     } catch (error) {
       console.error('[Voice] Error:', error);
-      notify('error', error.message);
+      notify('error', 'Tekstin muokkaus epäonnistui: ' + voiceFailureReason(error) + '.');
       setVoiceState('error');
       setTimeout(() => setVoiceState('idle'), 2000);
     }
@@ -2994,7 +3555,8 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
 
   // Accept voice edit
   const acceptVoiceEdit = () => {
-    if (!voiceDiffView) return;
+    // Without a selection there is no range to replace (the button is disabled then)
+    if (!voiceDiffView || !textSelection) return;
 
     // Replace selected text with AI-generated text
     const content = activeChapter.content;
@@ -3040,34 +3602,50 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         setContinuePreview(result.continuation);
         console.log('[HybridFlow] Generated continuation:', result.continuation.substring(0, 100) + '...');
       } else {
-        alert('Jatkaminen epäonnistui');
+        notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(result.error) + '.');
       }
     } catch (error) {
       console.error('[HybridFlow] Error:', error);
-      alert('Virhe jatkamisessa: ' + error.message);
+      notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(error) + '.');
     } finally {
       setContinuingWriting(false);
     }
   };
 
-  // Accept continue writing suggestion
+  // Kirjoita tekoälyn kanssa ▸ Lisää luvun loppuun: the ehdotus goes after the chapter's text.
+  // Every kind of ehdotus can be added this way (continuation, from a summary, a scene).
   const acceptContinuation = () => {
     if (!continuePreview || !activeChapter) return;
 
-    const newContent = activeChapter.content + '\n\n' + continuePreview;
+    const base = chapterText(activeChapter);
+    const newContent = base.trim() ? base + '\n\n' + continuePreview : continuePreview;
     updateChapterContent(newContent);
 
     setContinuePreview('');
     setShowContinueDialog(false);
+    setHybridInput('');
     console.log('[HybridFlow] Continuation accepted');
   };
 
-  // Reject continuation
+  // Hylkää: the ehdotus goes; the dialog stays on its form with the input kept
   const rejectContinuation = () => {
     setContinuePreview('');
-    setShowContinueDialog(false);
-    setHybridInput('');
     console.log('[HybridFlow] Continuation rejected');
+  };
+
+  // Kirjoita tekoälyn kanssa from the Tekoäly tab or the menu. On an empty chapter there is
+  // nothing to continue, so the dialog opens on Kirjoita kohtaus.
+  const openAiWriting = () => {
+    if (!activeChapter) {
+      notify('warning', 'Avaa ensin luku.');
+      return;
+    }
+    if (!hybridFlowRef.current) {
+      notify('warning', 'Tekoälytoiminnot latautuvat vielä.');
+      return;
+    }
+    if (!chapterText(activeChapter).trim()) setHybridMode('scene');
+    setShowContinueDialog(true);
   };
 
   // Expand outline using HybridWritingFlow
@@ -3095,11 +3673,11 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         setContinuePreview(result.content);
         console.log('[HybridFlow] Outline expanded:', result.wordCount, 'words');
       } else {
-        alert('Laajentaminen epäonnistui');
+        notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(result.error) + '.');
       }
     } catch (error) {
       console.error('[HybridFlow] Expand error:', error);
-      alert('Virhe: ' + error.message);
+      notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(error) + '.');
     } finally {
       setContinuingWriting(false);
     }
@@ -3126,11 +3704,11 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         setContinuePreview(result.rewritten);
         console.log('[HybridFlow] Section rewritten');
       } else {
-        alert('Uudelleenkirjoitus epäonnistui');
+        notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(result.error) + '.');
       }
     } catch (error) {
       console.error('[HybridFlow] Rewrite error:', error);
-      alert('Virhe: ' + error.message);
+      notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(error) + '.');
     } finally {
       setContinuingWriting(false);
     }
@@ -3162,11 +3740,11 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         setContinuePreview(result.scene);
         console.log('[HybridFlow] Scene generated:', result.wordCount, 'words');
       } else {
-        alert('Kohtauksen luonti epäonnistui');
+        notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(result.error) + '.');
       }
     } catch (error) {
       console.error('[HybridFlow] Scene error:', error);
-      alert('Virhe: ' + error.message);
+      notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(error) + '.');
     } finally {
       setContinuingWriting(false);
     }
@@ -3174,7 +3752,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
 
   // Accept rewrite (replaces selected text)
   const acceptRewrite = () => {
-    if (!continuePreview || !textSelection) return;
+    if (!continuePreview || !textSelection || !activeChapter) return;
 
     const content = activeChapter.content;
     const before = content.substring(0, textSelection.start);
@@ -3189,9 +3767,17 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     console.log('[HybridFlow] Rewrite accepted');
   };
 
-  // Accept scene/expansion (replaces or appends)
-  const acceptExpansion = () => {
+  // Korvaa koko luku…: a scene or an ehdotus from a summary replaces the whole chapter, after a question
+  const acceptExpansion = async () => {
     if (!continuePreview || !activeChapter) return;
+
+    if (!(await askConfirm(
+      'Korvataanko koko luku?',
+      'Luvun nykyinen teksti korvataan ehdotuksella. Voit kumota muutoksen valitsemalla Muokkaa → Kumoa.',
+      'Korvaa luku',
+      'Peruuta',
+      { danger: true }
+    ))) return;
 
     // For expand/scene, replace entire chapter content
     updateChapterContent(continuePreview);
@@ -3416,7 +4002,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
       ? `The user has selected this text:\n"""${selectedText}"""\n\nUser instruction: ${userMessage}\n\nPlease provide a revised version of the selected text based on the instruction.`
       : `User question: ${userMessage}\n\nRespond helpfully about their writing project.`;
 
-    const fullPrompt = `You are FAUST AI Assistant (Liminal Engine), helping with creative writing.
+    const fullPrompt = `You are FAUST AI Assistant, helping with creative writing.
 
 PROJECT CONTEXT:
 - Title: ${project.title}
@@ -3462,11 +4048,12 @@ ${contextPrompt}`;
           });
         }
       } else {
-        setAiChatMessages(prev => [...prev, { role: 'error', content: 'Virhe: ' + (result?.error || 'Unknown error') }]);
+        // The speaker label already reads Virhe
+        setAiChatMessages(prev => [...prev, { role: 'error', content: failureReason(result && result.error) }]);
       }
     } catch (error) {
       console.error('[AI Assistant] Error:', error);
-      setAiChatMessages(prev => [...prev, { role: 'error', content: 'Virhe: ' + error.message }]);
+      setAiChatMessages(prev => [...prev, { role: 'error', content: failureReason(error) }]);
     } finally {
       setAiChatProcessing(false);
     }
@@ -3475,7 +4062,7 @@ ${contextPrompt}`;
   // AI Assistant - Voice input
   const handleAiAssistantVoice = async () => {
     if (!voiceInputRef.current) {
-      alert('Äänisyöte ei ole käytettävissä tässä selaimessa.');
+      notify('error', 'Puheentunnistus ei ole käytettävissä.');
       return;
     }
 
@@ -3489,25 +4076,27 @@ ${contextPrompt}`;
         console.log('[AI Assistant Voice] Heard:', result.transcript);
 
         if (result.confidence < 0.5) {
-          const confirmed = confirm(
-            `Kuulin: "${result.transcript}"\n\n` +
-            `Luotettavuus alhainen (${Math.round(result.confidence * 100)}%). Jatketaanko?`
+          // Nothing is busy while the question is open
+          setAiChatVoiceState('idle');
+          const confirmed = await askConfirm(
+            'Lisätäänkö teksti viestiin?',
+            `Puheesta tunnistettiin: ”${result.transcript}”\n\n` +
+              'Jos teksti on oikein, se lisätään viestikenttään.',
+            'Lisää teksti',
+            'Peruuta'
           );
-          if (!confirmed) {
-            setAiChatVoiceState('idle');
-            return;
-          }
+          if (!confirmed) return;
         }
 
-        // Set the transcript as input and send
-        setAiChatInput(result.transcript);
+        // The heard text goes into the message field after what is already there; nothing is sent
+        setAiChatInput(prev => (prev && prev.trim() ? prev + ' ' + result.transcript : result.transcript));
         setAiChatVoiceState('idle');
       } else {
         setAiChatVoiceState('idle');
       }
     } catch (error) {
       console.error('[AI Assistant Voice] Error:', error);
-      notify('error', error.message);
+      notify('error', 'Sanelu epäonnistui: ' + voiceFailureReason(error) + '.');
       setAiChatVoiceState('error');
       setTimeout(() => setAiChatVoiceState('idle'), 2000);
     }
@@ -3673,7 +4262,7 @@ ${contextPrompt}`;
             refinementManagerRef.current = new window.RefinementManager(
               project,
               setProject,
-              callAIStable
+              refinementCall // the reply as text; a failed request throws
             );
             console.log('[AI] RefinementManager initialized');
 
@@ -3745,7 +4334,7 @@ ${contextPrompt}`;
           projectData: saving,
           filePath: currentFilePath
         });
-        if (!result.success) throw new Error(result.error || 'Autosave failed');
+        if (!result.success) throw new Error(result.error || 'tuntematon virhe');
 
         // Typing during the save keeps the project marked as changed
         if (projectRef.current === saving) {
@@ -3758,7 +4347,8 @@ ${contextPrompt}`;
       } catch (error) {
         // The interval tries again in 30 seconds; the recovery copy covers the gap
         console.error('[Autosave] Error:', error);
-        setAutosaveError('Automaattitallennus epäonnistui - tallenna itse (⌘S)');
+        setAutosaveError('Automaattinen tallennus epäonnistui: ' + saveFailureReason(error) +
+          '. Tallenna valitsemalla Tiedosto → Tallenna (' + shortcut('CmdOrCtrl+S') + ').');
         setSavingState('error');
       }
     };
@@ -3800,19 +4390,37 @@ ${contextPrompt}`;
         return;
       }
 
-      const when = new Date(recovery.savedAt).toLocaleString('fi-FI');
-      const restore = await askConfirm(
-        'Palautetaanko tallentamaton työ?',
-        `Edellinen istunto päättyi kesken. Projektista "${data.title}" on tallentamaton versio (${when}).`,
-        'Palauta',
-        'Hylkää'
-      );
+      // Esc and the scrim answer nothing here: only a click on a button decides, and the
+      // discarding button is the red one on the left
+      const name = (data.title || '').trim() || 'Nimetön projekti';
+      const when = formatDateTimeFi(recovery.savedAt);
+      const saved = when ? ` (tallennettu ${when})` : '';
+      const fileName = recovery.filePath ? recovery.filePath.split(/[\\/]/).pop() : '';
+      const restore = recovery.filePath
+        ? await askConfirm(
+          'Palautetaanko tallentamattomat muutokset?',
+          `FAUST sulkeutui viime kerralla kesken työn. Projektista ”${name}” (${fileName}) jäi varmuuskopio${saved}.\n\n` +
+            'Jos palautat, varmuuskopio avataan ja automaattitallennus tallentaa sen pian tiedoston päälle. ' +
+            'Jos hylkäät muutokset, varmuuskopio poistetaan pysyvästi ja tiedosto jää ennalleen.',
+          'Palauta muutokset',
+          'Hylkää muutokset',
+          { requireChoice: true, dangerCancel: true }
+        )
+        : await askConfirm(
+          'Palautetaanko tallentamaton projekti?',
+          `FAUST sulkeutui viime kerralla kesken työn. Projektia ”${name}” ei ollut tallennettu tiedostoon, mutta siitä jäi varmuuskopio${saved}.\n\n` +
+            `Jos palautat, projekti avautuu ilman tiedostoa: tallenna se valitsemalla Tiedosto → Tallenna (${shortcut('CmdOrCtrl+S')}). ` +
+            'Jos poistat varmuuskopion, koko projekti menetetään pysyvästi.',
+          'Palauta projekti',
+          'Poista varmuuskopio',
+          { requireChoice: true, dangerCancel: true }
+        );
       if (cancelled) return;
 
       if (restore) {
         openProject(data, recovery.filePath || null);
         setUnsavedChanges(true);
-      } else {
+      } else if (restore === false) {
         window.electronAPI.clearBackup();
       }
     })();
@@ -3869,10 +4477,10 @@ ${contextPrompt}`;
   return e('div', {
     className: (focusMode ? 'faust-app faust-focus-mode' : 'faust-app') + (isFullScreen ? ' is-fullscreen' : ''),
     // Widths of the open side panels, for everything that centres on the editor pane
-    // (notifications, launcher, chat window). Today's widths; var(--sidebar-w) and 0px after region C.
+    // (notifications, launcher, chat window). The sidebar's are today's; var(--sidebar-w) and 0px after region C.
     style: {
       '--left-col-w': sidebarCollapsed ? (focusMode ? '0px' : '40px') : '220px',   // focus mode hides the collapsed rail
-      '--right-col-w': showInspector ? (inspectorCollapsed ? '40px' : '300px') : '0px'
+      '--right-col-w': showInspector ? 'var(--inspector-w)' : '0px'
     }
   },
     // Dialogs that can appear over anything else
@@ -3892,6 +4500,11 @@ ${contextPrompt}`;
         if (request) request.resolve(confirmed);
       }
     }),
+    e(CollectionDialog, {
+      open: showCollectionDialog,
+      onCancel: () => setShowCollectionDialog(false),
+      onCreate: (n, t, f) => { createCollection(n, t, f); setShowCollectionDialog(false); }
+    }),
     e(ShortcutsDialog, { open: showShortcuts, onClose: () => setShowShortcuts(false) }),
     e(ExportDialog, {
       open: showExportModal,
@@ -3900,533 +4513,258 @@ ${contextPrompt}`;
       activeChapterId: activeChapter ? activeChapter.id : null,
       onExport: ({ format, chapterIds }) => window.electronAPI.exportManuscript({ project, format, chapterIds })
     }),
+    // Focus mode: the header is hidden, so a strip at the top keeps the window draggable
+    focusMode && e('div', { className: 'faust-focus-drag' }),
     focusMode && e('button', {
-      className: 'faust-btn faust-btn--quiet faust-focus-exit',
+      className: 'faust-btn faust-btn--quiet faust-focus-exit' + (focusExitIdle ? ' is-idle' : ''),
       onClick: toggleFocusMode,
-      title: 'Poistu keskittymistilasta (⇧⌘F)'
+      title: 'Poistu keskittymistilasta (' + shortcut('CmdOrCtrl+Shift+F') + ')'
     }, 'Poistu keskittymistilasta'),
 
     // Header
     e('div', { className: 'faust-header' },
-      e('div', { style: { padding: '16px', paddingLeft: isFullScreen ? '16px' : '80px', color: 'var(--text)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-        e('div', { style: { display: 'flex', alignItems: 'center', gap: '12px' } },
-          // FAUST with 8-pointed star
-          e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
-            e('span', { style: { fontFamily: 'EB Garamond', fontSize: '18px', fontWeight: 600 } }, 'FAUST'),
-            // 8-pointed chaos star - adapts to NOX/DEIS theme
-            e('svg', {
-              xmlns: 'http://www.w3.org/2000/svg',
-              width: '18',
-              height: '18',
-              viewBox: '0 0 100 100',
-              style: { opacity: 0.75, color: 'var(--ink)', display: 'block' }
-            },
-              e('path', {
-                d: 'M 50,2 L 58,31 L 84,16 L 69,42 L 98,50 L 69,58 L 84,84 L 58,69 L 50,98 L 42,69 L 16,84 L 31,58 L 2,50 L 31,42 L 16,16 L 42,31 Z',
-                fill: 'currentColor'
-              })
+      e('div', { className: 'faust-header__row' },
+        // Brand: wordmark, project title and the unsaved dot (always mounted, so the row never changes width)
+        e('div', { className: 'faust-header__brand' },
+          e('span', { className: 'faust-wordmark' }, 'FAUST', icons.star8({ size: 16 })),
+          e('span', { className: 'faust-header__title', title: project.title || 'Nimetön projekti' }, project.title || 'Nimetön projekti'),
+          e('span', {
+            className: 'faust-header__dot' + (unsavedChanges ? ' is-unsaved' : ''),
+            role: 'img',
+            'aria-label': unsavedChanges ? 'Projektissa on tallentamattomia muutoksia' : 'Kaikki muutokset on tallennettu',
+            title: unsavedChanges ? 'Projektissa on tallentamattomia muutoksia' : 'Kaikki muutokset on tallennettu'
+          })
+        ),
+        // The spacer is always a drag handle for the window
+        e('div', { className: 'faust-header__spacer' }),
+        // Actions in four groups: Projekti, Näkymät, Paneelit, Teema
+        e('div', { className: 'faust-header__actions' },
+          // Projekti: Avaa…, recent projects, Tallenna, Tilannekuvat
+          e('div', { className: 'faust-header__group' },
+            e('button', {
+              className: 'faust-btn faust-btn--quiet',
+              'data-priority': '1',
+              onClick: loadProject,
+              title: 'Avaa projekti (' + shortcut('CmdOrCtrl+O') + ')'
+            }, 'Avaa…'),
+
+            // Recent projects: always rendered; the menu stays in place until it becomes a popover
+            // Recent Files Dropdown
+            e('div', { style: { position: 'relative' } },
+              e('button', {
+                className: 'faust-btn faust-btn--icon',
+                'data-priority': '1',
+                'aria-label': 'Viimeisimmät projektit',
+                title: 'Viimeisimmät projektit',
+                'aria-haspopup': 'menu',
+                'aria-expanded': showRecentFilesMenu,
+                onClick: () => setShowRecentFilesMenu(prev => !prev)
+              }, icons.chevronDown({ size: 14 })),
+              showRecentFilesMenu && e('div', {
+                className: 'faust-popover faust-popover--header faust-menu',
+                role: 'menu',
+                'aria-label': 'Viimeisimmät projektit',
+                style: { position: 'absolute', top: '100%', left: 0, marginTop: 'var(--sp-1)', overflowY: 'auto' },
+                onClick: (ev) => ev.stopPropagation()
+              },
+                recentFiles.length === 0
+                  ? e('button', { className: 'faust-menu__item', role: 'menuitem', disabled: true }, 'Ei viimeisimpiä projekteja')
+                  : [
+                      ...recentFiles.map(file =>
+                        e('button', {
+                          key: file.path,
+                          className: 'faust-menu__item faust-menu__item--author',
+                          role: 'menuitem',
+                          title: file.path,
+                          onClick: () => {
+                            loadRecentFile(file.path);
+                            setShowRecentFilesMenu(false);
+                          }
+                        }, file.path.split(/[\\/]/).pop())
+                      ),
+                      e('div', { key: 'sep', className: 'faust-menu__sep', role: 'separator' }),
+                      e('button', {
+                        key: 'clear',
+                        className: 'faust-menu__item',
+                        role: 'menuitem',
+                        title: 'Poista projektit vain tästä valikosta. Tiedostot säilyvät.',
+                        onClick: () => {
+                          setRecentFiles([]);
+                          localStorage.removeItem('faust-recent-files');
+                          setShowRecentFilesMenu(false);
+                        }
+                      }, 'Tyhjennä valikko')
+                    ]
+              )
+            ),
+
+            e('button', {
+              className: 'faust-btn faust-btn--quiet',
+              'data-priority': '1',
+              onClick: saveProject,
+              title: unsavedChanges
+                ? 'Tallenna muutokset (' + shortcut('CmdOrCtrl+S') + ')'
+                : 'Tallenna (' + shortcut('CmdOrCtrl+S') + '). Kaikki muutokset on jo tallennettu.'
+            }, 'Tallenna'),
+
+            // Tilannekuvat: the panel stays in place until it becomes a popover
+            e('div', { style: { position: 'relative' } },
+              e('button', {
+                className: 'faust-btn faust-btn--quiet',
+                'data-priority': '2',
+                'aria-label': 'Tilannekuvat',
+                'aria-pressed': showSnapshotsPanel,
+                'aria-expanded': showSnapshotsPanel,
+                title: showSnapshotsPanel
+                  ? 'Kätke tilannekuvat'
+                  : `Näytä tilannekuvat (${(project.snapshots || []).length}): tallenna koko käsikirjoituksen nykyinen tila nimellä ja palaa siihen myöhemmin. Tilannekuvat tallentuvat projektitiedostoon; ne eivät ole erillinen varmuuskopio.`,
+                onClick: () => setShowSnapshotsPanel(prev => !prev)
+              }, icons.snapshot({ size: 14 }), e('span', { className: 'faust-btn__label' }, 'Tilannekuvat')),
+
+              // Snapshots dropdown panel
+              showSnapshotsPanel && e('div', {
+                className: 'faust-popover faust-popover--header',
+                style: { position: 'absolute', top: '100%', left: 'auto', right: 0, marginTop: 'var(--sp-1)' },
+                onClick: (ev) => ev.stopPropagation()
+              },
+                e('div', { className: 'faust-popover__head' },
+                  e('span', { className: 'faust-popover__title' }, `Tilannekuvat (${(project.snapshots || []).length})`),
+                  e('button', {
+                    className: 'faust-btn faust-btn--icon faust-btn--sm',
+                    'aria-label': 'Kätke tilannekuvat',
+                    title: 'Kätke tilannekuvat',
+                    onClick: () => setShowSnapshotsPanel(false)
+                  }, icons.close({ size: 14 }))
+                ),
+
+                e('div', { className: 'faust-popover__body', style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+                  // A cancel on either prompt creates nothing
+                  e('button', {
+                    className: 'faust-btn faust-btn--block faust-btn--sm',
+                    title: 'Tallenna koko käsikirjoituksen nykyinen tila tilannekuvaksi, johon voit palata myöhemmin',
+                    onClick: async () => {
+                      const name = await askText('Tilannekuvan nimi', `Ennen muokkausta ${new Date().toLocaleDateString('fi-FI')}`, '', 'Jatka');
+                      if (name === null) return;
+                      const desc = await askText('Kuvaus (valinnainen)', '', '', 'Tallenna tilannekuva');
+                      if (desc === null) return;
+                      createSnapshot(name, desc);
+                    }
+                  }, '+ Uusi tilannekuva…'),
+
+                  (project.snapshots || []).length === 0
+                    ? e('div', { className: 'faust-empty faust-empty--compact' },
+                        e('div', { className: 'faust-empty__title' }, 'Ei vielä tilannekuvia.'),
+                        e('div', { className: 'faust-empty__hint' }, 'Tallenna tilannekuva ennen isoja muutoksia, niin voit palata käsikirjoituksen nykyiseen tilaan.')
+                      )
+                    : [...(project.snapshots || [])].reverse().map(snapshot =>
+                        e('div', { key: snapshot.id, className: 'faust-card faust-card--compact' },
+                          e('div', { className: 'faust-serif' }, snapshot.name),
+                          e('div', { className: 'faust-meta' },
+                            new Date(snapshot.created).toLocaleString('fi-FI', { dateStyle: 'short', timeStyle: 'short' })),
+                          e('div', { className: 'faust-meta' },
+                            count(snapshot.chapterCount || 0, 'luku') + ' · ' + count(snapshot.totalWords || 0, 'sana')),
+                          snapshot.description && e('div', { className: 'faust-card__body' }, snapshot.description),
+                          e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-1)', marginTop: 'var(--sp-1)' } },
+                            e('button', {
+                              className: 'faust-btn faust-btn--sm',
+                              title: 'Palauta kaikki luvut tähän tilannekuvaan',
+                              onClick: () => restoreSnapshot(snapshot.id)
+                            }, 'Palauta…'),
+                            e('button', {
+                              className: 'faust-btn faust-btn--sm faust-btn--quiet',
+                              title: 'Näytä, montako sanaa avoimessa luvussa on nyt ja montako tässä tilannekuvassa',
+                              onClick: () => compareWithSnapshot(snapshot.id)
+                            }, 'Vertaa sanamäärää'),
+                            e('button', {
+                              className: 'faust-btn faust-btn--sm faust-btn--danger',
+                              title: 'Poista tämä tilannekuva',
+                              onClick: async () => {
+                                const confirmed = await askConfirm(
+                                  'Poistetaanko tilannekuva?',
+                                  'Tilannekuva ”' + snapshot.name + '” poistetaan. Poistoa ei voi kumota.',
+                                  'Poista tilannekuva',
+                                  'Peruuta',
+                                  { danger: true }
+                                );
+                                if (confirmed) deleteSnapshot(snapshot.id);
+                              }
+                            }, 'Poista')
+                          )
+                        )
+                      )
+                )
+              )
             )
           ),
-          e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
-            e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)' } },
-              project.title + (unsavedChanges ? ' •' : '')),
 
-            // Autosave indicator with error details
-            savingState !== 'idle' && e('span', {
-              title: autosaveError || '',
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '10px',
-                padding: '2px 8px',
-                borderRadius: '3px',
-                background: savingState === 'saving' ? 'rgba(255, 193, 7, 0.2)' :
-                           savingState === 'saved' ? 'rgba(76, 175, 80, 0.2)' :
-                           'rgba(244, 67, 54, 0.2)',
-                color: savingState === 'saving' ? '#FFA726' :
-                       savingState === 'saved' ? '#66BB6A' :
-                       '#EF5350',
-                border: `1px solid ${savingState === 'saving' ? '#FFA726' :
-                                      savingState === 'saved' ? '#66BB6A' :
-                                      '#EF5350'}`,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                cursor: autosaveError ? 'help' : 'default'
-              }
-            },
-              savingState === 'saving' ? '💾 Tallennetaan...' :
-              savingState === 'saved' ? '✓ Tallennettu' :
-              autosaveError ? `✗ ${autosaveError}` : '✗ Virhe'
+          // Näkymät: icon-only toggles; each is lit only while its view is really visible
+          e('div', { className: 'faust-header__group' },
+            e('button', {
+              className: 'faust-btn faust-btn--icon',
+              'data-priority': '1',
+              'aria-label': 'Korttinäkymä',
+              'aria-pressed': corkboardEnabled,
+              title: corkboardEnabled
+                ? 'Kätke korttinäkymä ja palaa tekstiin'
+                : 'Näytä korttinäkymä: luvut kortteina, joita voi järjestää vetämällä',
+              onClick: () => setCorkboardEnabled(prev => !prev)
+            }, icons.cards({ size: 16 })),
+            e('button', {
+              className: 'faust-btn faust-btn--icon',
+              'data-priority': '1',
+              'aria-label': 'Jaettu näkymä',
+              'aria-pressed': splitViewEnabled && !corkboardEnabled,
+              title: corkboardEnabled
+                ? 'Palaa tekstiin ja avaa jaettu näkymä'
+                : splitViewEnabled
+                  ? 'Sulje jaettu näkymä'
+                  : 'Avaa jaettu näkymä: toinen luku, hahmo, paikka tai lukujen tiivistelmät tekstin rinnalle',
+              onClick: () => toggleSplitView()
+            }, icons.split({ size: 16 }))
+          ),
+
+          // Paneelit: Tietopaneeli and Liminal Engine
+          e('div', { className: 'faust-header__group' },
+            e('button', {
+              className: 'faust-btn faust-btn--icon',
+              'data-priority': '1',
+              'aria-label': 'Tietopaneeli',
+              'aria-pressed': showInspector,
+              title: showInspector
+                ? 'Kätke tietopaneeli (' + shortcut('CmdOrCtrl+2') + ')'
+                : 'Näytä tietopaneeli: tekstin ulkoasu, luvun ja projektin tiedot sekä tekoälyasetukset (' + shortcut('CmdOrCtrl+2') + ')',
+              onClick: () => (showInspector ? setShowInspector(false) : showInspectorTab())
+            }, icons.panelRight({ size: 16 })),
+            e('button', {
+              className: 'faust-btn faust-btn--quiet',
+              'data-priority': '1',
+              'aria-pressed': aiAssistantOpen,
+              title: aiAssistantOpen
+                ? 'Kätke Liminal Engine (' + shortcut('CmdOrCtrl+Shift+K') + ')'
+                : 'Näytä Liminal Engine, FAUSTin tekoälyavustaja: kysy neuvoa tai pyydä muutoksia valittuun tekstiin (' + shortcut('CmdOrCtrl+Shift+K') + ')',
+              onClick: () => (aiAssistantOpen ? setAiAssistantOpen(false) : openLiminalEngine())
+            }, icons.star8({ size: 14 }), 'Liminal Engine')
+          ),
+
+          // Teema: two options, the one in use is selected
+          e('div', { className: 'faust-header__group' },
+            e('div', { className: 'faust-segmented', role: 'radiogroup', 'aria-label': 'Teema', 'data-priority': '1' },
+              e('button', {
+                className: 'faust-segmented__option',
+                role: 'radio',
+                'aria-checked': isDarkMode,
+                title: 'Ota käyttöön tumma NOX-teema (' + shortcut('CmdOrCtrl+Shift+D') + ' vaihtaa teemaa)',
+                onClick: () => setIsDarkMode(true)
+              }, 'NOX'),
+              e('button', {
+                className: 'faust-segmented__option',
+                role: 'radio',
+                'aria-checked': !isDarkMode,
+                title: 'Ota käyttöön vaalea DEIS-teema (' + shortcut('CmdOrCtrl+Shift+D') + ' vaihtaa teemaa)',
+                onClick: () => setIsDarkMode(false)
+              }, 'DEIS')
             )
           )
-        ),
-        e('div', { style: { display: 'flex', gap: '8px' } },
-          e('button', {
-            onClick: newProject,
-            title: 'Uusi projekti (Cmd+N)',
-            style: {
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text)',
-              padding: '4px 12px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, 'Uusi'),
-          e('button', {
-            onClick: loadProject,
-            title: 'Avaa projekti (Cmd+O)',
-            style: {
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text)',
-              padding: '4px 12px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, 'Avaa'),
-
-          // Recent Files Dropdown
-          recentFiles.length > 0 ? e('div', {
-            style: { position: 'relative' }
-          },
-            e('button', {
-              onClick: () => setShowRecentFilesMenu(prev => !prev),
-              title: 'Viimeisimmät projektit',
-              style: {
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                color: 'var(--text)',
-                padding: '4px 12px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
-              }
-            }, 'Viimeisimmät ▾'),
-            showRecentFilesMenu ? e('div', {
-              style: {
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                marginTop: '4px',
-                background: 'var(--bg)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                padding: '4px',
-                minWidth: '300px',
-                maxHeight: '400px',
-                overflow: 'auto',
-                zIndex: 1000,
-                boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
-              },
-              onClick: (ev) => ev.stopPropagation()
-            },
-              recentFiles.map(file =>
-                e('div', {
-                  key: file.path,
-                  onClick: () => {
-                    loadRecentFile(file.path);
-                    setShowRecentFilesMenu(false);
-                  },
-                  style: {
-                    padding: '8px 12px',
-                    cursor: 'pointer',
-                    borderRadius: '2px',
-                    transition: 'background 0.2s',
-                    ':hover': { background: 'var(--bg-1)' }
-                  },
-                  onMouseEnter: (ev) => ev.currentTarget.style.background = 'var(--bg-1)',
-                  onMouseLeave: (ev) => ev.currentTarget.style.background = 'transparent'
-                },
-                  e('div', {
-                    style: {
-                      fontFamily: 'EB Garamond',
-                      fontSize: '14px',
-                      color: 'var(--text)',
-                      marginBottom: '2px'
-                    }
-                  }, file.title || 'Nimetön projekti'),
-                  e('div', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '10px',
-                      color: 'var(--text-3)'
-                    }
-                  }, file.path.split('/').pop() + ' • ' + new Date(file.lastOpened).toLocaleDateString('fi-FI'))
-                )
-              ),
-              e('div', {
-                style: {
-                  borderTop: '1px solid var(--border-color)',
-                  marginTop: '4px',
-                  paddingTop: '4px'
-                }
-              },
-                e('button', {
-                  onClick: () => {
-                    setRecentFiles([]);
-                    localStorage.removeItem('faust-recent-files');
-                    setShowRecentFilesMenu(false);
-                  },
-                  style: {
-                    width: '100%',
-                    padding: '6px',
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--text-3)',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    textAlign: 'left'
-                  },
-                  onMouseEnter: (ev) => ev.currentTarget.style.color = 'var(--text)',
-                  onMouseLeave: (ev) => ev.currentTarget.style.color = 'var(--text-3)'
-                }, 'Tyhjennä historia')
-              )
-            ) : null
-          ) : null,
-
-          e('button', {
-            onClick: saveProject,
-            title: 'Tallenna projekti (Cmd+S)',
-            style: {
-              background: unsavedChanges ? 'var(--bronze)' : 'transparent',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text)',
-              padding: '4px 12px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, 'Tallenna'),
-
-          // Snapshots button with dropdown
-          e('div', {
-            style: { position: 'relative' }
-          },
-            e('button', {
-              onClick: () => setShowSnapshotsPanel(prev => !prev),
-              title: `Snapshotit (${(project.snapshots || []).length}) - Tallenna ja palauta versioita`,
-              style: {
-                background: showSnapshotsPanel ? 'var(--bronze)' : 'transparent',
-                border: '1px solid var(--border-color)',
-                color: showSnapshotsPanel ? '#000' : 'var(--text)',
-                padding: '4px 12px',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                fontWeight: showSnapshotsPanel ? 600 : 400
-              }
-            }, `📸 ${(project.snapshots || []).length}`),
-
-            // Snapshots dropdown panel
-            showSnapshotsPanel && e('div', {
-              style: {
-                position: 'absolute',
-                top: '100%',
-                right: 0,
-                marginTop: '4px',
-                background: 'var(--bg-1)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '8px',
-                padding: '12px',
-                minWidth: '320px',
-                maxHeight: '500px',
-                overflow: 'auto',
-                zIndex: 1000,
-                boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
-              },
-              onClick: (ev) => ev.stopPropagation()
-            },
-              // Header
-              e('div', {
-                style: {
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  marginBottom: '12px',
-                  paddingBottom: '8px',
-                  borderBottom: '1px solid var(--border-color)'
-                }
-              },
-                e('h4', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '13px',
-                    color: 'var(--text)',
-                    margin: 0
-                  }
-                }, 'Snapshotit'),
-                e('button', {
-                  onClick: () => setShowSnapshotsPanel(false),
-                  style: {
-                    background: 'transparent',
-                    border: 'none',
-                    color: 'var(--text-2)',
-                    cursor: 'pointer',
-                    fontSize: '16px'
-                  }
-                }, '×')
-              ),
-
-              // Create new snapshot button
-              e('button', {
-                onClick: async () => {
-                  const name = await askText('Snapshotin nimi:', `Ennen muokkausta ${new Date().toLocaleDateString('fi-FI')}`);
-                  if (name !== null) {
-                    const desc = await askText('Kuvaus (valinnainen):', '');
-                    createSnapshot(name, desc || '');
-                  }
-                },
-                style: {
-                  width: '100%',
-                  padding: '10px',
-                  marginBottom: '12px',
-                  background: 'var(--bronze)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#000',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  fontWeight: 600
-                }
-              }, '+ Luo uusi snapshot'),
-
-              // Snapshots list
-              (project.snapshots || []).length === 0
-                ? e('p', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: 'var(--text-3)',
-                      textAlign: 'center',
-                      padding: '16px'
-                    }
-                  }, 'Ei snapshoteja. Luo snapshot tallentaaksesi projektin nykyisen tilan.')
-                : [...(project.snapshots || [])].reverse().map(snapshot =>
-                    e('div', {
-                      key: snapshot.id,
-                      style: {
-                        padding: '10px',
-                        borderRadius: '4px',
-                        marginBottom: '8px',
-                        background: 'var(--bg-2)',
-                        border: '1px solid var(--border-color)'
-                      }
-                    },
-                      // Snapshot info
-                      e('div', {
-                        style: {
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'flex-start',
-                          marginBottom: '6px'
-                        }
-                      },
-                        e('div', null,
-                          e('div', {
-                            style: {
-                              fontFamily: 'IBM Plex Mono',
-                              fontSize: '12px',
-                              color: 'var(--text)',
-                              fontWeight: 500
-                            }
-                          }, snapshot.name),
-                          e('div', {
-                            style: {
-                              fontFamily: 'IBM Plex Mono',
-                              fontSize: '10px',
-                              color: 'var(--text-3)',
-                              marginTop: '2px'
-                            }
-                          }, new Date(snapshot.created).toLocaleString('fi-FI'))
-                        ),
-                        e('button', {
-                          onClick: () => {
-                            if (confirm(`Poista snapshot "${snapshot.name}"?`)) {
-                              deleteSnapshot(snapshot.id);
-                            }
-                          },
-                          style: {
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--error)',
-                            cursor: 'pointer',
-                            fontSize: '12px',
-                            padding: '2px 6px'
-                          }
-                        }, '×')
-                      ),
-
-                      // Stats
-                      e('div', {
-                        style: {
-                          fontFamily: 'IBM Plex Mono',
-                          fontSize: '10px',
-                          color: 'var(--text-3)',
-                          marginBottom: '8px'
-                        }
-                      }, `${snapshot.chapterCount || 0} lukua • ${snapshot.totalWords || 0} sanaa`),
-
-                      // Description
-                      snapshot.description && e('div', {
-                        style: {
-                          fontFamily: 'IBM Plex Mono',
-                          fontSize: '11px',
-                          color: 'var(--text-2)',
-                          fontStyle: 'italic',
-                          marginBottom: '8px'
-                        }
-                      }, snapshot.description),
-
-                      // Action buttons
-                      e('div', {
-                        style: {
-                          display: 'flex',
-                          gap: '4px'
-                        }
-                      },
-                        e('button', {
-                          onClick: () => restoreSnapshot(snapshot.id),
-                          style: {
-                            flex: 1,
-                            padding: '6px',
-                            background: 'transparent',
-                            border: '1px solid var(--bronze)',
-                            borderRadius: '4px',
-                            color: 'var(--bronze)',
-                            cursor: 'pointer',
-                            fontFamily: 'IBM Plex Mono',
-                            fontSize: '10px'
-                          }
-                        }, '↩ Palauta'),
-                        e('button', {
-                          onClick: () => compareWithSnapshot(snapshot.id),
-                          style: {
-                            flex: 1,
-                            padding: '6px',
-                            background: 'transparent',
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '4px',
-                            color: 'var(--text-2)',
-                            cursor: 'pointer',
-                            fontFamily: 'IBM Plex Mono',
-                            fontSize: '10px'
-                          }
-                        }, '⊏ Vertaa')
-                      )
-                    )
-                  )
-            )
-          ),
-
-          e('button', {
-            onClick: () => setIsDarkMode(prev => !prev),
-            style: {
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text)',
-              padding: '4px 12px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, isDarkMode ? 'NOX' : 'DEIS'),
-          e('button', {
-            onClick: () => setShowInspector(prev => !prev),
-            style: {
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text)',
-              padding: '4px 12px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, showInspector ? 'Piilota' : 'Inspector'),
-          // Split View toggle button
-          e('button', {
-            onClick: () => {
-              if (!splitViewEnabled) {
-                // Enable split view - default to next chapter or first different chapter
-                const otherChapter = project.structure.find(ch => ch.id !== activeChapterId);
-                if (otherChapter) {
-                  setSplitViewChapterId(otherChapter.id);
-                  setSplitViewType('chapter');
-                  setSplitViewEnabled(true);
-                }
-              } else {
-                setSplitViewEnabled(false);
-              }
-            },
-            title: splitViewEnabled ? 'Sulje jaettu näkymä' : 'Avaa jaettu näkymä (näytä kaksi lukua rinnakkain)',
-            style: {
-              background: splitViewEnabled ? 'var(--bronze)' : 'transparent',
-              border: '1px solid var(--border-color)',
-              color: splitViewEnabled ? '#000' : 'var(--text)',
-              padding: '4px 12px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              fontWeight: splitViewEnabled ? 600 : 400
-            }
-          }, splitViewEnabled ? '◧ Split' : '▢ Split'),
-          // Corkboard toggle button
-          e('button', {
-            onClick: () => setCorkboardEnabled(prev => !prev),
-            title: corkboardEnabled ? 'Palaa editoriin' : 'Avaa korttinäkymä (visuaalinen lukujen järjestely)',
-            style: {
-              background: corkboardEnabled ? 'var(--bronze)' : 'transparent',
-              border: '1px solid var(--border-color)',
-              color: corkboardEnabled ? '#000' : 'var(--text)',
-              padding: '4px 12px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              fontWeight: corkboardEnabled ? 600 : 400
-            }
-          }, corkboardEnabled ? '▦ Kortit' : '▤ Kortit'),
-          e('button', {
-            onClick: () => setAiAssistantOpen(prev => !prev),
-            style: {
-              background: aiAssistantOpen ? 'var(--gold)' : 'transparent',
-              border: '1px solid var(--border-color)',
-              color: aiAssistantOpen ? '#000' : 'var(--text)',
-              padding: '4px 12px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              fontWeight: aiAssistantOpen ? 600 : 400
-            }
-          }, 'LIMINAL ENGINE'),
-          // AI Työkalut button removed - had no associated panel
-          e('button', {
-            onClick: openAISettings,
-            title: 'Tekoälyn lähde, avain ja malli (⌘,)',
-            style: {
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              color: 'var(--text)',
-              padding: '4px 12px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, '⚙️ Asetukset')
         )
       )
     ),
@@ -4435,378 +4773,243 @@ ${contextPrompt}`;
     e('div', { className: 'faust-main' },
       // Left sidebar - Chapter list
       e('div', { className: sidebarCollapsed ? 'faust-sidebar collapsed' : 'faust-sidebar' },
-        // Collapse button (always visible)
-        e('button', {
-          onClick: () => setSidebarCollapsed(!sidebarCollapsed),
-          title: sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar',
-          style: {
-            position: 'absolute',
-            top: '12px',
-            right: sidebarCollapsed ? '4px' : '8px',
-            width: sidebarCollapsed ? '32px' : '24px',
-            height: '24px',
-            background: 'var(--bg-2)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text-2)',
-            cursor: 'pointer',
-            fontSize: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'all 0.2s',
-            zIndex: 10
-          }
-        }, sidebarCollapsed ? '→' : '←'),
+        // Collapsed: the 40 px strip holds only the button that shows the sidebar again (XR-3 removes the strip)
+        sidebarCollapsed
+          ? e('div', { style: { display: 'flex', justifyContent: 'center', paddingTop: 'var(--sp-3)' } },
+              e('button', {
+                className: 'faust-btn faust-btn--icon faust-btn--sm',
+                'aria-label': 'Näytä sivupalkki (' + shortcut('CmdOrCtrl+1') + ')',
+                title: 'Näytä sivupalkki (' + shortcut('CmdOrCtrl+1') + ')',
+                onClick: () => setSidebarCollapsed(false)
+              }, icons.panelLeft({ size: 14 }))
+            )
+          // Open: the panel shell. The inline width keeps the 220 px column of the layout file until
+          // XR-3 gives the sidebar its data-state (then the shell rule sets var(--sidebar-w) and this goes).
+          : e('div', { className: 'faust-panel', style: { width: '100%' } },
+              // Head: the manuscript's word count and goal; the project title is shown in the header only.
+              // The row wraps: a long readout pushes the close button to the next line instead of under it.
+              (() => {
+                const target = Number(project.targets && project.targets.totalWords) || 0;
+                const [wordNum, wordNoun] = countParts(totalWords, 'sana');
+                const percent = target > 0 ? Math.min(100, Math.floor((totalWords / target) * 100)) : 0;
+                return e('div', { className: 'faust-panel__head', style: { flexWrap: 'wrap', rowGap: 'var(--sp-1)', paddingTop: 'var(--sp-2)', paddingBottom: 'var(--sp-2)' } },
+                  target > 0
+                    ? e('button', {
+                        className: 'faust-btn faust-btn--quiet',
+                        style: { marginLeft: 'calc(-1 * var(--sp-3))' },
+                        title: 'Käsikirjoituksen tavoite. Muuta tavoitetta projektin asetuksissa.',
+                        onClick: () => setShowProjectSettings(true)
+                      },
+                        e('span', { className: 'faust-stat faust-stat--hero' },
+                          e('b', null, totalWords.toLocaleString('fi-FI')),
+                          ' / ' + target.toLocaleString('fi-FI') + ' sanaa'
+                        )
+                      )
+                    : e('span', { className: 'faust-stat faust-stat--hero' }, e('b', null, wordNum), ' ' + wordNoun),
+                  e('button', {
+                    className: 'faust-btn faust-btn--icon faust-btn--sm',
+                    style: { marginLeft: 'auto' },
+                    'aria-label': 'Kätke sivupalkki (' + shortcut('CmdOrCtrl+1') + ')',
+                    title: 'Kätke sivupalkki (' + shortcut('CmdOrCtrl+1') + ')',
+                    onClick: () => setSidebarCollapsed(true)
+                  }, icons.panelLeft({ size: 14 })),
+                  e('div', { style: { flexBasis: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
+                    e('span', { className: 'faust-meta' }, count(project.structure.length, 'luku')),
+                    target > 0 && e('div', {
+                      className: 'faust-progress faust-progress--goal' + (totalWords >= target ? ' is-complete' : ''),
+                      style: { '--value': percent + '%' },
+                      'aria-hidden': true
+                    }, e('i'))
+                  )
+                );
+              })(),
 
-        !sidebarCollapsed && e('div', { style: { padding: '16px', color: 'var(--text)' } },
-          e('h3', { style: { fontFamily: 'EB Garamond', fontSize: '16px', marginBottom: '12px' } }, project.title),
-
-          // Project stats
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text-3)',
-              marginBottom: '16px',
-              paddingBottom: '12px',
-              borderBottom: '1px solid var(--border-color)'
-            }
-          },
-            e('div', null, `${totalWords} / ${project.targets.totalWords} sanaa`),
-            e('div', null, `${project.structure.length} lukua`)
-          ),
-
-          // Chapter list
-          e('div', { style: { display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '16px' } },
-            project.structure.map((chapter, idx) =>
-              e('div', {
-                key: chapter.id,
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  padding: '8px 12px',
-                  borderRadius: '4px',
-                  background: chapter.id === activeChapterId ? 'var(--bg-tertiary, rgba(143,122,83,0.1))' : 'transparent',
-                  borderLeft: chapter.id === activeChapterId ? '2px solid var(--bronze)' : '2px solid transparent',
-                  transition: 'all 0.2s'
-                }
-              },
-                // Chapter info (clickable)
-                e('div', {
-                  onClick: () => setActiveChapterId(chapter.id),
-                  style: {
-                    flex: 1,
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '13px',
-                    color: chapter.id === activeChapterId ? 'var(--text)' : 'var(--text-2)'
-                  }
-                },
-                  e('div', { style: { marginBottom: '4px' } }, chapter.title),
-                  e('div', { style: { fontSize: '11px', color: 'var(--text-3)' } }, `${chapter.wordCount} sanaa`)
+              // Body: chapters and collections (the only part that scrolls)
+              e('div', { className: 'faust-panel__body' },
+                e('div', { className: 'faust-section' },
+                  e('div', { className: 'faust-section__head' },
+                    e('div', { className: 'faust-section__title' }, 'Luvut')
+                  ),
+                  project.structure.map((chapter, idx) => {
+                    const isOpen = chapter.id === activeChapterId;
+                    return e('div', {
+                      key: chapter.id,
+                      className: 'faust-row faust-row--two faust-row--author' + (isOpen ? ' is-selected' : ''),
+                      role: 'button',
+                      tabIndex: 0,
+                      'aria-current': isOpen,
+                      onClick: () => setActiveChapterId(chapter.id),
+                      onKeyDown: (ev) => {
+                        if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ')) {
+                          ev.preventDefault();
+                          setActiveChapterId(chapter.id);
+                        }
+                      }
+                    },
+                      e('span', { className: 'faust-row__text' },
+                        e('span', { className: 'faust-row__title' }, chapter.title || 'Nimetön luku'),
+                        e('span', { className: 'faust-row__meta' }, count(chapter.wordCount || 0, 'sana'))
+                      ),
+                      // Row actions: shown on hover, focus and for the open chapter by the stylesheet
+                      e('span', { className: 'faust-row__actions' },
+                        e('button', {
+                          className: 'faust-btn faust-btn--icon faust-btn--sm',
+                          'aria-label': 'Siirrä lukua ylemmäs',
+                          title: 'Siirrä lukua ylemmäs',
+                          disabled: idx === 0,
+                          onClick: (ev) => { ev.stopPropagation(); moveChapterUp(chapter.id); }
+                        }, icons.arrowUp({ size: 14 })),
+                        e('button', {
+                          className: 'faust-btn faust-btn--icon faust-btn--sm',
+                          'aria-label': 'Siirrä lukua alemmas',
+                          title: 'Siirrä lukua alemmas',
+                          disabled: idx === project.structure.length - 1,
+                          onClick: (ev) => { ev.stopPropagation(); moveChapterDown(chapter.id); }
+                        }, icons.arrowDown({ size: 14 })),
+                        project.structure.length > 1 && e('button', {
+                          className: 'faust-btn faust-btn--icon faust-btn--sm faust-btn--danger',
+                          'aria-label': 'Poista luku',
+                          title: 'Poista luku',
+                          onClick: (ev) => { ev.stopPropagation(); deleteChapter(chapter.id); }
+                        }, icons.trash({ size: 14 }))
+                      )
+                    );
+                  }),
+                  e('button', {
+                    className: 'faust-btn faust-btn--block faust-btn--sm',
+                    style: { marginTop: 'var(--sp-2)' },
+                    title: 'Lisää uusi luku loppuun (' + shortcut('CmdOrCtrl+Shift+N') + ')',
+                    onClick: addChapter
+                  }, '+ Uusi luku')
                 ),
 
-                // Chapter controls (only show for active chapter)
-                chapter.id === activeChapterId ? e('div', { style: { display: 'flex', gap: '2px' } },
-                  // Move up
-                  idx > 0 ? e('button', {
-                    onClick: () => moveChapterUp(chapter.id),
-                    title: 'Siirrä ylös',
-                    style: {
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-3)',
-                      cursor: 'pointer',
-                      padding: '2px 4px',
-                      fontSize: '14px'
-                    }
-                  }, '↑') : null,
-
-                  // Move down
-                  idx < project.structure.length - 1 ? e('button', {
-                    onClick: () => moveChapterDown(chapter.id),
-                    title: 'Siirrä alas',
-                    style: {
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-3)',
-                      cursor: 'pointer',
-                      padding: '2px 4px',
-                      fontSize: '14px'
-                    }
-                  }, '↓') : null,
-
-                  // Delete
-                  project.structure.length > 1 ? e('button', {
-                    onClick: () => deleteChapter(chapter.id),
-                    title: 'Poista luku',
-                    style: {
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--error)',
-                      cursor: 'pointer',
-                      padding: '2px 4px',
-                      fontSize: '14px',
-                      transition: 'all 0.2s'
-                    }
-                  }, '×') : null
-                ) : null
-              )
-            )
-          ),
-
-          // Add chapter button
-          e('button', {
-            onClick: addChapter,
-            style: {
-              width: '100%',
-              padding: '8px',
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text-2)',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              transition: 'all 0.2s'
-            }
-          }, '+ Uusi luku'),
-
-          // Collections section
-          e('div', {
-            style: {
-              marginTop: '16px',
-              paddingTop: '16px',
-              borderTop: '1px solid var(--border-color)'
-            }
-          },
-            e('div', {
-              style: {
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '8px'
-              }
-            },
-              e('span', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-3)',
-                  textTransform: 'uppercase'
-                }
-              }, 'Kokoelmat'),
-              e('button', {
-                onClick: async () => {
-                  const name = await askText('Kokoelman nimi:');
-                  if (name) {
-                    const typeChoice = await askText('Tyyppi:\n1 = Manuaalinen\n2 = Status (draft/revised/final)\n3 = Hahmo (nimen mukaan)\n4 = Haku (tekstin mukaan)', '1');
-                    let type = 'manual';
-                    let filter = null;
-
-                    if (typeChoice === '2') {
-                      type = 'status';
-                      filter = await askText('Status (draft, revised, final):', 'draft');
-                    } else if (typeChoice === '3') {
-                      type = 'character';
-                      filter = await askText('Hahmon nimi:');
-                    } else if (typeChoice === '4') {
-                      type = 'search';
-                      filter = await askText('Hakusana:');
-                    }
-
-                    createCollection(name, type, filter);
-                  }
-                },
-                style: {
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-3)',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  padding: '2px 4px'
-                }
-              }, '+')
-            ),
-
-            // Collections list
-            (project.collections || []).length === 0
-              ? e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '10px',
-                    color: 'var(--text-3)',
-                    textAlign: 'center',
-                    padding: '8px'
-                  }
-                }, 'Ei kokoelmia')
-              : (project.collections || []).map(collection => {
-                  const chapters = getCollectionChapters(collection);
-                  const isActive = activeCollectionId === collection.id;
-                  return e('div', {
-                    key: collection.id,
-                    style: {
-                      marginBottom: '4px'
-                    }
-                  },
-                    e('div', {
-                      onClick: () => setActiveCollectionId(isActive ? null : collection.id),
-                      style: {
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '6px 8px',
-                        borderRadius: '4px',
-                        background: isActive ? 'rgba(143,122,83,0.15)' : 'transparent',
-                        borderLeft: isActive ? '2px solid var(--bronze)' : '2px solid transparent',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }
-                    },
-                      e('div', {
-                        style: {
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px'
-                        }
-                      },
-                        e('span', {
-                          style: { fontSize: '12px' }
-                        }, collection.type === 'manual' ? '⬡' :
-                           collection.type === 'status' ? '◐' :
-                           collection.type === 'character' ? '☉' : '⊙'),
-                        e('span', {
-                          style: {
-                            fontFamily: 'IBM Plex Mono',
-                            fontSize: '11px',
-                            color: isActive ? 'var(--text)' : 'var(--text-2)'
-                          }
-                        }, collection.name)
-                      ),
-                      e('div', {
-                        style: {
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }
-                      },
-                        e('span', {
-                          style: {
-                            fontFamily: 'IBM Plex Mono',
-                            fontSize: '10px',
-                            color: 'var(--text-3)'
-                          }
-                        }, `${chapters.length}`),
-                        e('button', {
-                          onClick: (ev) => {
-                            ev.stopPropagation();
-                            if (confirm(`Poista kokoelma "${collection.name}"?`)) {
-                              deleteCollection(collection.id);
+                e('div', { className: 'faust-section' },
+                  e('div', { className: 'faust-section__head' },
+                    e('div', { className: 'faust-section__title' }, 'Kokoelmat')
+                  ),
+                  (project.collections || []).length === 0
+                    ? e('div', { className: 'faust-empty faust-empty--compact' },
+                        e('div', { className: 'faust-empty__title' }, 'Ei vielä kokoelmia.'),
+                        e('div', { className: 'faust-empty__hint' }, 'Kokoelma poimii yhteen luvut, joilla on jotain yhteistä, esimerkiksi kaikki luvut, joissa sama hahmo esiintyy.')
+                      )
+                    : (project.collections || []).map(collection => {
+                        const chapters = getCollectionChapters(collection);
+                        const isActive = activeCollectionId === collection.id;
+                        const toggleOpen = () => setActiveCollectionId(isActive ? null : collection.id);
+                        // The kind in words (M A.3): the rule and its filter, or the kind's name when the filter is empty
+                        const kind = collection.type === 'status'
+                          ? (collection.filter ? 'Tila: ' + labelOf('status', normStatus(collection.filter)).toLowerCase() : 'Luvut tilan mukaan')
+                          : collection.type === 'character'
+                            ? (collection.filter ? 'Hahmo: ' + collection.filter : 'Luvut, joissa esiintyy hahmo')
+                            : collection.type === 'search'
+                              ? (collection.filter ? 'Hakusana: ' + collection.filter : 'Luvut, joissa on hakusana')
+                              : 'Itse valitut luvut';
+                        return e('div', { key: collection.id },
+                          e('div', {
+                            className: 'faust-row faust-row--two faust-row--author',
+                            role: 'button',
+                            tabIndex: 0,
+                            'aria-expanded': isActive,
+                            onClick: toggleOpen,
+                            onKeyDown: (ev) => {
+                              if (ev.target === ev.currentTarget && (ev.key === 'Enter' || ev.key === ' ')) {
+                                ev.preventDefault();
+                                toggleOpen();
+                              }
                             }
                           },
-                          style: {
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--error)',
-                            cursor: 'pointer',
-                            fontSize: '10px',
-                            padding: '0 2px',
-                            opacity: 0.6
-                          }
-                        }, '×')
-                      )
-                    ),
-                    // Expanded collection chapters
-                    isActive && chapters.length > 0 && e('div', {
-                      style: {
-                        marginLeft: '12px',
-                        marginTop: '4px'
-                      }
-                    },
-                      chapters.map(ch =>
-                        e('div', {
-                          key: ch.id,
-                          onClick: () => setActiveChapterId(ch.id),
-                          style: {
-                            padding: '4px 8px',
-                            fontFamily: 'IBM Plex Mono',
-                            fontSize: '10px',
-                            color: ch.id === activeChapterId ? 'var(--bronze)' : 'var(--text-3)',
-                            cursor: 'pointer',
-                            borderRadius: '2px',
-                            background: ch.id === activeChapterId ? 'rgba(143,122,83,0.1)' : 'transparent'
-                          }
-                        }, ch.title || 'Nimetön')
-                      )
-                    )
-                  );
-                })
-          ),
+                            e('span', { className: 'faust-row__icon' },
+                              isActive ? icons.chevronDown({ size: 14 }) : icons.chevronRight({ size: 14 })
+                            ),
+                            e('span', { className: 'faust-row__text' },
+                              e('span', { className: 'faust-row__title' }, collection.name),
+                              e('span', { className: 'faust-row__meta' }, kind)
+                            ),
+                            e('span', { className: 'faust-chip faust-chip--count' }, chapters.length),
+                            e('span', { className: 'faust-row__actions' },
+                              e('button', {
+                                className: 'faust-btn faust-btn--icon faust-btn--sm faust-btn--danger',
+                                'aria-label': 'Poista kokoelma',
+                                title: 'Poista kokoelma',
+                                onClick: async (ev) => {
+                                  ev.stopPropagation();
+                                  if (await askConfirm('Poistetaanko kokoelma?', 'Kokoelma ”' + collection.name + '” poistetaan. Luvut säilyvät.', 'Poista kokoelma', 'Peruuta', { danger: true })) {
+                                    deleteCollection(collection.id);
+                                  }
+                                }
+                              }, icons.trash({ size: 14 }))
+                            )
+                          ),
+                          // The chapters of an open collection, under its name
+                          isActive && e('div', { style: { paddingLeft: 'var(--sp-5)' } },
+                            chapters.length === 0
+                              ? e('div', { className: 'faust-meta', style: { padding: 'var(--sp-1) var(--sp-3)' } }, 'Ei lukuja')
+                              : chapters.map(ch =>
+                                  e('button', {
+                                    key: ch.id,
+                                    className: 'faust-row faust-row--author' + (ch.id === activeChapterId ? ' is-selected' : ''),
+                                    'aria-current': ch.id === activeChapterId,
+                                    onClick: () => setActiveChapterId(ch.id)
+                                  }, e('span', { className: 'faust-row__title' }, ch.title || 'Nimetön luku'))
+                                )
+                          )
+                        );
+                      }),
+                  e('button', {
+                    className: 'faust-btn faust-btn--block faust-btn--sm',
+                    style: { marginTop: 'var(--sp-2)' },
+                    onClick: () => setShowCollectionDialog(true)
+                  }, '+ Uusi kokoelma…')
+                )
+              ),
 
-          // Tools section - Timeline & Research
-          e('div', {
-            style: {
-              marginTop: '16px',
-              paddingTop: '16px',
-              borderTop: '1px solid var(--border-color)'
-            }
-          },
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                textTransform: 'uppercase',
-                marginBottom: '8px'
-              }
-            }, 'Työkalut'),
-
-            // Timeline View button
-            e('button', {
-              onClick: () => setShowTimelineView(true),
-              style: {
-                width: '100%',
-                padding: '8px 12px',
-                marginBottom: '6px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text-2)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                textAlign: 'left',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                transition: 'all 0.2s'
-              }
-            }, '☽ Aikajana'),
-
-            // Research Folder button
-            e('button', {
-              onClick: () => setShowResearchFolder(true),
-              style: {
-                width: '100%',
-                padding: '8px 12px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text-2)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                textAlign: 'left',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                transition: 'all 0.2s'
-              }
-            }, '⚗ Tutkimus')
-          )
-        )
+              // Foot: the five tools, always in view
+              e('div', { className: 'faust-panel__foot' },
+                e('div', { className: 'faust-section__head' },
+                  e('div', { className: 'faust-section__title' }, 'Työkalut')
+                ),
+                e('button', {
+                  className: 'faust-row',
+                  title: 'Avaa luettelo tarinan hahmoista ja heidän profiileistaan',
+                  onClick: () => openCharacterList()
+                },
+                  e('span', { className: 'faust-row__icon' }, icons.sol({ size: 14 })),
+                  e('span', { className: 'faust-row__title' }, 'Hahmot')
+                ),
+                e('button', {
+                  className: 'faust-row',
+                  title: 'Avaa luettelo tarinan tapahtumapaikoista',
+                  onClick: () => setShowLocationSheet(true)
+                },
+                  e('span', { className: 'faust-row__icon' }, icons.terra({ size: 14 })),
+                  e('span', { className: 'faust-row__title' }, 'Paikat')
+                ),
+                e('button', {
+                  className: 'faust-row',
+                  title: 'Avaa luettelo juonista, joita seurataan luvusta toiseen',
+                  onClick: () => setShowThreadSheet(true)
+                },
+                  e('span', { className: 'faust-row__icon' }, icons.lemniscate({ size: 14 })),
+                  e('span', { className: 'faust-row__title' }, 'Juonilangat')
+                ),
+                e('button', {
+                  className: 'faust-row',
+                  title: 'Avaa aikajana: luvut, tapahtuma-ajat ja juonilangat (' + shortcut('CmdOrCtrl+Shift+T') + ')',
+                  onClick: () => setShowTimelineView(true)
+                },
+                  e('span', { className: 'faust-row__icon' }, icons.luna({ size: 14 })),
+                  e('span', { className: 'faust-row__title' }, 'Aikajana')
+                ),
+                e('button', {
+                  className: 'faust-row',
+                  title: 'Avaa tutkimuskansio: muistiinpanot, linkit ja muu taustamateriaali (' + shortcut('CmdOrCtrl+Shift+R') + ')',
+                  onClick: () => setShowResearchFolder(true)
+                },
+                  e('span', { className: 'faust-row__icon' }, icons.trigon({ size: 14 })),
+                  e('span', { className: 'faust-row__title' }, 'Tutkimuskansio')
+                )
+              )
+            )
       ),
 
       // Center editor area (supports split view)
@@ -4824,50 +5027,44 @@ ${contextPrompt}`;
           className: 'faust-corkboard',
           style: {
             flex: 1,
-            padding: '24px',
-            background: 'var(--bg-secondary)',
+            padding: 'var(--sp-5)',
+            background: 'var(--surface-panel)',
             overflow: 'auto',
             display: 'flex',
             flexDirection: 'column'
           }
         },
-          // Corkboard header
+          // Corkboard header: title, hint, and the way back to the text (W11)
           e('div', {
             style: {
-              marginBottom: '20px',
+              marginBottom: 'var(--sp-5)',
               display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
+              alignItems: 'baseline',
+              gap: 'var(--sp-4)'
             }
           },
-            e('h2', {
-              style: {
-                fontFamily: 'EB Garamond',
-                fontSize: '24px',
-                color: 'var(--text)'
-              }
-            }, 'Korttinäkymä'),
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)'
-              }
-            }, `${project.structure.length} lukua • Vedä ja pudota järjestääksesi`)
+            e('h2', { style: { font: 'var(--type-title-view)' } }, 'Korttinäkymä'),
+            e('div', { className: 'faust-meta' },
+              count(project.structure.length, 'luku') + ' · Avaa luku klikkaamalla, järjestä vetämällä'),
+            e('button', {
+              className: 'faust-btn faust-btn--quiet',
+              style: { marginLeft: 'auto' },
+              title: 'Kätke korttinäkymä ja palaa tekstiin',
+              onClick: () => setCorkboardEnabled(false)
+            }, 'Kätke korttinäkymä')
           ),
 
           // Cards grid
-          e('div', {
-            style: {
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))',
-              gap: '16px',
-              flex: 1
-            }
-          },
+          e('div', { className: 'faust-cardgrid' },
             project.structure.map((chapter, idx) =>
               e('div', {
                 key: chapter.id,
+                className: 'faust-card faust-card--click' +
+                  (chapter.id === activeChapterId ? ' is-selected' : '') +
+                  (draggedChapterId === chapter.id ? ' is-dragging' : ''),
+                role: 'button',
+                tabIndex: 0,
+                'aria-current': chapter.id === activeChapterId ? 'true' : undefined,
                 draggable: true,
                 onDragStart: (ev) => {
                   setDraggedChapterId(chapter.id);
@@ -4877,9 +5074,14 @@ ${contextPrompt}`;
                 onDragOver: (ev) => {
                   ev.preventDefault();
                   ev.dataTransfer.dropEffect = 'move';
+                  if (draggedChapterId && draggedChapterId !== chapter.id) ev.currentTarget.classList.add('is-drop-target');
+                },
+                onDragLeave: (ev) => {
+                  if (!ev.currentTarget.contains(ev.relatedTarget)) ev.currentTarget.classList.remove('is-drop-target');
                 },
                 onDrop: (ev) => {
                   ev.preventDefault();
+                  ev.currentTarget.classList.remove('is-drop-target');
                   if (draggedChapterId && draggedChapterId !== chapter.id) {
                     // Reorder chapters
                     const fromIdx = project.structure.findIndex(ch => ch.id === draggedChapterId);
@@ -4900,151 +5102,48 @@ ${contextPrompt}`;
                   setActiveChapterId(chapter.id);
                   setCorkboardEnabled(false);
                 },
-                style: {
-                  background: chapter.id === activeChapterId ? 'rgba(143,122,83,0.15)' : 'var(--bg-1)',
-                  border: draggedChapterId === chapter.id
-                    ? '2px dashed var(--bronze)'
-                    : chapter.id === activeChapterId
-                      ? '2px solid var(--bronze)'
-                      : '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  padding: '16px',
-                  cursor: 'grab',
-                  transition: 'all 0.2s',
-                  minHeight: '160px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  opacity: draggedChapterId === chapter.id ? 0.5 : 1,
-                  transform: draggedChapterId === chapter.id ? 'scale(0.95)' : 'scale(1)'
+                onKeyDown: (ev) => {
+                  if (ev.target !== ev.currentTarget) return;
+                  if (ev.key === 'Enter' || ev.key === ' ') {
+                    ev.preventDefault();
+                    setActiveChapterId(chapter.id);
+                    setCorkboardEnabled(false);
+                  }
                 }
               },
-                // Card header
-                e('div', {
-                  style: {
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'flex-start',
-                    marginBottom: '8px'
-                  }
-                },
-                  e('span', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: 'var(--bronze)',
-                      background: 'var(--bg-2)',
-                      padding: '2px 6px',
-                      borderRadius: '4px'
-                    }
-                  }, `${idx + 1}`),
-                  e('span', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '10px',
-                      color: chapter.status === 'final' ? '#4CAF50' : chapter.status === 'revised' ? '#FFA726' : 'var(--text-3)',
-                      textTransform: 'uppercase'
-                    }
-                  }, chapter.status || 'draft')
+                // Card head: the title and the chapter's number
+                e('div', { className: 'faust-card__head' },
+                  e('h3', { className: 'faust-card__title' }, chapter.title || 'Nimetön luku'),
+                  e('span', { className: 'faust-meta' }, String(idx + 1))
                 ),
 
-                // Card title
-                e('h3', {
-                  style: {
-                    fontFamily: 'EB Garamond',
-                    fontSize: '16px',
-                    color: 'var(--text)',
-                    marginBottom: '8px',
-                    lineHeight: '1.3'
-                  }
-                }, chapter.title || 'Nimetön luku'),
+                // Synopsis preview, upright and clamped to three lines
+                (chapter.synopsis || chapter.synopsisAI || chapter.content)
+                  ? e('p', { className: 'faust-card__body faust-clamp-3' },
+                      chapter.synopsis || chapter.synopsisAI ||
+                        (chapter.content.length > 100 ? chapter.content.substring(0, 100) + '…' : chapter.content))
+                  : e('p', { className: 'faust-meta' }, 'Ei sisältöä'),
 
-                // Synopsis preview
-                e('p', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-3)',
-                    lineHeight: '1.4',
-                    flex: 1,
-                    overflow: 'hidden',
-                    display: '-webkit-box',
-                    WebkitLineClamp: 3,
-                    WebkitBoxOrient: 'vertical'
-                  }
-                }, chapter.synopsis || chapter.synopsisAI || (chapter.content ? chapter.content.substring(0, 100) + '...' : 'Ei sisältöä')),
-
-                // Card footer
-                e('div', {
-                  style: {
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginTop: '12px',
-                    paddingTop: '8px',
-                    borderTop: '1px solid var(--border-color)'
-                  }
-                },
-                  e('span', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '10px',
-                      color: 'var(--text-3)'
-                    }
-                  }, `${chapter.wordCount || 0} sanaa`),
-                  chapter.aiQuality && chapter.aiQuality.score > 0 && e('span', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '10px',
-                      color: chapter.aiQuality.score >= 8 ? '#4CAF50' :
-                             chapter.aiQuality.score >= 6 ? '#FFA726' : '#EF5350'
-                    }
-                  }, `AI: ${chapter.aiQuality.score.toFixed(1)}`)
+                // Card foot: status, words, score
+                e('div', { className: 'faust-card__foot' },
+                  e('span', { className: 'faust-chip ' + (STATUS_CHIP[normStatus(chapter.status)] || '') },
+                    labelOf('status', normStatus(chapter.status))),
+                  e('span', { className: 'faust-stat' },
+                    e('b', null, countParts(chapter.wordCount || 0, 'sana')[0]), ' ', countParts(chapter.wordCount || 0, 'sana')[1]),
+                  chapter.aiQuality && chapter.aiQuality.score > 0 ? e('span', {
+                    className: 'faust-stat',
+                    title: 'Tekoälyn arvio luvun laadusta asteikolla 1–10'
+                  }, 'Laatuarvio ', e('b', null, Number(chapter.aiQuality.score).toLocaleString('fi-FI', { minimumFractionDigits: 1, maximumFractionDigits: 1 })), '/10') : null
                 )
               )
             ),
 
             // Add chapter card
-            e('div', {
-              onClick: () => {
-                addChapter();
-              },
-              style: {
-                background: 'transparent',
-                border: '2px dashed var(--border-color)',
-                borderRadius: '8px',
-                padding: '16px',
-                cursor: 'pointer',
-                minHeight: '160px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                transition: 'all 0.2s'
-              },
-              onMouseEnter: (ev) => {
-                ev.currentTarget.style.borderColor = 'var(--bronze)';
-                ev.currentTarget.style.background = 'rgba(143,122,83,0.05)';
-              },
-              onMouseLeave: (ev) => {
-                ev.currentTarget.style.borderColor = 'var(--border-color)';
-                ev.currentTarget.style.background = 'transparent';
-              }
-            },
-              e('span', {
-                style: {
-                  fontSize: '32px',
-                  color: 'var(--text-3)',
-                  marginBottom: '8px'
-                }
-              }, '+'),
-              e('span', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  color: 'var(--text-3)'
-                }
-              }, 'Uusi luku')
-            )
+            e('button', {
+              className: 'faust-card faust-card--add faust-ui',
+              title: 'Lisää uusi luku loppuun (' + shortcut('CmdOrCtrl+Shift+N') + ')',
+              onClick: () => addChapter()
+            }, '+ Uusi luku')
           )
         ) :
 
@@ -5053,49 +5152,10 @@ ${contextPrompt}`;
           className: 'faust-editor',
           style: splitViewEnabled ? { flex: 1, borderRight: '2px solid var(--border-color)' } : {}
         },
-        // AI Loading Indicator - floating overlay
-        isGenerating ? e('div', {
-          style: {
-            position: 'absolute',
-            top: '20px',
-            right: '20px',
-            background: 'rgba(0, 0, 0, 0.85)',
-            border: '2px solid var(--bronze)',
-            borderRadius: '8px',
-            padding: '12px 20px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            zIndex: 1000,
-            animation: 'fadeIn 0.3s ease',
-            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.5)'
-          }
-        },
-          // Spinner
-          e('div', {
-            style: {
-              width: '20px',
-              height: '20px',
-              border: '3px solid var(--bg-2)',
-              borderTop: '3px solid var(--bronze)',
-              borderRadius: '50%',
-              animation: 'spin 1s linear infinite'
-            }
-          }),
-          // Text
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              color: 'var(--sigil)',
-              fontWeight: 500
-            }
-          }, 'AI generoi sisältöä...')
-        ) : null,
-
-        e('div', { className: 'faust-editor-content' },
+        e('div', { className: 'faust-editor-content faust-editor-content--main', style: { '--ms-size': 18 * (parseInt(editorZoom) / 100) + 'px' } },
           // Chapter title
           e('input', {
+            className: 'faust-page-row faust-chapter-title',
             value: activeChapter.title,
             onChange: (ev) => {
               setProject(prev => ({
@@ -5106,74 +5166,36 @@ ${contextPrompt}`;
               }));
               setUnsavedChanges(true);
             },
-            placeholder: 'Luvun otsikko',
-            style: {
-              width: '100%',
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: 'var(--ink)',
-              fontFamily: 'EB Garamond',
-              fontSize: '32px',
-              fontWeight: 600,
-              marginBottom: '8px',
-              borderBottom: '2px solid transparent'
-            }
+            placeholder: 'Luvun otsikko'
           }),
 
           // Word count and AI quality bar
-          e('div', {
-            style: {
-              display: 'flex',
-              alignItems: 'center',
-              gap: '16px',
-              marginBottom: '8px'
-            }
-          },
+          e('div', { className: 'faust-page-row faust-chapter-meta' },
             // Word count
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                color: 'var(--text-3)'
-              }
-            }, `${activeChapter.wordCount} sanaa`),
+            e('span', { className: 'faust-stat' },
+              e('b', null, countParts(activeChapter.wordCount || 0, 'sana')[0]), ' ', countParts(activeChapter.wordCount || 0, 'sana')[1]),
 
-            // AI Quality score
-            activeChapter.aiQuality && activeChapter.aiQuality.score > 0 ? e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: activeChapter.aiQuality.score >= 8 ? '#4CAF50' :
-                       activeChapter.aiQuality.score >= 6 ? '#FFA726' : '#EF5350',
-                padding: '2px 8px',
-                borderRadius: '4px',
-                background: 'var(--bg-2)',
-                border: '1px solid currentColor'
-              }
-            }, `AI: ${activeChapter.aiQuality.score.toFixed(1)}/10`) : null,
+            // Status chip: opens Tietopaneeli on the Luku tab (W10)
+            e('button', {
+              className: 'faust-chip ' + (STATUS_CHIP[normStatus(activeChapter.status)] || ''),
+              'aria-label': 'Tila: ' + labelOf('status', normStatus(activeChapter.status)).toLowerCase(),
+              title: 'Luvun tila. Muuta tilaa tietopaneelin Luku-välilehdellä.',
+              onClick: () => showInspectorTab('chapter')
+            }, labelOf('status', normStatus(activeChapter.status))),
 
-            // Status badge
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                padding: '2px 8px',
-                borderRadius: '4px',
-                background: 'var(--bg-2)',
-                textTransform: 'uppercase'
-              }
-            }, activeChapter.status || 'draft'),
+            // Quality score of the last analysis
+            activeChapter.aiQuality && activeChapter.aiQuality.score > 0 ? e('span', {
+              className: 'faust-stat',
+              title: 'Tekoälyn arvio luvun laadusta asteikolla 1–10'
+            }, 'Laatuarvio ', e('b', null, Number(activeChapter.aiQuality.score).toLocaleString('fi-FI', { minimumFractionDigits: 1, maximumFractionDigits: 1 })), '/10') : null,
 
-            // Pacing indicator
-            activeChapter.pacing && activeChapter.pacing.speed ? e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)'
-              }
-            }, `Tempo: ${activeChapter.pacing.speed}`) : null
+            // Tempo: only after a full analysis (Pika-arvio writes neither strengths nor tension)
+            activeChapter.aiQuality && activeChapter.aiQuality.lastAnalyzed &&
+            ((activeChapter.aiQuality.strengths || []).length > 0 || ((activeChapter.pacing || {}).tension || 0) > 0) &&
+            activeChapter.pacing && ['slow', 'medium', 'fast'].includes(activeChapter.pacing.speed) ? e('span', {
+              className: 'faust-stat',
+              title: 'Tekoälyn arvio kerronnan temposta'
+            }, 'Tempo: ', labelOf('tempo', activeChapter.pacing.speed)) : null
           ),
 
           // Floating AI Toolbar (absolute positioned, doesn't take document flow space)
@@ -5194,285 +5216,67 @@ ${contextPrompt}`;
               animation: 'fadeIn 0.3s ease'
             }
           },
-            // Analyze button - Alchemical Mercury symbol (☿ - transformation, analysis)
+            // Analysoi luku (mercury sigil). The first three tiles need 50 characters of text and
+            // wait while any of the four runs; the running one shows a spinner in place of its sigil.
             e('button', {
-              onClick: async () => {
-                console.log('[UI] Analysoi clicked');
-                const result = await analyzeChapterContent(activeChapterId);
-                if (result) {
-                  alert('Analyysi valmis! Tarkista luvun AI Quality -arvosana.');
-                } else {
-                  alert('Analyysi epäonnistui. Tarkista että:\n1. Claude API-avain on asetettu\n2. Luvussa on tekstiä (vähintään 50 merkkiä)');
-                }
-              },
-              disabled: !activeChapter.content || activeChapter.content.length < 50,
-              title: '☿ SCRUTINIUM PROFUNDUM\n\nMitä: Analysoi luvun laadun ja sisällön AI:lla\nTulos: Antaa arvosanan 1-10 ja yksityiskohtaiset ehdotukset\nVaatimus: Vähintään 50 merkkiä tekstiä\nKesto: ~15-30 sekuntia\n\n💡 Vinkki: Käytä kun luku on lähes valmis',
-              className: 'ai-toolbar-btn',
-              style: {
-                padding: '8px 14px',
-                background: (!activeChapter.content || activeChapter.content.length < 50)
-                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
-                  : 'linear-gradient(135deg, rgba(25, 20, 15, 0.9), rgba(35, 28, 20, 0.9))',
-                border: '1px solid',
-                borderImage: 'linear-gradient(135deg, #8b6914, #c7b386, #8b6914) 1',
-                borderRadius: '4px',
-                color: (!activeChapter.content || activeChapter.content.length < 50) ? 'rgba(199, 179, 134, 0.4)' : '#c7b386',
-                cursor: (!activeChapter.content || activeChapter.content.length < 50) ? 'not-allowed' : 'pointer',
-                fontFamily: '"EB Garamond", serif',
-                fontSize: '18px',
-                fontWeight: 500,
-                letterSpacing: '0.5px',
-                opacity: (!activeChapter.content || activeChapter.content.length < 50) ? 0.5 : 1,
-                minWidth: '40px',
-                boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.4)',
-                transition: 'all 0.3s ease',
-                transform: 'scale(1)'
-              },
-              onMouseEnter: (e) => {
-                if (!e.currentTarget.disabled) {
-                  e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
-                  e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139, 105, 20, 0.3), rgba(199, 179, 134, 0.3))';
-                  e.currentTarget.style.color = '#d4af37';
-                  e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.4), 0 0 16px rgba(212, 175, 55, 0.4)';
-                  e.currentTarget.style.textShadow = '0 0 10px rgba(212, 175, 55, 0.8)';
-                }
-              },
-              onMouseLeave: (e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.background = (!activeChapter.content || activeChapter.content.length < 50)
-                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
-                  : 'linear-gradient(135deg, rgba(25, 20, 15, 0.9), rgba(35, 28, 20, 0.9))';
-                e.currentTarget.style.color = (!activeChapter.content || activeChapter.content.length < 50) ? 'rgba(199, 179, 134, 0.4)' : '#c7b386';
-                e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.4)';
-                e.currentTarget.style.textShadow = 'none';
-              }
-            }, '☿'),
+              onClick: () => runAnalyze(),
+              disabled: (activeChapter.content || '').trim().length < 50 || isGenerating || !!analysisBusy,
+              'aria-busy': analysisBusy === 'analyze',
+              'aria-label': 'Analysoi luku',
+              title: (activeChapter.content || '').trim().length < 50
+                ? 'Analysoi luku: kirjoita ensin vähintään 50 merkkiä tekstiä.'
+                : 'Analysoi luku: tekoäly lukee koko luvun ja antaa laatuarvion (1–10), parannusehdotukset ja tiivistelmän. Luvun teksti ei muutu.',
+              className: 'ai-toolbar-btn'
+            }, analysisBusy === 'analyze' ? e('span', { className: 'faust-spinner' }) : icons.mercury({ size: 20 })),
 
-            // Quick quality check - Alchemical Alembic (⚗ - distillation, purification)
+            // Pika-arvio (alembic sigil)
             e('button', {
-              onClick: async () => {
-                if (!activeChapter.content || activeChapter.content.trim().length === 0) {
-                  alert('Luku on tyhjä. Kirjoita ensin jotain sisältöä.');
-                  return;
-                }
-                console.log('[UI] Pika-arvio clicked');
-                const result = await quickQualityCheck(activeChapterId);
-                if (result && result.score) {
-                  alert(`Pika-arvio valmis!\n\nPisteet: ${result.score}/10\n\nEhdotukset:\n${result.suggestions?.join('\n') || 'Ei ehdotuksia'}`);
-                } else {
-                  alert('Pika-arvio epäonnistui. Tarkista että:\n1. Claude API-avain on asetettu\n2. Luvussa on tekstiä');
-                }
-              },
-              disabled: !activeChapter.content || activeChapter.content.trim().length === 0,
-              title: '⚗ EXAMEN CELERITER\n\nMitä: Nopea laatutarkistus AI:lla\nTulos: Pisteet 1-10 ja lyhyet ehdotukset\nVaatimus: Mitä tahansa tekstiä (ei minimiä)\nKesto: ~5-10 sekuntia\n\n💡 Vinkki: Käytä kirjoittaessa säännöllisesti',
-              className: 'ai-toolbar-btn',
-              style: {
-                padding: '8px 14px',
-                background: (!activeChapter.content || activeChapter.content.trim().length === 0)
-                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
-                  : 'linear-gradient(135deg, rgba(25, 20, 15, 0.9), rgba(35, 28, 20, 0.9))',
-                border: '1px solid',
-                borderImage: 'linear-gradient(135deg, #8b6914, #c7b386, #8b6914) 1',
-                borderRadius: '4px',
-                color: (!activeChapter.content || activeChapter.content.trim().length === 0) ? 'rgba(199, 179, 134, 0.4)' : '#c7b386',
-                cursor: (!activeChapter.content || activeChapter.content.trim().length === 0) ? 'not-allowed' : 'pointer',
-                fontFamily: '"EB Garamond", serif',
-                fontSize: '18px',
-                fontWeight: 500,
-                letterSpacing: '0.5px',
-                opacity: (!activeChapter.content || activeChapter.content.trim().length === 0) ? 0.5 : 1,
-                minWidth: '40px',
-                boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.4)',
-                transition: 'all 0.3s ease',
-                transform: 'scale(1)'
-              },
-              onMouseEnter: (e) => {
-                if (!e.currentTarget.disabled) {
-                  e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
-                  e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139, 105, 20, 0.3), rgba(199, 179, 134, 0.3))';
-                  e.currentTarget.style.color = '#d4af37';
-                  e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.4), 0 0 16px rgba(212, 175, 55, 0.4)';
-                  e.currentTarget.style.textShadow = '0 0 10px rgba(212, 175, 55, 0.8)';
-                }
-              },
-              onMouseLeave: (e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.background = (!activeChapter.content || activeChapter.content.trim().length === 0)
-                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
-                  : 'linear-gradient(135deg, rgba(25, 20, 15, 0.9), rgba(35, 28, 20, 0.9))';
-                e.currentTarget.style.color = (!activeChapter.content || activeChapter.content.trim().length === 0) ? 'rgba(199, 179, 134, 0.4)' : '#c7b386';
-                e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.4)';
-                e.currentTarget.style.textShadow = 'none';
-              }
-            }, '⚗'),
+              onClick: () => runQuickCheck(),
+              disabled: (activeChapter.content || '').trim().length < 50 || isGenerating || !!analysisBusy,
+              'aria-busy': analysisBusy === 'quick',
+              'aria-label': 'Pika-arvio',
+              title: (activeChapter.content || '').trim().length < 50
+                ? 'Pika-arvio: kirjoita ensin vähintään 50 merkkiä tekstiä.'
+                : 'Pika-arvio: tekoäly lukee luvun alun (noin 2 000 merkkiä) ja antaa laatuarvion (1–10) ja pari parannusehdotusta. Luvun teksti ei muutu.',
+              className: 'ai-toolbar-btn'
+            }, analysisBusy === 'quick' ? e('span', { className: 'faust-spinner' }) : icons.alembic({ size: 20 })),
 
-            // Generate synopsis - Alchemical Sulfur (🜍 - essence, spirit, summary)
+            // Tee tiivistelmä (sulfur sigil)
             e('button', {
-              onClick: async () => {
-                if (!activeChapter.content || activeChapter.content.trim().length === 0) {
-                  alert('Luku on tyhjä. Kirjoita ensin jotain sisältöä.');
-                  return;
-                }
-                console.log('[UI] Synopsis clicked');
-                const result = await generateSynopsis(activeChapterId);
-                if (result) {
-                  alert(`Synopsis luotu:\n\n${result}`);
-                } else {
-                  alert('Synopsis-luonti epäonnistui. Tarkista että:\n1. Claude API-avain on asetettu\n2. Luvussa on tekstiä');
-                }
-              },
-              disabled: !activeChapter.content || activeChapter.content.trim().length === 0,
-              title: '🜍 EPITOME BREVIS\n\nMitä: Luo lyhyt synopsis/yhteenveto luvusta\nTulos: 2-4 lauseen tiivistelmä luvun tapahtumista\nVaatimus: Mitä tahansa tekstiä (ei minimiä)\nKesto: ~10-15 sekuntia\n\n💡 Vinkki: Hyödyllinen luvun tallennukseen ja muistiinpanoihin',
-              className: 'ai-toolbar-btn',
-              style: {
-                padding: '8px 14px',
-                background: (!activeChapter.content || activeChapter.content.trim().length === 0)
-                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
-                  : 'linear-gradient(135deg, rgba(25, 20, 15, 0.9), rgba(35, 28, 20, 0.9))',
-                border: '1px solid',
-                borderImage: 'linear-gradient(135deg, #8b6914, #c7b386, #8b6914) 1',
-                borderRadius: '4px',
-                color: (!activeChapter.content || activeChapter.content.trim().length === 0) ? 'rgba(199, 179, 134, 0.4)' : '#c7b386',
-                cursor: (!activeChapter.content || activeChapter.content.trim().length === 0) ? 'not-allowed' : 'pointer',
-                fontFamily: '"EB Garamond", serif',
-                fontSize: '18px',
-                fontWeight: 500,
-                letterSpacing: '0.5px',
-                opacity: (!activeChapter.content || activeChapter.content.trim().length === 0) ? 0.5 : 1,
-                minWidth: '40px',
-                boxShadow: 'inset 0 2px 4px rgba(0, 0, 0, 0.4)',
-                transition: 'all 0.3s ease',
-                transform: 'scale(1)'
-              },
-              onMouseEnter: (e) => {
-                if (!e.currentTarget.disabled) {
-                  e.currentTarget.style.transform = 'scale(1.05) translateY(-2px)';
-                  e.currentTarget.style.background = 'linear-gradient(135deg, rgba(139, 105, 20, 0.3), rgba(199, 179, 134, 0.3))';
-                  e.currentTarget.style.color = '#d4af37';
-                  e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.4), 0 0 16px rgba(212, 175, 55, 0.4)';
-                  e.currentTarget.style.textShadow = '0 0 10px rgba(212, 175, 55, 0.8)';
-                }
-              },
-              onMouseLeave: (e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.background = (!activeChapter.content || activeChapter.content.trim().length === 0)
-                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
-                  : 'linear-gradient(135deg, rgba(25, 20, 15, 0.9), rgba(35, 28, 20, 0.9))';
-                e.currentTarget.style.color = (!activeChapter.content || activeChapter.content.trim().length === 0) ? 'rgba(199, 179, 134, 0.4)' : '#c7b386';
-                e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.4)';
-                e.currentTarget.style.textShadow = 'none';
-              }
-            }, '🜍'),
+              onClick: () => runSummary(),
+              disabled: (activeChapter.content || '').trim().length < 50 || isGenerating || !!analysisBusy,
+              'aria-busy': analysisBusy === 'summary',
+              'aria-label': 'Tee tiivistelmä',
+              title: (activeChapter.content || '').trim().length < 50
+                ? 'Tee tiivistelmä: kirjoita ensin vähintään 50 merkkiä tekstiä.'
+                : 'Tee tiivistelmä: tekoäly tekee luvusta 2–3 lauseen tiivistelmän, joka näkyy korttinäkymässä ja jaetun näkymän tiivistelmissä. Luvun teksti ei muutu.',
+              className: 'ai-toolbar-btn'
+            }, analysisBusy === 'summary' ? e('span', { className: 'faust-spinner' }) : icons.sulfur({ size: 20 })),
 
-            // Generate chapter - Alchemical Philosopher's Stone (Circle-Triangle-Square-Circle - magnum opus, creation)
+            // Magnum Opus (philosopher's stone): writes the whole chapter; generateChapter asks first
             e('button', {
               onClick: () => generateChapter(activeChapterId),
               disabled: isGenerating,
-              title: isGenerating ? '⧖ OPUS IN PROGRESSU...\n\nOdota, AI kirjoittaa lukua...' : '◉ MAGNUM OPUS\n\nMitä: AI kirjoittaa kokonaisen luvun puolestasi\nTulos: 1000-3000 sanan luku projektisi tyyliin\nVaatimus: Ei vaatimuksia (voi olla tyhjä)\nKesto: ~30-90 sekuntia\n\n💡 Vinkki: AI käyttää aiempia lukuja kontekstina',
-              className: 'ai-toolbar-btn-primary',
-              style: {
-                padding: '8px 16px',
-                background: isGenerating
-                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
-                  : 'linear-gradient(135deg, rgba(139, 105, 20, 0.9), rgba(199, 179, 134, 0.8))',
-                border: '2px solid',
-                borderImage: isGenerating
-                  ? 'linear-gradient(135deg, #5a4a0f, #7a6a2f, #5a4a0f) 1'
-                  : 'linear-gradient(135deg, #c7b386, #d4af37, #c7b386) 1',
-                borderRadius: '4px',
-                color: isGenerating ? 'rgba(199, 179, 134, 0.4)' : '#1a1510',
-                cursor: isGenerating ? 'not-allowed' : 'pointer',
-                fontFamily: '"EB Garamond", serif',
-                fontSize: '20px',
-                fontWeight: 600,
-                letterSpacing: '1px',
-                opacity: isGenerating ? 0.5 : 1,
-                minWidth: '44px',
-                boxShadow: isGenerating
-                  ? 'inset 0 2px 4px rgba(0, 0, 0, 0.4)'
-                  : 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(199, 179, 134, 0.3)',
-                transition: 'all 0.3s ease',
-                transform: 'scale(1)'
-              },
-              onMouseEnter: (e) => {
-                if (!isGenerating) {
-                  e.currentTarget.style.transform = 'scale(1.08) translateY(-3px)';
-                  e.currentTarget.style.background = 'linear-gradient(135deg, rgba(212, 175, 55, 0.95), rgba(255, 215, 0, 0.9))';
-                  e.currentTarget.style.color = '#000';
-                  e.currentTarget.style.boxShadow = 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 20px rgba(212, 175, 55, 0.6)';
-                  e.currentTarget.style.textShadow = '0 0 12px rgba(255, 215, 0, 0.9)';
-                }
-              },
-              onMouseLeave: (e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.background = isGenerating
-                  ? 'linear-gradient(135deg, rgba(25, 20, 15, 0.5), rgba(35, 28, 20, 0.5))'
-                  : 'linear-gradient(135deg, rgba(139, 105, 20, 0.9), rgba(199, 179, 134, 0.8))';
-                e.currentTarget.style.color = isGenerating ? 'rgba(199, 179, 134, 0.4)' : '#1a1510';
-                e.currentTarget.style.boxShadow = isGenerating
-                  ? 'inset 0 2px 4px rgba(0, 0, 0, 0.4)'
-                  : 'inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(199, 179, 134, 0.3)';
-                e.currentTarget.style.textShadow = 'none';
-              }
-            },
-              isGenerating ? '⧖' :
-              // Custom Philosopher's Stone SVG - Circle, Triangle, Square, Circle
-              e('svg', {
-                width: '24',
-                height: '24',
-                viewBox: '0 0 100 100',
-                style: { display: 'inline-block', verticalAlign: 'middle' }
-              },
-                // Outer circle
-                e('circle', {
-                  cx: '50',
-                  cy: '50',
-                  r: '48',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  strokeWidth: '2'
-                }),
-                // Triangle (pointing up from center)
-                e('path', {
-                  d: 'M 50 10 L 88 75 L 12 75 Z',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  strokeWidth: '2'
-                }),
-                // Square (inside triangle, centered)
-                e('rect', {
-                  x: '34',
-                  y: '38',
-                  width: '32',
-                  height: '32',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  strokeWidth: '2'
-                }),
-                // Inner circle (centered in square)
-                e('circle', {
-                  cx: '50',
-                  cy: '54',
-                  r: '11',
-                  fill: 'none',
-                  stroke: 'currentColor',
-                  strokeWidth: '2'
-                })
-              )
-            )
+              'aria-busy': isGenerating,
+              'aria-label': 'Magnum Opus',
+              title: isGenerating
+                ? 'Magnum Opus on käynnissä: tekoäly kirjoittaa lukua…'
+                : 'Magnum Opus – kirjoita luku tekoälyllä: tekoäly kirjoittaa koko luvun ja käyttää pohjana luvun otsikkoa ja aiempia lukuja. Jos luvussa on jo tekstiä, se korvataan; tästä kysytään ensin.',
+              className: 'ai-toolbar-btn-primary'
+            }, isGenerating ? e('span', { className: 'faust-spinner' }) : icons.stone({ size: 20 }))
           ),
 
           // Generation progress indicator with progress bar
           generationProgress && e('div', {
+            className: 'faust-page-row',
             style: {
-              padding: '12px 16px',
-              background: 'var(--sigil)' + '22',
-              border: '1px solid var(--sigil)',
-              borderRadius: '4px',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              color: 'var(--sigil)',
-              marginTop: '8px'
+              padding: 'var(--sp-3) var(--sp-4)',
+              background: 'var(--accent-tint)',
+              border: 'var(--bw) solid var(--accent-line)',
+              borderRadius: 'var(--radius-sm)',
+              font: 'var(--type-ui)',
+              color: 'var(--text)',
+              marginTop: 'var(--sp-2)'
             }
           },
             e('div', {
@@ -5480,70 +5284,42 @@ ${contextPrompt}`;
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                marginBottom: generationProgress.percentage ? '8px' : '0'
+                gap: 'var(--sp-3)',
+                marginBottom: generationProgress.percentage > 0 ? 'var(--sp-2)' : 0
               }
             },
               e('span', null, generationProgress.message),
-              generationProgress.percentage && e('span', {
-                style: { fontWeight: 600 }
-              }, `${generationProgress.percentage}%`)
+              generationProgress.percentage > 0 ? e('span', { className: 'faust-stat' },
+                e('b', null, `${generationProgress.percentage} %`)) : null
             ),
             // Progress bar
-            generationProgress.percentage && e('div', {
-              style: {
-                width: '100%',
-                height: '4px',
-                background: 'var(--surface-2)',
-                borderRadius: '2px',
-                overflow: 'hidden'
-              }
-            },
-              e('div', {
-                style: {
-                  width: `${generationProgress.percentage}%`,
-                  height: '100%',
-                  background: 'var(--sigil)',
-                  borderRadius: '2px',
-                  transition: 'width 0.3s ease'
-                }
-              })
-            )
+            generationProgress.percentage > 0 ? e('div', {
+              className: 'faust-progress',
+              style: { '--value': `${generationProgress.percentage}%` }
+            }, e('i')) : null
           ),
 
-          // AI Suggestions (if any)
-          activeChapter.aiQuality && activeChapter.aiQuality.suggestions && activeChapter.aiQuality.suggestions.length > 0 ? e('div', {
-            style: {
-              marginBottom: '16px',
-              padding: '12px',
-              background: 'rgba(255,193,7,0.1)',
-              border: '1px solid rgba(255,193,7,0.3)',
-              borderRadius: '4px'
-            }
+          // AI Suggestions (if any): the stored parannusehdotukset, a closed disclosure (R-39)
+          activeChapter.aiQuality && Array.isArray(activeChapter.aiQuality.suggestions) && activeChapter.aiQuality.suggestions.length > 0 ? e('details', {
+            key: activeChapterId,
+            className: 'faust-disclosure faust-page-row faust-page-row--bounded'
           },
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: '#FFA726',
-                marginBottom: '8px',
-                fontWeight: 600
-              }
-            }, '💡 AI:n ehdotukset:'),
-            ...activeChapter.aiQuality.suggestions.map((suggestion, idx) =>
-              e('div', {
-                key: idx,
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  color: 'var(--text)',
-                  marginBottom: '4px'
-                }
-              }, `• ${suggestion}`)
+            e('summary', null,
+              icons.chevronRight({ size: 14 }),
+              `Parannusehdotukset (${activeChapter.aiQuality.suggestions.length})`),
+            e('ul', {
+              className: 'faust-ui',
+              style: { paddingLeft: 'var(--sp-5)', paddingBottom: 'var(--sp-2)' }
+            },
+              ...activeChapter.aiQuality.suggestions.map((suggestion, idx) =>
+                e('li', { key: idx }, String(suggestion))
+              )
             )
           ) : null,
 
           // Editor wrapper with AnnotationMargin
           e('div', {
+            className: 'faust-editor-body',
             style: {
               position: 'relative',
               display: 'flex',
@@ -5551,7 +5327,7 @@ ${contextPrompt}`;
               height: '100%'
             }
           },
-            // AnnotationMargin (left side)
+            // AnnotationMargin: the marker strip beside the text. It asks before a delete through askConfirm.
             window.AnnotationMargin && e(window.AnnotationMargin, {
               annotations: activeChapter.annotations || [],
               content: activeChapter.content,
@@ -5559,6 +5335,7 @@ ${contextPrompt}`;
               onCreateAnnotation: handleCreateAnnotation,
               onUpdateAnnotation: handleUpdateAnnotation,
               onDeleteAnnotation: handleDeleteAnnotation,
+              askConfirm: askConfirm,
               editorDimensions: editorDimensions
             }),
 
@@ -5572,197 +5349,146 @@ ${contextPrompt}`;
               }
             },
               // Formatting toolbar. The buttons call the same functions as the Muotoile menu.
+              // Faces, names and titles: menu-visual entry 61. Each item has a stable key of its own.
               e('div', {
                 className: 'formatting-toolbar',
                 style: {
                   display: 'flex',
                   flexWrap: 'wrap',
-                  gap: '4px',
-                  padding: '8px 12px',
-                  background: 'var(--bg-2)',
-                  borderBottom: '1px solid var(--border-color)',
-                  borderRadius: '4px 4px 0 0',
-                  marginBottom: '8px'
+                  alignItems: 'center',
+                  gap: 'var(--sp-1)',
+                  padding: 'var(--sp-2) 0',
+                  borderBottom: 'var(--bw) solid var(--rule)',
+                  marginBottom: 'var(--sp-2)'
                 }
               },
                 ...[
-                  { label: 'B', title: 'Lihavointi (⌘B)', onClick: formatBold, style: { fontFamily: 'EB Garamond', fontSize: '14px', fontWeight: 'bold' } },
-                  { label: 'I', title: 'Kursivointi (⌘I)', onClick: formatItalic, style: { fontFamily: 'EB Garamond', fontSize: '14px', fontStyle: 'italic' } },
-                  { label: 'U', title: 'Alleviivaus (⌘U)', onClick: formatUnderline, style: { fontFamily: 'EB Garamond', fontSize: '14px', textDecoration: 'underline' } },
-                  { label: 'S', title: 'Yliviivaus (⇧⌘X)', onClick: formatStrikethrough, style: { fontFamily: 'EB Garamond', fontSize: '14px', textDecoration: 'line-through' } },
+                  { key: 'bold', face: e('b', null, 'B'), title: 'Lihavointi (' + shortcut('CmdOrCtrl+B') + ')', onClick: formatBold, kind: 'glyph' },
+                  { key: 'italic', face: e('i', null, 'I'), title: 'Kursivointi (' + shortcut('CmdOrCtrl+I') + ')', onClick: formatItalic, kind: 'glyph' },
+                  { key: 'underline', face: e('u', null, 'U'), title: 'Alleviivaus (' + shortcut('CmdOrCtrl+U') + ')', onClick: formatUnderline, kind: 'glyph' },
+                  { key: 'strikethrough', face: e('s', null, 'S'), title: 'Yliviivaus (' + shortcut('CmdOrCtrl+Shift+X') + ')', onClick: formatStrikethrough, kind: 'glyph' },
                   null,
-                  { label: 'H1', title: 'Otsikko 1 (⌥⌘1)', onClick: () => formatHeading(1) },
-                  { label: 'H2', title: 'Otsikko 2 (⌥⌘2)', onClick: () => formatHeading(2) },
-                  { label: 'H3', title: 'Otsikko 3 (⌥⌘3)', onClick: () => formatHeading(3) },
+                  { key: 'heading-1', face: 'Otsikko 1', title: 'Otsikko 1 (' + shortcut('CmdOrCtrl+Alt+1') + ')', onClick: () => formatHeading(1), kind: 'word' },
+                  { key: 'heading-2', face: 'Otsikko 2', title: 'Otsikko 2 (' + shortcut('CmdOrCtrl+Alt+2') + ')', onClick: () => formatHeading(2), kind: 'word' },
+                  { key: 'heading-3', face: 'Otsikko 3', title: 'Otsikko 3 (' + shortcut('CmdOrCtrl+Alt+3') + ')', onClick: () => formatHeading(3), kind: 'word' },
+                  { key: 'body-text', face: 'Leipäteksti', title: 'Leipäteksti (' + shortcut('CmdOrCtrl+Alt+0') + ')', onClick: () => formatHeading(0), kind: 'word' },
                   null,
-                  { label: '❝', title: 'Lainaus', onClick: formatQuote, style: { fontSize: '14px' } },
-                  { label: '•', title: 'Luettelo (⇧⌘8)', onClick: formatList, style: { fontSize: '14px' } },
-                  { label: '1.', title: 'Numeroitu luettelo (⇧⌘7)', onClick: formatNumberedList },
-                  { label: '***', title: 'Kohtauksen vaihto', onClick: () => insertAtCursor('\n\n* * *\n\n') },
+                  { key: 'quote', face: icons.quote({ size: 14 }), name: 'Lainaus', title: 'Lainaus', onClick: formatQuote, kind: 'icon' },
+                  { key: 'list', face: icons.list({ size: 14 }), name: 'Luettelo', title: 'Luettelo (' + shortcut('CmdOrCtrl+Shift+8') + ')', onClick: formatList, kind: 'icon' },
+                  { key: 'numbered-list', face: icons.listOrdered({ size: 14 }), name: 'Numeroitu luettelo', title: 'Numeroitu luettelo (' + shortcut('CmdOrCtrl+Shift+7') + ')', onClick: formatNumberedList, kind: 'icon' },
                   null,
-                  { label: 'TODO', title: 'Lisää TODO-merkintä', onClick: insertTodo, style: { color: 'var(--bronze)' } },
+                  { key: 'scene-break', face: '* * *', name: 'Kohtauksen erotin', title: 'Kohtauksen erotin', onClick: () => insertAtCursor('\n\n* * *\n\n'), kind: 'word' },
+                  { key: 'reminder', face: 'Muistutus', title: 'Lisää tekstiin muistutus itselle muodossa [TODO: …]', onClick: insertTodo, kind: 'word' },
                   null,
+                  { key: 'bookmark-add', face: icons.bookmarkAdd({ size: 14 }), name: 'Lisää kirjanmerkki', title: 'Lisää kirjanmerkki kohdistimen kohdalle', onClick: () => askAndAddBookmark(), kind: 'icon' },
                   {
-                    label: '🔖+',
-                    title: 'Lisää kirjanmerkki nykyiseen kohtaan',
-                    onClick: async () => {
-                      const name = await askText('Kirjanmerkin nimi:', `Kirjanmerkki ${(project.bookmarks || []).length + 1}`);
-                      if (name !== null) addBookmark(name);
-                    },
-                    style: { color: 'var(--gold)', fontSize: '12px' }
-                  },
-                  {
-                    label: `🔖 ${(project.bookmarks || []).length}`,
-                    title: `Näytä kirjanmerkit (${(project.bookmarks || []).length})`,
+                    key: 'bookmarks',
+                    face: [
+                      icons.bookmark({ size: 14 }),
+                      e('span', { className: 'faust-chip faust-chip--count' }, (project.bookmarks || []).length)
+                    ],
+                    name: `Kirjanmerkit (${(project.bookmarks || []).length})`,
+                    title: showBookmarksPanel ? 'Kätke kirjanmerkit' : 'Näytä kirjanmerkit',
                     onClick: () => setShowBookmarksPanel(prev => !prev),
-                    active: showBookmarksPanel
+                    pressed: showBookmarksPanel,
+                    kind: 'word'
                   }
                 ].map((item, index) => item === null
-                  ? e('div', { key: `separator-${index}`, style: { width: '1px', background: 'var(--border-color)', margin: '0 4px' } })
+                  ? e('span', {
+                      key: `separator-${index}`,
+                      'aria-hidden': 'true',
+                      style: { alignSelf: 'stretch', width: 'var(--bw)', margin: '0 var(--sp-1)', background: 'var(--rule)' }
+                    })
                   : e('button', {
-                      key: item.title,
+                      key: item.key,
+                      type: 'button',
+                      className: 'faust-btn ' + (item.kind === 'glyph' ? 'faust-btn--glyph' : item.kind === 'icon' ? 'faust-btn--icon' : 'faust-btn--quiet'),
                       onClick: item.onClick,
                       // Pressing a button must not take the selection out of the text
                       onMouseDown: (ev) => ev.preventDefault(),
                       title: item.title,
-                      'aria-label': item.title,
-                      style: {
-                        background: item.active ? 'var(--bronze)' : 'transparent',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '4px',
-                        color: item.active ? '#000' : 'var(--text)',
-                        padding: '4px 10px',
-                        cursor: 'pointer',
-                        fontFamily: 'IBM Plex Mono',
-                        fontSize: '11px',
-                        fontWeight: item.active ? 600 : 400,
-                        ...item.style
-                      }
-                    }, item.label)
+                      'aria-label': item.kind === 'glyph' ? item.title : item.name,
+                      'aria-pressed': item.pressed === undefined ? undefined : item.pressed
+                    }, ...[].concat(item.face))
                 )
               ),
 
-              // Bookmarks panel (floating)
+              // Bookmarks panel (floating). Becomes a Popover anchored to its button in the cross-region pass.
               showBookmarksPanel && e('div', {
+                className: 'faust-popover',
                 style: {
                   position: 'absolute',
-                  top: '48px',
-                  right: '12px',
-                  background: 'var(--bg-1)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '8px',
-                  padding: '12px',
-                  minWidth: '280px',
-                  maxHeight: '400px',
-                  overflowY: 'auto',
-                  zIndex: 200,
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.3)'
+                  top: 'calc(var(--h-md) + var(--sp-5))',
+                  right: 'calc(var(--scrollbar-w) + var(--sp-4))',
+                  left: 'auto',
+                  // The pane clips what overflows it: the popover ends inside the editor body (100% = its height)
+                  '--popover-max-h': 'calc(100% - var(--h-md) - var(--sp-5) - var(--sp-4))'
                 }
               },
-                e('div', {
-                  style: {
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '12px'
-                  }
-                },
-                  e('h4', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '12px',
-                      color: 'var(--text)',
-                      margin: 0
-                    }
-                  }, `Kirjanmerkit (${(project.bookmarks || []).length})`),
+                e('div', { className: 'faust-popover__head' },
+                  e('div', { className: 'faust-popover__title' }, `Kirjanmerkit (${(project.bookmarks || []).length})`),
                   e('button', {
+                    type: 'button',
+                    className: 'faust-btn faust-btn--icon faust-btn--sm',
                     onClick: () => setShowBookmarksPanel(false),
-                    style: {
-                      background: 'transparent',
-                      border: 'none',
-                      color: 'var(--text-2)',
-                      cursor: 'pointer',
-                      fontSize: '16px'
-                    }
-                  }, '×')
+                    title: 'Kätke kirjanmerkit',
+                    'aria-label': 'Kätke kirjanmerkit'
+                  }, icons.close({ size: 14 }))
                 ),
-                (project.bookmarks || []).length === 0
-                  ? e('p', {
-                      style: {
-                        fontFamily: 'IBM Plex Mono',
-                        fontSize: '11px',
-                        color: 'var(--text-3)',
-                        textAlign: 'center',
-                        padding: '16px'
-                      }
-                    }, 'Ei kirjanmerkkejä. Käytä 🔖+ lisätäksesi.')
-                  : (project.bookmarks || []).map(bookmark =>
-                      e('div', {
-                        key: bookmark.id,
-                        style: {
-                          padding: '8px',
-                          borderRadius: '4px',
-                          marginBottom: '4px',
-                          background: 'var(--bg-2)',
-                          cursor: 'pointer',
-                          borderLeft: `3px solid ${bookmark.color || 'var(--gold)'}`
-                        },
-                        onClick: () => jumpToBookmark(bookmark)
-                      },
-                        e('div', {
-                          style: {
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center'
-                          }
-                        },
-                          e('span', {
-                            style: {
-                              fontFamily: 'IBM Plex Mono',
-                              fontSize: '12px',
-                              color: 'var(--text)',
-                              fontWeight: 500
-                            }
-                          }, bookmark.name),
-                          e('button', {
-                            onClick: (ev) => {
-                              ev.stopPropagation();
-                              if (confirm(`Poista kirjanmerkki "${bookmark.name}"?`)) {
-                                deleteBookmark(bookmark.id);
-                              }
-                            },
-                            style: {
-                              background: 'transparent',
-                              border: 'none',
-                              color: 'var(--error)',
-                              cursor: 'pointer',
-                              fontSize: '12px',
-                              padding: '2px 4px'
-                            }
-                          }, '×')
-                        ),
-                        e('div', {
-                          style: {
-                            fontFamily: 'IBM Plex Mono',
-                            fontSize: '10px',
-                            color: 'var(--text-3)',
-                            marginTop: '4px'
-                          }
-                        }, `⬡ ${bookmark.chapterTitle || 'Nimetön luku'}`),
-                        bookmark.context && e('div', {
-                          style: {
-                            fontFamily: 'EB Garamond',
-                            fontSize: '11px',
-                            color: 'var(--text-2)',
-                            fontStyle: 'italic',
-                            marginTop: '4px',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
-                          }
-                        }, `"...${bookmark.context}..."`)
+                e('div', { className: 'faust-popover__body' },
+                  (project.bookmarks || []).length === 0
+                    ? e('div', { className: 'faust-empty faust-empty--compact' },
+                        e('div', { className: 'faust-empty__title' }, 'Ei vielä kirjanmerkkejä.'),
+                        e('div', { className: 'faust-empty__hint' }, 'Kirjanmerkillä palaat nopeasti tiettyyn kohtaan tekstissä.')
                       )
-                    )
+                    : (project.bookmarks || []).map(bookmark => {
+                        // The chapter line shows the chapter's current title
+                        const chapter = (project.structure || []).find(ch => ch.id === bookmark.chapterId);
+                        const chapterTitle = (chapter ? chapter.title : bookmark.chapterTitle) || 'Nimetön luku';
+                        // A row holds its delete button, so it is a div with role="button", not a button
+                        return e('div', {
+                          key: bookmark.id,
+                          className: 'faust-row faust-row--two faust-row--author',
+                          role: 'button',
+                          tabIndex: 0,
+                          onClick: () => jumpToBookmark(bookmark),
+                          onKeyDown: (ev) => {
+                            if (ev.target !== ev.currentTarget) return;
+                            if (ev.key === 'Enter' || ev.key === ' ') {
+                              ev.preventDefault();
+                              jumpToBookmark(bookmark);
+                            }
+                          }
+                        },
+                          e('div', { className: 'faust-row__text' },
+                            e('span', { className: 'faust-row__title' }, bookmark.name),
+                            e('span', {
+                              className: 'faust-row__meta',
+                              style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }
+                            }, icons.hexagon({ size: 12 }), 'Luku: ' + chapterTitle),
+                            bookmark.context && e('span', { className: 'faust-quote faust-clamp-2' }, `”…${bookmark.context.trim()}…”`)
+                          ),
+                          e('div', { className: 'faust-row__actions' },
+                            e('button', {
+                              type: 'button',
+                              className: 'faust-btn faust-btn--sm faust-btn--danger',
+                              title: 'Poista kirjanmerkki',
+                              onClick: async (ev) => {
+                                ev.stopPropagation();
+                                const confirmed = await askConfirm(
+                                  'Poistetaanko kirjanmerkki?',
+                                  `Kirjanmerkki ”${bookmark.name}” poistetaan. Teksti ei muutu.`,
+                                  'Poista kirjanmerkki',
+                                  'Peruuta',
+                                  { danger: true }
+                                );
+                                if (confirmed) deleteBookmark(bookmark.id);
+                              }
+                            }, 'Poista')
+                          )
+                        );
+                      })
+                )
               ),
 
               // Manuscript editor (CodeMirror, see src/components/FaustEditor.js).
@@ -5776,7 +5502,7 @@ ${contextPrompt}`;
                 onMouseUp: handleTextSelection,
                 onKeyUp: handleTextSelection,
                 typewriterMode: typewriterMode, // the editor keeps the cursor line centered
-                placeholder: 'Aloita kirjoittaminen...',
+                placeholder: 'Aloita kirjoittaminen…',
                 style: {
                   flex: 1,
                   fontFamily: editorFont,
@@ -5787,558 +5513,352 @@ ${contextPrompt}`;
                   paragraphGap: `${Math.max(0, (parseFloat(paragraphSpacing) || 1) - 1) * 0.8}em`,
                   // Typewriter mode needs room above the first and below the last line
                   paddingTop: typewriterMode ? '40vh' : undefined,
-                  paddingBottom: typewriterMode ? '50vh' : '30vh',
-                  paddingLeft: '60px' // room for the annotation margin
+                  paddingBottom: typewriterMode ? '50vh' : '30vh'
                 }
               })
             ) // Close editor container with formatting toolbar
           ),
 
-          // Voice edit button (appears when text is selected)
+          // Voice edit bar (appears when text is selected). Moves into .faust-dock in the cross-region pass.
           voiceInputAvailable && textSelection && !voiceDiffView ? e('div', {
+            className: 'faust-voicebar',
+            'data-state': voiceState === 'listening' ? 'listening' : undefined,
             style: {
               position: 'absolute',
-              bottom: '16px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              background: 'var(--bg-1)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '8px',
-              padding: '12px 20px',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px',
-              zIndex: 100
+              left: 0,
+              right: 0,
+              bottom: 'var(--sp-4)',
+              marginInline: 'auto',
+              width: 'fit-content',
+              maxWidth: 'calc(100% - 2 * var(--sp-4))',
+              zIndex: 'var(--z-float)',
+              gap: 'var(--sp-3)',
+              padding: '0 var(--sp-4) 0 var(--sp-2)'
             }
           },
+            // While listening the button stays enabled, so it shows the listening look and not the
+            // disabled one; it does nothing then until the dock's voice button can stop listening.
             e('button', {
-              onClick: handleVoiceEdit,
-              disabled: voiceState !== 'idle',
-              'aria-busy': voiceState === 'listening' || voiceState === 'processing',
-              style: {
-                background: voiceState === 'listening' ? '#ff4444' :
-                           voiceState === 'processing' ? '#ffaa00' : 'var(--bronze)',
-                border: 'none',
-                borderRadius: '50%',
-                width: '48px',
-                height: '48px',
-                fontSize: '24px',
-                cursor: voiceState === 'idle' ? 'pointer' : 'not-allowed',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                animation: voiceState === 'listening' ? 'pulse 1s infinite' : 'none'
-              }
-            },
-              voiceState === 'listening' ? '🔴' :
-              voiceState === 'processing' ? '⏸️' : '🎤'
-            ),
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-2)'
-              }
-            },
-              voiceState === 'listening' ? 'Kuuntelen...' :
-              voiceState === 'processing' ? 'Käsittelen...' :
-              'Kerro miten haluat muuttaa tekstiä'
-            )
+              type: 'button',
+              className: 'faust-btn faust-btn--icon',
+              onClick: voiceState === 'idle' ? handleVoiceEdit : undefined,
+              disabled: voiceState !== 'idle' && voiceState !== 'listening',
+              'aria-pressed': voiceState === 'listening',
+              'data-state': voiceState === 'listening' ? 'listening' : undefined,
+              'aria-busy': voiceState === 'processing',
+              title: voiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Muokkaa valintaa puhumalla',
+              'aria-label': voiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Muokkaa valintaa puhumalla'
+            }, icons.mic({ size: 16 })),
+            voiceState === 'listening'
+              ? e('span', { className: 'faust-voicebar__state' }, 'Kuunnellaan – puhu nyt')
+              : voiceState === 'processing'
+                ? e('span', { className: 'faust-voicebar__state' },
+                    e('span', { className: 'faust-spinner faust-spinner--sm' }),
+                    'Tekoäly muokkaa tekstiä…'
+                  )
+                : e('div', null,
+                    e('div', { className: 'faust-voicebar__state' }, 'Muokkaa valintaa puhumalla'),
+                    e('div', { className: 'faust-meta' }, 'Klikkaa mikrofonia ja kerro, miten tekstiä muutetaan')
+                  )
           ) : null,
 
-          // Find & Replace dialog
+          // Find & Replace dialog. Becomes a Popover anchored to the format bar's Etsi button in the cross-region pass.
           showFindDialog ? e('div', {
+            className: 'faust-popover',
             style: {
               position: 'absolute',
-              top: '16px',
-              right: '16px',
-              background: 'var(--bg-1)',
-              border: '2px solid var(--border-color)',
-              borderRadius: '8px',
-              padding: '16px',
-              boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-              minWidth: '320px',
-              zIndex: 300
+              top: 'var(--sp-4)',
+              right: 'calc(var(--scrollbar-w) + var(--sp-4))',
+              left: 'auto',
+              '--popover-w': 'min(440px, calc(100% - 2 * var(--sp-4)))'
             }
           },
-            e('div', { style: { marginBottom: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-              e('h3', { style: { fontFamily: 'IBM Plex Mono', fontSize: '14px', margin: 0 } }, showReplaceDialog ? 'Etsi ja korvaa' : 'Etsi'),
+            e('div', { className: 'faust-popover__head' },
+              e('div', { className: 'faust-popover__title' }, showReplaceDialog ? 'Etsi ja korvaa' : 'Etsi'),
               e('button', {
+                type: 'button',
+                className: 'faust-btn faust-btn--icon faust-btn--sm',
                 onClick: closeFindDialog,
-                style: {
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-2)',
-                  cursor: 'pointer',
-                  fontSize: '18px'
-                }
-              }, '×')
+                title: 'Sulje (Esc)',
+                'aria-label': 'Sulje'
+              }, icons.close({ size: 14 }))
             ),
-            e('input', {
-              id: 'search-term',
-              name: 'searchTerm',
-              type: 'text',
-              value: searchTerm,
-              onChange: (ev) => setSearchTerm(ev.target.value),
-              onKeyDown: (ev) => {
-                if (ev.key === 'Enter') handleSearchEnter(ev.shiftKey);
-                if (ev.key === 'Escape') closeFindDialog();
-              },
-              placeholder: 'Hae...',
-              autoFocus: true,
-              style: {
-                width: '100%',
-                padding: '8px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                marginBottom: '8px'
-              }
-            }),
-            showReplaceDialog ? e('input', {
-              id: 'replace-term',
-              name: 'replaceTerm',
-              type: 'text',
-              value: replaceTerm,
-              onChange: (ev) => setReplaceTerm(ev.target.value),
-              placeholder: 'Korvaa...',
-              style: {
-                width: '100%',
-                padding: '8px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '13px',
-                marginBottom: '8px'
-              }
-            }) : null,
-            // Options row 1
-            e('div', { style: { display: 'flex', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' } },
-              e('label', { style: { fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } },
+            e('div', {
+              className: 'faust-popover__body',
+              style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', padding: '0 var(--sp-4) var(--sp-3)' }
+            },
+              e('div', { className: 'faust-field' },
                 e('input', {
-                  id: 'search-case-sensitive',
-                  name: 'caseSensitive',
-                  type: 'checkbox',
-                  checked: caseSensitive,
-                  onChange: (ev) => setCaseSensitive(ev.target.checked)
+                  id: 'search-term',
+                  name: 'searchTerm',
+                  type: 'text',
+                  className: 'faust-input',
+                  value: searchTerm,
+                  onChange: (ev) => setSearchTerm(ev.target.value),
+                  onKeyDown: (ev) => {
+                    if (ev.key === 'Enter') handleSearchEnter(ev.shiftKey);
+                    if (ev.key === 'Escape') closeFindDialog();
+                  },
+                  placeholder: 'Etsittävä teksti',
+                  autoFocus: true,
+                  'aria-invalid': findPatternError ? true : undefined,
+                  'aria-describedby': findPatternError ? 'search-term-error' : undefined
                 }),
-                'Aa (case)'
+                // An invalid pattern is the field's error, not a notification
+                findPatternError
+                  ? e('div', { id: 'search-term-error', className: 'faust-field__error' }, 'Säännöllisessä lausekkeessa on virhe.')
+                  : null
               ),
-              e('label', { style: { fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } },
-                e('input', {
-                  id: 'search-whole-word',
-                  name: 'matchWholeWord',
-                  type: 'checkbox',
-                  checked: matchWholeWord,
-                  onChange: (ev) => setMatchWholeWord(ev.target.checked)
-                }),
-                'Koko sana'
+              showReplaceDialog ? e('input', {
+                id: 'replace-term',
+                name: 'replaceTerm',
+                type: 'text',
+                className: 'faust-input',
+                value: replaceTerm,
+                onChange: (ev) => setReplaceTerm(ev.target.value),
+                placeholder: 'Korvaava teksti'
+              }) : null,
+              // Switch between the two modes inside the panel (W14)
+              e('div', null,
+                e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--quiet faust-btn--sm',
+                  onClick: () => setShowReplaceDialog(!showReplaceDialog),
+                  title: showReplaceDialog ? undefined : 'Etsi ja korvaa (' + shortcut('CmdOrCtrl+Alt+F') + ')'
+                }, showReplaceDialog ? 'Vain etsi' : 'Etsi ja korvaa')
               ),
-              e('label', { style: { fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } },
-                e('input', {
-                  id: 'search-regex',
-                  name: 'useRegex',
-                  type: 'checkbox',
-                  checked: useRegex,
-                  onChange: (ev) => setUseRegex(ev.target.checked)
-                }),
-                'Regex'
-              ),
-              e('label', { style: { fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' } },
-                e('input', {
-                  id: 'search-all-chapters',
-                  name: 'searchInAllChapters',
-                  type: 'checkbox',
-                  checked: searchInAllChapters,
-                  onChange: (ev) => setSearchInAllChapters(ev.target.checked)
-                }),
-                'Kaikki luvut'
-              ),
-              e('label', {
-                style: {
-                  fontSize: '12px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  color: searchGlobally ? 'var(--bronze)' : 'inherit'
-                }
-              },
-                e('input', {
-                  id: 'search-globally',
-                  name: 'searchGlobally',
-                  type: 'checkbox',
-                  checked: searchGlobally,
-                  onChange: (ev) => {
-                    setSearchGlobally(ev.target.checked);
-                    if (ev.target.checked) {
-                      setSearchInAllChapters(true); // Global implies all chapters
+              // Where to search
+              e('div', { className: 'faust-check-group' },
+                e('label', { className: 'faust-check' },
+                  e('input', {
+                    id: 'search-all-chapters',
+                    name: 'searchInAllChapters',
+                    type: 'checkbox',
+                    checked: searchInAllChapters,
+                    onChange: (ev) => setSearchInAllChapters(ev.target.checked)
+                  }),
+                  'Kaikki luvut'
+                ),
+                e('label', { className: 'faust-check' },
+                  e('input', {
+                    id: 'search-globally',
+                    name: 'searchGlobally',
+                    type: 'checkbox',
+                    checked: searchGlobally,
+                    onChange: (ev) => {
+                      setSearchGlobally(ev.target.checked);
+                      if (ev.target.checked) {
+                        setSearchInAllChapters(true); // Global implies all chapters
+                      }
                     }
-                  }
-                }),
-                '🌐 Globaali'
-              )
-            ),
-            // Global search info
-            searchGlobally && e('div', {
-              style: {
-                fontSize: '10px',
-                color: 'var(--text-3)',
-                marginBottom: '8px',
-                fontFamily: 'IBM Plex Mono'
-              }
-            }, 'Hakee luvuista, hahmoista, paikoista ja juonista'),
-            // Search history dropdown
-            searchHistory.length > 0 ? e('details', { style: { marginBottom: '8px' } },
-              e('summary', {
-                style: {
-                  fontSize: '11px',
-                  color: 'var(--text-3)',
-                  cursor: 'pointer',
-                  userSelect: 'none',
-                  fontFamily: 'IBM Plex Mono'
-                }
-              }, `Historia (${searchHistory.length})`),
-              e('div', { style: { marginTop: '4px', maxHeight: '150px', overflowY: 'auto' } },
+                  }),
+                  'Myös hahmot, paikat ja juonilangat'
+                )
+              ),
+              // How to match
+              e('div', { className: 'faust-check-group' },
+                e('label', { className: 'faust-check', title: 'Isot ja pienet kirjaimet erotetaan toisistaan' },
+                  e('input', {
+                    id: 'search-case-sensitive',
+                    name: 'caseSensitive',
+                    type: 'checkbox',
+                    checked: caseSensitive,
+                    onChange: (ev) => setCaseSensitive(ev.target.checked)
+                  }),
+                  'Sama kirjainkoko'
+                ),
+                e('label', { className: 'faust-check' },
+                  e('input', {
+                    id: 'search-whole-word',
+                    name: 'matchWholeWord',
+                    type: 'checkbox',
+                    checked: matchWholeWord,
+                    onChange: (ev) => setMatchWholeWord(ev.target.checked)
+                  }),
+                  'Koko sana'
+                )
+              ),
+              // The panel remounts each time it opens while useRegex persists: open while the option is ticked
+              e('details', { className: 'faust-disclosure', open: useRegex || undefined },
+                e('summary', null, icons.chevronRight({ size: 14 }), 'Lisäasetukset'),
+                e('label', {
+                  className: 'faust-check',
+                  title: 'Etsittävä teksti tulkitaan säännöllisenä lausekkeena. Edistyneille käyttäjille.'
+                },
+                  e('input', {
+                    id: 'search-regex',
+                    name: 'useRegex',
+                    type: 'checkbox',
+                    checked: useRegex,
+                    onChange: (ev) => setUseRegex(ev.target.checked)
+                  }),
+                  'Säännöllinen lauseke'
+                )
+              ),
+              // Search history
+              searchHistory.length > 0 ? e('details', { className: 'faust-disclosure' },
+                e('summary', null, icons.chevronRight({ size: 14 }), `Aiemmat haut (${searchHistory.length})`),
+                // The popover body is the one scroller (at most 10 earlier searches are kept)
                 ...searchHistory.map((term, idx) =>
-                  e('div', {
+                  e('button', {
                     key: idx,
+                    type: 'button',
+                    className: 'faust-row',
                     onClick: () => {
                       setSearchTerm(term);
                       performSearch(term);
-                    },
-                    style: {
-                      padding: '4px 8px',
-                      fontSize: '12px',
-                      fontFamily: 'IBM Plex Mono',
-                      color: 'var(--text-2)',
-                      cursor: 'pointer',
-                      borderRadius: '3px',
-                      background: 'var(--bg-2)',
-                      marginBottom: '2px'
-                    },
-                    onMouseEnter: (ev) => ev.target.style.background = 'var(--bg-3)',
-                    onMouseLeave: (ev) => ev.target.style.background = 'var(--bg-2)'
-                  }, term.length > 40 ? term.substring(0, 40) + '...' : term)
+                    }
+                  }, e('span', { className: 'faust-row__title' }, term))
                 )
-              )
-            ) : null,
-            searchResults.length > 0 ? e('div', {
-              style: {
-                fontSize: '11px',
-                color: 'var(--text-2)',
-                fontFamily: 'IBM Plex Mono',
-                marginBottom: '8px',
-                padding: '4px 8px',
-                background: 'var(--bg-2)',
-                borderRadius: '4px'
-              }
-            },
-              `${currentSearchIndex + 1} / ${searchResults.length} tulosta`,
-              searchInAllChapters && searchResults[currentSearchIndex] ?
-                e('div', { style: { fontSize: '10px', color: 'var(--text-3)', marginTop: '2px' } },
-                  (() => {
-                    const result = searchResults[currentSearchIndex];
-                    const typeIcon = result.type === 'character' ? '☉' :
-                                     result.type === 'location' ? '♁' :
-                                     result.type === 'thread' ? '∞' : '⬡';
-                    const typeName = result.type === 'character' ? result.itemName :
-                                     result.type === 'location' ? result.itemName :
-                                     result.type === 'thread' ? result.itemName :
-                                     result.chapterTitle;
-                    return `${typeIcon} ${typeName}`;
-                  })(),
-                  e('div', { style: { fontStyle: 'italic', marginTop: '2px', opacity: 0.7 } },
-                    `"...${searchResults[currentSearchIndex].context}..."`
-                  )
-                ) : null
-            ) : null,
-            e('div', { style: { display: 'flex', gap: '4px', flexWrap: 'wrap' } },
-              e('button', {
-                onClick: () => performSearch(),
-                style: {
-                  padding: '6px 12px',
-                  background: 'var(--bronze)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#000',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px'
+              ) : null,
+              // Where the search stands: the current hit and its place, or no hits
+              (() => {
+                if (findPatternError) return null;
+                if (searchResults.length === 0) {
+                  // Only after a search with the term in the field
+                  if (!searchTerm || lastSearchRef.current !== searchTerm) return null;
+                  return e('div', { className: 'faust-meta', role: 'status' },
+                    searchInAllChapters ? 'Ei osumia' : 'Ei osumia tässä luvussa');
                 }
+                const result = searchResults[currentSearchIndex];
+                const place = !result ? null
+                  : result.type === 'character' ? [icons.sol({ size: 12 }), 'Hahmo: ' + (result.itemName || 'Nimetön hahmo')]
+                  : result.type === 'location' ? [icons.terra({ size: 12 }), 'Paikka: ' + (result.itemName || 'Nimetön paikka')]
+                  : result.type === 'thread' ? [icons.lemniscate({ size: 12 }), 'Juonilanka: ' + (result.itemName || 'Nimetön juonilanka')]
+                  : [icons.hexagon({ size: 12 }), 'Luku: ' + (result.chapterTitle || 'Nimetön luku')];
+                return e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
+                  e('div', { className: 'faust-meta', role: 'status' },
+                    `Osuma ${(currentSearchIndex + 1).toLocaleString('fi-FI')} / ${searchResults.length.toLocaleString('fi-FI')}`),
+                  place ? e('div', {
+                    className: 'faust-meta',
+                    style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }
+                  }, ...place) : null,
+                  result && result.context
+                    ? e('div', { className: 'faust-quote faust-clamp-2' }, `”…${result.context}…”`)
+                    : null
+                );
+              })()
+            ),
+            e('div', { className: 'faust-popover__foot', style: { flexWrap: 'wrap' } },
+              e('button', {
+                type: 'button',
+                className: 'faust-btn faust-btn--sm',
+                onClick: () => performSearch()
               }, 'Etsi'),
               e('button', {
+                type: 'button',
+                className: 'faust-btn faust-btn--sm',
                 onClick: findPrevious,
                 disabled: searchResults.length === 0,
-                style: {
-                  padding: '6px 12px',
-                  background: searchResults.length === 0 ? 'var(--bg-2)' : 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  cursor: searchResults.length === 0 ? 'not-allowed' : 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px'
-                }
+                title: 'Etsi edellinen (' + shortcut('CmdOrCtrl+Shift+G') + ')'
               }, 'Edellinen'),
               e('button', {
+                type: 'button',
+                className: 'faust-btn faust-btn--sm faust-btn--primary',
                 onClick: findNext,
                 disabled: searchResults.length === 0,
-                style: {
-                  padding: '6px 12px',
-                  background: searchResults.length === 0 ? 'var(--bg-2)' : 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  cursor: searchResults.length === 0 ? 'not-allowed' : 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px'
-                }
+                title: 'Etsi seuraava (' + shortcut('CmdOrCtrl+G') + ')'
               }, 'Seuraava'),
+              showReplaceDialog ? (() => {
+                // A hit in a character, place or thread has no text in the manuscript to replace
+                const current = searchResults[currentSearchIndex];
+                const outsideChapters = !!current && !current.chapterId;
+                return e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--sm',
+                  onClick: replaceCurrent,
+                  disabled: !current || outsideChapters,
+                  title: outsideChapters ? 'Korvaus koskee vain lukujen tekstiä' : undefined
+                }, 'Korvaa');
+              })() : null,
               showReplaceDialog ? e('button', {
-                onClick: replaceCurrent,
-                disabled: currentSearchIndex < 0,
-                style: {
-                  padding: '6px 12px',
-                  background: currentSearchIndex < 0 ? 'var(--bg-2)' : 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  cursor: currentSearchIndex < 0 ? 'not-allowed' : 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px'
-                }
-              }, 'Korvaa') : null,
-              showReplaceDialog ? e('button', {
+                type: 'button',
+                className: 'faust-btn faust-btn--sm',
                 onClick: replaceAll,
-                disabled: searchResults.length === 0,
-                style: {
-                  padding: '6px 12px',
-                  background: searchResults.length === 0 ? 'var(--bg-2)' : 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  cursor: searchResults.length === 0 ? 'not-allowed' : 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px'
-                }
-              }, 'Korvaa kaikki') : null
+                disabled: searchResults.length === 0
+              }, 'Korvaa kaikki…') : null
             )
           ) : null,
 
-          // Voice diff view (when AI has generated new version) - with diff highlighting
+          // Voice comparison (after a voice edit has produced an ehdotus) - with diff marks.
+          // The result block of the visual foundations; it moves into .faust-dock in the cross-region pass.
           voiceDiffView ? (() => {
             const diffResult = computeTextDiff(voiceDiffView.original, voiceDiffView.revised);
             const origWords = (voiceDiffView.original || '').split(/\s+/).filter(Boolean).length;
             const newWords = (voiceDiffView.revised || '').split(/\s+/).filter(Boolean).length;
-            const addedCount = diffResult.filter(d => d.type === 'added' && d.text.trim()).length;
-            const removedCount = diffResult.filter(d => d.type === 'removed' && d.text.trim()).length;
+            const delta = newWords - origWords;
+            // One column of the comparison: the old text keeps its deletions, the new text its insertions.
+            // Adjacent pieces of one kind are one run, also across the spaces between them.
+            // Until the word comparison of I-03 (R-20) both columns are plain text, as in Versioiden
+            // vertailu (menu-visual entry 71): the marks of today's computeTextDiff are wrong after one
+            // inserted word. I-03 wraps the 'removed' runs in del.faust-mark--del and the 'added' runs
+            // in ins.faust-mark--ins.
+            const columnRuns = (leaveOut) => {
+              const pieces = diffResult.filter(piece => piece.type !== leaveOut);
+              const runs = [];
+              pieces.forEach((piece, idx) => {
+                const last = runs[runs.length - 1];
+                const next = pieces[idx + 1];
+                if (last && last.type !== 'same' && piece.type === 'same' && !piece.text.trim() && next && next.type === last.type) {
+                  last.text += piece.text;
+                } else if (last && last.type === piece.type) {
+                  last.text += piece.text;
+                } else {
+                  runs.push({ type: piece.type, text: piece.text });
+                }
+              });
+              return runs;
+            };
+            // The comparison is not modal: accept only while the selection is still the compared text
+            const selectionChanged = !textSelection || textSelection.text !== voiceDiffView.original;
 
             return e('div', {
+              className: 'faust-result faust-result--floating',
               style: {
                 position: 'absolute',
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)',
-                background: 'var(--bg-1)',
-                border: '2px solid var(--bronze)',
-                borderRadius: '8px',
-                padding: '24px',
-                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                maxWidth: '90%',
-                width: '700px',
-                maxHeight: '85%',
-                overflow: 'auto',
-                zIndex: 200
+                left: 0,
+                right: 0,
+                bottom: 'var(--sp-4)',
+                marginInline: 'auto',
+                zIndex: 'var(--z-float)'
               }
             },
-              // Header with instruction and stats
-              e('div', {
-                style: {
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  marginBottom: '16px',
-                  paddingBottom: '12px',
-                  borderBottom: '1px solid var(--border-color)'
-                }
-              },
-                e('div', null,
-                  e('div', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: 'var(--text-3)',
-                      marginBottom: '4px'
-                    }
-                  }, '🎤 ÄÄNIOHJE:'),
-                  e('h3', {
-                    style: {
-                      fontFamily: 'EB Garamond',
-                      fontSize: '18px',
-                      color: 'var(--bronze)',
-                      margin: 0
-                    }
-                  }, `"${voiceDiffView.instruction}"`)
-                ),
-                e('div', {
-                  style: {
-                    display: 'flex',
-                    gap: '12px',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px'
-                  }
-                },
-                  e('span', { style: { color: '#4CAF50' } }, `+${addedCount}`),
-                  e('span', { style: { color: '#f44336' } }, `-${removedCount}`),
-                  e('span', { style: { color: 'var(--text-2)' } },
-                    `${newWords - origWords > 0 ? '+' : ''}${newWords - origWords} sanaa`
+              e('div', { className: 'faust-result__head' },
+                e('span', { className: 'faust-label' }, 'Ehdotus'),
+                e('span', { className: 'faust-diff__count' },
+                  'Sanamäärä ' + (delta > 0 ? '+' : delta < 0 ? '−' : '') + Math.abs(delta).toLocaleString('fi-FI'))
+              ),
+              e('div', { className: 'faust-result__context' }, `Puhuttu ohje: ”${voiceDiffView.instruction}”`),
+              e('div', { className: 'faust-result__body' },
+                e('div', { className: 'faust-diff faust-diff--split' },
+                  e('div', { className: 'faust-diff__col' },
+                    e('div', { className: 'faust-diff__colhead' }, e('span', null, 'Alkuperäinen · ' + count(origWords, 'sana'))),
+                    e('div', { className: 'faust-prose' },
+                      ...columnRuns('added').map((run, idx) => e('span', { key: idx }, run.text))
+                    )
+                  ),
+                  e('div', { className: 'faust-diff__rule' }),
+                  e('div', { className: 'faust-diff__col' },
+                    e('div', { className: 'faust-diff__colhead' }, e('span', null, 'Ehdotus · ' + count(newWords, 'sana'))),
+                    e('div', { className: 'faust-prose' },
+                      ...columnRuns('removed').map((run, idx) => e('span', { key: idx }, run.text))
+                    )
                   )
                 )
               ),
-
-              // Side-by-side comparison
-              e('div', {
-                style: {
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '16px',
-                  marginBottom: '20px'
-                }
-              },
-                // Original text
-                e('div', {
-                  style: {
-                    padding: '12px',
-                    background: 'var(--bg-2)',
-                    borderRadius: '4px',
-                    border: '1px solid var(--border-color)'
-                  }
-                },
-                  e('div', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: 'var(--text-3)',
-                      marginBottom: '8px',
-                      display: 'flex',
-                      justifyContent: 'space-between'
-                    }
-                  },
-                    e('span', null, '← ALKUPERÄINEN'),
-                    e('span', null, `${origWords} sanaa`)
-                  ),
-                  e('div', {
-                    style: {
-                      fontFamily: 'EB Garamond',
-                      fontSize: '15px',
-                      color: 'var(--text-2)',
-                      lineHeight: '1.7'
-                    }
-                  }, voiceDiffView.original)
-                ),
-
-                // Revised text with diff highlighting
-                e('div', {
-                  style: {
-                    padding: '12px',
-                    background: 'var(--bronze)' + '11',
-                    borderRadius: '4px',
-                    border: '1px solid var(--bronze)'
-                  }
-                },
-                  e('div', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: 'var(--bronze)',
-                      marginBottom: '8px',
-                      display: 'flex',
-                      justifyContent: 'space-between'
-                    }
-                  },
-                    e('span', null, '✨ UUSI VERSIO'),
-                    e('span', null, `${newWords} sanaa`)
-                  ),
-                  e('div', {
-                    style: {
-                      fontFamily: 'EB Garamond',
-                      fontSize: '15px',
-                      lineHeight: '1.7'
-                    }
-                  },
-                    // Render with diff highlighting
-                    ...diffResult.map((part, idx) => {
-                      if (part.type === 'same') {
-                        return e('span', { key: idx, style: { color: 'var(--text)' } }, part.text);
-                      } else if (part.type === 'added') {
-                        return e('span', {
-                          key: idx,
-                          style: {
-                            background: '#4CAF5044',
-                            color: '#4CAF50',
-                            borderRadius: '2px',
-                            padding: '0 2px'
-                          }
-                        }, part.text);
-                      } else if (part.type === 'removed') {
-                        return e('span', {
-                          key: idx,
-                          style: {
-                            background: '#f4433633',
-                            color: '#f44336',
-                            textDecoration: 'line-through',
-                            borderRadius: '2px',
-                            padding: '0 2px'
-                          }
-                        }, part.text);
-                      }
-                      return null;
-                    })
-                  )
-                )
-              ),
-
-              // Actions
-              e('div', {
-                style: {
-                  display: 'flex',
-                  gap: '12px',
-                  justifyContent: 'flex-end'
-                }
-              },
+              e('div', { className: 'faust-result__actions' },
                 e('button', {
-                  onClick: rejectVoiceEdit,
-                  style: {
-                    padding: '10px 20px',
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text-2)',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px'
-                  }
-                }, '❌ Hylkää'),
+                  type: 'button',
+                  className: 'faust-btn faust-btn--quiet',
+                  onClick: rejectVoiceEdit
+                }, 'Hylkää'),
                 e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--primary',
                   onClick: acceptVoiceEdit,
-                  style: {
-                    padding: '10px 20px',
-                    background: 'var(--bronze)',
-                    border: 'none',
-                    borderRadius: '4px',
-                    color: '#000',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px',
-                    fontWeight: 600
-                  }
-                }, '✓ Hyväksy muutos')
+                  disabled: selectionChanged,
+                  title: selectionChanged ? 'Valinta on muuttunut. Tee muokkaus uudelleen.' : undefined
+                }, 'Korvaa valittu teksti')
               )
             );
           })() : null
@@ -6346,376 +5866,258 @@ ${contextPrompt}`;
       ),
 
         // Split View Secondary Pane (shown when split view is enabled, only in editor mode not corkboard)
-        !corkboardEnabled && splitViewEnabled && splitViewChapter && e('div', {
-          className: 'faust-editor faust-editor-split',
-          style: {
-            flex: 1,
-            position: 'relative',
-            background: 'var(--paper)',
-            borderLeft: '1px solid var(--border-color)'
-          }
-        },
-          // Split view header with selector
-          e('div', {
-            style: {
-              padding: '12px 16px',
-              borderBottom: '1px solid var(--border-color)',
-              background: 'var(--bg-secondary)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '12px'
-            }
+        !corkboardEnabled && splitViewEnabled && (() => {
+          // One selection per type (BUG-4). Places are stored by name in project.continuity.locations.
+          const refChapter = project.structure.find(ch => ch.id === splitViewChapterId) || null;
+          const characters = project.characters || [];
+          const refCharacter = characters.find(c => c.id === splitViewCharacterId) || null;
+          const placeEntries = Object.entries((project.continuity && project.continuity.locations) || {});
+          const refPlaceEntry = placeEntries.find(([key]) => key === splitViewLocationId) || null;
+          const refPlace = refPlaceEntry ? refPlaceEntry[1] : null;
+          // Character fields are read as the Hahmot window reads them: basicInfo first, then the top level.
+          const charField = (c, key) => (c.basicInfo && c.basicInfo[key] != null ? c.basicInfo[key] : c[key]);
+          const charName = (c) => c.name || (c.basicInfo && c.basicInfo.name) || 'Nimetön hahmo';
+          const emptyState = (text) => e('div', { className: 'faust-empty faust-empty--compact' },
+            e('p', { className: 'faust-empty__title', style: { margin: 0 } }, text));
+          const viewTitle = (text) => e('h2', { style: { margin: '0 0 var(--sp-4)', font: 'var(--type-title-view)' } }, text);
+          const section = (title, ...children) => e('div', { className: 'faust-section' },
+            e('h3', { className: 'faust-section__title', style: { margin: '0 0 var(--sp-2)' } }, title),
+            ...children);
+          const authorText = (text) => e('p', { className: 'faust-serif', style: { margin: 0, whiteSpace: 'pre-wrap' } }, text);
+          const infoLine = (text) => e('p', { className: 'faust-ui', style: { margin: 0 } }, text);
+
+          return e('div', {
+            className: 'faust-editor faust-editor-split',
+            style: { borderLeft: 'var(--bw) solid var(--rule)' }
           },
-            // View type selector
-            e('select', {
-              value: splitViewType,
-              onChange: (ev) => setSplitViewType(ev.target.value),
+            // Split view header with selector: it stays put while the content scrolls
+            e('div', {
               style: {
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                padding: '4px 8px',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                cursor: 'pointer'
+                flex: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 'var(--sp-2)',
+                padding: 'var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4)',
+                borderBottom: 'var(--bw) solid var(--rule)'
               }
             },
-              e('option', { value: 'chapter' }, 'Luku'),
-              e('option', { value: 'character' }, 'Hahmo'),
-              e('option', { value: 'location' }, 'Paikka'),
-              e('option', { value: 'outline' }, 'Synopsis')
-            ),
+              e('label', { className: 'faust-field__label', htmlFor: 'faust-split-type' }, 'Näytä:'),
 
-            // Chapter/item selector (depends on type)
-            splitViewType === 'chapter' && e('select', {
-              value: splitViewChapterId || '',
-              onChange: (ev) => setSplitViewChapterId(ev.target.value),
-              style: {
-                flex: 1,
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                padding: '4px 8px',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                cursor: 'pointer'
-              }
-            },
-              project.structure.map(ch =>
-                e('option', { key: ch.id, value: ch.id }, ch.title || `Luku ${project.structure.indexOf(ch) + 1}`)
-              )
-            ),
+              // View type selector
+              e('select', {
+                id: 'faust-split-type',
+                className: 'faust-select faust-select--sm',
+                value: splitViewType,
+                onChange: (ev) => setSplitViewType(ev.target.value),
+                'aria-label': 'Valitse, mitä jaetussa näkymässä näytetään',
+                style: { flex: 'none', width: 'auto' }
+              },
+                e('option', { value: 'chapter' }, 'Luku'),
+                e('option', { value: 'character' }, 'Hahmo'),
+                e('option', { value: 'location' }, 'Paikka'),
+                e('option', { value: 'outline' }, 'Tiivistelmät')
+              ),
 
-            splitViewType === 'character' && e('select', {
-              value: splitViewChapterId || '',
-              onChange: (ev) => setSplitViewChapterId(ev.target.value),
-              style: {
-                flex: 1,
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                padding: '4px 8px',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                cursor: 'pointer'
-              }
-            },
-              (project.characters || []).length === 0
-                ? e('option', { value: '' }, 'Ei hahmoja')
-                : (project.characters || []).map(char =>
-                    e('option', { key: char.id, value: char.id }, char.name)
-                  )
-            ),
-
-            splitViewType === 'location' && e('select', {
-              value: splitViewChapterId || '',
-              onChange: (ev) => setSplitViewChapterId(ev.target.value),
-              style: {
-                flex: 1,
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                padding: '4px 8px',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                cursor: 'pointer'
-              }
-            },
-              (project.locations || []).length === 0
-                ? e('option', { value: '' }, 'Ei paikkoja')
-                : (project.locations || []).map(loc =>
-                    e('option', { key: loc.id, value: loc.id }, loc.name)
-                  )
-            ),
-
-            // Close button
-            e('button', {
-              onClick: () => setSplitViewEnabled(false),
-              title: 'Sulje jaettu näkymä',
-              style: {
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-2)',
-                cursor: 'pointer',
-                fontSize: '18px',
-                padding: '4px'
-              }
-            }, '×')
-          ),
-
-          // Split view content area
-          e('div', {
-            className: 'faust-editor-content',
-            style: {
-              padding: '24px',
-              overflow: 'auto',
-              height: 'calc(100% - 50px)'
-            }
-          },
-            // Chapter view
-            splitViewType === 'chapter' && splitViewChapter && e('div', null,
-              e('h2', {
-                style: {
-                  fontFamily: 'EB Garamond',
-                  fontSize: '24px',
-                  color: 'var(--ink)',
-                  marginBottom: '8px'
-                }
-              }, splitViewChapter.title || 'Nimetön luku'),
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-3)',
-                  marginBottom: '16px'
-                }
-              }, `${splitViewChapter.wordCount || 0} sanaa • ${splitViewChapter.status || 'draft'}`),
-              e('div', {
-                style: {
-                  fontFamily: 'EB Garamond',
-                  fontSize: '16px',
-                  lineHeight: '1.8',
-                  color: 'var(--ink)',
-                  whiteSpace: 'pre-wrap'
-                }
-              }, splitViewChapter.content || 'Ei sisältöä')
-            ),
-
-            // Character view
-            splitViewType === 'character' && (() => {
-              const char = (project.characters || []).find(c => c.id === splitViewChapterId);
-              if (!char) return e('div', { style: { color: 'var(--text-3)' } }, 'Valitse hahmo');
-              return e('div', null,
-                e('h2', {
-                  style: {
-                    fontFamily: 'EB Garamond',
-                    fontSize: '24px',
-                    color: 'var(--ink)',
-                    marginBottom: '16px'
-                  }
-                }, char.name),
-                char.age && e('div', { style: { marginBottom: '8px', color: 'var(--text-2)', fontFamily: 'IBM Plex Mono', fontSize: '12px' } }, `Ikä: ${char.age}`),
-                char.occupation && e('div', { style: { marginBottom: '8px', color: 'var(--text-2)', fontFamily: 'IBM Plex Mono', fontSize: '12px' } }, `Ammatti: ${char.occupation}`),
-                char.description && e('div', {
-                  style: { marginTop: '16px', marginBottom: '16px' }
-                },
-                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', marginBottom: '8px' } }, 'Kuvaus'),
-                  e('p', { style: { fontFamily: 'EB Garamond', fontSize: '14px', lineHeight: '1.6', color: 'var(--ink)' } }, char.description)
-                ),
-                char.background && e('div', {
-                  style: { marginBottom: '16px' }
-                },
-                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', marginBottom: '8px' } }, 'Tausta'),
-                  e('p', { style: { fontFamily: 'EB Garamond', fontSize: '14px', lineHeight: '1.6', color: 'var(--ink)' } }, char.background)
-                ),
-                char.archetypal && char.archetypal.primaryArchetype && e('div', {
-                  style: { marginBottom: '16px' }
-                },
-                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', marginBottom: '8px' } }, 'Arkkityyppi'),
-                  e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text)' } }, char.archetypal.primaryArchetype)
-                ),
-                char.notes && e('div', {
-                  style: { marginTop: '16px', padding: '12px', background: 'var(--bg-2)', borderRadius: '4px' }
-                },
-                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'Muistiinpanot'),
-                  e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', whiteSpace: 'pre-wrap' } }, char.notes)
+              // Chapter/item selector (depends on type)
+              splitViewType === 'chapter' && e('select', {
+                className: 'faust-select faust-select--sm',
+                value: refChapter ? refChapter.id : '',
+                onChange: (ev) => setSplitViewChapterId(ev.target.value),
+                'aria-label': 'Valitse luku',
+                style: { flex: '0 1 280px' }
+              },
+                e('option', { value: '', disabled: true }, 'Valitse luku'),
+                project.structure.map((ch, idx) =>
+                  e('option', { key: ch.id, value: ch.id },
+                    `${idx + 1}. ${ch.title || 'Nimetön luku'}${ch.id === activeChapterId ? ' (auki vasemmalla)' : ''}`)
                 )
-              );
-            })(),
+              ),
 
-            // Location view
-            splitViewType === 'location' && (() => {
-              const loc = (project.locations || []).find(l => l.id === splitViewChapterId);
-              if (!loc) return e('div', { style: { color: 'var(--text-3)' } }, 'Valitse paikka');
-              return e('div', null,
-                e('h2', {
-                  style: {
-                    fontFamily: 'EB Garamond',
-                    fontSize: '24px',
-                    color: 'var(--ink)',
-                    marginBottom: '16px'
-                  }
-                }, loc.name),
-                loc.type && e('div', { style: { marginBottom: '8px', color: 'var(--text-2)', fontFamily: 'IBM Plex Mono', fontSize: '12px' } }, `Tyyppi: ${loc.type}`),
-                loc.atmosphere && e('div', { style: { marginBottom: '8px', color: 'var(--text-2)', fontFamily: 'IBM Plex Mono', fontSize: '12px' } }, `Tunnelma: ${loc.atmosphere}`),
-                loc.description && e('div', {
-                  style: { marginTop: '16px', marginBottom: '16px' }
-                },
-                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', marginBottom: '8px' } }, 'Kuvaus'),
-                  e('p', { style: { fontFamily: 'EB Garamond', fontSize: '14px', lineHeight: '1.6', color: 'var(--ink)' } }, loc.description)
-                ),
-                loc.sensoryDetails && e('div', {
-                  style: { marginBottom: '16px' }
-                },
-                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', marginBottom: '8px' } }, 'Aistihavainnot'),
-                  loc.sensoryDetails.visual && e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' } }, `👁 ${loc.sensoryDetails.visual}`),
-                  loc.sensoryDetails.auditory && e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' } }, `👂 ${loc.sensoryDetails.auditory}`),
-                  loc.sensoryDetails.olfactory && e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' } }, `👃 ${loc.sensoryDetails.olfactory}`)
-                ),
-                loc.notes && e('div', {
-                  style: { marginTop: '16px', padding: '12px', background: 'var(--bg-2)', borderRadius: '4px' }
-                },
-                  e('h4', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'Muistiinpanot'),
-                  e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', whiteSpace: 'pre-wrap' } }, loc.notes)
+              splitViewType === 'character' && e('select', {
+                className: 'faust-select faust-select--sm',
+                value: refCharacter ? refCharacter.id : '',
+                onChange: (ev) => setSplitViewCharacterId(ev.target.value),
+                disabled: characters.length === 0,
+                title: characters.length === 0 ? 'Tarinassa ei ole vielä hahmoja.' : undefined,
+                'aria-label': 'Valitse hahmo',
+                style: { flex: '0 1 280px' }
+              },
+                e('option', { value: '', disabled: true }, 'Valitse hahmo'),
+                characters.map(c =>
+                  e('option', { key: c.id, value: c.id }, charName(c))
                 )
-              );
-            })(),
+              ),
 
-            // Outline/Synopsis view
-            splitViewType === 'outline' && e('div', null,
-              e('h2', {
-                style: {
-                  fontFamily: 'EB Garamond',
-                  fontSize: '24px',
-                  color: 'var(--ink)',
-                  marginBottom: '16px'
-                }
-              }, 'Lukujen synopsikset'),
-              project.structure.map((ch, idx) =>
-                e('div', {
-                  key: ch.id,
-                  style: {
-                    marginBottom: '16px',
-                    padding: '12px',
-                    background: ch.id === activeChapterId ? 'rgba(143,122,83,0.1)' : 'transparent',
-                    borderLeft: ch.id === activeChapterId ? '3px solid var(--bronze)' : '3px solid transparent',
-                    borderRadius: '4px'
-                  }
-                },
-                  e('h4', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '12px',
-                      color: 'var(--bronze)',
-                      marginBottom: '4px'
-                    }
-                  }, `${idx + 1}. ${ch.title || 'Nimetön'}`),
-                  e('p', {
-                    style: {
-                      fontFamily: 'EB Garamond',
-                      fontSize: '13px',
-                      color: 'var(--text-2)',
-                      lineHeight: '1.5'
-                    }
-                  }, ch.synopsis || ch.synopsisAI || '(Ei synopsista)')
+              splitViewType === 'location' && e('select', {
+                className: 'faust-select faust-select--sm',
+                value: refPlaceEntry ? refPlaceEntry[0] : '',
+                onChange: (ev) => setSplitViewLocationId(ev.target.value),
+                disabled: placeEntries.length === 0,
+                title: placeEntries.length === 0 ? 'Tarinassa ei ole vielä paikkoja.' : undefined,
+                'aria-label': 'Valitse paikka',
+                style: { flex: '0 1 280px' }
+              },
+                e('option', { value: '', disabled: true }, 'Valitse paikka'),
+                placeEntries.map(([key, loc]) =>
+                  e('option', { key, value: key }, (loc && loc.name) || key)
+                )
+              ),
+
+              // Close button, always at the right end
+              e('button', {
+                className: 'faust-btn faust-btn--icon',
+                onClick: () => setSplitViewEnabled(false),
+                title: 'Sulje jaettu näkymä',
+                'aria-label': 'Sulje jaettu näkymä',
+                style: { marginLeft: 'auto' }
+              }, icons.close({ size: 14 }))
+            ),
+
+            // Split view content area: the pane's one scroller
+            e('div', {
+              className: 'faust-editor-content',
+              style: { padding: 'var(--sp-5) 0 var(--sp-7)' }
+            },
+              // Chapter view: read only; the text shares one left edge with its title and meta line
+              splitViewType === 'chapter' && (refChapter
+                ? e('div', null,
+                    e('h2', {
+                      style: { margin: '0 0 var(--sp-1)', paddingInline: 'var(--page-inset)', font: 'var(--type-title-chapter)' }
+                    }, refChapter.title || 'Nimetön luku'),
+                    e('p', {
+                      className: 'faust-meta',
+                      style: { margin: '0 0 var(--sp-5)', paddingInline: 'var(--page-inset)' }
+                    }, `${count(refChapter.wordCount || 0, 'sana')} · ${labelOf('status', normStatus(refChapter.status)).toLowerCase()} · vain katselu`),
+                    refChapter.content
+                      ? e('div', {
+                          className: 'faust-manuscript',
+                          style: { '--ms-size': 18 * (parseInt(editorZoom) / 100) + 'px' }
+                        }, refChapter.content)
+                      : emptyState('Luvussa ei ole vielä tekstiä.')
+                  )
+                : emptyState('Valitse luku yllä olevasta valikosta.')),
+
+              // Character view
+              splitViewType === 'character' && (() => {
+                if (characters.length === 0) return emptyState('Tarinassa ei ole vielä hahmoja.');
+                if (!refCharacter) return emptyState('Valitse hahmo yllä olevasta valikosta.');
+                const age = charField(refCharacter, 'age');
+                const hasAge = age != null && age !== '';
+                const occupation = charField(refCharacter, 'occupation');
+                const description = charField(refCharacter, 'description');
+                const background = charField(refCharacter, 'background');
+                const archetype = (refCharacter.archetypal && refCharacter.archetypal.primaryArchetype) ||
+                  (refCharacter.archetype && (refCharacter.archetype.archetypeFamily || refCharacter.archetype.primaryArchetype));
+                return e('div', { style: { padding: '0 var(--sp-5)' } },
+                  viewTitle(charName(refCharacter)),
+                  (hasAge || occupation) && e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)', marginBottom: 'var(--sp-4)' } },
+                    hasAge && infoLine(`Ikä: ${age}`),
+                    occupation && infoLine(`Ammatti: ${occupation}`)
+                  ),
+                  description && section('Kuvaus', authorText(description)),
+                  background && section('Tausta', authorText(background)),
+                  archetype && section('Arkkityyppi', infoLine(label(archetype))),
+                  refCharacter.notes && section('Muistiinpanot', authorText(refCharacter.notes))
+                );
+              })(),
+
+              // Location view
+              splitViewType === 'location' && (() => {
+                if (placeEntries.length === 0) return emptyState('Tarinassa ei ole vielä paikkoja.');
+                if (!refPlace) return emptyState('Valitse paikka yllä olevasta valikosta.');
+                const senses = refPlace.sensoryDetails || {};
+                const hasSenses = !!(senses.visual || senses.auditory || senses.olfactory);
+                const hasDetails = !!(refPlace.type || refPlace.atmosphere || refPlace.description || hasSenses || refPlace.notes);
+                return e('div', { style: { padding: '0 var(--sp-5)' } },
+                  viewTitle(refPlace.name || refPlaceEntry[0]),
+                  !hasDetails && emptyState('Paikasta ei ole vielä tallennettu tietoja.'),
+                  (refPlace.type || refPlace.atmosphere) && e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)', marginBottom: 'var(--sp-4)' } },
+                    refPlace.type && infoLine(`Tyyppi: ${labelOf('placeType', refPlace.type).toLowerCase()}`),
+                    refPlace.atmosphere && infoLine(`Tunnelma: ${labelOf('placeAtmosphere', refPlace.atmosphere).toLowerCase()}`)
+                  ),
+                  refPlace.description && section('Kuvaus', authorText(refPlace.description)),
+                  hasSenses && section('Aistit',
+                    senses.visual && authorText(`Näkö: ${senses.visual}`),
+                    senses.auditory && authorText(`Kuulo: ${senses.auditory}`),
+                    senses.olfactory && authorText(`Haju: ${senses.olfactory}`)
+                  ),
+                  refPlace.notes && section('Muistiinpanot', authorText(refPlace.notes))
+                );
+              })(),
+
+              // Summaries of all chapters
+              splitViewType === 'outline' && e('div', { style: { padding: '0 var(--sp-5)' } },
+                viewTitle('Lukujen tiivistelmät'),
+                e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' } },
+                  project.structure.map((ch, idx) => {
+                    const summary = ch.synopsis || ch.synopsisAI;
+                    return e('div', {
+                      key: ch.id,
+                      className: ch.id === activeChapterId ? 'faust-card faust-card--compact is-selected' : 'faust-card faust-card--compact',
+                      'aria-current': ch.id === activeChapterId ? 'true' : undefined
+                    },
+                      e('h3', { className: 'faust-card__title', style: { margin: 0 } }, `${idx + 1}. ${ch.title || 'Nimetön luku'}`),
+                      summary
+                        ? e('p', { className: 'faust-card__body', style: { margin: 0 } }, summary)
+                        : e('p', { className: 'faust-meta', style: { margin: 0 } }, 'Ei tiivistelmää')
+                    );
+                  })
                 )
               )
             )
-          )
-        )
+          );
+        })()
       ),
 
       // Right inspector (hidden by default)
-      e(ErrorBoundary, { label: 'Inspector', onDismiss: () => setShowInspector(false) }, showInspector && e('div', { className: inspectorCollapsed ? 'faust-inspector visible collapsed' : 'faust-inspector visible' },
-        // Collapse button (always visible on right edge)
-        e('button', {
-          onClick: () => setInspectorCollapsed(!inspectorCollapsed),
-          title: inspectorCollapsed ? 'Expand Inspector' : 'Collapse Inspector',
-          style: {
-            position: 'absolute',
-            top: '12px',
-            right: inspectorCollapsed ? '4px' : '20px', // From right edge, not left
-            width: inspectorCollapsed ? '32px' : '24px',
-            height: '24px',
-            background: 'var(--bg-2)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text-2)',
-            cursor: 'pointer',
-            fontSize: '12px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            transition: 'all 0.2s',
-            zIndex: 10
-          }
-        }, inspectorCollapsed ? '→' : '←'), // Swapped arrows for right-side positioning
-
-        !inspectorCollapsed && e('div', { style: { padding: '16px', color: 'var(--text)' } },
-          e('h3', { style: { fontFamily: 'EB Garamond', fontSize: '16px', marginBottom: '12px' } }, 'Inspector'),
+      e(ErrorBoundary, { label: 'Tietopaneeli', onDismiss: () => setShowInspector(false) }, showInspector && e('div', { className: 'faust-inspector visible', 'data-state': 'open' },
+        e('div', { className: 'faust-panel' },
+          e('div', { className: 'faust-panel__head' },
+            e('h3', { className: 'faust-panel__title' }, 'Tietopaneeli'),
+            e('button', {
+              className: 'faust-btn faust-btn--icon faust-btn--sm',
+              'aria-label': 'Kätke tietopaneeli (' + shortcut('CmdOrCtrl+2') + ')',
+              title: 'Kätke tietopaneeli (' + shortcut('CmdOrCtrl+2') + ')',
+              onClick: () => setShowInspector(false)
+            }, icons.panelRight({ size: 14 }))
+          ),
 
           // Tab Navigation
-          e('div', {
-            style: {
-              display: 'flex',
-              gap: '4px',
-              marginBottom: '16px',
-              borderBottom: '1px solid var(--border-color)',
-              paddingBottom: '8px'
-            }
-          },
-            ['editor', 'chapter', 'project', 'ai'].map(tab =>
-              e('button', {
-                key: tab,
-                onClick: () => setInspectorTab(tab),
-                style: {
-                  flex: 1,
-                  padding: '6px 8px',
-                  background: inspectorTab === tab ? 'var(--bg-2)' : 'transparent',
-                  border: inspectorTab === tab ? '1px solid var(--bronze)' : '1px solid var(--border-color)',
-                  borderBottom: inspectorTab === tab ? '2px solid var(--bronze)' : '1px solid var(--border-color)',
-                  borderRadius: '4px 4px 0 0',
-                  color: inspectorTab === tab ? 'var(--text)' : 'var(--text-3)',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  textTransform: 'uppercase',
-                  fontWeight: inspectorTab === tab ? 600 : 400,
-                  transition: 'all 0.2s'
-                }
-              }, {
-                'editor': 'Editor',
-                'chapter': 'Chapter',
-                'project': 'Project',
-                'ai': 'AI'
-              }[tab])
+          e('div', { className: 'faust-panel__tabs' },
+            e('div', { className: 'faust-tabs', role: 'tablist', 'aria-label': 'Tietopaneeli' },
+              [
+                ['editor', 'Ulkoasu', 'Fontti, riviväli, zoomaus ja teema'],
+                ['chapter', 'Luku', 'Avoimen luvun tiedot ja versiot'],
+                ['project', 'Projekti', 'Projektin tiedot, tavoitteet, hahmot, juonilangat ja johdonmukaisuus'],
+                ['ai', 'Tekoäly', 'Tekoälyn lähde, avain ja malli sekä tekoälyn kirjoitustoiminnot']
+              ].map(([tab, tabName, tabTip]) =>
+                e('button', {
+                  key: tab,
+                  className: 'faust-tab',
+                  role: 'tab',
+                  'aria-selected': inspectorTab === tab,
+                  title: tabTip,
+                  onClick: () => setInspectorTab(tab)
+                }, tabName)
+              )
             )
           ),
 
+          // The scrolling body holds every block of the four tabs. It is closed by the first ')' of the
+          // line '        ))' after the last block of the panel (R-43, the paired edit with inspector-b).
+          e('div', { className: 'faust-panel__body' },
           // EDITOR TAB
-          inspectorTab === 'editor' && e('div', { style: { marginBottom: '24px', paddingBottom: '20px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '12px', textTransform: 'uppercase' } }, 'Editor Controls'),
+          inspectorTab === 'editor' && e('section', { className: 'faust-section' },
+            e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Ulkoasun asetukset')),
 
             // Font selector
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'Fontti:'),
+            e('div', { className: 'faust-field' },
+              e('label', { className: 'faust-field__label', htmlFor: 'inspector-font' }, 'Fontti'),
               e('select', {
+                id: 'inspector-font',
+                className: 'faust-select faust-select--sm',
                 value: editorFont,
-                onChange: (ev) => setEditorFont(ev.target.value),
-                style: {
-                  width: '100%',
-                  padding: '6px 8px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px'
-                }
+                onChange: (ev) => setEditorFont(ev.target.value)
               },
                 e('option', { value: 'EB Garamond' }, 'EB Garamond'),
                 e('option', { value: 'Georgia' }, 'Georgia'),
@@ -6727,296 +6129,132 @@ ${contextPrompt}`;
             ),
 
             // Text alignment
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'Tasaus:'),
-              e('div', { style: { display: 'flex', gap: '4px' } },
-                ['left', 'center', 'right', 'justify'].map(align =>
+            e('div', { className: 'faust-field' },
+              e('div', { className: 'faust-field__label' }, 'Tasaus'),
+              e('div', { className: 'faust-segmented faust-segmented--block', role: 'group', 'aria-label': 'Tasaus' },
+                [
+                  ['left', 'Vasen', 'Tasaa vasemmalle'],
+                  ['center', 'Keskitetty', 'Keskitä'],
+                  ['right', 'Oikea', 'Tasaa oikealle'],
+                  ['justify', 'Tasattu', 'Tasaa molemmat reunat']
+                ].map(([align, face, tip]) =>
                   e('button', {
                     key: align,
-                    onClick: () => setTextAlign(align),
-                    title: { left: 'Vasen', center: 'Keskitetty', right: 'Oikea', justify: 'Tasattu' }[align],
-                    style: {
-                      flex: 1,
-                      padding: '6px',
-                      background: textAlign === align ? 'var(--sigil)' : 'transparent',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      color: textAlign === align ? '#000' : 'var(--text-2)',
-                      cursor: 'pointer',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '10px',
-                      transition: 'all 0.2s'
-                    }
-                  }, { left: '⬅️', center: '↔️', right: '➡️', justify: '⬌' }[align])
+                    className: 'faust-segmented__option',
+                    'aria-pressed': textAlign === align,
+                    title: tip,
+                    onClick: () => setTextAlign(align)
+                  }, face)
                 )
               )
             ),
 
             // Line spacing
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'Riviväli:'),
+            e('div', { className: 'faust-field' },
+              e('label', { className: 'faust-field__label', htmlFor: 'inspector-line-spacing' }, 'Riviväli'),
               e('select', {
+                id: 'inspector-line-spacing',
+                className: 'faust-select faust-select--sm',
                 value: lineSpacing,
-                onChange: (ev) => setLineSpacing(ev.target.value),
-                style: {
-                  width: '100%',
-                  padding: '6px 8px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px'
-                }
+                onChange: (ev) => setLineSpacing(ev.target.value)
               },
-                e('option', { value: '1.0' }, '1.0'),
-                e('option', { value: '1.15' }, '1.15'),
-                e('option', { value: '1.5' }, '1.5'),
-                e('option', { value: '1.8' }, '1.8 (oletus)'),
-                e('option', { value: '2.0' }, '2.0')
+                e('option', { value: '1.0' }, '1,0'),
+                e('option', { value: '1.15' }, '1,15'),
+                e('option', { value: '1.5' }, '1,5'),
+                e('option', { value: '1.8' }, '1,8 (oletus)'),
+                e('option', { value: '2.0' }, '2,0')
               )
             ),
 
             // Zoom
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'Zoomaus:'),
+            e('div', { className: 'faust-field' },
+              e('label', { className: 'faust-field__label', htmlFor: 'inspector-zoom' }, 'Zoomaus'),
               e('select', {
+                id: 'inspector-zoom',
+                className: 'faust-select faust-select--sm',
                 value: editorZoom,
-                onChange: (ev) => setEditorZoom(ev.target.value),
-                style: {
-                  width: '100%',
-                  padding: '6px 8px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px'
-                }
+                onChange: (ev) => setEditorZoom(ev.target.value)
               },
                 // The menu zooms in steps of 10 (⌘+ / ⌘-): always list the current value
                 ...Array.from(new Set(['70', '80', '90', '100', '110', '120', '130', '150', '175', '200', editorZoom]))
                   .sort((a, b) => parseInt(a, 10) - parseInt(b, 10))
-                  .map(value => e('option', { key: value, value }, value === '100' ? '100% (oletus)' : `${value}%`))
+                  .map(value => e('option', { key: value, value }, value === '100' ? '100 % (oletus)' : `${value} %`))
               )
             ),
 
             // Paragraph spacing
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'Kappaleväli:'),
+            e('div', { className: 'faust-field' },
+              e('label', { className: 'faust-field__label', htmlFor: 'inspector-paragraph-spacing' }, 'Kappaleväli'),
               e('select', {
+                id: 'inspector-paragraph-spacing',
+                className: 'faust-select faust-select--sm',
                 value: paragraphSpacing,
-                onChange: (ev) => setParagraphSpacing(ev.target.value),
-                style: {
-                  width: '100%',
-                  padding: '6px 8px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px'
-                }
+                onChange: (ev) => setParagraphSpacing(ev.target.value)
               },
-                e('option', { value: '1.0' }, 'Normaali'),
+                e('option', { value: '1.0' }, 'Ei lainkaan'),
                 e('option', { value: '1.5' }, 'Keskisuuri (oletus)'),
                 e('option', { value: '2.0' }, 'Suuri')
               )
             ),
 
             // Typewriter Mode toggle
-            e('div', {
-              style: {
-                marginBottom: '16px',
-                padding: '12px',
-                background: typewriterMode ? 'var(--sigil)' + '22' : 'var(--bg-2)',
-                border: `1px solid ${typewriterMode ? 'var(--sigil)' : 'var(--border-color)'}`,
-                borderRadius: '4px'
-              }
-            },
-              e('div', {
-                style: {
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }
-              },
-                e('div', null,
-                  e('div', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: typewriterMode ? 'var(--sigil)' : 'var(--text)',
-                      fontWeight: 600
-                    }
-                  }, '⌨️ Typewriter Mode'),
-                  e('div', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '9px',
-                      color: 'var(--text-3)',
-                      marginTop: '2px'
-                    }
-                  }, 'Pitää kursorin keskellä ruutua')
-                ),
+            e('div', { className: 'faust-field' },
+              e('div', { className: 'faust-field__label' }, 'Kirjoituskonetila'),
+              e('div', { className: 'faust-segmented faust-segmented--block', role: 'radiogroup', 'aria-label': 'Kirjoituskonetila' },
                 e('button', {
-                  onClick: () => setTypewriterMode(!typewriterMode),
-                  style: {
-                    padding: '4px 12px',
-                    background: typewriterMode ? 'var(--sigil)' : 'transparent',
-                    border: `1px solid ${typewriterMode ? 'var(--sigil)' : 'var(--border-color)'}`,
-                    borderRadius: '4px',
-                    color: typewriterMode ? '#000' : 'var(--text-2)',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '10px',
-                    fontWeight: 600
-                  }
-                }, typewriterMode ? 'ON' : 'OFF')
-              )
+                  className: 'faust-segmented__option',
+                  role: 'radio',
+                  'aria-checked': !!typewriterMode,
+                  onClick: () => setTypewriterMode(true)
+                }, 'Päällä'),
+                e('button', {
+                  className: 'faust-segmented__option',
+                  role: 'radio',
+                  'aria-checked': !typewriterMode,
+                  onClick: () => setTypewriterMode(false)
+                }, 'Pois')
+              ),
+              e('div', { className: 'faust-field__hint' }, 'Kirjoitusrivi pysyy ruudun keskellä.')
             ),
 
-            // Writing Goals Section
-            e('div', {
-              style: {
-                padding: '12px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px'
-              }
-            },
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-3)',
-                  marginBottom: '8px',
-                  textTransform: 'uppercase'
-                }
-              }, '📊 Kirjoitustavoite'),
-
-              // Progress bar
-              (() => {
-                const progress = getSessionProgress();
-                return e('div', null,
-                  // Progress bar container
-                  e('div', {
-                    style: {
-                      width: '100%',
-                      height: '8px',
-                      background: 'var(--surface-2)',
-                      borderRadius: '4px',
-                      overflow: 'hidden',
-                      marginBottom: '8px'
-                    }
-                  },
-                    e('div', {
-                      style: {
-                        width: `${progress.percentage}%`,
-                        height: '100%',
-                        background: progress.percentage >= 100 ? '#4CAF50' : 'var(--bronze)',
-                        borderRadius: '4px',
-                        transition: 'width 0.3s ease'
-                      }
-                    })
-                  ),
-
-                  // Stats
-                  e('div', {
-                    style: {
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      marginBottom: '8px'
-                    }
-                  },
-                    e('span', { style: { color: progress.percentage >= 100 ? '#4CAF50' : 'var(--bronze)', fontWeight: 600 } },
-                      `${progress.written} / ${progress.goal}`),
-                    e('span', { style: { color: 'var(--text-2)' } },
-                      `${progress.percentage}%`)
-                  ),
-
-                  // Goal completed message
-                  progress.percentage >= 100 && e('div', {
-                    style: {
-                      padding: '6px 8px',
-                      background: '#4CAF5022',
-                      border: '1px solid #4CAF50',
-                      borderRadius: '4px',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '10px',
-                      color: '#4CAF50',
-                      textAlign: 'center',
-                      marginBottom: '8px'
-                    }
-                  }, '✓ Tavoite saavutettu!'),
-
-                  // Goal setter
-                  e('div', {
-                    style: {
-                      display: 'flex',
-                      gap: '8px',
-                      alignItems: 'center'
-                    }
-                  },
-                    e('label', {
-                      style: {
-                        fontFamily: 'IBM Plex Mono',
-                        fontSize: '10px',
-                        color: 'var(--text-3)'
-                      }
-                    }, 'Tavoite:'),
-                    e('select', {
-                      value: sessionGoal,
-                      onChange: (ev) => setSessionGoal(parseInt(ev.target.value)),
-                      style: {
-                        flex: 1,
-                        padding: '4px 6px',
-                        background: 'var(--bg)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '4px',
-                        color: 'var(--text)',
-                        fontFamily: 'IBM Plex Mono',
-                        fontSize: '10px'
-                      }
-                    },
-                      e('option', { value: '250' }, '250 sanaa'),
-                      e('option', { value: '500' }, '500 sanaa'),
-                      e('option', { value: '750' }, '750 sanaa'),
-                      e('option', { value: '1000' }, '1000 sanaa'),
-                      e('option', { value: '1500' }, '1500 sanaa'),
-                      e('option', { value: '2000' }, '2000 sanaa')
-                    ),
-                    e('button', {
-                      onClick: resetSession,
-                      title: 'Nollaa istunto',
-                      style: {
-                        padding: '4px 8px',
-                        background: 'transparent',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: '4px',
-                        color: 'var(--text-2)',
-                        cursor: 'pointer',
-                        fontFamily: 'IBM Plex Mono',
-                        fontSize: '10px'
-                      }
-                    }, '↺')
-                  )
-                );
-              })()
+            // Theme (W23)
+            e('div', { className: 'faust-field' },
+              e('div', { className: 'faust-field__label' }, 'Teema'),
+              e('div', { className: 'faust-segmented faust-segmented--block', role: 'radiogroup', 'aria-label': 'Teema' },
+                e('button', {
+                  className: 'faust-segmented__option',
+                  role: 'radio',
+                  'aria-checked': !!isDarkMode,
+                  title: 'Ota käyttöön tumma NOX-teema (' + shortcut('CmdOrCtrl+Shift+D') + ' vaihtaa teemaa)',
+                  onClick: () => setIsDarkMode(true)
+                }, 'NOX (tumma)'),
+                e('button', {
+                  className: 'faust-segmented__option',
+                  role: 'radio',
+                  'aria-checked': !isDarkMode,
+                  title: 'Ota käyttöön vaalea DEIS-teema (' + shortcut('CmdOrCtrl+Shift+D') + ' vaihtaa teemaa)',
+                  onClick: () => setIsDarkMode(false)
+                }, 'DEIS (vaalea)')
+              )
             )
           ),
 
           // CHAPTER TAB
-          inspectorTab === 'chapter' && activeChapter && e('div', { style: { marginBottom: '24px', paddingBottom: '20px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '12px', textTransform: 'uppercase' } }, 'Chapter Metadata'),
+          inspectorTab === 'chapter' && !activeChapter && e('div', { className: 'faust-empty faust-empty--compact' },
+            e('div', { className: 'faust-empty__title' }, 'Ei avointa lukua.'),
+            e('div', { className: 'faust-empty__hint' }, 'Valitse luku sivupalkista.')
+          ),
+          inspectorTab === 'chapter' && activeChapter && e('section', { className: 'faust-section' },
+            e('div', { style: { font: 'var(--type-title-pop)', marginBottom: 'var(--sp-2)' } }, activeChapter.title || 'Nimetön luku'),
+            e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Luvun tiedot')),
 
             // Status
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'Status:'),
+            e('div', { className: 'faust-field' },
+              e('label', { className: 'faust-field__label', htmlFor: 'inspector-chapter-status' }, 'Tila'),
               e('select', {
-                value: activeChapter.status || 'plan',
+                id: 'inspector-chapter-status',
+                className: 'faust-select faust-select--sm',
+                value: normStatus(activeChapter.status),
                 onChange: (ev) => {
                   setProject(prev => ({
                     ...prev,
@@ -7025,29 +6263,20 @@ ${contextPrompt}`;
                     )
                   }));
                   setUnsavedChanges(true);
-                },
-                style: {
-                  width: '100%',
-                  padding: '6px 8px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px'
                 }
               },
-                e('option', { value: 'plan' }, '○ Plan'),
-                e('option', { value: 'draft' }, '◐ Draft'),
-                e('option', { value: 'revision' }, '◑ Revision'),
-                e('option', { value: 'final' }, '● Final')
+                ['plan', 'draft', 'revision', 'final'].map(status =>
+                  e('option', { key: status, value: status }, labelOf('status', status))
+                )
               )
             ),
 
             // POV Character
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'POV Character:'),
+            e('div', { className: 'faust-field' },
+              e('label', { className: 'faust-field__label', htmlFor: 'inspector-chapter-pov' }, 'Näkökulmahahmo'),
               e('select', {
+                id: 'inspector-chapter-pov',
+                className: 'faust-select faust-select--sm',
                 value: activeChapter.povCharacter || '',
                 onChange: (ev) => {
                   setProject(prev => ({
@@ -7057,32 +6286,24 @@ ${contextPrompt}`;
                     )
                   }));
                   setUnsavedChanges(true);
-                },
-                style: {
-                  width: '100%',
-                  padding: '6px 8px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px'
                 }
               },
-                e('option', { value: '' }, '— None —'),
+                e('option', { value: '' }, '— Ei valittu —'),
                 project.characters.map(char =>
                   e('option', {
                     key: char.id || char.name,
                     value: char.id || char.name
-                  }, char.basicInfo?.name || char.name || 'Unnamed')
+                  }, char.basicInfo?.name || char.name || 'Nimetön hahmo')
                 )
               )
             ),
 
             // Story Timestamp
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'Story Time:'),
+            e('div', { className: 'faust-field' },
+              e('label', { className: 'faust-field__label', htmlFor: 'inspector-chapter-time' }, 'Tapahtuma-aika'),
               e('input', {
+                id: 'inspector-chapter-time',
+                className: 'faust-input faust-input--sm',
                 type: 'text',
                 value: activeChapter.storyTimestamp || '',
                 onChange: (ev) => {
@@ -7094,24 +6315,16 @@ ${contextPrompt}`;
                   }));
                   setUnsavedChanges(true);
                 },
-                placeholder: 'e.g., Day 3, Morning',
-                style: {
-                  width: '100%',
-                  padding: '6px 8px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px'
-                }
+                placeholder: 'esim. 3. päivä, aamu'
               })
             ),
 
             // Mood/Tone
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'Mood/Tone:'),
+            e('div', { className: 'faust-field' },
+              e('label', { className: 'faust-field__label', htmlFor: 'inspector-chapter-mood' }, 'Tunnelma'),
               e('input', {
+                id: 'inspector-chapter-mood',
+                className: 'faust-input faust-input--sm',
                 type: 'text',
                 value: activeChapter.mood || '',
                 onChange: (ev) => {
@@ -7123,24 +6336,16 @@ ${contextPrompt}`;
                   }));
                   setUnsavedChanges(true);
                 },
-                placeholder: 'e.g., Tense, Melancholic',
-                style: {
-                  width: '100%',
-                  padding: '6px 8px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px'
-                }
+                placeholder: 'esim. jännittynyt, haikea'
               })
             ),
 
             // Custom Notes
-            e('div', { style: { marginBottom: '8px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'Notes:'),
+            e('div', { className: 'faust-field' },
+              e('label', { className: 'faust-field__label', htmlFor: 'inspector-chapter-notes' }, 'Muistiinpanot'),
               e('textarea', {
+                id: 'inspector-chapter-notes',
+                className: 'faust-textarea',
                 value: activeChapter.notes || '',
                 onChange: (ev) => {
                   setProject(prev => ({
@@ -7151,167 +6356,125 @@ ${contextPrompt}`;
                   }));
                   setUnsavedChanges(true);
                 },
-                placeholder: 'Chapter notes...',
-                style: {
-                  width: '100%',
-                  minHeight: '60px',
-                  padding: '6px 8px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  resize: 'vertical'
-                }
+                placeholder: 'Muistiinpanoja tästä luvusta…'
               })
             ),
 
-            // Open ChapterSheet button
+            // Open ChapterSheet button (W22)
             e('button', {
-              onClick: () => setShowChapterSheetModal(true),
-              style: {
-                width: '100%',
-                padding: '10px',
-                marginTop: '16px',
-                background: 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: '#000',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                fontWeight: 600
-              }
-            }, '📋 Open Chapter Sheet')
+              className: 'faust-btn faust-btn--block',
+              style: { marginTop: 'var(--sp-4)' },
+              onClick: () => setShowChapterSheetModal(true)
+            }, 'Kaikki luvun tiedot…')
           ),
+
+          // The section Parannusehdotukset of the Luku tab stands here, after Kaikki luvun tiedot… (XR-8, R-39)
 
           // PROJECT TAB
-          inspectorTab === 'project' && e('div', { style: { marginBottom: '24px', paddingBottom: '20px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '12px', textTransform: 'uppercase' } }, 'Project Info'),
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '13px', color: 'var(--text-2)', marginBottom: '4px' } },
-              `Genre: ${project.genre}`),
+          inspectorTab === 'project' && e('section', { className: 'faust-section' },
+            e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Projektin tiedot')),
+            e('div', { className: 'faust-kv' }, e('span', null, 'Nimi:'), e('span', null, project.title || 'Nimetön projekti')),
+            e('div', { className: 'faust-kv' }, e('span', null, 'Kirjoittaja:'), e('span', null, project.author || '–')),
+            e('div', { className: 'faust-kv' }, e('span', null, 'Genre:'), e('span', null, project.genre ? labelOf('genre', project.genre).toLowerCase() : '–')),
+            e('div', { className: 'faust-kv' }, e('span', null, 'Käsikirjoituksen kieli:'),
+              e('span', null, { fi: 'suomi', en: 'englanti' }[project.language || 'fi'] || project.language)),
 
-            // Language selector
-            e('div', { style: { marginBottom: '8px' } },
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '4px' } }, 'Tarinan kieli:'),
-              e('select', {
-                value: project.language || 'fi',
-                onChange: (ev) => {
-                  setProject(prev => ({
-                    ...prev,
-                    language: ev.target.value
-                  }));
-                  setUnsavedChanges(true);
-                },
-                style: {
-                  width: '100%',
-                  padding: '6px 8px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px'
-                }
-              },
-                e('option', { value: 'fi' }, '🇫🇮 Suomi'),
-                e('option', { value: 'en' }, '🇬🇧 English')
-              )
-            ),
-
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '13px', color: 'var(--text-2)', marginBottom: '4px' } },
-              `Tavoite: ${project.targets.totalWords} sanaa`),
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '13px', color: 'var(--text-2)' } },
-              `Edistyminen: ${Math.round(totalWords / project.targets.totalWords * 100)}%`)
-          ),
-
-          // AI TAB
-          inspectorTab === 'ai' && e('div', { style: { marginBottom: '24px', paddingBottom: '20px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '12px', textTransform: 'uppercase' } }, 'AI Writing Mode'),
-
-            // Mode selector buttons
-            e('div', { style: { display: 'flex', gap: '4px', marginBottom: '16px' } },
-              Object.keys(project.ai.modes).map(modeName =>
-                e('button', {
-                  key: modeName,
-                  onClick: () => setAIMode(modeName),
-                  style: {
-                    flex: 1,
-                    padding: '6px',
-                    background: project.ai.currentMode === modeName ? project.ai.modes[modeName].color : 'transparent',
-                    border: `1px solid ${project.ai.modes[modeName].color}`,
-                    borderRadius: '4px',
-                    color: project.ai.currentMode === modeName ? '#000' : 'var(--text-2)',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '10px',
-                    fontWeight: project.ai.currentMode === modeName ? 600 : 400,
-                    transition: 'all 0.2s'
-                  }
-                }, project.ai.modes[modeName].name)
-              )
-            ),
-
-            // Current mode info
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-2)', marginBottom: '4px' } },
-              `Lämpötila: ${getCurrentMode().temperature}`),
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', fontStyle: 'italic' } },
-              getCurrentMode().useCase)
-          ),
-
-          // Continue Writing (HybridWritingFlow)
-          activeChapter && hybridFlowRef.current && e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'HYBRID WRITING'),
-
+            // Project settings (W18)
             e('button', {
-              onClick: () => setShowContinueDialog(true),
-              disabled: !activeChapter.content || activeChapter.content.trim().length === 0,
-              style: {
-                width: '100%',
-                padding: '10px',
-                background: activeChapter.content && activeChapter.content.trim().length > 0 ? 'var(--sigil)' : 'var(--bg-2)',
-                border: 'none',
-                borderRadius: '4px',
-                color: activeChapter.content && activeChapter.content.trim().length > 0 ? '#000' : 'var(--text-3)',
-                cursor: activeChapter.content && activeChapter.content.trim().length > 0 ? 'pointer' : 'not-allowed',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                fontWeight: 600
-              }
-            }, '✍️ Continue Writing'),
-
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginTop: '8px', fontStyle: 'italic' } },
-              'AI jatkaa kirjoittamista tekstisi lopusta')
+              className: 'faust-btn faust-btn--block',
+              style: { marginTop: 'var(--sp-3)' },
+              onClick: () => setShowProjectSettings(true)
+            }, 'Projektin asetukset…')
           ),
 
-          // AI provider: Claude directly or Cherry Studio's local gateway
-          e(AIProviderSettings, null),
+          // Writing Goals Section (moved here from the Ulkoasu tab: G-move-2)
+          inspectorTab === 'project' && e('section', { className: 'faust-section' },
+            e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Tavoitteet')),
+
+            // Manuscript goal
+            (() => {
+              const target = (project.targets && Number(project.targets.totalWords)) || 0;
+              return e('div', { className: 'faust-meta' },
+                `Käsikirjoituksen tavoite: ${totalWords.toLocaleString('fi-FI')} / ${target.toLocaleString('fi-FI')} sanaa` +
+                (target > 0 ? ` (${Math.round(totalWords / target * 100)} %)` : ''));
+            })(),
+
+            // Session goal
+            (() => {
+              const progress = getSessionProgress();
+              const reached = progress.percentage >= 100;
+              return e('div', { style: { marginTop: 'var(--sp-4)' } },
+                e('div', { className: 'faust-field__label' }, 'Kirjoituskerran tavoite'),
+                e('div', { className: 'faust-field__hint', style: { marginBottom: 'var(--sp-2)' } },
+                  'Lasketaan siitä, kun avasit projektin tai nollasit sanalaskurin.'),
+
+                // Progress bar
+                e('div', {
+                  className: 'faust-progress faust-progress--goal' + (reached ? ' is-complete' : ''),
+                  style: { '--value': progress.percentage + '%' },
+                  role: 'progressbar',
+                  'aria-label': 'Kirjoituskerran tavoite',
+                  'aria-valuemin': 0,
+                  'aria-valuemax': 100,
+                  'aria-valuenow': progress.percentage
+                }, e('i')),
+
+                // Stats
+                e('div', { className: 'faust-kv', style: { marginTop: 'var(--sp-1)' } },
+                  e('span', null, `${Number(progress.written).toLocaleString('fi-FI')} / ${Number(progress.goal).toLocaleString('fi-FI')} sanaa`),
+                  e('span', null, `${progress.percentage} %`)
+                ),
+
+                // Goal completed message
+                reached && e('div', { className: 'faust-callout faust-callout--success', style: { marginTop: 'var(--sp-2)' } },
+                  icons.success({ size: 16, className: 'faust-callout__icon' }),
+                  e('div', { className: 'faust-callout__body' }, 'Tavoite saavutettu!')
+                ),
+
+                // Goal setter
+                e('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', marginTop: 'var(--sp-2)' } },
+                  e('label', { className: 'faust-field__label', htmlFor: 'inspector-session-goal' }, 'Tavoite:'),
+                  e('select', {
+                    id: 'inspector-session-goal',
+                    className: 'faust-select faust-select--sm',
+                    value: sessionGoal,
+                    onChange: (ev) => setSessionGoal(parseInt(ev.target.value))
+                  },
+                    [250, 500, 750, 1000, 1500, 2000].map(words =>
+                      e('option', { key: words, value: String(words) }, `${words.toLocaleString('fi-FI')} sanaa`)
+                    )
+                  )
+                ),
+                e('div', { className: 'faust-field__row' },
+                  e('button', {
+                    className: 'faust-btn faust-btn--sm faust-btn--quiet',
+                    title: 'Aloita kirjoituskerran sanalaskenta alusta',
+                    onClick: resetSession
+                  }, 'Nollaa sanalaskuri')
+                )
+              );
+            })()
+          ),
+
+          // AI provider: Claude directly or Cherry Studio's local gateway; hidden, not unmounted, on the other tabs
+          e('div', { style: { display: inspectorTab === 'ai' ? 'block' : 'none' } },
+            e(AIProviderSettings, { onProviderChange: setAiSource })
+          ),
 
           // Claude API Key
-          e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'CLAUDE API'),
-
-            // Claude info box
-            e('div', { style: {
-              marginBottom: '12px',
-              padding: '10px',
-              background: 'rgba(139, 92, 246, 0.1)',
-              borderRadius: '6px',
-              border: '1px solid rgba(139, 92, 246, 0.3)'
-            } },
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--sigil)', fontWeight: 600, marginBottom: '4px' } },
-                '⚗ Claude by Anthropic'),
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-2)', lineHeight: '1.4' } },
-                'FAUST käyttää Claude AI:ta kaikissa kirjoitustoiminnoissa. Claude on optimoitu luovaan kirjoittamiseen ja tarinan jatkuvuuden ymmärtämiseen.')
-            ),
+          inspectorTab === 'ai' && e('div', { style: { paddingBottom: 'var(--sp-4)' } },
+            // Until I-02 moves the Claude rows into AIProviderSettings (BUG-17's D.5 line)
+            e('div', { className: 'faust-meta', style: { marginBottom: 'var(--sp-3)' } },
+              'Käytössä, kun tekoälyn lähteeksi on valittu Claude.'),
 
             // API Key input
             e('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
+              e('label', { className: 'faust-field__label', htmlFor: 'inspector-claude-key' }, 'Clauden API-avain'),
               e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
                 e('input', {
+                  id: 'inspector-claude-key',
                   type: 'password',
-                  placeholder: 'Claude API -avain (sk-ant-...)',
+                  placeholder: 'Liitä avain (sk-ant-…)',
                   value: apiKeyInputValue,
                   onChange: (ev) => setApiKeyInputValue(ev.target.value),
                   style: {
@@ -7319,39 +6482,28 @@ ${contextPrompt}`;
                     padding: '8px 12px',
                     background: 'var(--bg)',
                     border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
+                    borderRadius: 'var(--radius-sm)',
                     color: 'var(--text)',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px'
+                    font: 'var(--type-meta)'
                   }
                 }),
                 e('button', {
+                  className: 'faust-btn faust-btn--sm',
                   onClick: () => saveApiKey('anthropic', apiKeyInputValue),
-                  disabled: !apiKeyInputValue.trim(),
-                  style: {
-                    padding: '8px 16px',
-                    background: apiKeyInputValue.trim() ? 'var(--sigil)' : 'var(--bg-2)',
-                    border: '1px solid var(--sigil)',
-                    borderRadius: '4px',
-                    color: apiKeyInputValue.trim() ? '#000' : 'var(--text-3)',
-                    cursor: apiKeyInputValue.trim() ? 'pointer' : 'not-allowed',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    fontWeight: 600
-                  }
-                }, 'Tallenna')
+                  disabled: !apiKeyInputValue.trim()
+                }, 'Tallenna avain')
               ),
 
               // Status indicator
-              e('div', { style: { display: 'flex', alignItems: 'center', gap: '6px' } },
-                e('span', { style: { fontSize: '12px' } }, apiKeysStatus.anthropic ? '◉' : '○'),
-                e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: apiKeysStatus.anthropic ? 'var(--sigil)' : 'var(--text-3)' } },
-                  apiKeysStatus.anthropic ? 'API-avain asetettu' : 'API-avain puuttuu')
+              e('div', null,
+                apiKeysStatus.anthropic
+                  ? e('span', { className: 'faust-chip faust-chip--plain faust-chip--dot faust-chip--success' }, 'Avain tallennettu')
+                  : e('span', { className: 'faust-chip faust-chip--plain faust-chip--hollow' }, 'Avain puuttuu')
               ),
 
               // Link to get API key
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } },
-                'Hanki API-avain: ',
+              e('div', { className: 'faust-meta' },
+                'Hanki avain: ',
                 e('a', {
                   href: '#',
                   onClick: (ev) => {
@@ -7365,8 +6517,9 @@ ${contextPrompt}`;
 
             // Model selector
             e('div', { style: { marginTop: '12px' } },
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginBottom: '4px' } }, 'Malli:'),
+              e('label', { className: 'faust-field__label', htmlFor: 'inspector-claude-model', style: { display: 'block', marginBottom: 'var(--sp-1)' } }, 'Claude-malli'),
               e('select', {
+                id: 'inspector-claude-model',
                 value: project.ai?.model || 'claude-sonnet-4-20250514',
                 onChange: (ev) => {
                   setProject(prev => ({
@@ -7383,10 +6536,9 @@ ${contextPrompt}`;
                   padding: '8px 12px',
                   background: 'var(--bg)',
                   border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
+                  borderRadius: 'var(--radius-sm)',
                   color: 'var(--text)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px'
+                  font: 'var(--type-meta)'
                 }
               },
                 e('option', { value: 'claude-sonnet-4-20250514' }, 'Claude Sonnet 4 (suositeltu)'),
@@ -7398,1174 +6550,777 @@ ${contextPrompt}`;
             )
           ),
 
-          // Batch Generation
-          e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'BATCH GENERATION'),
+          // AI TAB
+          inspectorTab === 'ai' && (() => {
+            // The Finnish description of each mode (menu spec A.3); the stored names and colours are not shown
+            const modeTips = {
+              exploration: 'Ideointi: tekoäly kokeilee rohkeasti ja tarjoaa vaihtoehtoja',
+              production: 'Kirjoitus: tekoäly seuraa suunnitelmaa ja tarinan linjaa',
+              polish: 'Viimeistely: tekoäly hioo kieltä ja tyyliä ja muuttaa sisältöä vain vähän'
+            };
+            return e('section', { className: 'faust-section' },
+              e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Tekoälyn työtapa')),
 
-            // Cost estimation
-            costOptimizerRef.current && e('div', { style: { marginBottom: '12px', padding: '8px', background: 'var(--bg-2)', borderRadius: '4px', border: '1px solid var(--border-color)' } },
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginBottom: '4px' } }, 'KUSTANNUSARVIO'),
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-2)' } },
-                `Malli: ${project.ai?.model || 'Claude Sonnet 4'}`),
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-2)' } },
-                `Luvut: ${project.structure.length}`),
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--sigil)', marginTop: '4px', fontWeight: 600 } },
-                `Arvioitu: $${costOptimizerRef.current.estimateGenerationCost(project.structure.length).estimatedCost.toFixed(4)}`)
-            ),
+              // Mode selector buttons
+              e('div', { className: 'faust-segmented faust-segmented--block', role: 'group', 'aria-label': 'Tekoälyn työtapa' },
+                Object.keys(project.ai.modes).map(modeName =>
+                  e('button', {
+                    key: modeName,
+                    className: 'faust-segmented__option',
+                    'aria-pressed': project.ai.currentMode === modeName,
+                    title: modeTips[modeName],
+                    onClick: () => setAIMode(modeName)
+                  }, labelOf('mode', modeName))
+                )
+              ),
 
-            // Generate All Chapters button
+              // Current mode info
+              modeTips[project.ai.currentMode] && e('div', { className: 'faust-meta', style: { marginTop: 'var(--sp-2)' } },
+                modeTips[project.ai.currentMode])
+            );
+          })(),
+
+          // Continue Writing (HybridWritingFlow)
+          inspectorTab === 'ai' && e('section', { className: 'faust-section' },
+            e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Kirjoita tekoälyn kanssa')),
+
             e('button', {
-              onClick: () => {
-                if (confirm(`Haluatko generoida kaikki ${project.structure.length} lukua AI:lla?\n\nArvioitu hinta: $${costOptimizerRef.current?.estimateGenerationCost(project.structure.length).estimatedCost.toFixed(4) || 'N/A'}`)) {
-                  generateAllChapters();
-                }
-              },
-              disabled: isGenerating || !batchProcessorRef.current,
-              style: {
-                width: '100%',
-                padding: '12px',
-                background: isGenerating || !batchProcessorRef.current ? 'var(--bg-2)' : 'var(--sigil)',
-                border: `1px solid var(--sigil)`,
-                borderRadius: '4px',
-                color: isGenerating || !batchProcessorRef.current ? 'var(--text-3)' : '#000',
-                cursor: isGenerating || !batchProcessorRef.current ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                fontWeight: 600,
-                opacity: isGenerating || !batchProcessorRef.current ? 0.5 : 1
-              }
-            }, isGenerating ? '◌ Generoidaan...' : '⊛ Generoi Kaikki Luvut'),
+              className: 'faust-btn faust-btn--block faust-btn--primary',
+              onClick: () => openAiWriting(),
+              disabled: !activeChapter || !hybridFlowRef.current,
+              title: !activeChapter ? 'Avaa ensin luku' : !hybridFlowRef.current ? 'Tekoälytoiminnot latautuvat vielä.' : undefined
+            }, 'Kirjoita tekoälyn kanssa…'),
 
-            // Total cost tracking
-            costOptimizerRef.current && costOptimizerRef.current.getStats().totalSpent > 0 && e('div', {
-              style: {
-                marginTop: '12px',
-                padding: '8px',
-                background: 'rgba(255,193,7,0.1)',
-                borderRadius: '4px',
-                border: '1px solid rgba(255,193,7,0.3)'
-              }
-            },
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginBottom: '4px' } }, 'YHTEENSÄ KÄYTETTY'),
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '13px', color: '#FFA726', fontWeight: 600 } },
-                `$${costOptimizerRef.current.getStats().totalSpent.toFixed(4)}`),
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginTop: '2px' } },
-                `${costOptimizerRef.current.getStats().totalRequests} pyyntöä`)
-            )
+            e('div', { className: 'faust-meta', style: { marginTop: 'var(--sp-2)' } },
+              'Tekoäly jatkaa tekstiä, kirjoittaa tiivistelmästä tekstiä, kirjoittaa valinnan uudelleen tai kirjoittaa kohtauksen.')
           ),
+
+          // Batch Generation
+          inspectorTab === 'ai' && (() => {
+            // Which of the two commands runs: the batch processor flags its own run (the busy face goes on that button)
+            const allRunning = isGenerating && !!(batchProcessorRef.current && batchProcessorRef.current.isProcessing);
+            const oneRunning = isGenerating && !allRunning;
+            const runningTip = 'Magnum Opus on käynnissä: tekoäly kirjoittaa lukua…';
+            const notReadyTip = 'Tekoälytoiminnot latautuvat vielä.';
+            const busyFace = e('span', { className: 'faust-spinner faust-spinner--sm', 'aria-hidden': 'true' });
+            return e('section', { className: 'faust-section' },
+              e('div', { className: 'faust-section__head' },
+                e('div', { className: 'faust-section__title' }, icons.stone({ size: 14 }), ' ', 'Magnum Opus')),
+              e('div', { className: 'faust-meta', style: { marginBottom: 'var(--sp-3)' } },
+                'Tekoäly kirjoittaa kokonaisia lukuja alusta loppuun.'),
+
+              // Cost estimation (no model line until I-02 puts the model badge first in the box, R-17)
+              e('div', { className: 'faust-card faust-card--compact', style: { marginBottom: 'var(--sp-3)' } },
+                e('div', { className: 'faust-card__title' }, 'Kustannusarvio'),
+                e('div', { className: 'faust-meta' }, `Lukuja: ${project.structure.length}`),
+                e('div', { className: 'faust-meta' },
+                  aiSource && aiSource.provider === 'cherry'
+                    ? 'Hinta riippuu Cherry Studiossa valitusta mallista.'
+                    : 'Hinta: ei arviota tälle mallille')
+              ),
+
+              // Magnum Opus, one chapter (W26)
+              e('button', {
+                className: 'faust-btn faust-btn--block',
+                onClick: () => generateChapter(activeChapterId),
+                disabled: !activeChapter || isGenerating || !batchProcessorRef.current,
+                'aria-busy': oneRunning || undefined,
+                title: isGenerating ? runningTip
+                  : !activeChapter ? 'Avaa ensin luku'
+                  : !batchProcessorRef.current ? notReadyTip
+                  : 'Magnum Opus – kirjoita luku tekoälyllä: tekoäly kirjoittaa koko luvun ja käyttää pohjana luvun otsikkoa ja aiempia lukuja. Jos luvussa on jo tekstiä, se korvataan; tästä kysytään ensin.'
+              }, oneRunning ? busyFace : icons.stone({ size: 14 }), oneRunning ? 'Kirjoitetaan lukua…' : 'Kirjoita luku…'),
+
+              // Magnum Opus, all chapters
+              e('button', {
+                className: 'faust-btn faust-btn--block',
+                style: { marginTop: 'var(--sp-2)' },
+                onClick: () => askAndGenerateAllChapters(),
+                disabled: isGenerating || !batchProcessorRef.current,
+                'aria-busy': allRunning || undefined,
+                title: isGenerating ? runningTip
+                  : !batchProcessorRef.current ? notReadyTip
+                  : 'Tekoäly kirjoittaa jokaisen luvun alusta ja korvaa nykyisen tekstin. Tästä kysytään ensin.'
+              }, allRunning ? busyFace : icons.stone({ size: 14 }), allRunning ? 'Kirjoitetaan lukuja…' : 'Kirjoita kaikki luvut…')
+            );
+          })(),
 
           // AI Cost Tracking
-          costOptimizerRef.current && e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-              e('span', null, 'AI COST TRACKING'),
-              e('button', {
-                onClick: () => {
-                  if (confirm('Nollataanko kustannusseuranta? Tämä ei vaikuta projektiin, vain tilastoihin.')) {
-                    costOptimizerRef.current.reset();
-                    setProject({ ...project });
-                  }
-                },
-                style: {
-                  padding: '2px 6px',
-                  background: 'transparent',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '3px',
-                  color: 'var(--text-3)',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '9px'
-                }
-              }, 'Nollaa')
-            ),
+          inspectorTab === 'ai' && costOptimizerRef.current && (() => {
+            const stats = costOptimizerRef.current.getStats();
+            // Money (M B.13): two decimals; a positive amount under half a cent keeps one significant digit, never 0,00
+            const money = (amount) => {
+              const value = Number(amount) || 0;
+              const digits = value > 0 && value < 0.005 ? { maximumSignificantDigits: 1 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+              return `noin ${value.toLocaleString('fi-FI', digits)} $`;
+            };
+            const providers = Object.keys(stats.byProvider || {});
 
-            // Overall stats
-            (() => {
-              const stats = costOptimizerRef.current.getStats();
-              return e('div', { style: { marginBottom: '12px', padding: '10px', background: 'var(--bg-2)', borderRadius: '4px', border: '1px solid var(--border-color)' } },
-                // Total spent (highlighted)
-                e('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid var(--border-color)' } },
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-2)' } }, 'Kokonaiskustannus:'),
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '14px', color: '#4CAF50', fontWeight: 600 } },
-                    `$${stats.totalSpent.toFixed(4)}`)
+            return e('section', { className: 'faust-section' },
+              e('div', { className: 'faust-section__head' },
+                e('div', { className: 'faust-section__title' }, 'Tekoälyn kustannukset')
+              ),
+              e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+                // Overall stats
+                e('div', { className: 'faust-card faust-card--compact' },
+                  e('div', { className: 'faust-kv' }, e('span', null, 'Yhteensä:'), e('span', null, money(stats.totalSpent))),
+                  e('div', { className: 'faust-kv' }, e('span', null, 'Pyyntöjä:'), e('span', null, (stats.totalRequests || 0).toLocaleString('fi-FI'))),
+                  e('div', { className: 'faust-kv' }, e('span', null, 'Käsiteltyä tekstiä (tokenia):'), e('span', null, (stats.totalTokens || 0).toLocaleString('fi-FI'))),
+                  e('div', { className: 'faust-kv' }, e('span', null, 'Keskimäärin / pyyntö:'), e('span', null, money(stats.averageCostPerRequest)))
                 ),
 
-                // Request count
-                e('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' } },
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } }, 'Pyyntöjä:'),
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-2)' } },
-                    stats.totalRequests.toLocaleString())
-                ),
-
-                // Token count
-                e('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' } },
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } }, 'Tokeneita:'),
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-2)' } },
-                    stats.totalTokens.toLocaleString())
-                ),
-
-                // Average per request
-                e('div', { style: { display: 'flex', justifyContent: 'space-between', marginTop: '8px', paddingTop: '8px', borderTop: '1px solid var(--border-color)' } },
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } }, 'Keskiarvo/pyyntö:'),
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: '#FFA726' } },
-                    `$${stats.averageCostPerRequest.toFixed(4)}`)
-                )
-              );
-            })(),
-
-            // By provider breakdown
-            (() => {
-              const stats = costOptimizerRef.current.getStats();
-              const providers = Object.keys(stats.byProvider || {});
-
-              if (providers.length === 0) {
-                return null;
-              }
-
-              return e('details', { style: { marginTop: '8px' } },
-                e('summary', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '10px',
-                    color: 'var(--sigil)',
-                    cursor: 'pointer',
-                    userSelect: 'none',
-                    marginBottom: '8px'
-                  }
-                }, `⊳ Kustannukset providereittain (${providers.length})`),
-
-                e('div', { style: { marginTop: '8px' } },
-                  providers.map(provider => {
-                    const providerStats = stats.byProvider[provider];
-                    const providerLabels = {
-                      anthropic: 'Claude',
-                      openai: 'OpenAI',
-                      deepseek: 'DeepSeek',
-                      grok: 'Grok'
-                    };
-
-                    return e('div', {
-                      key: provider,
-                      style: {
-                        marginBottom: '8px',
-                        padding: '8px',
-                        background: 'var(--bg-2)',
-                        borderRadius: '4px',
-                        border: '1px solid var(--border-color)'
-                      }
-                    },
-                      // Provider name and cost
-                      e('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' } },
-                        e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 600, color: 'var(--text)' } },
-                          providerLabels[provider] || provider),
-                        e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: '#4CAF50', fontWeight: 600 } },
-                          `$${providerStats.cost.toFixed(4)}`)
-                      ),
-
-                      // Requests and tokens
-                      e('div', { style: { display: 'flex', justifyContent: 'space-between' } },
-                        e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-3)' } },
-                          `${providerStats.requests} pyyntöä`),
-                        e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-3)' } },
-                          `${providerStats.tokens.toLocaleString()} tokenia`)
-                      )
-                    );
-                  })
-                )
-              );
-            })()
-          ),
-
-          // Story Continuity Tracker
-          continuityTrackerRef.current && e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'STORY CONTINUITY'),
-
-            // Stats overview
-            (() => {
-              const cont = project.continuity || { characters: {}, locations: {}, timeline: [], facts: [] };
-              const numCharacters = Object.keys(cont.characters || {}).length;
-              const numLocations = Object.keys(cont.locations || {}).length;
-              const numEvents = (cont.timeline || []).length;
-              const numFacts = (cont.facts || []).length;
-
-              return e('div', { style: { marginBottom: '12px', padding: '10px', background: 'var(--bg-2)', borderRadius: '4px', border: '1px solid var(--border-color)' } },
-                e('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' } },
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } }, 'Tracked characters:'),
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-2)', fontWeight: 600 } },
-                    numCharacters)
-                ),
-                e('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' } },
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } }, 'Tracked locations:'),
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-2)', fontWeight: 600 } },
-                    numLocations)
-                ),
-                e('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: '4px' } },
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } }, 'Timeline events:'),
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-2)', fontWeight: 600 } },
-                    numEvents)
-                ),
-                e('div', { style: { display: 'flex', justifyContent: 'space-between' } },
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } }, 'Story facts:'),
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-2)', fontWeight: 600 } },
-                    numFacts)
-                )
-              );
-            })(),
-
-            // Quick action buttons
-            e('div', { style: { display: 'flex', gap: '8px', marginBottom: '12px' } },
-              Object.keys(project.continuity?.locations || {}).length > 0 && e('button', {
-                onClick: () => setShowLocationSheet(true),
-                style: {
-                  flex: 1,
-                  padding: '6px',
-                  background: 'transparent',
-                  border: '1px solid var(--sigil)',
-                  borderRadius: '4px',
-                  color: 'var(--sigil)',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '10px'
-                }
-              }, `♁ Locations (${Object.keys(project.continuity?.locations || {}).length})`),
-
-              (project.plotThreads || []).length > 0 && e('button', {
-                onClick: () => setShowThreadSheet(true),
-                style: {
-                  flex: 1,
-                  padding: '6px',
-                  background: 'transparent',
-                  border: '1px solid var(--sigil)',
-                  borderRadius: '4px',
-                  color: 'var(--sigil)',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '10px'
-                }
-              }, `∞ Threads (${(project.plotThreads || []).length})`)
-            ),
-
-            // Plot Thread Warnings (from PlotThreadTracker)
-            (() => {
-              if (!window.PlotThreadTracker) return null;
-              const tracker = new window.PlotThreadTracker(project);
-              const warnings = tracker.getWarnings();
-              if (warnings.length === 0) return null;
-
-              return e('div', {
-                style: {
-                  marginBottom: '12px',
-                  padding: '10px',
-                  background: 'rgba(255,152,0,0.1)',
-                  border: '1px solid rgba(255,152,0,0.3)',
-                  borderRadius: '4px'
-                }
-              },
-                e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '10px',
-                    color: '#FFA726',
-                    marginBottom: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px'
-                  }
-                },
-                  e('span', null, '⚠️'),
-                  e('span', { style: { fontWeight: 600 } }, `JUONIVAROITUKSET (${warnings.length})`)
-                ),
-                warnings.slice(0, 5).map((warning, idx) =>
-                  e('div', {
-                    key: idx,
-                    style: {
-                      marginBottom: idx < warnings.length - 1 ? '8px' : 0,
-                      padding: '6px 8px',
-                      background: warning.severity === 'high' ? 'rgba(244,67,54,0.15)' : 'rgba(255,193,7,0.15)',
-                      borderRadius: '3px',
-                      borderLeft: `3px solid ${warning.severity === 'high' ? '#f44336' : '#FFC107'}`
-                    }
-                  },
-                    e('div', {
-                      style: {
-                        fontFamily: 'IBM Plex Mono',
-                        fontSize: '11px',
-                        color: 'var(--text)',
-                        marginBottom: '2px'
-                      }
-                    }, warning.threadName),
-                    e('div', {
-                      style: {
-                        fontFamily: 'IBM Plex Mono',
-                        fontSize: '9px',
-                        color: 'var(--text-2)'
-                      }
-                    }, warning.message),
-                    e('div', {
-                      style: {
-                        fontFamily: 'IBM Plex Mono',
-                        fontSize: '9px',
-                        color: 'var(--text-3)',
-                        fontStyle: 'italic',
-                        marginTop: '2px'
-                      }
-                    }, warning.recommendation)
+                // By source: not rendered while every request is booked under one source
+                providers.length > 1 && e('details', { className: 'faust-disclosure' },
+                  e('summary', null, icons.chevronRight({ size: 14 }), `Kustannukset lähteittäin (${providers.length})`),
+                  e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginTop: 'var(--sp-1)' } },
+                    providers.map(provider => {
+                      const providerStats = stats.byProvider[provider] || {};
+                      return e('div', { key: provider, className: 'faust-card faust-card--compact' },
+                        e('div', { className: 'faust-kv' }, e('span', null, labelOf('costSource', provider)), e('span', null, money(providerStats.cost))),
+                        e('div', { className: 'faust-meta' },
+                          `${count(providerStats.requests || 0, 'pyyntö')} · ${(providerStats.tokens || 0).toLocaleString('fi-FI')} tokenia`)
+                      );
+                    })
                   )
                 ),
-                warnings.length > 5 && e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '9px',
-                    color: 'var(--text-3)',
-                    textAlign: 'center',
-                    marginTop: '8px'
+
+                e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--block',
+                  onClick: async () => {
+                    if (!(await askConfirm('Nollataanko kustannuslaskuri?', 'Kertyneet kustannustiedot poistetaan. Projektin teksti ei muutu.', 'Nollaa kustannuslaskuri', 'Peruuta', { danger: true }))) return;
+                    costOptimizerRef.current.reset();
+                    setProject(prev => ({ ...prev }));
                   }
-                }, `...ja ${warnings.length - 5} muuta varoitusta`)
-              );
-            })(),
+                }, 'Nollaa kustannuslaskuri')
+              )
+            );
+          })(),
 
-            // Characters detail
-            (() => {
-              const characters = Object.values(project.continuity?.characters || {});
-              if (characters.length === 0) return null;
+          // Story Continuity Tracker
+          inspectorTab === 'project' && continuityTrackerRef.current && (() => {
+            const cont = project.continuity || {};
+            const characters = Object.values(cont.characters || {});
+            const locations = Object.values(cont.locations || {});
 
-              return e('details', { style: { marginBottom: '8px' } },
-                e('summary', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--sigil)', cursor: 'pointer', userSelect: 'none', marginBottom: '8px' } },
-                  `☉ Characters (${characters.length})`),
-                e('div', { style: { marginTop: '8px', maxHeight: '200px', overflowY: 'auto' } },
-                  characters.slice(0, 20).map(char => e('div', {
-                    key: char.name,
-                    style: { marginBottom: '6px', padding: '6px', background: 'var(--bg-2)', borderRadius: '3px', border: '1px solid var(--border-color)' }
-                  },
-                    e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 600, color: 'var(--text)', marginBottom: '2px' } }, char.name),
-                    e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-3)' } },
-                      `${(char.appearances || []).length} appearances: ${(char.appearances || []).slice(0, 5).map(i => `#${i + 1}`).join(', ')}${(char.appearances || []).length > 5 ? '...' : ''}`)
-                  )),
-                  characters.length > 20 && e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-3)', fontStyle: 'italic', marginTop: '8px', textAlign: 'center' } },
-                    `...and ${characters.length - 20} more`)
+            return e('section', { className: 'faust-section' },
+              e('div', { className: 'faust-section__head' },
+                e('div', { className: 'faust-section__title' }, 'Tarinan tiedot')
+              ),
+              e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+                e('div', { className: 'faust-meta' }, 'Hahmot ja paikat, jotka tekoäly on poiminut luvuista.'),
+
+                e('div', { className: 'faust-card faust-card--compact' },
+                  e('div', { className: 'faust-kv' }, e('span', null, 'Hahmoja:'), e('span', null, characters.length.toLocaleString('fi-FI'))),
+                  e('div', { className: 'faust-kv' }, e('span', null, 'Paikkoja:'), e('span', null, locations.length.toLocaleString('fi-FI')))
+                ),
+
+                e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--block',
+                  title: 'Avaa luettelo tarinan tapahtumapaikoista',
+                  onClick: () => setShowLocationSheet(true)
+                }, icons.terra({ size: 14 }), `Avaa paikat (${locations.length})`),
+
+                // Characters by chapter
+                characters.length > 0 && e('details', { className: 'faust-disclosure' },
+                  e('summary', null, icons.chevronRight({ size: 14 }), e('span', null, icons.sol({ size: 14 })), `Hahmot luvuittain (${characters.length})`),
+                  e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginTop: 'var(--sp-1)' } },
+                    characters.slice(0, 20).map(char => {
+                      const chapters = char.appearances || [];
+                      return e('div', { key: char.name, className: 'faust-card faust-card--compact' },
+                        e('div', { className: 'faust-card__title' }, char.name),
+                        chapters.length > 0 && e('div', { className: 'faust-meta' },
+                          `Esiintyy ${chapters.length} luvussa: ${chapters.slice(0, 5).map(i => i + 1).join(', ')}${chapters.length > 5 ? '…' : ''}`)
+                      );
+                    }),
+                    characters.length > 20 && e('div', { className: 'faust-meta' }, `… ja ${count(characters.length - 20, 'muu')}`)
+                  )
+                ),
+
+                // Locations by chapter
+                locations.length > 0 && e('details', { className: 'faust-disclosure' },
+                  e('summary', null, icons.chevronRight({ size: 14 }), e('span', null, icons.terra({ size: 14 })), `Paikat luvuittain (${locations.length})`),
+                  e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginTop: 'var(--sp-1)' } },
+                    locations.slice(0, 15).map(loc => {
+                      const chapters = loc.appearances || [];
+                      return e('div', { key: loc.name, className: 'faust-card faust-card--compact' },
+                        e('div', { className: 'faust-card__title' }, loc.name),
+                        e('div', { className: 'faust-meta' },
+                          Number.isInteger(loc.firstMentioned)
+                            ? `Ensimmäinen maininta: luku ${loc.firstMentioned + 1} · esiintyy ${chapters.length} luvussa`
+                            : `Esiintyy ${chapters.length} luvussa`)
+                      );
+                    }),
+                    locations.length > 15 && e('div', { className: 'faust-meta' }, `… ja ${count(locations.length - 15, 'muu')}`)
+                  )
                 )
-              );
-            })(),
-
-            // Locations detail
-            (() => {
-              const locations = Object.values(project.continuity?.locations || {});
-              if (locations.length === 0) return null;
-
-              return e('details', { style: { marginBottom: '8px' } },
-                e('summary', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--sigil)', cursor: 'pointer', userSelect: 'none', marginBottom: '8px' } },
-                  `♁ Locations (${locations.length})`),
-                e('div', { style: { marginTop: '8px', maxHeight: '200px', overflowY: 'auto' } },
-                  locations.slice(0, 15).map(loc => e('div', {
-                    key: loc.name,
-                    style: { marginBottom: '6px', padding: '6px', background: 'var(--bg-2)', borderRadius: '3px', border: '1px solid var(--border-color)' }
-                  },
-                    e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 600, color: 'var(--text)', marginBottom: '2px' } }, loc.name),
-                    e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-3)' } },
-                      `First: Chapter #${loc.firstMentioned + 1}, ${(loc.appearances || []).length} total`)
-                  )),
-                  locations.length > 15 && e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-3)', fontStyle: 'italic', marginTop: '8px', textAlign: 'center' } },
-                    `...and ${locations.length - 15} more`)
-                )
-              );
-            })()
-          ),
+              )
+            );
+          })(),
 
           // Version History (for active chapter)
-          activeChapter && activeChapter.versions && activeChapter.versions.length > 0 && e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'VERSION HISTORY'),
+          inspectorTab === 'chapter' && activeChapter && (() => {
+            const versions = activeChapter.versions || [];
+            const [versionTotal, versionNoun] = countParts(versions.length, 'versio');
+            // Money (M B.13): two decimals; a positive amount under half a cent keeps one significant digit, never 0,00
+            const money = (amount) => {
+              const value = Number(amount) || 0;
+              const digits = value > 0 && value < 0.005 ? { maximumSignificantDigits: 1 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+              return `noin ${value.toLocaleString('fi-FI', digits)} $`;
+            };
 
-            // Version count
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '12px' } },
-              `${activeChapter.versions.length} versio${activeChapter.versions.length !== 1 ? 'ta' : ''}`),
+            return e('section', { className: 'faust-section' },
+              e('div', { className: 'faust-section__head' },
+                e('div', { className: 'faust-section__title' }, 'Luvun versiot')
+              ),
+              e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+                versions.length === 0
+                  ? e('div', { className: 'faust-empty faust-empty--compact' },
+                      e('div', { className: 'faust-empty__title' }, 'Ei vielä versioita.'),
+                      e('div', { className: 'faust-empty__hint' }, 'Versio tallentuu, kun tekoäly kirjoittaa luvun tai kirjoittaa sen uudelleen.')
+                    )
+                  : e('div', null, e('span', { className: 'faust-stat' }, e('b', null, versionTotal), versionNoun)),
 
-            // Version list (show last 5)
-            activeChapter.versions.slice(-5).reverse().map((version, idx) => {
-              const isCurrent = version.id === activeChapter.currentVersion;
-              const versionDate = new Date(version.timestamp);
-              const dateStr = versionDate.toLocaleDateString('fi-FI', { day: '2-digit', month: '2-digit', year: 'numeric' });
-              const timeStr = versionDate.toLocaleTimeString('fi-FI', { hour: '2-digit', minute: '2-digit' });
+                // Version list (the last five, newest first)
+                versions.slice(-5).reverse().map((version) => {
+                  const isCurrent = version.id === activeChapter.currentVersion;
+                  const versionNo = String(version.id).replace(/\D/g, '');
+                  // Date as in the dialog Luvun versiot (M B.13: 5.11.2026 klo 9.07); no line for a missing or invalid time
+                  const versionDate = version.timestamp ? new Date(version.timestamp) : null;
+                  const dateLine = versionDate && !Number.isNaN(versionDate.getTime())
+                    ? versionDate.toLocaleDateString('fi-FI') + ' klo ' + versionDate.toLocaleTimeString('fi-FI', { hour: 'numeric', minute: '2-digit' })
+                    : '';
+                  const from = version.generatedFrom || {};
+                  const instruction = typeof from.userFeedback === 'string' ? from.userFeedback.trim() : '';
+                  const origin = from.mode === 'manual'
+                    ? 'Oma teksti'
+                    : instruction
+                      ? `Kirjoitettu uudelleen ohjeella: ”${instruction}”`
+                      : 'Tekoälyn kirjoittama' + (from.mode ? ` · työtapa: ${labelOf('mode', from.mode).toLowerCase()}` : '');
+                  const rating = version.userRating || 0;
 
-              return e('div', {
-                key: version.id,
-                style: {
-                  marginBottom: '8px',
-                  padding: '8px',
-                  background: isCurrent ? 'var(--sigil)' + '22' : 'var(--bg-2)',
-                  border: `1px solid ${isCurrent ? 'var(--sigil)' : 'var(--border-color)'}`,
-                  borderRadius: '4px'
-                }
-              },
-                // Version ID and timestamp
-                e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' } },
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 600, color: isCurrent ? 'var(--sigil)' : 'var(--text)' } },
-                    `${version.id}${isCurrent ? ' (current)' : ''}`),
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-3)' } },
-                    `${dateStr} ${timeStr}`)
-                ),
+                  return e('div', { key: version.id, className: 'faust-card faust-card--compact' + (isCurrent ? ' is-selected' : '') },
+                    e('div', { className: 'faust-card__title' }, `Versio ${versionNo}${isCurrent ? ' (nykyinen)' : ''}`),
+                    dateLine && e('div', { className: 'faust-meta' }, dateLine),
+                    e('div', { className: 'faust-meta' }, origin),
+                    e('div', { className: 'faust-meta' },
+                      count(version.wordCount || 0, 'sana') +
+                      (version.cost > 0 ? ` · ${money(version.cost)}` : '')),
+                    version.userFeedback && e('div', { className: 'faust-meta' }, `Oma kommentti: ”${version.userFeedback}”`),
 
-                // Mode and model
-                e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-2)', marginBottom: '2px' } },
-                  `Mode: ${version.generatedFrom?.mode || 'unknown'}`),
-                e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-2)', marginBottom: '2px' } },
-                  `Model: ${version.generatedFrom?.model || 'unknown'}`),
+                    // Own rating: five stars; each keeps the comment (third argument)
+                    e('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' } },
+                      e('span', { className: 'faust-meta' }, 'Oma arvio:'),
+                      e('div', { className: 'faust-rating', role: 'radiogroup', 'aria-label': 'Oma arvio' },
+                        [1, 2, 3, 4, 5].map(n => e('button', {
+                          key: n,
+                          type: 'button',
+                          className: 'faust-rating__star' + (n <= rating ? ' is-on' : ''),
+                          role: 'radio',
+                          'aria-checked': n === rating,
+                          'aria-label': 'Anna ' + count(n, 'tähti'),
+                          title: 'Anna ' + count(n, 'tähti'),
+                          onClick: () => rateVersion(version.id, n, version.userFeedback || null)
+                        }, icons.star({ size: 14, filled: n <= rating })))
+                      )
+                    ),
 
-                // Word count and cost
-                e('div', { style: { display: 'flex', justifyContent: 'space-between', marginTop: '4px' } },
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } },
-                    `${version.wordCount} sanaa`),
-                  version.cost > 0 && e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: '#FFA726' } },
-                    `$${version.cost.toFixed(4)}`)
-                ),
+                    e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)' } },
+                      e('button', {
+                        type: 'button',
+                        className: 'faust-btn faust-btn--sm faust-btn--quiet',
+                        onClick: async () => {
+                          const text = await askText('Oma kommentti versiosta (valinnainen)', version.userFeedback || '', '', 'Tallenna kommentti');
+                          if (text === null || text === undefined) return;
+                          rateVersion(version.id, version.userRating, text || null);
+                        }
+                      }, version.userFeedback ? 'Muokkaa kommenttia…' : 'Lisää kommentti…'),
 
-                // User rating if exists
-                version.userRating && e('div', { style: { marginTop: '4px' } },
-                  e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px' } },
-                    '⭐'.repeat(version.userRating))
-                ),
-
-                // User feedback if exists
-                version.userFeedback && e('div', { style: { marginTop: '4px', fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-3)', fontStyle: 'italic' } },
-                  `"${version.userFeedback}"`),
-
-                // Action buttons
-                e('div', { style: { display: 'flex', gap: '4px', marginTop: '8px' } },
-                  // Restore button (only if not current)
-                  !isCurrent && e('button', {
-                    onClick: () => {
-                      if (confirm(`Palauta versio ${version.id}?`)) {
-                        restoreVersion(version.id);
-                      }
-                    },
-                    style: {
-                      flex: 1,
-                      padding: '4px 8px',
-                      background: 'var(--sigil)',
-                      border: 'none',
-                      borderRadius: '4px',
-                      color: '#000',
-                      cursor: 'pointer',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '9px',
-                      fontWeight: 600
-                    }
-                  }, '↩️ Palauta'),
-
-                  // Rate button
-                  e('button', {
-                    onClick: async () => {
-                      const rating = parseInt(await askText('Arvostele versio (1-5 tähteä):'));
-                      if (rating >= 1 && rating <= 5) {
-                        const feedback = await askText('Vapaaehtoinen palaute:');
-                        rateVersion(version.id, rating, feedback);
-                      }
-                    },
-                    style: {
-                      flex: 1,
-                      padding: '4px 8px',
-                      background: 'transparent',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '4px',
-                      color: 'var(--text-2)',
-                      cursor: 'pointer',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '9px'
-                    }
-                  }, version.userRating ? `⭐ ${version.userRating}/5` : '⭐ Arvostele')
-                )
-              );
-            }),
-
-            // Regenerate button (at top of version history)
-            e('button', {
-              onClick: () => setShowRegenerateDialog(true),
-              disabled: isGenerating,
-              style: {
-                width: '100%',
-                padding: '8px 12px',
-                marginTop: '12px',
-                background: isGenerating ? 'var(--bg-2)' : 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: isGenerating ? 'var(--text-3)' : '#000',
-                cursor: isGenerating ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                fontWeight: 600
-              }
-            }, isGenerating ? '◌ Generoidaan...' : '⟳ Generoi Uudelleen'),
-
-            // Show more link if there are more than 5 versions
-            activeChapter.versions.length > 5 && e('div', { style: { textAlign: 'center', marginTop: '8px' } },
-              e('button', {
-                style: {
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--sigil)',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '10px',
-                  cursor: 'pointer',
-                  textDecoration: 'underline'
-                }
-              }, `Näytä kaikki ${activeChapter.versions.length} versiota...`)
-            )
-          ),
-
-          // Story Complexity
-          complexity && e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'TARINAN KOMPLEKSISUUS'),
-
-            // Complexity score badge
-            e('div', {
-              style: {
-                display: 'inline-block',
-                padding: '4px 8px',
-                background: complexity.recommendation.color + '22',
-                border: `1px solid ${complexity.recommendation.color}`,
-                borderRadius: '4px',
-                marginBottom: '8px'
-              }
-            },
-              e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '14px', fontWeight: 600, color: complexity.recommendation.color } },
-                `${complexity.score} / 100`)
-            ),
-
-            // Phase indicator
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text)', marginBottom: '4px', fontWeight: 500 } },
-              complexity.recommendation.title),
-
-            // Breakdown
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } },
-              e('div', null, `⬡ ${complexity.wordCount.toLocaleString('fi-FI')} sanaa`),
-              e('div', null, `☉ ${complexity.characterCount} hahmoa`),
-              e('div', null, `∞ ${complexity.plotThreadCount} juonilankaa`),
-              e('div', null, `☽ ${complexity.timelineCount} aikajanaa`),
-              complexity.hasNonLinear && e('div', null, `⤨ Epälineaarinen`)
-            ),
-
-            // Recommendation
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginTop: '8px', padding: '8px', background: 'var(--bg-2)', borderRadius: '4px', borderLeft: `3px solid ${complexity.recommendation.color}` } },
-              e('div', { style: { fontWeight: 500, marginBottom: '4px' } }, complexity.recommendation.message),
-              e('div', { style: { fontStyle: 'italic' } }, complexity.recommendation.action),
-              e('div', { style: { marginTop: '4px', color: complexity.recommendation.color } }, `Tarkkuus: ${complexity.recommendation.accuracy}`)
-            )
-          ),
-
-          // Consistency Checker Section
-          e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                marginBottom: '8px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }
-            },
-              e('span', null, 'JOHDONMUKAISUUSTARKISTUS'),
-              e('button', {
-                onClick: async () => {
-                  if (!window.ConsistencyChecker) {
-                    alert('ConsistencyChecker ei ole ladattu');
-                    return;
-                  }
-                  setGenerationProgress({ stage: 'checking', message: 'Tarkistetaan johdonmukaisuutta...' });
-                  try {
-                    const checker = new window.ConsistencyChecker(project, window.electronAPI);
-                    const result = await checker.runFullCheck();
-                    setGenerationProgress(null);
-                    if (result.success) {
-                      if (result.errors.length === 0) {
-                        alert('✅ Ei johdonmukaisuusvirheitä!');
-                      } else {
-                        alert(`⚠️ Löydettiin ${result.errors.length} johdonmukaisuusongelmaa:\n\n` +
-                          `Kriittisiä: ${result.summary.critical}\n` +
-                          `Korkeita: ${result.summary.high}\n` +
-                          `Keskitasoa: ${result.summary.medium}\n` +
-                          `Matalia: ${result.summary.low}\n\n` +
-                          'Tarkasta merkinnät editorissa.');
-                      }
-                      setProject({ ...project });
-                    } else {
-                      alert('Tarkistus epäonnistui: ' + result.error);
-                    }
-                  } catch (err) {
-                    setGenerationProgress(null);
-                    console.error('[ConsistencyChecker]', err);
-                    alert('Virhe: ' + err.message);
-                  }
-                },
-                style: {
-                  padding: '4px 8px',
-                  background: 'var(--sigil)',
-                  border: 'none',
-                  borderRadius: '4px',
-                  color: '#000',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '9px',
-                  fontWeight: 600
-                }
-              }, '⊙ Tarkista')
-            ),
-
-            // Show current chapter annotations count
-            activeChapter && activeChapter.annotations && e('div', {
-              style: {
-                marginBottom: '8px',
-                padding: '8px',
-                background: 'var(--bg-2)',
-                borderRadius: '4px',
-                border: '1px solid var(--border-color)'
-              }
-            },
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--text-2)',
-                  marginBottom: '4px'
-                }
-              }, `Luvussa ${activeChapter.annotations.length} merkintää`),
-              (() => {
-                const aiAnnotations = (activeChapter.annotations || []).filter(a => a.source === 'ai');
-                const consistencyAnnotations = aiAnnotations.filter(a => a.type === 'ai-consistency' || a.metadata?.category);
-                if (consistencyAnnotations.length === 0) return null;
-                return e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '10px',
-                    color: 'var(--text-3)'
-                  }
-                }, `${consistencyAnnotations.length} johdonmukaisuusmerkintää`);
-              })()
-            ),
-
-            // Quick info about what this does
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '9px',
-                color: 'var(--text-3)',
-                fontStyle: 'italic'
-              }
-            }, 'Tarkistaa hahmojen johdonmukaisuuden, aikajanan ja sijainnit.')
-          ),
-
-          // Plot Threads
-          e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'JUONILANGAT'),
-
-            // Thread stats
-            plotThreadTrackerRef.current && plotThreads.length > 0 && (() => {
-              const stats = plotThreadTrackerRef.current.getStats();
-              const warnings = plotThreadTrackerRef.current.getWarnings();
-
-              return e('div', null,
-                // Stats
-                e('div', { style: { marginBottom: '12px' } },
-                  e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)' } },
-                    `${stats.total} lankaa • ${stats.active} aktiivinen • ${stats.resolved} ratkaistu`),
-                  warnings.length > 0 && e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: '#ff6b6b', marginTop: '4px' } },
-                    `⚠️ ${warnings.length} varoitus${warnings.length !== 1 ? 'ta' : ''}`)
-                ),
-
-                // Threads list
-                plotThreads.slice(0, 5).map(thread => {
-                  const isResolved = thread.status === 'resolved';
-                  const timeline = plotThreadTrackerRef.current.getTimeline(thread.id);
-
-                  return e('div', {
-                    key: thread.id,
-                    style: {
-                      marginBottom: '8px',
-                      padding: '8px',
-                      background: 'var(--bg-2)',
-                      border: `1px solid ${isResolved ? 'var(--text-3)' : thread.color}`,
-                      borderLeft: `3px solid ${thread.color}`,
-                      borderRadius: '4px'
-                    }
-                  },
-                    e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', fontWeight: 600, color: 'var(--text)', marginBottom: '2px' } },
-                      `${thread.name} ${isResolved ? '✓' : ''}`),
-                    e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-3)' } },
-                      `${thread.type.replace('_', ' ')} • ${thread.priority}`),
-                    timeline && e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-3)', marginTop: '4px' } },
-                      `Ch ${timeline[0].chapterIndex + 1} → Ch ${timeline[timeline.length - 1].chapterIndex + 1}`)
+                      // Restore (only if not current)
+                      !isCurrent && e('button', {
+                        type: 'button',
+                        className: 'faust-btn faust-btn--sm',
+                        title: 'Palauta tämä versio luvun tekstiksi',
+                        onClick: async () => {
+                          if (!(await askConfirm(`Palautetaanko versio ${versionNo}?`, `Luvun ”${activeChapter.title || 'Nimetön luku'}” nykyinen teksti korvataan versiolla ${versionNo}.`, 'Palauta versio', 'Peruuta', { danger: true }))) return;
+                          restoreVersion(version.id);
+                        }
+                      }, 'Palauta…')
+                    )
                   );
                 }),
 
-                plotThreads.length > 5 && e('div', { style: { textAlign: 'center', marginTop: '8px' } },
-                  e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } },
-                    `+${plotThreads.length - 5} lisää lankaa`)
-                ),
+                // Rewrite the chapter with an instruction
+                e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--block',
+                  title: 'Tekoäly kirjoittaa koko luvun uudelleen ohjeesi mukaan ja korvaa luvun nykyisen tekstin.',
+                  onClick: () => setShowRegenerateDialog(true),
+                  disabled: isGenerating,
+                  'aria-busy': isGenerating
+                }, isGenerating && e('span', { className: 'faust-spinner faust-spinner--sm' }), isGenerating ? 'Kirjoitetaan…' : 'Kirjoita luku uudelleen…'),
 
-                // Warnings
-                warnings.length > 0 && e('div', { style: { marginTop: '12px', padding: '8px', background: 'rgba(255,107,107,0.1)', border: '1px solid rgba(255,107,107,0.3)', borderRadius: '4px' } },
-                  e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: '#ff6b6b', fontWeight: 600, marginBottom: '4px' } },
-                    `⚠️ VAROITUKSET`),
-                  warnings.slice(0, 3).map((w, idx) =>
-                    e('div', { key: idx, style: { fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-2)', marginTop: '2px' } },
-                      `• ${w.message}`)
+                // The whole list in the dialog Luvun versiot
+                versions.length > 0 && e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--block',
+                  onClick: () => setShowVersionHistory(true)
+                }, `Näytä kaikki versiot (${versions.length})`)
+              )
+            );
+          })(),
+
+          // Plot Threads
+          inspectorTab === 'project' && e('section', { className: 'faust-section' },
+            e('div', { className: 'faust-section__head' },
+              e('div', { className: 'faust-section__title' }, 'Juonilangat')
+            ),
+            e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+              // Thread stats, cards and warnings
+              plotThreadTrackerRef.current && plotThreads.length > 0 && (() => {
+                const stats = plotThreadTrackerRef.current.getStats();
+                const warnings = plotThreadTrackerRef.current.getWarnings();
+                const chapterTotal = (project.structure || []).length;
+                const threadStripes = ['var(--thread-1)', 'var(--thread-2)', 'var(--thread-3)', 'var(--thread-4)', 'var(--thread-5)', 'var(--thread-6)'];
+                // The service writes its messages in mixed language: each text is rebuilt from the type
+                const describeWarning = (w) => {
+                  const threadName = w.threadName || 'Nimetön juonilanka';
+                  if (w.type === 'forgotten_thread') {
+                    return [`Juonilankaa ”${threadName}” ei ole mainittu ${chapterTotal - 1 - w.lastMentioned} lukuun`, 'Mainitse juonilanka tai ratkaise se lähiluvuissa.'];
+                  }
+                  if (w.type === 'unresolved_ending') {
+                    return [`Juonilanka ”${threadName}” on ratkaisematta`, 'Ratkaise juonilanka ennen tarinan loppua.'];
+                  }
+                  if (w.type === 'too_many_questions') {
+                    const questionThread = (project.plotThreads || []).find(t => t.id === w.threadId);
+                    const questions = questionThread && Array.isArray(questionThread.openQuestions) ? questionThread.openQuestions.length : 0;
+                    if (questions > 0) return [`Juonilangassa ”${threadName}” on ${questions} avointa kysymystä`, 'Vastaa osaan kysymyksistä tulevissa luvuissa.'];
+                  }
+                  return [w.message, w.recommendation];
+                };
+
+                return e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+                  e('div', { className: 'faust-meta' },
+                    `${count(stats.total, 'juonilanka')} · ${stats.active} avoinna · ${stats.resolved} ratkaistu`),
+
+                  // Threads list
+                  plotThreads.slice(0, 5).map((thread, idx) => {
+                    const timeline = plotThreadTrackerRef.current.getTimeline(thread.id);
+                    const firstChapter = timeline && timeline.length > 0 ? timeline[0].chapterIndex + 1 : null;
+                    const lastChapter = timeline && timeline.length > 0 ? timeline[timeline.length - 1].chapterIndex + 1 : null;
+                    const statusChip = thread.status === 'resolved' ? 'faust-chip faust-chip--success faust-chip--dot'
+                      : thread.status === 'abandoned' ? 'faust-chip faust-chip--struck'
+                        : 'faust-chip faust-chip--hollow';
+                    const kind = [
+                      thread.type && labelOf('threadType', thread.type),
+                      thread.priority && `tärkeys: ${labelOf('priority', thread.priority).toLowerCase()}`
+                    ].filter(Boolean).join(' · ');
+
+                    return e('div', {
+                      key: thread.id,
+                      className: 'faust-card faust-card--compact faust-card--stripe',
+                      style: { '--stripe': threadStripes[idx % threadStripes.length] }
+                    },
+                      e('div', { className: 'faust-card__head' },
+                        e('span', { className: 'faust-card__title' }, thread.name || 'Nimetön juonilanka'),
+                        thread.status && e('span', { className: statusChip }, labelOf('threadStatus', thread.status))
+                      ),
+                      kind && e('div', { className: 'faust-meta' }, kind),
+                      firstChapter !== null && e('div', { className: 'faust-meta' },
+                        firstChapter === lastChapter ? `Luku ${firstChapter}` : `Luvut ${firstChapter}–${lastChapter}`)
+                    );
+                  }),
+
+                  plotThreads.length > 5 && e('div', { className: 'faust-meta' },
+                    `… ja ${count(plotThreads.length - 5, 'muu')} ${countParts(plotThreads.length - 5, 'juonilanka')[1]}`),
+
+                  // Warnings: one list, the advice under each warning
+                  warnings.length > 0 && e('div', { className: 'faust-callout faust-callout--warning' },
+                    icons.warning({ size: 16, className: 'faust-callout__icon' }),
+                    e('div', { className: 'faust-callout__title' }, `Varoitukset (${warnings.length})`),
+                    e('div', { className: 'faust-callout__body', style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+                      warnings.slice(0, 5).map((w, idx) => {
+                        const [warningText, advice] = describeWarning(w);
+                        return e('div', { key: idx },
+                          e('div', null, warningText),
+                          advice && e('div', { className: 'faust-meta' }, advice)
+                        );
+                      }),
+                      warnings.length > 5 && e('div', { className: 'faust-meta' },
+                        `… ja ${count(warnings.length - 5, 'muu')} ${countParts(warnings.length - 5, 'varoitus')[1]}`)
+                    )
                   )
-                )
-              );
-            })(),
+                );
+              })(),
 
-            // Detect threads button
-            e('button', {
-              onClick: detectPlotThreads,
-              disabled: detectingThreads || !plotThreadTrackerRef.current,
-              style: {
-                width: '100%',
-                padding: '8px',
-                marginTop: '8px',
-                background: detectingThreads || !plotThreadTrackerRef.current ? 'var(--bg-2)' : 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: detectingThreads || !plotThreadTrackerRef.current ? 'var(--text-3)' : '#000',
-                cursor: detectingThreads || !plotThreadTrackerRef.current ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                fontWeight: 600
-              }
-            }, detectingThreads ? '◌ Analysoidaan...' : plotThreads.length > 0 ? '⟳ Päivitä Langat' : '⊙ Havaitse Juonilangat')
+              // Detect threads button
+              e('button', {
+                type: 'button',
+                className: 'faust-btn faust-btn--block',
+                title: 'Tekoäly lukee käsikirjoituksen ja tunnistaa juonilangat. Nykyinen juonilankaluettelo korvataan.',
+                onClick: detectPlotThreads,
+                disabled: detectingThreads || !plotThreadTrackerRef.current,
+                'aria-busy': detectingThreads
+              },
+                detectingThreads && e('span', { className: 'faust-spinner faust-spinner--sm' }),
+                detectingThreads ? 'Tunnistetaan…' : plotThreads.length > 0 ? 'Tunnista juonilangat uudelleen' : 'Tunnista juonilangat'
+              ),
+
+              e('button', {
+                type: 'button',
+                className: 'faust-btn faust-btn--block',
+                title: 'Avaa luettelo juonista, joita seurataan luvusta toiseen',
+                onClick: () => setShowThreadSheet(true)
+              }, icons.lemniscate({ size: 14 }), `Avaa juonilangat (${(project.plotThreads || []).length})`)
+            )
           ),
 
           // Consistency Check
-          e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'JOHDONMUKAISUUS'),
+          inspectorTab === 'project' && (() => {
+            const checker = consistencyCheckerRef.current;
+            // Interim (request 2, XR-1): the checker sets failures to [] at the start of a run, so an
+            // empty list after a run means no contradictions. It survives a project change and a run that
+            // threw; XR-1 replaces the last three terms with logic's state consistencyChecked
+            const checkedClean = !checkingConsistency && consistencyErrors.length === 0 &&
+              !!checker && Array.isArray(checker.failures) && checker.failures.length === 0;
+            const markCount = activeChapter
+              ? (activeChapter.annotations || []).filter(a => a.type === 'ai_consistency' || a.type === 'ai-consistency').length
+              : 0;
+            const [errorTotal, errorNoun] = countParts(consistencyErrors.length, 'ristiriita');
+            const severityTotal = (levels) => consistencyErrors.filter(err => levels.includes(err.severity)).length;
+            const severities = [
+              ['Vakavia', severityTotal(['critical']), 'faust-chip faust-chip--error faust-chip--dot'],
+              ['Tärkeitä', severityTotal(['high']), 'faust-chip faust-chip--error faust-chip--dot'],
+              ['Lieviä', severityTotal(['medium', 'low']), 'faust-chip faust-chip--warning faust-chip--dot']
+            ].filter(row => row[1] > 0);
+            const errorTitles = {
+              character_inconsistency: 'Hahmon ristiriita',
+              name_variation: 'Nimen kirjoitusasu vaihtelee',
+              timeline_error: 'Aikajanan ristiriita',
+              location_inconsistency: 'Paikan ristiriita'
+            };
+            // The service writes three types in English: the text is rebuilt from the fields
+            const errorBody = (err) => {
+              if (err.type === 'name_variation') return 'Kirjoitusasut: ' + (err.variations || []).join(', ');
+              if ((err.type === 'timeline_error' || err.type === 'location_inconsistency') && err.description) return err.description;
+              return err.message;
+            };
+            const errorFix = (err) => {
+              if (err.type === 'name_variation') return `Käytä kaikkialla muotoa ”${err.characterName || (err.variations || [])[0] || ''}”.`;
+              if (err.suggestedFix === 'Manual review needed') return 'Tarkista käsin.';
+              return err.suggestedFix;
+            };
 
-            // Error summary
-            consistencyErrors.length > 0 && e('div', { style: { marginBottom: '12px' } },
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' } },
-                `${consistencyErrors.length} ongelma${consistencyErrors.length !== 1 ? 'a' : ''} havaittu`),
+            return e('section', { className: 'faust-section' },
+              e('div', { className: 'faust-section__head' },
+                e('div', { className: 'faust-section__title' }, 'Johdonmukaisuus')
+              ),
+              e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+                e('div', { className: 'faust-meta' }, 'Tekoäly tarkistaa hahmot, aikajanan ja paikat ristiriitojen varalta.'),
 
-              // Errors by severity
-              e('div', { style: { display: 'flex', gap: '8px', marginTop: '4px' } },
-                consistencyErrors.filter(e => e.severity === 'critical').length > 0 && e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: '#ff6b6b' } },
-                  `🔴 ${consistencyErrors.filter(e => e.severity === 'critical').length}`),
-                consistencyErrors.filter(e => e.severity === 'high').length > 0 && e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: '#ffa726' } },
-                  `🟡 ${consistencyErrors.filter(e => e.severity === 'high').length}`),
-                consistencyErrors.filter(e => e.severity === 'medium').length > 0 && e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: '#66bb6a' } },
-                  `🟢 ${consistencyErrors.filter(e => e.severity === 'medium').length}`)
+                markCount > 0 && e('div', { className: 'faust-meta' }, `Ristiriitamerkintöjä tässä luvussa: ${markCount}`),
+
+                // Error summary
+                consistencyErrors.length > 0
+                  ? e('div', null, e('span', { className: 'faust-stat' }, e('b', null, errorTotal), errorNoun))
+                  : checkedClean && e('div', { className: 'faust-meta' }, 'Ristiriitoja ei löytynyt.'),
+
+                // Errors by severity
+                severities.length > 0 && e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-1) var(--sp-3)' } },
+                  severities.map(([word, n, chip]) => e('span', { key: word, className: 'faust-stat' },
+                    e('span', { className: chip }, word),
+                    e('b', null, n.toLocaleString('fi-FI'))
+                  ))
+                ),
+
+                // Error list
+                consistencyErrors.slice(0, 5).map((err, idx) => {
+                  const fix = errorFix(err);
+                  return e('div', {
+                    key: idx,
+                    className: 'faust-card faust-card--compact faust-card--stripe',
+                    style: { '--stripe': err.severity === 'critical' || err.severity === 'high' ? 'var(--error)' : 'var(--warning)' }
+                  },
+                    e('div', { className: 'faust-card__title' }, errorTitles[err.type] || 'Ristiriita'),
+                    e('div', { className: 'faust-ui' }, errorBody(err)),
+                    fix && e('div', { className: 'faust-meta' }, `Korjausehdotus: ${fix}`)
+                  );
+                }),
+
+                consistencyErrors.length > 5 && e('div', { className: 'faust-meta' },
+                  `… ja ${count(consistencyErrors.length - 5, 'muu')} ${countParts(consistencyErrors.length - 5, 'ristiriita')[1]}`),
+
+                // Check button
+                e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--block',
+                  onClick: runConsistencyCheck,
+                  disabled: checkingConsistency || !consistencyCheckerRef.current,
+                  'aria-busy': checkingConsistency
+                },
+                  checkingConsistency && e('span', { className: 'faust-spinner faust-spinner--sm' }),
+                  checkingConsistency ? 'Tarkistetaan…' : consistencyErrors.length > 0 ? 'Tarkista uudelleen' : 'Tarkista johdonmukaisuus'
+                )
               )
-            ),
-
-            // Error list
-            consistencyErrors.slice(0, 5).map((error, idx) => {
-              const severityColor =
-                error.severity === 'critical' ? '#ff6b6b' :
-                error.severity === 'high' ? '#ffa726' :
-                error.severity === 'medium' ? '#66bb6a' : 'var(--text-3)';
-
-              return e('div', {
-                key: idx,
-                style: {
-                  marginBottom: '8px',
-                  padding: '8px',
-                  background: 'var(--bg-2)',
-                  border: `1px solid ${severityColor}`,
-                  borderLeft: `3px solid ${severityColor}`,
-                  borderRadius: '4px'
-                }
-              },
-                e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', fontWeight: 600, color: severityColor, marginBottom: '2px' } },
-                  error.type.replace(/_/g, ' ').toUpperCase()),
-                e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-2)', marginBottom: '4px' } },
-                  error.message),
-                error.suggestedFix && e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '9px', color: 'var(--text-3)', fontStyle: 'italic' } },
-                  `💡 ${error.suggestedFix}`)
-              );
-            }),
-
-            consistencyErrors.length > 5 && e('div', { style: { textAlign: 'center', marginTop: '8px' } },
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } },
-                `+${consistencyErrors.length - 5} lisää ongelmaa`)
-            ),
-
-            // Check button
-            e('button', {
-              onClick: runConsistencyCheck,
-              disabled: checkingConsistency || !consistencyCheckerRef.current,
-              style: {
-                width: '100%',
-                padding: '8px',
-                marginTop: '8px',
-                background: checkingConsistency || !consistencyCheckerRef.current ? 'var(--bg-2)' : 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: checkingConsistency || !consistencyCheckerRef.current ? 'var(--text-3)' : '#000',
-                cursor: checkingConsistency || !consistencyCheckerRef.current ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                fontWeight: 600
-              }
-            }, checkingConsistency ? '◌ Tarkistetaan...' : consistencyErrors.length > 0 ? '⟳ Tarkista Uudelleen' : '⊙ Tarkista Johdonmukaisuus')
-          ),
+            );
+          })(),
 
           // Characters
-          e('div', { style: { marginBottom: '16px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'HAHMOT'),
+          inspectorTab === 'project' && (() => {
+            const plan = project.castPlan || {};
+            const characterTotal = (project.characters || []).length;
 
-            project.castPlan.defined
-              ? e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '13px', color: 'var(--text-2)', marginBottom: '8px' } },
-                  `${project.characters.length} / ${project.castPlan.totalCharacters} hahmoa`)
-              : e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '13px', color: 'var(--text-3)', marginBottom: '8px', fontStyle: 'italic' } },
-                  'Ei suunniteltua cast:ia'),
+            return e('section', { className: 'faust-section' },
+              e('div', { className: 'faust-section__head' },
+                e('div', { className: 'faust-section__title' }, 'Hahmot')
+              ),
+              e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+                plan.defined
+                  ? e('div', { className: 'faust-meta' }, `${characterTotal} / ${plan.totalCharacters} suunnitellusta hahmosta luotu`)
+                  : e('div', { className: 'faust-meta' }, 'Hahmoja ei ole vielä suunniteltu'),
 
-            // Plan Cast button (or Build Characters if cast is defined)
-            !project.castPlan.defined
-              ? e('button', {
-                  onClick: () => setShowCastPlanDialog(true),
-                  style: {
-                    width: '100%',
-                    padding: '8px',
-                    marginTop: '8px',
-                    background: 'var(--bronze)',
-                    border: 'none',
-                    borderRadius: '4px',
-                    color: '#000',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px',
-                    fontWeight: 600
-                  }
-                }, '🎭 Plan Cast')
-              : e('div', { style: { marginTop: '8px' } },
-                  // List of character types from cast plan
-                  e('div', { style: { marginBottom: '8px' } },
-                    project.castPlan.characterTypes.map((type, idx) =>
-                      e('div', {
-                        key: idx,
-                        style: {
-                          fontFamily: 'IBM Plex Mono',
-                          fontSize: '11px',
-                          color: 'var(--text-3)',
-                          marginBottom: '4px'
-                        }
-                      }, `${idx + 1}. ${type.length > 30 ? type.substring(0, 30) + '...' : type}`)
-                    )
-                  ),
-
-                  // Build detailed characters button
-                  e('button', {
-                    onClick: () => {
-                      setShowCharacterBuilder(true);
-                      setCharacterBuilderStep(1);
-                    },
-                    style: {
-                      width: '100%',
-                      padding: '8px',
-                      background: 'var(--bronze)',
-                      border: 'none',
-                      borderRadius: '4px',
-                      color: '#000',
-                      cursor: 'pointer',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '12px',
-                      fontWeight: 600
-                    }
-                  },
-                    CharacterEngineLogo(14),
-                    'Build Characters'
-                  ),
-
-                  // View Characters button (if characters exist)
-                  project.characters && project.characters.length > 0 && e('button', {
-                    onClick: () => {
-                      setShowCharacterSheet(true);
-                      setCharacterSheetMode('list');
-                    },
-                    style: {
-                      width: '100%',
-                      padding: '8px',
-                      marginTop: '8px',
-                      background: 'transparent',
-                      border: '1px solid var(--bronze)',
-                      borderRadius: '4px',
-                      color: 'var(--bronze)',
-                      cursor: 'pointer',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      fontWeight: 500
-                    }
-                  },
-                    CharacterEngineLogo(12),
-                    `View Characters (${project.characters.length})`
+                // Character types of the hahmosuunnitelma
+                plan.defined && (plan.characterTypes || []).length > 0 && e('div', null,
+                  plan.characterTypes.map((type, idx) =>
+                    e('div', { key: idx, className: 'faust-meta' },
+                      `${idx + 1}. ${type.length > 30 ? type.substring(0, 30) + '…' : type}`)
                   )
-                )
-          ),
+                ),
 
-        )
+                e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--block',
+                  title: 'Kerro, millaisia hahmoja tarinassa on. Tekoäly ehdottaa niille arkkityyppejä.',
+                  onClick: () => openCastPlan()
+                }, plan.defined ? 'Muokkaa hahmosuunnitelmaa…' : 'Suunnittele hahmot…'),
+
+                // A disabled button shows no tooltip of its own: the span carries it
+                e('span', {
+                  title: plan.defined ? 'Tee yhdestä suunnitellusta hahmotyypistä yksityiskohtainen hahmo tekoälyn avulla' : 'Suunnittele ensin hahmot',
+                  style: { display: 'block' }
+                },
+                  e('button', {
+                    type: 'button',
+                    className: 'faust-btn faust-btn--block',
+                    disabled: !plan.defined,
+                    onClick: () => openCharacterBuilder()
+                  }, icons.sol({ size: 14 }), '+ Uusi hahmo…')
+                ),
+
+                e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--block',
+                  title: 'Avaa luettelo tarinan hahmoista ja heidän profiileistaan',
+                  onClick: () => openCharacterList()
+                }, icons.sol({ size: 14 }), `Avaa hahmot (${characterTotal})`)
+              )
+            );
+          })(),
+
+        ))
       ))
     ),
 
     // Footer / Status bar
-    e('div', { className: 'faust-footer' },
-      e('div', {
-        style: {
-          padding: '4px 16px',
-          color: 'var(--text-2)',
-          fontSize: '12px',
-          fontFamily: 'IBM Plex Mono',
-          display: 'flex',
-          justifyContent: 'space-between'
-        }
-      },
-        e('span', null, activeChapter.title + (unsavedChanges ? ' •' : '')),
-        e('span', {
-          title: `Luku: ${chapterWords} sanaa, ${chapterCharacters.withSpaces} merkkiä (${chapterCharacters.withoutSpaces} ilman välejä)\n` +
-                 `Käsikirjoitus: ${totalWords} sanaa, noin ${estimatePages(totalWords)} sivua (250 sanaa/sivu)`
+    e('div', { className: 'faust-footer faust-statusbar' },
+      e('span', { className: 'faust-statusbar__start' }, (activeChapter && activeChapter.title) || 'Nimetön luku'),
+      (() => {
+        // One readout: the number in <b>, the noun beside it; the gap separates readouts (no separator characters)
+        const stat = (n, word) => {
+          const [num, noun] = countParts(n, word);
+          return e('span', { className: 'faust-stat' }, e('b', null, num), ' ', noun);
+        };
+        const [totalNum, totalNoun] = countParts(totalWords, 'sana');
+        const [pageNum, pageNoun] = countParts(estimatePages(totalWords), 'sivu');
+        // The save state has a fixed slot, so the row never jumps
+        const saveKey = savingState !== 'idle' ? savingState : unsavedChanges ? 'unsaved' : undefined;
+        const saveWord = { saving: 'Tallennetaan…', saved: 'Tallennettu', error: 'Tallennus epäonnistui', unsaved: 'Muokattu' }[saveKey] || '';
+        return e('div', {
+          className: 'faust-statusbar__end',
+          title: 'Merkkejä ilman välilyöntejä: ' + chapterCharacters.withoutSpaces.toLocaleString('fi-FI') + '. Sivuarvio: 250 sanaa sivulla.'
         },
-          `${chapterWords} sanaa • ${chapterCharacters.withSpaces} merkkiä` +
-          ` • yhteensä ${totalWords} sanaa, n. ${estimatePages(totalWords)} s.` +
-          (currentFilePath ? ` • ${currentFilePath.split('/').pop()}` : ' • Tallentamaton'))
-      )
+          stat(chapterWords, 'sana'),
+          stat(chapterCharacters.withSpaces, 'merkki'),
+          e('span', { className: 'faust-stat' }, 'yhteensä ', e('b', null, totalNum), ' ' + totalNoun + ', noin ', e('b', null, pageNum), ' ' + pageNoun),
+          e('span', { className: 'faust-stat', 'data-priority': '3' },
+            currentFilePath ? currentFilePath.split(/[\\/]/).pop() : 'Ei tallennettu tiedostoon'),
+          e('span', {
+            className: 'faust-savestate',
+            'data-state': saveKey,
+            title: saveKey === 'error' ? (autosaveError || undefined) : undefined
+          }, saveKey && e('span', { className: 'faust-dot' }), saveWord)
+        );
+      })()
     ),
 
     // Cast Planning Dialog
-    e(ErrorBoundary, { label: 'Hahmokaartin suunnittelu', onDismiss: () => setShowCastPlanDialog(false) }, showCastPlanDialog ? e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0,0,0,0.8)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 1000
-      },
-      onClick: (ev) => {
-        if (ev.target === ev.currentTarget) {
-          setShowCastPlanDialog(false);
-          setCastPlanStep(1);
-        }
-      }
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg-primary)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '8px',
-          width: '600px',
-          maxHeight: '80vh',
-          overflow: 'auto',
-          padding: '24px'
-        }
-      },
-        // Dialog header
-        e('h2', {
-          style: {
-            fontFamily: 'EB Garamond',
-            fontSize: '24px',
-            color: 'var(--text)',
-            marginBottom: '16px'
+    e(ErrorBoundary, { label: 'Suunnittele hahmot', onDismiss: () => setShowCastPlanDialog(false) }, showCastPlanDialog ? (() => {
+      const castPlan = project.castPlan || {};
+      const plannedTypes = castPlan.characterTypes || [];
+      const castSuggestions = castPlan.suggestedArchetypes || [];
+      // Only text reaches the screen: a model answer (or a plan saved earlier) may hold objects here
+      const castText = (value) => (typeof value === 'string' || typeof value === 'number' ? String(value) : '');
+      const castWarnings = Array.isArray(castPlan.warnings) ? castPlan.warnings.map(castText).filter((w) => w.trim()) : [];
+      // R-88 point 4: a type without a suggestion cannot be accepted
+      const castPlanIncomplete = castSuggestions.length < plannedTypes.length || castSuggestions.some((s) =>
+        !s || (!s.archetypeFamily && !s.functionInStory && !s.flaws && !(Array.isArray(s.examples) && s.examples.length > 0)));
+      const castIncompleteText = 'Tekoäly ei antanut ehdotusta kaikille hahmotyypeille. Muokkaa hahmotyyppejä ja pyydä ehdotukset uudelleen.';
+      const closeCastPlan = () => {
+        setShowCastPlanDialog(false);
+        setCastPlanStep(1);
+      };
+      const sameCastType = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+      const requestCastSuggestions = async () => {
+        const types = castTypesDraft.split('\n').map((line) => line.trim()).filter((line) => line.length > 0);
+        if (types.length === 0) return;
+
+        // Save types to project
+        setProject(prev => ({
+          ...prev,
+          castPlan: {
+            ...prev.castPlan,
+            characterTypes: types,
+            totalCharacters: types.length
           }
-        }, '🎭 Plan Cast'),
+        }));
 
-        e('p', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '13px',
-            color: 'var(--text-2)',
-            marginBottom: '24px'
-          }
-        }, 'Määrittele millaisia hahmotyyppejä kirjassasi on. AI ehdottaa arkkityyppejä ja analysoi hahmodynamiikkaa.'),
+        // Move to step 2 and start the analysis
+        setCastPlanStep(2);
+        const run = ++castPlanRunRef.current;
+        let analysis = null;
+        let reason = '';
+        try {
+          analysis = await analyzeCast(types);
+        } catch (error) {
+          reason = (error && error.message) || '';
+        }
 
-        // Step 1: Character types input
-        castPlanStep === 1 ? e('div', null,
-          e('label', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              color: 'var(--text-3)',
-              display: 'block',
-              marginBottom: '8px'
+        // M C.10 row 12a: a result of an earlier run, or of a closed dialog, is dropped
+        if (run !== castPlanRunRef.current || !castPlanOpenRef.current) return;
+
+        if (analysis) {
+          // One suggestion per typed type: same type text, else the same position, else a blank
+          const received = Array.isArray(analysis.suggestions) ? analysis.suggestions.filter((s) => s && typeof s === 'object') : [];
+          const suggestedArchetypes = types.map((type, idx) => {
+            const atPosition = received[idx] && !types.some((other, j) => j !== idx && sameCastType(received[idx].type, other)) ? received[idx] : null;
+            const found = received.find((s) => sameCastType(s.type, type)) || atPosition;
+            if (!found) return { type, archetypeFamily: '', examples: [], functionInStory: '', flaws: '' };
+            return {
+              ...found,
+              type,
+              examples: Array.isArray(found.examples) ? found.examples : (found.examples ? [String(found.examples)] : [])
+            };
+          });
+
+          setProject(prev => ({
+            ...prev,
+            castPlan: {
+              ...prev.castPlan,
+              suggestedArchetypes,
+              castDynamics: analysis.dynamics || null,
+              warnings: Array.isArray(analysis.warnings) ? analysis.warnings.filter((w) => typeof w === 'string' && w.trim()) : []
             }
-          }, 'HAHMOTYYPIT (yksi per rivi):'),
+          }));
 
-          e('textarea', {
-            placeholder: 'Esim:\nStoalainen vanhus - viisas mutta etäinen\nNuori idealisti - naiivi mutta intohimoinen\nKorruptoitunut poliitikko - viehättävä mutta ontto',
-            style: {
-              width: '100%',
-              minHeight: '200px',
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              padding: '12px',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              lineHeight: '1.6',
-              resize: 'vertical'
-            },
-            id: 'cast-types-input'
-          }),
+          setCastPlanStep(3); // Move to review step
+        } else {
+          const why = String(reason).trim().replace(/\.+$/, '') || 'tekoälyn vastausta ei voitu lukea';
+          notify('error', 'Hahmotyyppien analyysi epäonnistui: ' + why + '.');
+          setCastPlanStep(1); // Back to input; the field keeps its text
+        }
+      };
 
-          // Actions
-          e('div', { style: { marginTop: '24px', display: 'flex', gap: '12px', justifyContent: 'flex-end' } },
-            e('button', {
-              onClick: () => {
-                setShowCastPlanDialog(false);
-                setCastPlanStep(1);
-              },
-              style: {
-                padding: '8px 16px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text-2)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
-              }
-            }, 'Peruuta'),
-
-            e('button', {
-              onClick: async () => {
-                const input = document.getElementById('cast-types-input').value;
-                const types = input.split('\n').filter(line => line.trim().length > 0);
-
-                if (types.length === 0) {
-                  alert('Syötä vähintään yksi hahmotyyppi');
-                  return;
-                }
-
-                // Save types to project
-                setProject(prev => ({
-                  ...prev,
-                  castPlan: {
-                    ...prev.castPlan,
-                    characterTypes: types,
-                    totalCharacters: types.length
-                  }
-                }));
-
-                // Move to step 2 and start AI analysis
-                setCastPlanStep(2);
-
-                // Run AI analysis
-                const analysis = await analyzeCast(types);
-
-                if (analysis) {
-                  // Save analysis results
-                  setProject(prev => ({
-                    ...prev,
-                    castPlan: {
-                      ...prev.castPlan,
-                      suggestedArchetypes: analysis.suggestions || [],
-                      castDynamics: analysis.dynamics || null,
-                      warnings: analysis.warnings || []
-                    }
-                  }));
-
-                  setCastPlanStep(3); // Move to review step
-                } else {
-                  alert('AI-analyysi epäonnistui. Tarkista API-avain.');
-                  setCastPlanStep(1); // Back to input
-                }
-              },
-              style: {
-                padding: '8px 16px',
-                background: 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: '#000',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                fontWeight: 600
-              }
-            }, 'Analysoi AI:lla →')
-          )
-        ) : null,
-
-        // Step 2: AI Analysis loading
-        castPlanStep === 2 ? e('div', null,
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              color: 'var(--text-2)',
-              textAlign: 'center',
-              padding: '40px'
-            }
-          },
-            e('div', { style: { fontSize: '32px', marginBottom: '16px' } }, '🤖'),
-            e('div', null, 'AI analysoi hahmotyyppejä...'),
-            e('div', { style: { fontSize: '11px', color: 'var(--text-3)', marginTop: '8px' } }, 'Tämä voi kestää 10-30 sekuntia')
-          )
-        ) : null,
-
-        // Step 3: AI Analysis Results
-        castPlanStep === 3 ? e('div', null,
-          e('div', { style: { marginBottom: '16px' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, 'AI-EHDOTUKSET'),
-
-            // Archetype suggestions
-            project.castPlan.suggestedArchetypes.map((suggestion, idx) =>
-              e('div', {
-                key: idx,
-                style: {
-                  marginBottom: '16px',
-                  padding: '12px',
-                  background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px'
-                }
-              },
-                e('div', { style: { fontFamily: 'EB Garamond', fontSize: '16px', color: 'var(--text)', marginBottom: '4px', fontWeight: 600 } },
-                  suggestion.type),
-                e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--bronze)', marginBottom: '8px' } },
-                  suggestion.archetypeFamily),
-
-                e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' } },
-                  `Esimerkit: ${suggestion.examples.join(', ')}`),
-                e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '4px' } },
-                  `Rooli: ${suggestion.functionInStory}`),
-                e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-3)' } },
-                  `Haasteet: ${suggestion.flaws}`)
-              )
-            )
+      return e('div', { className: 'faust-scrim' },
+        e('div', {
+          className: 'faust-dialog faust-dialog--md',
+          style: { '--dialog-w': '600px' },
+          role: 'dialog',
+          'aria-modal': 'true',
+          'aria-labelledby': 'cast-plan-title',
+          'aria-busy': castPlanStep === 2
+        },
+          e('div', { className: 'faust-dialog__header' },
+            e('div', { className: 'faust-dialog__heading' },
+              e('h2', { className: 'faust-dialog__title', id: 'cast-plan-title' }, 'Suunnittele hahmot'),
+              e('div', { className: 'faust-dialog__sub' }, 'Kirjoita, millaisia hahmoja tarinassasi on. Tekoäly ehdottaa kullekin arkkityypin ja huomauttaa puutteista.')
+            ),
+            e('button', { className: 'faust-btn faust-btn--icon', 'aria-label': 'Sulje', title: 'Sulje', onClick: closeCastPlan }, icons.close({ size: 16 }))
           ),
 
-          // Warnings
-          project.castPlan.warnings && project.castPlan.warnings.length > 0 ? e('div', { style: { marginBottom: '16px' } },
-            e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', marginBottom: '8px' } }, '⚠️ HUOMIOT'),
-            project.castPlan.warnings.map((warning, idx) =>
-              e('div', {
-                key: idx,
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '12px',
-                  color: 'var(--text-2)',
-                  marginBottom: '4px'
-                }
-              }, `• ${warning}`)
-            )
-          ) : null,
+          e('div', { className: 'faust-dialog__body' },
+            // Step 1: character types
+            castPlanStep === 1 ? e('label', { className: 'faust-field' },
+              e('span', { className: 'faust-field__label' }, 'Hahmotyypit, kukin omalle rivilleen'),
+              e('textarea', {
+                className: 'faust-textarea faust-textarea--author',
+                rows: 8,
+                value: castTypesDraft,
+                onChange: (ev) => setCastTypesDraft(ev.target.value),
+                placeholder: 'Esim.\nStoalainen vanhus – viisas mutta etäinen\nNuori idealisti – naiivi mutta intohimoinen\nKorruptoitunut poliitikko – viehättävä mutta ontto'
+              })
+            ) : null,
 
-          // Actions
-          e('div', { style: { marginTop: '24px', display: 'flex', gap: '12px', justifyContent: 'flex-end' } },
-            e('button', {
-              onClick: () => setCastPlanStep(1),
-              style: {
-                padding: '8px 16px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text-2)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
-              }
-            }, '← Muokkaa'),
+            // Step 2: waiting for the analysis
+            castPlanStep === 2 ? e('div', { className: 'faust-empty', role: 'status' },
+              e('span', { className: 'faust-spinner faust-spinner--lg' }),
+              e('div', { className: 'faust-empty__title' }, 'Tekoäly analysoi hahmotyyppejä…'),
+              e('div', { className: 'faust-empty__hint' }, 'Tämä voi kestää 10–30 sekuntia.')
+            ) : null,
 
-            e('button', {
+            // Step 3: suggestions
+            castPlanStep === 3 ? e('div', null,
+              castPlanIncomplete ? e('div', { className: 'faust-callout faust-callout--warning', style: { marginBottom: 'var(--sp-4)' } },
+                icons.warning({ size: 16, className: 'faust-callout__icon' }),
+                e('div', { className: 'faust-callout__body' }, castIncompleteText)
+              ) : null,
+
+              e('div', { className: 'faust-section' },
+                e('div', { className: 'faust-section__head' },
+                  e('span', { className: 'faust-section__title' }, 'Ehdotetut arkkityypit')
+                ),
+                e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+                  castSuggestions.map((suggestion, idx) => {
+                    const item = suggestion || {};
+                    const examples = Array.isArray(item.examples) ? item.examples : [];
+                    return e('div', { key: idx, className: 'faust-card' },
+                      e('div', { className: 'faust-card__title' }, castText(item.type) || castText(plannedTypes[idx])),
+                      castText(item.archetypeFamily) ? e('div', { className: 'faust-ui' }, castText(item.archetypeFamily)) : null,
+                      examples.length > 0 ? e('div', { className: 'faust-card__body' }, `Esimerkkejä: ${examples.join(', ')}`) : null,
+                      item.functionInStory ? e('div', { className: 'faust-card__body' }, `Rooli tarinassa: ${item.functionInStory}`) : null,
+                      item.flaws ? e('div', { className: 'faust-card__body' }, `Heikkoudet: ${item.flaws}`) : null
+                    );
+                  })
+                )
+              ),
+
+              castWarnings.length > 0 ? e('div', { className: 'faust-section' },
+                e('div', { className: 'faust-section__head' },
+                  e('span', { className: 'faust-section__title' }, 'Huomiot')
+                ),
+                e('ul', { style: { margin: 0, paddingLeft: 'var(--sp-5)' } },
+                  castWarnings.map((warning, idx) => e('li', { key: idx }, warning))
+                )
+              ) : null
+            ) : null
+          ),
+
+          e('div', { className: 'faust-dialog__footer' },
+            castPlanStep === 3 ? e('div', { className: 'faust-dialog__footer-start' },
+              e('button', { className: 'faust-btn faust-btn--lg', onClick: () => setCastPlanStep(1) },
+                icons.arrowLeft({ size: 14 }), 'Muokkaa hahmotyyppejä')
+            ) : null,
+            e('button', { className: 'faust-btn faust-btn--lg', onClick: closeCastPlan }, 'Peruuta'),
+            castPlanStep === 1 ? e('button', {
+              className: 'faust-btn faust-btn--lg faust-btn--primary',
+              disabled: !castTypesDraft.trim(),
+              title: castTypesDraft.trim() ? undefined : 'Kirjoita ensin vähintään yksi hahmotyyppi',
+              onClick: requestCastSuggestions
+            }, 'Pyydä ehdotukset', icons.arrowRight({ size: 14 })) : null,
+            castPlanStep === 3 ? e('button', {
+              className: 'faust-btn faust-btn--lg faust-btn--primary',
+              disabled: castPlanIncomplete,
+              title: castPlanIncomplete ? castIncompleteText : undefined,
               onClick: () => {
                 // Mark cast plan as defined
                 setProject(prev => ({
@@ -8576,1132 +7331,346 @@ ${contextPrompt}`;
                   }
                 }));
                 setUnsavedChanges(true);
-                setShowCastPlanDialog(false);
-                setCastPlanStep(1);
-              },
-              style: {
-                padding: '8px 16px',
-                background: 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: '#000',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                fontWeight: 600
+                closeCastPlan();
               }
-            }, 'Vahvista cast →')
+            }, 'Hyväksy hahmosuunnitelma') : null
           )
-        ) : null
-      )
-    ) : null),
+        )
+      );
+    })() : null),
 
     // Character Builder Dialog
-    e(ErrorBoundary, { label: 'Hahmorakentaja', onDismiss: () => setShowCharacterBuilder(false) }, showCharacterBuilder ? e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.85)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999
-      }
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg-1)',
-          border: '2px solid var(--bronze)',
-          borderRadius: '8px',
-          padding: '32px',
-          maxWidth: '800px',
-          width: '90%',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          position: 'relative'
-        }
-      },
-        // Header
-        e('h2', {
-          style: {
-            fontFamily: 'EB Garamond',
-            fontSize: '24px',
-            color: 'var(--text)',
-            marginBottom: '8px'
-          }
-        }, '☉ Character Archetype Builder'),
+    e(ErrorBoundary, { label: 'Uusi hahmo', onDismiss: () => setShowCharacterBuilder(false) }, showCharacterBuilder ? (() => {
+      const archetype = (selectedCharacterType && selectedCharacterType.archetype) || {};
+      const archetypeExamples = Array.isArray(archetype.examples) ? archetype.examples : [];
+      const builderTypes = (project.castPlan && project.castPlan.characterTypes) || [];
+      // M C.10 row 14: six internal steps shown as four
+      const stepLine = {
+        1: 'Vaihe 1/4: Hahmotyyppi',
+        2: 'Vaihe 2/4: Esikuvat',
+        3: 'Vaihe 3/4: Kysymykset',
+        4: 'Vaihe 3/4: Kysymykset',
+        5: 'Vaihe 4/4: Profiili',
+        6: 'Vaihe 4/4: Profiili'
+      }[characterBuilderStep] || 'Vaihe 1/4: Hahmotyyppi';
+      const questionCategory = {
+        motivation: 'Motivaatio',
+        shadow: 'Varjo',
+        relationships: 'Ihmissuhteet',
+        voice: 'Ääni',
+        arc: 'Kehityskaari'
+      };
+      const showProfile = characterBuilderStep === 6 && !!characterProfile;
+      const upperFirst = (text) => (text ? text.charAt(0).toUpperCase() + text.slice(1) : text);
+      const percentOf = (value) => Math.round((Number(value) || 0) * 100);
+      const profileSection = (title, ...children) => e('div', { className: 'faust-section' },
+        e('div', { className: 'faust-section__head' }, e('span', { className: 'faust-section__title' }, title)),
+        ...children
+      );
+      const profileRow = (name, value) => e('div', { className: 'faust-kv' }, e('span', null, name), e('span', null, value));
+      const profileLine = (name, value) => e('div', null, e('span', { className: 'faust-meta' }, name + ' '), value);
 
-        e('p', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px',
-            color: 'var(--text-2)',
-            marginBottom: '24px'
-          }
-        }, selectedCharacterType ? `Tyyppi: ${selectedCharacterType.type}` : 'Valitse hahmotyyppi'),
+      const psychological = showProfile ? characterProfile.psychological : null;
+      const transactional = showProfile ? characterProfile.transactional : null;
+      const archetypal = showProfile ? characterProfile.archetypal : null;
+      const ensemble = showProfile ? characterProfile.ensemble : null;
+      const coreBeliefs = psychological && psychological.beliefSystem && Array.isArray(psychological.beliefSystem.core_beliefs)
+        ? psychological.beliefSystem.core_beliefs : [];
+      const secondaryArchetypes = archetypal && Array.isArray(archetypal.secondaryArchetypes) ? archetypal.secondaryArchetypes : [];
+      const suppressedTraits = archetypal && archetypal.shadowWork && Array.isArray(archetypal.shadowWork.suppressedTraits)
+        ? archetypal.shadowWork.suppressedTraits : [];
+      const voiceExamples = showProfile && characterProfile.voice && Array.isArray(characterProfile.voice.examples)
+        ? characterProfile.voice.examples : [];
 
-        // Cancel button (top right)
-        e('button', {
-          onClick: cancelCharacterBuilder,
-          style: {
-            position: 'absolute',
-            top: '24px',
-            right: '24px',
-            background: 'transparent',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text-3)',
-            padding: '4px 12px',
-            cursor: 'pointer',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px'
-          }
-        }, 'Peru'),
-
-        // Step 1: Select character type
-        characterBuilderStep === 1 ? e('div', null,
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              color: 'var(--text-2)',
-              marginBottom: '16px'
-            }
-          }, 'Valitse haluamasi hahmotyyppi cast-suunnitelmasta:'),
-
-          e('div', {
-            style: {
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '8px'
-            }
-          },
-            project.castPlan.characterTypes.map((type, idx) =>
-              e('button', {
-                key: idx,
-                onClick: () => startCharacterBuilder(type),
-                style: {
-                  padding: '12px',
-                  background: 'var(--bg-2)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '13px',
-                  textAlign: 'left',
-                  transition: 'all 0.2s'
-                }
-              }, `${idx + 1}. ${type}`)
-            )
-          )
-        ) : null,
-
-        // Step 2: Input real people
-        characterBuilderStep === 2 ? e('div', null,
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              color: 'var(--text-2)',
-              marginBottom: '16px'
-            }
-          }, 'Anna oikeita henkilöitä inspiraatioksi:'),
-
-          e('div', {
-            style: {
-              marginBottom: '16px',
-              padding: '12px',
-              background: 'var(--bg-2)',
-              borderRadius: '4px',
-              border: '1px solid var(--sigil)'
-            }
-          },
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                marginBottom: '8px'
-              }
-            }, 'ARKKITYYPPI:'),
-            e('div', {
-              style: {
-                fontFamily: 'EB Garamond',
-                fontSize: '14px',
-                color: 'var(--sigil)',
-                marginBottom: '4px'
-              }
-            }, selectedCharacterType.archetype.archetypeFamily),
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)'
-              }
-            }, `Esimerkit: ${selectedCharacterType.archetype.examples.join(', ')}`)
+      return e('div', { className: 'faust-scrim' },
+        e('div', {
+          className: 'faust-dialog faust-dialog--lg',
+          role: 'dialog',
+          'aria-modal': 'true',
+          'aria-labelledby': 'character-builder-title',
+          'aria-busy': characterBuilderStep === 3 || characterBuilderStep === 5
+        },
+          e('div', { className: 'faust-dialog__header' },
+            e('div', { className: 'faust-dialog__heading' },
+              e('h2', { className: 'faust-dialog__title', id: 'character-builder-title' }, icons.sol({ size: 20 }), 'Uusi hahmo'),
+              e('div', { className: 'faust-dialog__sub' }, stepLine)
+            ),
+            e('button', { className: 'faust-btn faust-btn--icon', 'aria-label': 'Sulje', title: 'Sulje', onClick: () => cancelCharacterBuilder() }, icons.close({ size: 16 }))
           ),
 
-          e('textarea', {
-            value: characterRealPeople,
-            onChange: (ev) => setCharacterRealPeople(ev.target.value),
-            placeholder: 'Esim:\nErnst Jünger + C.G. Jung\n\nYhdistele 1-3 henkilöä per rivi. Voit lisätä useita rivillä.',
-            style: {
-              width: '100%',
-              minHeight: '120px',
-              padding: '12px',
-              background: 'var(--bg-2)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              resize: 'vertical',
-              marginBottom: '16px'
-            }
-          }),
-
-          e('button', {
-            onClick: handleCharacterPeopleSubmit,
-            disabled: !characterRealPeople.trim(),
-            style: {
-              width: '100%',
-              padding: '12px',
-              background: characterRealPeople.trim() ? 'var(--bronze)' : 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: characterRealPeople.trim() ? '#000' : 'var(--text-3)',
-              cursor: characterRealPeople.trim() ? 'pointer' : 'not-allowed',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              fontWeight: 600
-            }
-          }, 'Jatka kysymyksiin →')
-        ) : null,
-
-        // Step 3: AI generating questions (loading)
-        characterBuilderStep === 3 ? e('div', {
-          style: {
-            textAlign: 'center',
-            padding: '48px'
-          }
-        },
-          e('div', { style: { fontSize: '48px', marginBottom: '16px' } }, '🤖'),
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '14px',
-              color: 'var(--text)',
-              marginBottom: '8px'
-            }
-          }, 'AI generoi tarkentavia kysymyksiä...'),
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              color: 'var(--text-3)'
-            }
-          }, 'Tämä voi kestää 10-20 sekuntia')
-        ) : null,
-
-        // Step 4: Answer questions
-        characterBuilderStep === 4 ? e('div', null,
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              color: 'var(--text-2)',
-              marginBottom: '16px'
-            }
-          }, `Vastaa AI:n kysymyksiin (${characterQuestions.length} kpl):`),
-
-          e('div', {
-            style: {
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-              marginBottom: '24px'
-            }
-          },
-            characterQuestions.map((q, idx) =>
-              e('div', {
-                key: q.id,
-                style: {
-                  padding: '16px',
-                  background: 'var(--bg-2)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px'
-                }
-              },
-                e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-3)',
-                    marginBottom: '8px',
-                    textTransform: 'uppercase'
-                  }
-                }, `${idx + 1}. ${q.category}`),
-                e('div', {
-                  style: {
-                    fontFamily: 'EB Garamond',
-                    fontSize: '15px',
-                    color: 'var(--text)',
-                    marginBottom: '12px'
-                  }
-                }, q.question),
-                e('textarea', {
-                  value: characterAnswers[q.id] || '',
-                  onChange: (ev) => {
-                    setCharacterAnswers(prev => ({
-                      ...prev,
-                      [q.id]: ev.target.value
-                    }));
+          e('div', { className: 'faust-dialog__body' },
+            // Step 1: select character type
+            characterBuilderStep === 1 ? e('div', null,
+              e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-2)' } }, 'Valitse hahmotyyppi, josta luot hahmon'),
+              e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
+                builderTypes.map((type, idx) =>
+                  e('button', {
+                    key: idx,
+                    type: 'button',
+                    className: 'faust-row faust-row--author',
+                    onClick: () => {
+                      // `← Takaisin` can bring the author back here: another type starts clean, so the
+                      // previous type's names, questions, answers and kept profile never carry over
+                      if (!selectedCharacterType || selectedCharacterType.type !== type) {
+                        setCharacterRealPeople('');
+                        setCharacterQuestions([]);
+                        setCharacterAnswers({});
+                        setCharacterProfile(null);
+                      }
+                      startCharacterBuilder(type);
+                    }
                   },
-                  placeholder: 'Vastauksesi...',
-                  style: {
-                    width: '100%',
-                    minHeight: '80px',
-                    padding: '12px',
-                    background: 'var(--bg-1)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px',
-                    resize: 'vertical'
-                  }
+                    e('span', { className: 'faust-row__text' },
+                      e('span', { className: 'faust-row__title' }, `${idx + 1}. ${type}`)
+                    )
+                  )
+                )
+              )
+            ) : null,
+
+            // Step 2: real people as models
+            characterBuilderStep === 2 ? e('div', null,
+              e('div', { className: 'faust-card faust-card--compact', style: { marginBottom: 'var(--sp-4)' } },
+                e('span', { className: 'faust-meta' }, 'Arkkityyppi'),
+                e('span', { className: 'faust-card__title' }, typeof archetype.archetypeFamily === 'string' && archetype.archetypeFamily ? archetype.archetypeFamily : '–'),
+                archetypeExamples.length > 0 ? e('span', { className: 'faust-meta' }, `Esimerkkejä: ${archetypeExamples.join(', ')}`) : null
+              ),
+              e('label', { className: 'faust-field' },
+                e('span', { className: 'faust-field__label' }, 'Nimeä todellisia henkilöitä hahmon esikuviksi'),
+                e('textarea', {
+                  className: 'faust-textarea',
+                  rows: 4,
+                  value: characterRealPeople,
+                  onChange: (ev) => setCharacterRealPeople(ev.target.value),
+                  placeholder: 'Esim. Ernst Jünger + C. G. Jung'
+                }),
+                e('span', { className: 'faust-field__hint' }, 'Kirjoita 1–3 nimeä. Tekoäly yhdistää heidän piirteitään hahmoon. Erota nimet pilkulla tai plusmerkillä.')
+              )
+            ) : null,
+
+            // Step 3: waiting for the questions
+            characterBuilderStep === 3 ? e('div', { className: 'faust-empty', role: 'status' },
+              e('span', { className: 'faust-spinner faust-spinner--lg' }),
+              e('div', { className: 'faust-empty__title' }, 'Tekoäly laatii tarkentavia kysymyksiä…'),
+              e('div', { className: 'faust-empty__hint' }, 'Tämä voi kestää 10–20 sekuntia.')
+            ) : null,
+
+            // Step 4: answer the questions
+            characterBuilderStep === 4 ? e('div', null,
+              e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-3)' } }, `Vastaa tekoälyn kysymyksiin (${characterQuestions.length} kpl)`),
+              e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' } },
+                characterQuestions.map((q, idx) => {
+                  const category = questionCategory[String(q.category || '').trim().toLowerCase()] || q.category || '';
+                  return e('div', { key: q.id, className: 'faust-card' },
+                    e('label', { className: 'faust-field' },
+                      e('span', { className: 'faust-meta' }, category ? `${idx + 1}. ${category}` : `${idx + 1}.`),
+                      e('span', { className: 'faust-serif' }, q.question),
+                      e('textarea', {
+                        className: 'faust-textarea faust-textarea--author',
+                        rows: 3,
+                        value: characterAnswers[q.id] || '',
+                        onChange: (ev) => {
+                          setCharacterAnswers(prev => ({
+                            ...prev,
+                            [q.id]: ev.target.value
+                          }));
+                        },
+                        placeholder: 'Vastauksesi…'
+                      })
+                    )
+                  );
                 })
               )
-            )
+            ) : null,
+
+            // Step 5: waiting for the profile
+            characterBuilderStep === 5 ? e('div', { className: 'faust-empty', role: 'status' },
+              e('span', { className: 'faust-spinner faust-spinner--lg' }),
+              e('div', { className: 'faust-empty__title' }, 'Tekoäly luo hahmon profiilia…'),
+              e('div', { className: 'faust-empty__hint' }, 'Tämä voi kestää 20–40 sekuntia.')
+            ) : null,
+
+            // Step 6: review the profile
+            showProfile ? e('div', null,
+              e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-2)' } }, 'Tarkista hahmon profiili'),
+
+              // Basic info
+              e('div', { className: 'faust-card', style: { marginBottom: 'var(--sp-2)' } },
+                e('div', { className: 'faust-card__title' }, characterProfile.name || '–'),
+                e('div', { className: 'faust-meta' }, `${characterProfile.age || '–'} · ${characterProfile.occupation || '–'}`),
+                characterProfile.appearance ? e('div', { className: 'faust-card__body' }, characterProfile.appearance) : null,
+                characterProfile.description ? e('div', { className: 'faust-card__body' }, characterProfile.description) : null
+              ),
+
+              // Layer 1: psychological
+              psychological ? profileSection('Persoonallisuus',
+                psychological.bigFive ? e('div', { style: { marginBottom: 'var(--sp-3)' } },
+                  e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-1)' } }, 'Persoonallisuuspiirteet (Big Five)'),
+                  ...Object.entries(psychological.bigFive).map(([trait, value]) =>
+                    e('div', { key: trait, style: { marginBottom: 'var(--sp-1)' } },
+                      profileRow(labelOf('bigFive', trait), percentOf(value) + ' %'),
+                      e('div', { className: 'faust-progress', style: { '--value': percentOf(value) + '%' }, 'aria-hidden': 'true' }, e('i'))
+                    )
+                  )
+                ) : null,
+                psychological.dsmCategory && psychological.dsmCategory !== 'none'
+                  ? profileRow('Psyykkinen oireilu', label(psychological.dsmCategory)) : null,
+                psychological.existentialTerror && psychological.existentialTerror.copingMechanism
+                  ? profileRow('Selviytymiskeino', label(psychological.existentialTerror.copingMechanism)) : null,
+                psychological.trauma
+                  ? profileRow('Trauma', `${psychological.trauma.type ? label(psychological.trauma.type) : '–'} (vakavuus: ${percentOf(psychological.trauma.severity)} %)`) : null,
+                psychological.beliefSystem ? e('div', { style: { marginTop: 'var(--sp-2)' } },
+                  profileLine('Ydinuskomukset:', coreBeliefs.length > 0 ? coreBeliefs.join(' · ') : '–'),
+                  psychological.beliefSystem.worldview ? profileLine('Maailmankuva:', label(psychological.beliefSystem.worldview)) : null
+                ) : null
+              ) : null,
+
+              // Layer 2: transactional
+              transactional ? profileSection('Vuorovaikutus',
+                transactional.egoStates ? e('div', { style: { marginBottom: 'var(--sp-3)' } },
+                  e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-1)' } }, 'Minätilat:'),
+                  e('div', { style: { display: 'flex', gap: 'var(--sp-2)' } },
+                    ['parent', 'adult', 'child'].map(state => {
+                      const value = transactional.egoStates[state];
+                      const isDominant = transactional.dominantState === state;
+                      return e('div', {
+                        key: state,
+                        className: 'faust-card faust-card--compact' + (isDominant ? ' is-selected' : ''),
+                        style: { flex: 1, alignItems: 'center' }
+                      },
+                        e('span', { className: 'faust-meta' }, upperFirst(label(state))),
+                        e('span', { className: 'faust-stat faust-stat--hero' }, e('b', null, String(percentOf(value))), ' %')
+                      );
+                    })
+                  )
+                ) : null,
+                transactional.socialGame && transactional.socialGame.game && transactional.socialGame.game !== 'none'
+                  ? profileRow('Draamakolmio', label(transactional.socialGame.game)) : null,
+                transactional.communicationStyle
+                  ? profileRow('Viestintätyyli', label(transactional.communicationStyle)) : null
+              ) : null,
+
+              // Layer 3: archetypal
+              archetypal ? profileSection('Arkkityyppi',
+                e('div', { className: 'faust-card faust-card--compact', style: { marginBottom: 'var(--sp-3)' } },
+                  e('span', { className: 'faust-card__title' }, archetypal.primaryArchetype ? upperFirst(label(archetypal.primaryArchetype)) : '–'),
+                  secondaryArchetypes.length > 0
+                    ? e('span', { className: 'faust-meta' }, `Toissijaiset: ${secondaryArchetypes.map((a) => label(a)).join(', ')}`) : null
+                ),
+                archetypal.mythicJourney ? e('div', { style: { marginBottom: 'var(--sp-3)' } },
+                  e('div', { style: { marginBottom: 'var(--sp-1)' } },
+                    profileLine('Sankarin matka:', archetypal.mythicJourney.stage ? label(archetypal.mythicJourney.stage) : '–')
+                  ),
+                  e('div', { className: 'faust-progress', style: { '--value': percentOf(archetypal.mythicJourney.completion) + '%' }, 'aria-hidden': 'true' }, e('i'))
+                ) : null,
+                suppressedTraits.length > 0 ? e('div', null,
+                  e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-1)' } }, 'Varjo'),
+                  profileLine('Tukahdutetut piirteet:', suppressedTraits.join(', '))
+                ) : null
+              ) : null,
+
+              // Layer 4: roles (the Theme Fit and Genre Fit placeholders are gone, M C.10 row 33)
+              ensemble ? profileSection('Roolit',
+                ensemble.storyFit
+                  ? profileLine('Rooli tarinassa:', ensemble.storyFit.narrativeRole ? label(ensemble.storyFit.narrativeRole) : '–') : null,
+                ensemble.groupDynamics
+                  ? profileLine('Rooli ryhmässä:', ensemble.groupDynamics.roleInGroup ? label(ensemble.groupDynamics.roleInGroup) : '–') : null
+              ) : null,
+
+              // Legacy fields: MBTI and enneagram, voice samples
+              characterProfile.psychology || voiceExamples.length > 0 ? e('div', { className: 'faust-section' },
+                characterProfile.psychology ? e('div', { style: { marginBottom: 'var(--sp-2)' } },
+                  profileLine('MBTI ja enneagrammi:', [characterProfile.psychology.mbti, characterProfile.psychology.enneagram].filter(Boolean).join(' · ') || '–')
+                ) : null,
+                voiceExamples.length > 0 ? e('div', null,
+                  e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-1)' } }, 'Puhetyyli:'),
+                  ...voiceExamples.map((example, idx) =>
+                    e('div', { key: idx, className: 'faust-quote' }, `”${example}”`)
+                  )
+                ) : null
+              ) : null
+            ) : null
           ),
 
-          e('button', {
-            onClick: handleCharacterAnswersSubmit,
-            style: {
-              width: '100%',
-              padding: '12px',
-              background: 'var(--bronze)',
-              border: 'none',
-              borderRadius: '4px',
-              color: '#000',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              fontWeight: 600
-            }
-          }, 'Generoi hahmon profiili →')
-        ) : null,
-
-        // Step 5: AI generating profile (loading)
-        characterBuilderStep === 5 ? e('div', {
-          style: {
-            textAlign: 'center',
-            padding: '48px'
-          }
-        },
-          e('div', { style: { fontSize: '48px', marginBottom: '16px' } }, '✨'),
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '14px',
-              color: 'var(--text)',
-              marginBottom: '8px'
-            }
-          }, 'AI luo yksityiskohtaisen psykologisen profiilin...'),
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              color: 'var(--text-3)'
-            }
-          }, 'Tämä voi kestää 20-40 sekuntia')
-        ) : null,
-
-        characterBuilderStep === 6 && characterProfile ? e('div', null,
-  e('div', {
-    style: {
-      fontFamily: 'IBM Plex Mono',
-      fontSize: '13px',
-      color: 'var(--text-2)',
-      marginBottom: '16px'
-    }
-  }, '🧠 Tarkista hahmon 4-tasoinen profiili:'),
-
-  // Scrollable profile content
-  e('div', {
-    style: {
-      maxHeight: '60vh',
-      overflowY: 'auto',
-      marginBottom: '24px',
-      padding: '16px',
-      background: 'var(--bg-2)',
-      borderRadius: '4px',
-      border: '1px solid var(--sigil)'
-    }
-  },
-    // Basic info
-    e('div', { style: { marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-      e('h3', {
-        style: {
-          fontFamily: 'EB Garamond',
-          fontSize: '24px',
-          color: 'var(--sigil)',
-          marginBottom: '8px'
-        }
-      }, characterProfile.name),
-      e('div', {
-        style: {
-          fontFamily: 'IBM Plex Mono',
-          fontSize: '12px',
-          color: 'var(--text-2)',
-          marginBottom: '8px'
-        }
-      }, `${characterProfile.age || 'N/A'} \u2022 ${characterProfile.occupation || 'N/A'}`),
-      characterProfile.appearance ? e('div', {
-        style: {
-          fontFamily: 'EB Garamond',
-          fontSize: '14px',
-          color: 'var(--text)',
-          fontStyle: 'italic'
-        }
-      }, characterProfile.appearance) : null,
-      characterProfile.description ? e('div', {
-        style: {
-          fontFamily: 'EB Garamond',
-          fontSize: '13px',
-          color: 'var(--text-2)',
-          marginTop: '8px'
-        }
-      }, characterProfile.description) : null
-    ),
-
-    // LAYER 1: PSYCHOLOGICAL
-    characterProfile.psychological ? e('div', { style: { marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-      e('div', {
-        style: {
-          fontFamily: 'IBM Plex Mono',
-          fontSize: '11px',
-          color: 'var(--bronze)',
-          marginBottom: '12px',
-          textTransform: 'uppercase',
-          fontWeight: 600
-        }
-      }, '🧠 TASO 1: PSYKOLOGINEN'),
-
-      // Big Five
-      characterProfile.psychological.bigFive ? e('div', { style: { marginBottom: '16px' } },
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '10px',
-            color: 'var(--text-3)',
-            marginBottom: '8px'
-          }
-        }, 'Big Five Personality:'),
-        ...Object.entries(characterProfile.psychological.bigFive).map(([trait, value]) =>
-          e('div', {
-            key: trait,
-            style: {
-              marginBottom: '6px'
-            }
-          },
-            e('div', {
-              style: {
-                display: 'flex',
-                justifyContent: 'space-between',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-2)',
-                marginBottom: '2px'
-              }
-            },
-              e('span', null, trait.charAt(0).toUpperCase() + trait.slice(1)),
-              e('span', { style: { color: 'var(--sigil)' } }, Math.round(value * 100) + '%')
-            ),
-            e('div', {
-              style: {
-                width: '100%',
-                height: '4px',
-                background: 'var(--bg-1)',
-                borderRadius: '2px',
-                overflow: 'hidden'
-              }
-            },
-              e('div', {
-                style: {
-                  width: `${value * 100}%`,
-                  height: '100%',
-                  background: value > 0.7 ? '#4CAF50' : value > 0.4 ? '#FFC107' : '#FF5722',
-                  transition: 'width 0.3s ease'
-                }
-              })
-            )
+          e('div', { className: 'faust-dialog__footer' },
+            characterBuilderStep === 2 || characterBuilderStep === 4 ? e('div', { className: 'faust-dialog__footer-start' },
+              e('button', {
+                className: 'faust-btn faust-btn--lg',
+                onClick: () => setCharacterBuilderStep(characterBuilderStep === 2 ? 1 : 2)
+              }, icons.arrowLeft({ size: 14 }), 'Takaisin')
+            ) : null,
+            showProfile ? e('div', { className: 'faust-dialog__footer-start' },
+              // BUG-12: going back keeps the generated profile
+              e('button', { className: 'faust-btn faust-btn--lg', onClick: () => setCharacterBuilderStep(4) },
+                icons.arrowLeft({ size: 14 }), 'Muokkaa vastauksia')
+            ) : null,
+            e('button', { className: 'faust-btn faust-btn--lg', onClick: () => cancelCharacterBuilder() }, 'Peruuta'),
+            characterBuilderStep === 2 ? e('button', {
+              className: 'faust-btn faust-btn--lg faust-btn--primary',
+              disabled: !characterRealPeople.trim(),
+              // M B.8: a disabled control's tooltip gives the reason (the words of M C.10 row 36)
+              title: characterRealPeople.trim() ? undefined : 'Kirjoita vähintään yksi nimi, esimerkiksi ”Ernst Jünger + C. G. Jung”.',
+              onClick: () => handleCharacterPeopleSubmit()
+            }, 'Jatka kysymyksiin', icons.arrowRight({ size: 14 })) : null,
+            characterBuilderStep === 4 && characterProfile ? e('button', {
+              className: 'faust-btn faust-btn--lg',
+              onClick: () => setCharacterBuilderStep(6)
+            }, 'Näytä profiili', icons.arrowRight({ size: 14 })) : null,
+            characterBuilderStep === 4 ? e('button', {
+              className: 'faust-btn faust-btn--lg faust-btn--primary',
+              onClick: () => handleCharacterAnswersSubmit()
+            }, characterProfile ? 'Luo profiili uudelleen' : 'Luo hahmon profiili', icons.arrowRight({ size: 14 })) : null,
+            showProfile ? e('button', {
+              className: 'faust-btn faust-btn--lg faust-btn--primary',
+              onClick: () => saveCharacterProfile()
+            }, 'Tallenna hahmo') : null
           )
         )
-      ) : null,
-
-      // DSM & Existential Terror
-      e('div', { style: { display: 'flex', gap: '12px', marginBottom: '12px' } },
-        characterProfile.psychological.dsmCategory && characterProfile.psychological.dsmCategory !== 'none' ? e('div', {
-          style: {
-            flex: 1,
-            padding: '8px',
-            background: 'var(--bg-1)',
-            borderRadius: '4px',
-            border: '1px solid var(--border-color)'
-          }
-        },
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '9px',
-              color: 'var(--text-3)',
-              marginBottom: '4px'
-            }
-          }, 'DSM Category'),
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text)'
-            }
-          }, characterProfile.psychological.dsmCategory)
-        ) : null,
-
-        characterProfile.psychological.existentialTerror ? e('div', {
-          style: {
-            flex: 1,
-            padding: '8px',
-            background: 'var(--bg-1)',
-            borderRadius: '4px',
-            border: '1px solid var(--border-color)'
-          }
-        },
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '9px',
-              color: 'var(--text-3)',
-              marginBottom: '4px'
-            }
-          }, 'Coping (Becker)'),
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text)'
-            }
-          }, characterProfile.psychological.existentialTerror.copingMechanism)
-        ) : null
-      ),
-
-      // Trauma
-      characterProfile.psychological.trauma ? e('div', {
-        style: {
-          padding: '12px',
-          background: 'rgba(255, 87, 34, 0.1)',
-          borderRadius: '4px',
-          border: '1px solid rgba(255, 87, 34, 0.3)',
-          marginBottom: '12px'
-        }
-      },
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '10px',
-            color: '#FF5722',
-            marginBottom: '6px',
-            fontWeight: 600
-          }
-        }, '\u26A0\uFE0F Trauma'),
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '11px',
-            color: 'var(--text-2)'
-          }
-        }, `${characterProfile.psychological.trauma.type} (severity: ${Math.round(characterProfile.psychological.trauma.severity * 100)}%)`)
-      ) : null,
-
-      // Belief System
-      characterProfile.psychological.beliefSystem ? e('div', null,
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '10px',
-            color: 'var(--text-3)',
-            marginBottom: '6px'
-          }
-        }, 'Core Beliefs:'),
-        e('div', {
-          style: {
-            fontFamily: 'EB Garamond',
-            fontSize: '12px',
-            color: 'var(--text)',
-            marginBottom: '8px'
-          }
-        }, characterProfile.psychological.beliefSystem.core_beliefs?.join(' \u2022 ') || 'N/A'),
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '10px',
-            color: 'var(--text-3)',
-            marginBottom: '4px'
-          }
-        }, `Worldview: ${characterProfile.psychological.beliefSystem.worldview}`)
-      ) : null
-    ) : null,
-
-    // LAYER 2: TRANSACTIONAL
-    characterProfile.transactional ? e('div', { style: { marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-      e('div', {
-        style: {
-          fontFamily: 'IBM Plex Mono',
-          fontSize: '11px',
-          color: 'var(--bronze)',
-          marginBottom: '12px',
-          textTransform: 'uppercase',
-          fontWeight: 600
-        }
-      }, '\uD83D\uDD04 TASO 2: TRANSAKTIIVINEN (Berne)'),
-
-      // Ego States
-      characterProfile.transactional.egoStates ? e('div', { style: { marginBottom: '12px' } },
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '10px',
-            color: 'var(--text-3)',
-            marginBottom: '8px'
-          }
-        }, 'Ego States:'),
-        e('div', { style: { display: 'flex', gap: '8px' } },
-          ['parent', 'adult', 'child'].map(state => {
-            const value = characterProfile.transactional.egoStates[state];
-            const isDominant = characterProfile.transactional.dominantState === state;
-            return e('div', {
-              key: state,
-              style: {
-                flex: 1,
-                padding: '8px',
-                background: isDominant ? 'var(--bronze)' : 'var(--bg-1)',
-                color: isDominant ? '#000' : 'var(--text-2)',
-                borderRadius: '4px',
-                textAlign: 'center',
-                border: `2px solid ${isDominant ? 'var(--bronze)' : 'var(--border-color)'}`
-              }
-            },
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '9px',
-                  marginBottom: '4px',
-                  textTransform: 'uppercase'
-                }
-              }, state),
-              e('div', {
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '14px',
-                  fontWeight: 600
-                }
-              }, Math.round(value * 100) + '%')
-            );
-          })
-        )
-      ) : null,
-
-      // Social Game & Communication
-      e('div', { style: { display: 'flex', gap: '12px', marginTop: '12px' } },
-        characterProfile.transactional.socialGame && characterProfile.transactional.socialGame.game !== 'none' ? e('div', {
-          style: {
-            flex: 1,
-            padding: '8px',
-            background: 'rgba(255, 193, 7, 0.1)',
-            borderRadius: '4px',
-            border: '1px solid rgba(255, 193, 7, 0.3)'
-          }
-        },
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '9px',
-              color: '#FFC107',
-              marginBottom: '4px'
-            }
-          }, 'Drama Triangle'),
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text)'
-            }
-          }, characterProfile.transactional.socialGame.game)
-        ) : null,
-
-        characterProfile.transactional.communicationStyle ? e('div', {
-          style: {
-            flex: 1,
-            padding: '8px',
-            background: 'var(--bg-1)',
-            borderRadius: '4px',
-            border: '1px solid var(--border-color)'
-          }
-        },
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '9px',
-              color: 'var(--text-3)',
-              marginBottom: '4px'
-            }
-          }, 'Communication'),
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text)'
-            }
-          }, characterProfile.transactional.communicationStyle)
-        ) : null
-      )
-    ) : null,
-
-    // LAYER 3: ARCHETYPAL
-    characterProfile.archetypal ? e('div', { style: { marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-      e('div', {
-        style: {
-          fontFamily: 'IBM Plex Mono',
-          fontSize: '11px',
-          color: 'var(--bronze)',
-          marginBottom: '12px',
-          textTransform: 'uppercase',
-          fontWeight: 600
-        }
-      }, '\u2728 TASO 3: ARKKITYYPPI (Jung)'),
-
-      // Primary Archetype
-      e('div', {
-        style: {
-          padding: '12px',
-          background: 'var(--bg-1)',
-          borderRadius: '4px',
-          border: '2px solid var(--sigil)',
-          marginBottom: '12px'
-        }
-      },
-        e('div', {
-          style: {
-            fontFamily: 'EB Garamond',
-            fontSize: '16px',
-            color: 'var(--sigil)',
-            marginBottom: '4px',
-            fontWeight: 600
-          }
-        }, characterProfile.archetypal.primaryArchetype),
-        characterProfile.archetypal.secondaryArchetypes && characterProfile.archetypal.secondaryArchetypes.length > 0 ? e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '10px',
-            color: 'var(--text-3)'
-          }
-        }, `Secondary: ${characterProfile.archetypal.secondaryArchetypes.join(', ')}`) : null
-      ),
-
-      // Mythic Journey
-      characterProfile.archetypal.mythicJourney ? e('div', { style: { marginBottom: '12px' } },
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '10px',
-            color: 'var(--text-3)',
-            marginBottom: '6px'
-          }
-        }, 'Hero\'s Journey:'),
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '11px',
-            color: 'var(--text-2)',
-            marginBottom: '4px'
-          }
-        }, characterProfile.archetypal.mythicJourney.stage.replace(/_/g, ' ')),
-        e('div', {
-          style: {
-            width: '100%',
-            height: '6px',
-            background: 'var(--bg-1)',
-            borderRadius: '3px',
-            overflow: 'hidden'
-          }
-        },
-          e('div', {
-            style: {
-              width: `${characterProfile.archetypal.mythicJourney.completion * 100}%`,
-              height: '100%',
-              background: 'var(--sigil)',
-              transition: 'width 0.3s ease'
-            }
-          })
-        )
-      ) : null,
-
-      // Shadow Work
-      characterProfile.archetypal.shadowWork ? e('div', {
-        style: {
-          padding: '10px',
-          background: 'rgba(156, 39, 176, 0.1)',
-          borderRadius: '4px',
-          border: '1px solid rgba(156, 39, 176, 0.3)'
-        }
-      },
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '10px',
-            color: '#9C27B0',
-            marginBottom: '6px',
-            fontWeight: 600
-          }
-        }, '\uD83C\uDF11 Shadow'),
-        characterProfile.archetypal.shadowWork.suppressedTraits && characterProfile.archetypal.shadowWork.suppressedTraits.length > 0 ? e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '11px',
-            color: 'var(--text-2)'
-          }
-        }, `Suppressed: ${characterProfile.archetypal.shadowWork.suppressedTraits.join(', ')}`) : null
-      ) : null
-    ) : null,
-
-    // LAYER 4: ENSEMBLE
-    characterProfile.ensemble ? e('div', { style: { marginBottom: '24px', paddingBottom: '16px', borderBottom: '1px solid var(--border-color)' } },
-      e('div', {
-        style: {
-          fontFamily: 'IBM Plex Mono',
-          fontSize: '11px',
-          color: 'var(--bronze)',
-          marginBottom: '12px',
-          textTransform: 'uppercase',
-          fontWeight: 600
-        }
-      }, '\uD83C\uDFAD TASO 4: ENSEMBLE'),
-
-      // Story Fit
-      characterProfile.ensemble.storyFit ? e('div', { style: { marginBottom: '12px' } },
-        e('div', {
-          style: {
-            display: 'flex',
-            gap: '12px'
-          }
-        },
-          e('div', {
-            style: {
-              flex: 1,
-              padding: '8px',
-              background: 'var(--bg-1)',
-              borderRadius: '4px',
-              border: '1px solid var(--border-color)',
-              textAlign: 'center'
-            }
-          },
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '9px',
-                color: 'var(--text-3)',
-                marginBottom: '4px'
-              }
-            }, 'Theme Fit'),
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '14px',
-                color: 'var(--sigil)',
-                fontWeight: 600
-              }
-            }, Math.round(characterProfile.ensemble.storyFit.themeCompatibility * 100) + '%')
-          ),
-          e('div', {
-            style: {
-              flex: 1,
-              padding: '8px',
-              background: 'var(--bg-1)',
-              borderRadius: '4px',
-              border: '1px solid var(--border-color)',
-              textAlign: 'center'
-            }
-          },
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '9px',
-                color: 'var(--text-3)',
-                marginBottom: '4px'
-              }
-            }, 'Genre Fit'),
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '14px',
-                color: 'var(--sigil)',
-                fontWeight: 600
-              }
-            }, Math.round(characterProfile.ensemble.storyFit.genreAlignment * 100) + '%')
-          )
-        ),
-        e('div', {
-          style: {
-            marginTop: '8px',
-            padding: '8px',
-            background: 'var(--bronze)',
-            color: '#000',
-            borderRadius: '4px',
-            textAlign: 'center',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '11px',
-            fontWeight: 600
-          }
-        }, `Role: ${characterProfile.ensemble.storyFit.narrativeRole}`)
-      ) : null,
-
-      // Group Dynamics
-      characterProfile.ensemble.groupDynamics ? e('div', null,
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '10px',
-            color: 'var(--text-3)',
-            marginBottom: '6px'
-          }
-        }, 'Group Role:'),
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px',
-            color: 'var(--text-2)'
-          }
-        }, characterProfile.ensemble.groupDynamics.roleInGroup)
-      ) : null
-    ) : null,
-
-    // Legacy fields for backward compatibility
-    // Psychology (MBTI/Enneagram)
-    characterProfile.psychology ? e('div', { style: { marginBottom: '16px' } },
-      e('div', {
-        style: {
-          fontFamily: 'IBM Plex Mono',
-          fontSize: '10px',
-          color: 'var(--text-3)',
-          marginBottom: '6px'
-        }
-      }, 'Myers-Briggs / Enneagram:'),
-      e('div', {
-        style: {
-          fontFamily: 'IBM Plex Mono',
-          fontSize: '12px',
-          color: 'var(--text-2)'
-        }
-      }, `${characterProfile.psychology.mbti} \u2022 ${characterProfile.psychology.enneagram}`)
-    ) : null,
-
-    // Voice samples
-    characterProfile.voice && characterProfile.voice.examples && characterProfile.voice.examples.length > 0 ? e('div', { style: { marginBottom: '16px' } },
-      e('div', {
-        style: {
-          fontFamily: 'IBM Plex Mono',
-          fontSize: '10px',
-          color: 'var(--text-3)',
-          marginBottom: '8px'
-        }
-      }, '\uD83D\uDCAC Puhetyyli:'),
-      ...characterProfile.voice.examples.map((example, idx) =>
-        e('div', {
-          key: idx,
-          style: {
-            fontFamily: 'EB Garamond',
-            fontSize: '13px',
-            color: 'var(--text)',
-            marginBottom: '6px',
-            paddingLeft: '12px',
-            borderLeft: '2px solid var(--bronze)',
-            fontStyle: 'italic'
-          }
-        }, `"${example}"`)
-      )
-    ) : null
-  ),
-
-  // Action buttons
-  e('div', {
-    style: {
-      display: 'flex',
-      gap: '12px'
-    }
-  },
-    e('button', {
-      onClick: () => {
-        setCharacterBuilderStep(4);
-        setCharacterProfile(null);
-      },
-      style: {
-        flex: 1,
-        padding: '12px',
-        background: 'transparent',
-        border: '1px solid var(--border-color)',
-        borderRadius: '4px',
-        color: 'var(--text-2)',
-        cursor: 'pointer',
-        fontFamily: 'IBM Plex Mono',
-        fontSize: '12px'
-      }
-    }, '\u2190 Takaisin kysymyksiin'),
-    e('button', {
-      onClick: saveCharacterProfile,
-      style: {
-        flex: 2,
-        padding: '12px',
-        background: 'var(--bronze)',
-        border: 'none',
-        borderRadius: '4px',
-        color: '#000',
-        cursor: 'pointer',
-        fontFamily: 'IBM Plex Mono',
-        fontSize: '13px',
-        fontWeight: 600
-      }
-    }, '\u2713 Tallenna hahmo')
-  )
-) : null
-      )
-    ) : null),
+      );
+    })() : null),
 
     // AI Assistant Panel (Cursor-style) - Slides in from right
-    e(ErrorBoundary, { label: 'AI-avustaja', onDismiss: () => setAiAssistantOpen(false) }, aiAssistantOpen && e('div', {
+    e(ErrorBoundary, { label: 'Liminal Engine', onDismiss: () => setAiAssistantOpen(false) }, aiAssistantOpen && e('div', {
       className: 'liminal-engine-panel',
       style: {
         position: 'fixed',
         right: 0,
         top: 0,
         bottom: 0,
-        width: aiAssistantCollapsed ? '48px' : '500px',
-        background: 'var(--bg-primary)',
-        borderLeft: '2px solid var(--bronze)',
-        boxShadow: '-4px 0 20px rgba(0,0,0,0.3)',
+        width: '500px',
         display: 'flex',
         flexDirection: 'column',
         zIndex: 9999,
-        transition: 'width 0.3s ease-out',
         overflow: 'hidden'
       }
     },
-      // Collapsed state - vertical tab
-      aiAssistantCollapsed ? e('div', {
-        style: {
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100%',
-          cursor: 'pointer',
-          position: 'relative'
-        },
-        onClick: () => setAiAssistantCollapsed(false)
-      },
-        e('div', {
-          style: {
-            writingMode: 'vertical-rl',
-            transform: 'rotate(180deg)',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px',
-            fontWeight: 600,
-            color: 'var(--text-2)',
-            letterSpacing: '2px',
-            userSelect: 'none'
-          }
-        }, 'LIMINAL ENGINE'),
-        e('div', {
-          style: {
-            position: 'absolute',
-            top: '16px',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '16px',
-            color: 'var(--gold)'
-          }
-        }, '›')
-      ) : [
+      [
         // Header
-        e('div', {
-          key: 'header',
-          style: {
-            padding: '16px',
-            borderBottom: '1px solid var(--border-color)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between'
-          }
-        },
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '14px',
-              fontWeight: 600,
-              color: 'var(--text)'
-            }
-          }, 'Liminal Engine'),
-          e('div', { style: { display: 'flex', gap: '8px' } },
-            e('button', {
-              onClick: () => setAiAssistantCollapsed(true),
-              title: 'Pienennä (collapse)',
-              style: {
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-2)',
-                cursor: 'pointer',
-                padding: '4px 8px',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '16px'
-              }
-            }, '‹'),
-            e('button', {
-              onClick: () => setAiAssistantOpen(false),
-              title: 'Sulje',
-              style: {
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-2)',
-                cursor: 'pointer',
-                padding: '4px 8px',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '18px'
-              }
-            }, '×')
-          )
+        e('div', { key: 'header', className: 'faust-panel__head' },
+          e('div', { style: { minWidth: 0 } },
+            e('div', { className: 'faust-panel__title' }, icons.star8({ size: 14 }), 'Liminal Engine'),
+            e('div', { className: 'faust-meta' }, 'Tekoälyavustaja')
+          ),
+          e('button', {
+            className: 'faust-btn faust-btn--icon faust-btn--sm',
+            onClick: () => setAiAssistantOpen(false),
+            'aria-label': 'Kätke Liminal Engine (' + shortcut('CmdOrCtrl+Shift+K') + ')',
+            title: 'Kätke Liminal Engine (' + shortcut('CmdOrCtrl+Shift+K') + ')'
+          }, icons.close({ size: 14 }))
         ),
 
         // Model selector dropdown
         e('div', {
           key: 'model-selector',
           style: {
-            padding: '12px 16px',
-            borderBottom: '1px solid var(--border-color)',
-            background: 'var(--bg-secondary)'
+            padding: 'var(--sp-3) var(--sp-4)',
+            borderTop: 'var(--bw) solid var(--rule)',
+            borderBottom: 'var(--bw) solid var(--rule)'
           }
         },
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '10px',
-            color: 'var(--text-3)',
-            marginBottom: '6px',
-            textTransform: 'uppercase'
-          }
-        }, 'Claude-malli'),
+        e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-1)' } }, 'Claude-malli'),
         e('select', {
+          className: 'faust-select faust-select--sm',
           value: project.ai?.model || 'claude-sonnet-4-20250514',
           onChange: (ev) => {
             setProject(prev => ({
@@ -9713,19 +7682,7 @@ ${contextPrompt}`;
             }));
             setUnsavedChanges(true);
           },
-          style: {
-            width: '100%',
-            padding: '8px',
-            background: 'var(--bg-primary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text)',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px',
-            cursor: 'pointer',
-            outline: 'none',
-            marginBottom: '8px'
-          }
+          style: { marginBottom: 'var(--sp-2)' }
         },
           e('option', { value: 'claude-sonnet-4-20250514' }, 'Claude Sonnet 4 (suositeltu)'),
           e('option', { value: 'claude-3-5-sonnet-20241022' }, 'Claude 3.5 Sonnet'),
@@ -9733,17 +7690,9 @@ ${contextPrompt}`;
           e('option', { value: 'claude-opus-4-20250514' }, 'Claude Opus 4 (tehokas)'),
           e('option', { value: 'claude-opus-4-5-20250514' }, 'Claude Opus 4.5 (uusin)')
         ),
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '10px',
-            color: 'var(--text-3)',
-            marginBottom: '6px',
-            textTransform: 'uppercase',
-            marginTop: '4px'
-          }
-        }, 'Mukautettu malli (valinnainen)'),
+        e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-1)' } }, 'Mukautettu malli (valinnainen)'),
         e('input', {
+          className: 'faust-input faust-input--sm',
           type: 'text',
           value: '',
           onChange: (ev) => {
@@ -9758,1547 +7707,831 @@ ${contextPrompt}`;
               setUnsavedChanges(true);
             }
           },
-          placeholder: 'esim. claude-opus-4-5-20250514',
-          style: {
-            width: '100%',
-            padding: '8px',
-            background: 'var(--bg-primary)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--gold)',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '11px',
-            outline: 'none'
-          }
-        })
+          placeholder: 'Liitä mallin tunnus'
+        }),
+        e('div', { className: 'faust-field__hint', style: { marginTop: 'var(--sp-2)' } },
+          'Koskee vain Claudea. Lähteen ja mallin voi vaihtaa tietopaneelin Tekoäly-välilehdellä.')
         ),
 
         // Selected text context badge
         textSelection ? e('div', {
           key: 'text-selection',
-          style: {
-          padding: '12px 16px',
-          background: 'var(--bronze)',
-          color: '#000',
-          fontFamily: 'IBM Plex Mono',
-          fontSize: '11px',
-          borderBottom: '1px solid var(--border-color)'
-        }
-      },
-        e('div', { style: { fontWeight: 600, marginBottom: '4px' } }, '✓ Text Selected'),
-          e('div', { style: { opacity: 0.8, maxHeight: '40px', overflow: 'hidden' } },
-            textSelection.text.substring(0, 80) + (textSelection.text.length > 80 ? '...' : ''))
+          className: 'faust-excerpt',
+          style: { margin: 'var(--sp-3) var(--sp-4) 0' }
+        },
+          e('span', { className: 'faust-excerpt__caption' }, 'Valittu teksti'),
+          e('span', { className: 'faust-excerpt__text' }, textSelection.text.slice(0, 400))
         ) : null,
 
         // Chat messages
         e('div', {
           key: 'chat-messages',
-          style: {
-          flex: 1,
-          overflowY: 'auto',
-          padding: '16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px'
-        }
-      },
-        aiChatMessages.length === 0
-          ? e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                textAlign: 'center',
-                padding: '48px 24px',
-                fontStyle: 'italic'
-              }
-            }, 'Select text and ask me to revise it, or ask me anything about your writing.')
-          : aiChatMessages.map((msg, idx) =>
-              e('div', {
-                key: idx,
-                style: {
-                  padding: '12px',
-                  background: msg.role === 'user' ? 'var(--bg-secondary)' :
-                             msg.role === 'error' ? 'rgba(255,68,68,0.1)' : 'transparent',
-                  borderLeft: msg.role === 'user' ? '3px solid var(--bronze)' :
-                             msg.role === 'error' ? '3px solid #ff4444' : '3px solid var(--gold)',
-                  borderRadius: '4px'
-                }
-              },
-                e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '9px',
-                    color: 'var(--text-3)',
-                    marginBottom: '6px',
-                    textTransform: 'uppercase',
-                    fontWeight: 600
-                  }
-                }, msg.role === 'user' ? 'You' : msg.role === 'error' ? 'Error' : 'AI'),
-                msg.selectedText ? e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '10px',
-                    color: 'var(--text-3)',
-                    fontStyle: 'italic',
-                    marginBottom: '8px',
-                    padding: '6px',
-                    background: 'var(--bg-primary)',
-                    borderRadius: '2px',
-                    maxHeight: '60px',
-                    overflow: 'hidden'
-                  }
-                }, '⌜ ' + msg.selectedText.substring(0, 100) + (msg.selectedText.length > 100 ? '...' : '')) : null,
-                e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px',
-                    color: 'var(--text)',
-                    lineHeight: '1.6',
-                    whiteSpace: 'pre-wrap'
-                  }
-                }, msg.content)
+          className: 'faust-panel__body',
+          style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }
+        },
+          aiChatMessages.length === 0
+            ? e('div', { className: 'faust-empty' },
+                e('span', { className: 'faust-empty__icon' }, icons.star8({ size: 40 })),
+                e('div', { className: 'faust-empty__title' }, 'Valitse tekstiä ja pyydä siihen muutoksia, tai kysy neuvoa kirjoittamiseen.')
               )
-            )
+            : aiChatMessages.map((msg, idx) =>
+                e('div', { key: idx, className: 'chat-message ' + msg.role },
+                  e('div', { className: 'message-role' },
+                    msg.role === 'user' ? 'Sinä' : msg.role === 'error' ? 'Virhe' : 'Tekoäly'),
+                  msg.selectedText ? e('div', { className: 'faust-excerpt', style: { marginBottom: 'var(--sp-2)' } },
+                    e('span', { className: 'faust-excerpt__text' }, msg.selectedText.slice(0, 400))
+                  ) : null,
+                  e('div', { className: 'message-content' }, msg.content)
+                )
+              ),
+          // Waiting for the answer
+          aiChatProcessing ? e('div', { className: 'streaming-indicator' },
+            e('span', { className: 'dot' }),
+            e('span', { className: 'dot' }),
+            e('span', { className: 'dot' })
+          ) : null
         ),
 
         // AI Suggestion diff preview
         aiSuggestion && !aiSuggestion.applied ? e('div', {
           key: 'suggestion',
-          style: {
-          padding: '16px',
-          borderTop: '2px solid var(--gold)',
-          background: 'var(--bg-secondary)'
-        }
-      },
-        e('div', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '11px',
-            color: 'var(--text-3)',
-            marginBottom: '8px',
-            textTransform: 'uppercase',
-            fontWeight: 600
-          }
-        }, 'Suggestion'),
-        e('div', {
-          style: {
-            marginBottom: '12px',
-            maxHeight: '150px',
-            overflowY: 'auto',
-            padding: '12px',
-            background: 'var(--bg-primary)',
-            borderRadius: '4px',
-            fontFamily: 'EB Garamond',
-            fontSize: '14px',
-            lineHeight: '1.6',
-            color: 'var(--text)'
-          }
-        }, aiSuggestion.revised),
-        e('div', {
-          style: {
-            display: 'flex',
-            gap: '8px'
-          }
+          className: 'faust-result',
+          style: { maxHeight: '50%', borderTop: 'var(--bw) solid var(--rule)' }
         },
-          e('button', {
-            onClick: applyAiSuggestion,
-            style: {
-              flex: 1,
-              padding: '10px',
-              background: 'var(--gold)',
-              border: 'none',
-              borderRadius: '4px',
-              color: '#000',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              fontWeight: 600
-            }
-          }, 'Apply'),
-          e('button', {
-            onClick: () => setAiSuggestion(null),
-            style: {
-              flex: 1,
-              padding: '10px',
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, 'Dismiss')
-        )
+          e('div', { className: 'faust-result__head' },
+            e('span', { className: 'faust-label' }, 'Ehdotus valitun tekstin tilalle')
+          ),
+          e('div', { className: 'faust-result__body' },
+            e('div', { className: 'faust-prose' }, aiSuggestion.revised)
+          ),
+          e('div', { className: 'faust-result__actions' },
+            e('button', {
+              className: 'faust-btn faust-btn--quiet',
+              onClick: () => setAiSuggestion(null)
+            }, 'Hylkää'),
+            // BUG-6: enabled at I-03 (reconcile R-18)
+            false && e('button', {
+              className: 'faust-btn faust-btn--primary',
+              onClick: applyAiSuggestion
+            }, 'Korvaa valittu teksti')
+          )
         ) : null,
 
         // Input area
-        e('div', {
-          key: 'input',
-          style: {
-          padding: '16px',
-          borderTop: '1px solid var(--border-color)',
-          background: 'var(--bg-secondary)'
-        }
-      },
-        e('div', {
-          style: {
-            display: 'flex',
-            gap: '8px'
-          }
-        },
-          voiceInputAvailable ? e('button', {
-            onClick: handleAiAssistantVoice,
-            disabled: aiChatVoiceState !== 'idle',
-            title: 'Voice input (Finnish)',
-            style: {
-              padding: '12px 16px',
-              background: aiChatVoiceState === 'listening' ? 'var(--gold)' : 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: aiChatVoiceState === 'listening' ? '#000' : 'var(--text)',
-              cursor: aiChatVoiceState === 'idle' ? 'pointer' : 'not-allowed',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '16px'
-            }
-          }, aiChatVoiceState === 'listening' ? '🎙️' : '🎤') : null,
-          e('input', {
-            type: 'text',
-            value: aiChatInput,
-            onChange: (ev) => setAiChatInput(ev.target.value),
-            onKeyDown: (ev) => {
-              if (ev.key === 'Enter' && !ev.shiftKey) {
-                ev.preventDefault();
-                sendAiAssistantMessage();
-              }
+        e('div', { key: 'input', className: 'faust-panel__foot' },
+          e('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' } },
+            voiceInputAvailable ? e('button', {
+              className: 'faust-btn faust-btn--icon faust-btn--lg',
+              onClick: handleAiAssistantVoice,
+              disabled: aiChatVoiceState !== 'idle',
+              'aria-pressed': aiChatVoiceState === 'listening',
+              'aria-busy': aiChatVoiceState === 'listening',
+              'data-state': aiChatVoiceState === 'listening' ? 'listening' : undefined,
+              'aria-label': aiChatVoiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Sanele viesti',
+              title: aiChatVoiceState === 'listening' ? 'Kuunnellaan – puhu nyt' : 'Sanele viesti'
+            }, icons.mic({ size: 16 })) : null,
+            e('input', {
+              className: 'faust-input',
+              type: 'text',
+              value: aiChatInput,
+              onChange: (ev) => setAiChatInput(ev.target.value),
+              onKeyDown: (ev) => {
+                if (ev.key === 'Enter' && !ev.shiftKey) {
+                  ev.preventDefault();
+                  sendAiAssistantMessage();
+                }
+              },
+              placeholder: textSelection ? 'Kerro, miten valittua tekstiä muutetaan…' : 'Kirjoita viesti…',
+              disabled: aiChatProcessing,
+              style: { flex: 1 }
+            }),
+            e('button', {
+              className: 'faust-btn faust-btn--primary faust-btn--lg',
+              onClick: sendAiAssistantMessage,
+              disabled: aiChatProcessing || !aiChatInput.trim(),
+              'aria-busy': aiChatProcessing,
+              title: 'Lähetä (Enter)'
             },
-            placeholder: textSelection ? 'How should I revise this?' : 'Ask me anything...',
-            disabled: aiChatProcessing,
-            style: {
-              flex: 1,
-              padding: '12px',
-              background: 'var(--bg-primary)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              outline: 'none'
-            }
-          }),
-          e('button', {
-            onClick: sendAiAssistantMessage,
-            disabled: aiChatProcessing || !aiChatInput.trim(),
-            style: {
-              padding: '12px 20px',
-              background: aiChatProcessing || !aiChatInput.trim() ? 'var(--bg-2)' : 'var(--bronze)',
-              border: 'none',
-              borderRadius: '4px',
-              color: aiChatProcessing || !aiChatInput.trim() ? 'var(--text-3)' : '#000',
-              cursor: aiChatProcessing || !aiChatInput.trim() ? 'not-allowed' : 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              fontWeight: 600
-            }
-          }, aiChatProcessing ? '...' : '↑')
-        ),
-        e('div', {
-          style: {
-            marginTop: '8px',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '9px',
-            color: 'var(--text-3)',
-            textAlign: 'center'
-          }
-        }, 'Cmd+K to toggle • Enter to send')
+              aiChatProcessing ? e('span', { className: 'faust-spinner faust-spinner--sm' }) : null,
+              aiChatProcessing ? 'Lähetetään…' : 'Lähetä'
+            )
+          ),
+          e('div', { className: 'faust-meta', style: { marginTop: 'var(--sp-2)', textAlign: 'center' } },
+            shortcut('CmdOrCtrl+Shift+K') + ' kätkee paneelin · Enter lähettää')
         )
-      ],
+      ]
     )),
 
     // The four dialogs below used to be children of the AI assistant panel,
     // so they only opened while that panel was open. They belong to the window.
-    // Regenerate Dialog
-    e(ErrorBoundary, { label: 'Uudelleengenerointi', onDismiss: () => setShowRegenerateDialog(false) }, showRegenerateDialog && e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0,0,0,0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10000
-      },
-      onClick: () => setShowRegenerateDialog(false)
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '8px',
-          padding: '24px',
-          maxWidth: '500px',
-          width: '90%'
-        },
-        onClick: (ev) => ev.stopPropagation()
-      },
-        e('h3', {
-          style: {
-            fontFamily: 'EB Garamond',
-            fontSize: '20px',
-            color: 'var(--text)',
-            marginBottom: '16px'
-          }
-        }, 'Regeneroi Luku Palautteella'),
-
-        // Feedback textarea
-        e('div', { style: { marginBottom: '16px' } },
-          e('label', {
-            style: {
-              display: 'block',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text-3)',
-              marginBottom: '8px'
-            }
-          }, 'Anna palaute (mitä haluat muuttaa):'),
-          e('textarea', {
-            value: regenerateFeedback,
-            onChange: (ev) => setRegenerateFeedback(ev.target.value),
-            placeholder: 'Esim: "Tee tästä dramaattisempi", "Lisää dialogia", "Pidennä jännitystä"...',
-            style: {
-              width: '100%',
-              minHeight: '100px',
-              padding: '12px',
-              background: 'var(--bg-2)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              resize: 'vertical'
-            }
-          })
-        ),
-
-        // Mode selector
-        e('div', { style: { marginBottom: '16px' } },
-          e('label', {
-            style: {
-              display: 'block',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text-3)',
-              marginBottom: '8px'
-            }
-          }, 'AI Mode:'),
-          e('div', { style: { display: 'flex', gap: '4px' } },
-            ['exploration', 'production', 'polish'].map(mode =>
-              e('button', {
-                key: mode,
-                onClick: () => setRegenerateMode(mode),
-                style: {
-                  flex: 1,
-                  padding: '8px',
-                  background: regenerateMode === mode ? project.ai.modes[mode].color : 'transparent',
-                  border: `1px solid ${project.ai.modes[mode].color}`,
-                  borderRadius: '4px',
-                  color: regenerateMode === mode ? '#000' : 'var(--text-2)',
-                  cursor: 'pointer',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '10px',
-                  fontWeight: regenerateMode === mode ? 600 : 400
-                }
-              }, project.ai.modes[mode].name)
-            )
-          )
-        ),
-
-        // Buttons
-        e('div', { style: { display: 'flex', gap: '8px', justifyContent: 'space-between' } },
+    // Regenerate Dialog (Kirjoita luku uudelleen). A form: a press on the scrim does not close it.
+    // Busy while the rewrite runs (V 4.8): the instruction and the työtapa are locked, because the
+    // running request has already taken both; Peruuta and the close button stay.
+    e(ErrorBoundary, { label: 'Kirjoita luku uudelleen', onDismiss: () => setShowRegenerateDialog(false) }, showRegenerateDialog && e('div', { className: 'faust-scrim' },
+      e('div', { className: 'faust-dialog faust-dialog--lg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'regenerate-dialog-title', 'aria-busy': isGenerating },
+        e('div', { className: 'faust-dialog__header' },
+          e('div', { className: 'faust-dialog__heading' },
+            e('h2', { id: 'regenerate-dialog-title', className: 'faust-dialog__title' },
+              'Kirjoita luku uudelleen – ' + ((activeChapter && activeChapter.title) || 'Nimetön luku'))
+          ),
           e('button', {
+            type: 'button',
+            className: 'faust-btn faust-btn--icon',
+            'aria-label': 'Sulje',
+            title: 'Sulje',
             onClick: () => {
               setShowRegenerateDialog(false);
-              setShowVersionHistory(true);
-            },
-            style: {
-              padding: '8px 16px',
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text-2)',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
+              setRegenerateFeedback('');
             }
-          }, '📜 Versiohistoria'),
-          e('div', { style: { display: 'flex', gap: '8px' } },
-            e('button', {
-              onClick: () => {
-                setShowRegenerateDialog(false);
-                setRegenerateFeedback('');
-              },
-              style: {
-                padding: '8px 16px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text-2)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
-              }
-            }, 'Peruuta'),
-            e('button', {
-              onClick: regenerateChapter,
-              disabled: !regenerateFeedback.trim() || isGenerating,
-              style: {
-                padding: '8px 16px',
-                background: !regenerateFeedback.trim() || isGenerating ? 'var(--bg-2)' : 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: !regenerateFeedback.trim() || isGenerating ? 'var(--text-3)' : '#000',
-                cursor: !regenerateFeedback.trim() || isGenerating ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                fontWeight: 600
-              }
-            }, isGenerating ? 'Generoidaan...' : 'Generoi')
-          )
-        )
-      )
-    )),
+          }, icons.close({ size: 16 }))
+        ),
 
-    // Version History Dialog
-    e(ErrorBoundary, { label: 'Versiohistoria', onDismiss: () => setShowVersionHistory(false) }, showVersionHistory && e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0,0,0,0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10001
-      },
-      onClick: () => setShowVersionHistory(false)
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '8px',
-          padding: '24px',
-          maxWidth: '800px',
-          width: '90%',
-          maxHeight: '80vh',
-          overflow: 'auto'
-        },
-        onClick: (ev) => ev.stopPropagation()
-      },
-        e('h3', {
-          style: {
-            fontFamily: 'EB Garamond',
-            fontSize: '20px',
-            color: 'var(--text)',
-            marginBottom: '16px'
-          }
-        }, 'Versiohistoria - ' + activeChapter.title),
+        e('div', { className: 'faust-dialog__body' },
+          // The text is replaced: a warning callout (M C.11 row 1; the second line is BUG-18's)
+          e('div', { className: 'faust-callout faust-callout--warning', style: { marginBottom: 'var(--sp-4)' } },
+            icons.warning({ size: 16, className: 'faust-callout__icon' }),
+            e('div', { className: 'faust-callout__body' },
+              e('div', null, 'Tekoäly kirjoittaa koko luvun uudelleen ohjeesi mukaan ja korvaa luvun nykyisen tekstin.'),
+              e('div', null, 'Nykyinen teksti tallennetaan ensin luvun versioksi.')
+            )
+          ),
 
-        // Version list
-        activeChapter.versions && activeChapter.versions.length > 0 ?
-          activeChapter.versions.map((version, idx) =>
-            e('div', {
-              key: version.id,
-              style: {
-                background: version.id === activeChapter.currentVersion ? 'var(--bg-2)' : 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                padding: '12px',
-                marginBottom: '12px'
-              }
-            },
-              e('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' } },
-                e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
-                  e('span', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '14px',
-                      fontWeight: 600,
-                      color: 'var(--text)'
-                    }
-                  }, version.id),
-                  version.id === activeChapter.currentVersion ? e('span', {
-                    style: {
-                      fontSize: '11px',
-                      color: 'var(--bronze)',
-                      background: 'var(--bronze)' + '22',
-                      padding: '2px 8px',
-                      borderRadius: '3px',
-                      fontFamily: 'IBM Plex Mono'
-                    }
-                  }, 'Nykyinen') : null
-                ),
-                e('span', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-3)'
-                  }
-                }, new Date(version.timestamp).toLocaleString('fi-FI'))
-              ),
+          // Instruction
+          e('label', { className: 'faust-field' },
+            e('span', { className: 'faust-field__label' }, 'Ohje tekoälylle'),
+            e('textarea', {
+              className: 'faust-textarea faust-textarea--author',
+              value: regenerateFeedback,
+              onChange: (ev) => setRegenerateFeedback(ev.target.value),
+              disabled: isGenerating,
+              placeholder: 'Esim. ”Tee tästä dramaattisempi”, ”Lisää dialogia”, ”Pidennä jännitystä”',
+              'data-autofocus': 'true'
+            }),
+            e('span', { className: 'faust-field__hint' }, 'Kerro, mitä haluat muuttaa.')
+          ),
 
-              // Version info
-              version.generatedFrom && e('div', {
-                style: {
-                  fontSize: '11px',
-                  color: 'var(--text-2)',
-                  marginBottom: '8px',
-                  fontFamily: 'IBM Plex Mono'
-                }
-              },
-                version.generatedFrom.isRefinement && version.generatedFrom.userFeedback ?
-                  `Palaute: "${version.generatedFrom.userFeedback}"` :
-                  `Generoitu: ${version.generatedFrom.mode} (${version.generatedFrom.model})`
-              ),
-
-              // Word count
-              e('div', {
-                style: {
-                  fontSize: '11px',
-                  color: 'var(--text-3)',
-                  marginBottom: '8px',
-                  fontFamily: 'IBM Plex Mono'
-                }
-              }, `${version.wordCount || 0} sanaa`),
-
-              // Star rating
-              e('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' } },
-                e('span', { style: { fontSize: '11px', color: 'var(--text-3)' } }, 'Arvio:'),
-                [1,2,3,4,5].map(star =>
-                  e('span', {
-                    key: star,
-                    onClick: () => rateVersion(version.id, star),
-                    style: {
-                      cursor: 'pointer',
-                      fontSize: '16px',
-                      color: version.userRating && star <= version.userRating ? '#FFB800' : 'var(--text-3)'
-                    }
-                  }, '★')
-                )
-              ),
-
-              // User feedback
-              version.userFeedback && e('div', {
-                style: {
-                  fontSize: '11px',
-                  color: 'var(--text-2)',
-                  marginBottom: '8px',
-                  fontFamily: 'IBM Plex Mono',
-                  fontStyle: 'italic'
-                }
-              }, `"${version.userFeedback}"`),
-
-              // Actions
-              e('div', { style: { display: 'flex', gap: '8px' } },
-                version.id !== activeChapter.currentVersion ? e('button', {
-                  onClick: () => {
-                    restoreVersion(version.id);
-                    setShowVersionHistory(false);
-                  },
-                  style: {
-                    padding: '4px 12px',
-                    background: 'var(--bronze)',
-                    border: 'none',
-                    borderRadius: '4px',
-                    color: '#000',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px'
-                  }
-                }, 'Palauta') : null,
+          // Työtapa: the one setting of the project (BUG-5), the same as on the Tekoäly tab
+          e('div', { className: 'faust-field' },
+            e('span', { id: 'regenerate-mode-label', className: 'faust-field__label' }, 'Tekoälyn työtapa'),
+            e('div', { className: 'faust-segmented faust-segmented--block', role: 'group', 'aria-labelledby': 'regenerate-mode-label' },
+              ['exploration', 'production', 'polish'].map(mode =>
                 e('button', {
-                  onClick: () => {
-                    setComparisonVersionId(version.id);
-                    setShowVersionComparison(true);
-                    setShowVersionHistory(false);
-                  },
-                  style: {
-                    padding: '4px 12px',
-                    background: 'transparent',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    cursor: 'pointer',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px'
-                  }
-                }, 'Vertaa')
+                  key: mode,
+                  type: 'button',
+                  className: 'faust-segmented__option',
+                  'aria-pressed': ((project.ai && project.ai.currentMode) || 'production') === mode,
+                  disabled: isGenerating,
+                  title: {
+                    exploration: 'Ideointi: tekoäly kokeilee rohkeasti ja tarjoaa vaihtoehtoja',
+                    production: 'Kirjoitus: tekoäly seuraa suunnitelmaa ja tarinan linjaa',
+                    polish: 'Viimeistely: tekoäly hioo kieltä ja tyyliä ja muuttaa sisältöä vain vähän'
+                  }[mode],
+                  onClick: () => setAIMode(mode)
+                }, labelOf('mode', mode))
               )
             )
-          ) :
-          e('div', {
-            style: {
-              textAlign: 'center',
-              padding: '40px',
-              color: 'var(--text-3)',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, 'Ei versioita'),
-
-        // Close button
-        e('div', { style: { marginTop: '16px', display: 'flex', justifyContent: 'flex-end' } },
-          e('button', {
-            onClick: () => setShowVersionHistory(false),
-            style: {
-              padding: '8px 16px',
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, 'Sulje')
-        )
-      )
-    )),
-
-    // Project Settings Dialog
-    e(ErrorBoundary, { label: 'Projektin asetukset', onDismiss: () => setShowProjectSettings(false) }, showProjectSettings && e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0,0,0,0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10002
-      },
-      onClick: () => setShowProjectSettings(false)
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg)',
-          border: '1px solid var(--border-color)',
-          borderRadius: '8px',
-          padding: '32px',
-          width: '600px',
-          maxHeight: '80vh',
-          overflow: 'auto'
-        },
-        onClick: (ev) => ev.stopPropagation()
-      },
-        // Header
-        e('h2', {
-          style: {
-            fontFamily: 'EB Garamond',
-            fontSize: '24px',
-            color: 'var(--text)',
-            marginBottom: '24px',
-            borderBottom: '1px solid var(--border-color)',
-            paddingBottom: '12px'
-          }
-        }, 'Projektin asetukset'),
-
-        // Title
-        e('div', { style: { marginBottom: '20px' } },
-          e('label', {
-            htmlFor: 'project-title',
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text-3)',
-              display: 'block',
-              marginBottom: '6px',
-              textTransform: 'uppercase'
-            }
-          }, 'Projektin nimi'),
-          e('input', {
-            id: 'project-title',
-            name: 'projectTitle',
-            type: 'text',
-            value: project.title,
-            onChange: (ev) => {
-              setProject(prev => ({ ...prev, title: ev.target.value }));
-              setUnsavedChanges(true);
-            },
-            style: {
-              width: '100%',
-              padding: '10px',
-              background: 'var(--bg-1)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              fontFamily: 'EB Garamond',
-              fontSize: '16px'
-            }
-          })
-        ),
-
-        // Author
-        e('div', { style: { marginBottom: '20px' } },
-          e('label', {
-            htmlFor: 'project-author',
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text-3)',
-              display: 'block',
-              marginBottom: '6px',
-              textTransform: 'uppercase'
-            }
-          }, 'Kirjoittaja'),
-          e('input', {
-            id: 'project-author',
-            name: 'projectAuthor',
-            type: 'text',
-            value: project.author || '',
-            onChange: (ev) => {
-              setProject(prev => ({ ...prev, author: ev.target.value }));
-              setUnsavedChanges(true);
-            },
-            style: {
-              width: '100%',
-              padding: '10px',
-              background: 'var(--bg-1)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              fontFamily: 'EB Garamond',
-              fontSize: '16px'
-            }
-          })
-        ),
-
-        // Genre
-        e('div', { style: { marginBottom: '20px' } },
-          e('label', {
-            htmlFor: 'project-genre',
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text-3)',
-              display: 'block',
-              marginBottom: '6px',
-              textTransform: 'uppercase'
-            }
-          }, 'Genre'),
-          e('select', {
-            id: 'project-genre',
-            name: 'projectGenre',
-            value: project.genre || 'fiction',
-            onChange: (ev) => {
-              setProject(prev => ({ ...prev, genre: ev.target.value }));
-              setUnsavedChanges(true);
-            },
-            style: {
-              width: '100%',
-              padding: '10px',
-              background: 'var(--bg-1)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '14px'
-            }
-          },
-            e('option', { value: 'fiction' }, 'Fiktio'),
-            e('option', { value: 'fantasy' }, 'Fantasia'),
-            e('option', { value: 'scifi' }, 'Sci-fi'),
-            e('option', { value: 'mystery' }, 'Mysteeri'),
-            e('option', { value: 'thriller' }, 'Trilleri'),
-            e('option', { value: 'romance' }, 'Romanssi'),
-            e('option', { value: 'horror' }, 'Kauhu'),
-            e('option', { value: 'literary' }, 'Kaunokirjallisuus'),
-            e('option', { value: 'nonfiction' }, 'Tietokirja')
           )
         ),
 
-        // Target word count
-        e('div', { style: { marginBottom: '20px' } },
-          e('label', {
-            htmlFor: 'project-target-wordcount',
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text-3)',
-              display: 'block',
-              marginBottom: '6px',
-              textTransform: 'uppercase'
-            }
-          }, 'Tavoitesanamäärä'),
-          e('input', {
-            id: 'project-target-wordcount',
-            name: 'projectTargetWordCount',
-            type: 'number',
-            value: project.targetWordCount || 50000,
-            onChange: (ev) => {
-              setProject(prev => ({ ...prev, targetWordCount: parseInt(ev.target.value) || 0 }));
-              setUnsavedChanges(true);
-            },
-            style: {
-              width: '100%',
-              padding: '10px',
-              background: 'var(--bg-1)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '14px'
-            }
-          })
-        ),
-
-        // Language
-        e('div', { style: { marginBottom: '24px' } },
-          e('label', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '11px',
-              color: 'var(--text-3)',
-              display: 'block',
-              marginBottom: '6px',
-              textTransform: 'uppercase'
-            }
-          }, 'Tarinan kieli'),
-          e('select', {
-            value: project.language || 'fi',
-            onChange: (ev) => {
-              setProject(prev => ({ ...prev, language: ev.target.value }));
-              setUnsavedChanges(true);
-            },
-            style: {
-              width: '100%',
-              padding: '10px',
-              background: 'var(--bg-1)',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '14px'
-            }
-          },
-            e('option', { value: 'fi' }, '🇫🇮 Suomi'),
-            e('option', { value: 'en' }, '🇬🇧 English')
-          )
-        ),
-
-        // Buttons
-        e('div', { style: { display: 'flex', gap: '12px', justifyContent: 'flex-end' } },
+        e('div', { className: 'faust-dialog__footer' },
+          e('div', { className: 'faust-dialog__footer-start' },
+            e('button', {
+              type: 'button',
+              className: 'faust-btn faust-btn--lg',
+              onClick: () => {
+                setShowRegenerateDialog(false);
+                setShowVersionHistory(true);
+              }
+            }, 'Luvun versiot')
+          ),
           e('button', {
-            onClick: () => setShowProjectSettings(false),
-            style: {
-              padding: '10px 20px',
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px'
+            type: 'button',
+            className: 'faust-btn faust-btn--lg',
+            onClick: () => {
+              setShowRegenerateDialog(false);
+              setRegenerateFeedback('');
             }
           }, 'Peruuta'),
           e('button', {
-            onClick: () => {
-              setShowProjectSettings(false);
-              if (currentFilePath) {
-                saveProject();
-              }
-            },
-            style: {
-              padding: '10px 20px',
-              background: 'var(--bronze)',
-              border: 'none',
-              borderRadius: '4px',
-              color: '#000',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '13px',
-              fontWeight: 600
-            }
-          }, 'Tallenna')
+            type: 'button',
+            className: 'faust-btn faust-btn--lg faust-btn--primary',
+            onClick: () => regenerateChapter(),
+            // regenerateChapter returns at once while an analysis runs, so the button waits for it too
+            disabled: !regenerateFeedback.trim() || isGenerating || !!analysisBusy,
+            'aria-busy': isGenerating,
+            title: !regenerateFeedback.trim() ? 'Kirjoita ensin, mitä haluat muuttaa' : undefined
+          },
+            isGenerating ? e('span', { className: 'faust-spinner faust-spinner--sm', 'aria-hidden': 'true' }) : null,
+            isGenerating ? 'Kirjoitetaan…' : 'Kirjoita uudelleen'
+          )
         )
       )
     )),
 
-    // Version Comparison Dialog with Diff Highlighting
-    e(ErrorBoundary, { label: 'Versioiden vertailu', onDismiss: () => setShowVersionComparison(false) }, showVersionComparison && comparisonVersionId && (() => {
-      const compVersion = activeChapter.versions?.find(v => v.id === comparisonVersionId);
-      const compContent = compVersion?.content || '';
-      const currentContent = activeChapter.content || '';
-      const diffResult = computeTextDiff(compContent, currentContent);
-      const addedCount = diffResult.filter(d => d.type === 'added' && d.text.trim()).length;
-      const removedCount = diffResult.filter(d => d.type === 'removed' && d.text.trim()).length;
-      const currentWords = currentContent.split(/\s+/).filter(Boolean).length;
-      const compWords = compContent.split(/\s+/).filter(Boolean).length;
+    // Version History Dialog (Luvun versiot). Shows things: a press on the scrim closes it.
+    e(ErrorBoundary, { label: 'Luvun versiot', onDismiss: () => setShowVersionHistory(false) }, showVersionHistory && (() => {
+      const chapterName = (activeChapter && activeChapter.title) || 'Nimetön luku';
+      const currentId = activeChapter && activeChapter.currentVersion;
+      // Newest first, as on the Luku tab; a copy, so the stored order stays
+      const versionList = ((activeChapter && activeChapter.versions) || []).slice().reverse();
+      // 'v2' is shown as 2
+      const versionNo = (id) => String(id || '').replace(/\D/g, '') || String(id || '');
+      const stampOf = (iso) => {
+        const d = new Date(iso);
+        return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fi-FI') + ' klo ' + d.toLocaleTimeString('fi-FI', { hour: 'numeric', minute: '2-digit' });
+      };
+      // One origin line (M C.8 row 4). The first version is stored with mode 'manual' and the
+      // feedback 'Original draft', so the mode is tested first.
+      const originOf = (from) => {
+        if (!from) return null;
+        if (from.mode === 'manual') return 'Oma teksti';
+        if (from.userFeedback && String(from.userFeedback).trim()) return 'Kirjoitettu uudelleen ohjeella: ”' + from.userFeedback + '”';
+        return 'Tekoälyn kirjoittama' + (from.mode ? ' · työtapa: ' + labelOf('mode', from.mode).toLowerCase() : '');
+      };
+      const restoreFromList = async (version) => {
+        const n = versionNo(version.id);
+        if (!(await askConfirm(
+          'Palautetaanko versio ' + n + '?',
+          'Luvun ”' + chapterName + '” nykyinen teksti korvataan versiolla ' + n + '.',
+          'Palauta versio',
+          'Peruuta',
+          { danger: true }
+        ))) return;
+        restoreVersion(version.id);
+        setShowVersionHistory(false);
+      };
+      const editComment = async (version) => {
+        const text = await askText('Oma kommentti versiosta (valinnainen)', version.userFeedback || '', '', 'Tallenna kommentti');
+        if (text === null) return;
+        rateVersion(version.id, version.userRating, text || null);
+      };
 
       return e('div', {
-        style: {
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10002
-        },
-        onClick: () => setShowVersionComparison(false)
+        className: 'faust-scrim',
+        style: { zIndex: 'calc(var(--z-modal) + 1)' },
+        onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setShowVersionHistory(false); }
       },
-        e('div', {
-          style: {
-            background: 'var(--bg)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '8px',
-            padding: '24px',
-            maxWidth: '1400px',
-            width: '95%',
-            maxHeight: '90vh',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column'
-          },
-          onClick: (ev) => ev.stopPropagation()
-        },
-          // Header with stats
-          e('div', {
-            style: {
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '16px',
-              paddingBottom: '12px',
-              borderBottom: '1px solid var(--border-color)'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'EB Garamond',
-                fontSize: '20px',
-                color: 'var(--text)',
-                margin: 0
-              }
-            }, 'Versiovertailu - ' + activeChapter.title),
-            e('div', {
-              style: {
-                display: 'flex',
-                gap: '16px',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px'
-              }
-            },
-              e('span', { style: { color: '#4CAF50' } }, `+${addedCount} lisätty`),
-              e('span', { style: { color: '#f44336' } }, `-${removedCount} poistettu`),
-              e('span', { style: { color: 'var(--text-2)' } },
-                `${currentWords - compWords > 0 ? '+' : ''}${currentWords - compWords} sanaa`
-              )
-            )
-          ),
-
-          // View mode tabs
-          e('div', {
-            style: {
-              display: 'flex',
-              gap: '8px',
-              marginBottom: '16px'
-            }
-          },
-            e('button', {
-              onClick: () => {},
-              style: {
-                padding: '6px 12px',
-                background: 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: '#000',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                fontWeight: 600
-              }
-            }, '📊 Vierekkäin'),
-            e('button', {
-              onClick: () => {},
-              style: {
-                padding: '6px 12px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px'
-              }
-            }, '🔀 Yhdistetty diff')
-          ),
-
-          // Side-by-side comparison
-          e('div', {
-            style: {
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '16px',
-              flex: 1,
-              overflow: 'hidden'
-            }
-          },
-            // Comparison version (old)
-            e('div', {
-              style: {
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden'
-              }
-            },
-              e('div', {
-                style: {
-                  padding: '12px 16px',
-                  background: 'var(--surface-2)',
-                  borderBottom: '1px solid var(--border-color)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }
-              },
-                e('h4', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px',
-                    color: 'var(--text-2)',
-                    margin: 0
-                  }
-                }, `📸 ${comparisonVersionId}`),
-                e('span', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-3)'
-                  }
-                }, `${compWords} sanaa`)
-              ),
-              e('div', {
-                style: {
-                  padding: '16px',
-                  overflow: 'auto',
-                  flex: 1,
-                  fontFamily: 'EB Garamond',
-                  fontSize: '14px',
-                  lineHeight: '1.8',
-                  color: 'var(--text)',
-                  whiteSpace: 'pre-wrap'
-                }
-              }, compContent || 'Tyhjä versio')
+        e('div', { className: 'faust-dialog faust-dialog--lg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'version-history-title' },
+          e('div', { className: 'faust-dialog__header' },
+            e('div', { className: 'faust-dialog__heading' },
+              e('h2', { id: 'version-history-title', className: 'faust-dialog__title' }, 'Luvun versiot – ' + chapterName)
             ),
+            e('button', {
+              type: 'button',
+              className: 'faust-btn faust-btn--icon',
+              'aria-label': 'Sulje',
+              title: 'Sulje',
+              onClick: () => setShowVersionHistory(false)
+            }, icons.close({ size: 16 }))
+          ),
 
-            // Current version (new)
-            e('div', {
-              style: {
-                border: '1px solid var(--bronze)',
-                borderRadius: '4px',
-                display: 'flex',
-                flexDirection: 'column',
-                overflow: 'hidden'
+          e('div', { className: 'faust-dialog__body' },
+            versionList.length > 0 ?
+              e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' } },
+                versionList.map(version => {
+                  const isCurrent = version.id === currentId;
+                  const n = versionNo(version.id);
+                  const origin = originOf(version.generatedFrom);
+                  const words = typeof version.wordCount === 'number'
+                    ? version.wordCount
+                    : (version.content || '').split(/\s+/).filter(Boolean).length;
+
+                  return e('div', {
+                    key: version.id,
+                    className: 'faust-card' + (isCurrent ? ' is-selected' : ''),
+                    'aria-current': isCurrent ? 'true' : undefined
+                  },
+                    e('div', { className: 'faust-card__head' },
+                      e('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', minWidth: 0 } },
+                        e('span', { className: 'faust-card__title' }, 'Versio ' + n),
+                        isCurrent ? e('span', { className: 'faust-chip faust-chip--accent' }, 'Nykyinen') : null
+                      ),
+                      e('span', { className: 'faust-meta faust-num' }, stampOf(version.timestamp))
+                    ),
+
+                    origin ? e('div', { className: 'faust-meta faust-clamp-2', title: origin }, origin) : null,
+                    e('div', { className: 'faust-meta faust-num' }, count(words, 'sana')),
+
+                    // Oma arvio: five stars; each keeps the version's comment (W17)
+                    e('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--sp-2)' } },
+                      e('span', { className: 'faust-meta' }, 'Oma arvio:'),
+                      e('span', { className: 'faust-rating', role: 'group', 'aria-label': 'Oma arvio' },
+                        [1, 2, 3, 4, 5].map(star => {
+                          const on = !!version.userRating && star <= version.userRating;
+                          return e('button', {
+                            key: star,
+                            type: 'button',
+                            className: 'faust-rating__star' + (on ? ' is-on' : ''),
+                            title: 'Anna ' + count(star, 'tähti'),
+                            'aria-label': 'Anna ' + count(star, 'tähti'),
+                            'aria-pressed': on,
+                            onClick: () => rateVersion(version.id, star, version.userFeedback || null)
+                          }, icons.star({ size: 14, filled: on }));
+                        })
+                      ),
+                      e('button', {
+                        type: 'button',
+                        className: 'faust-btn faust-btn--quiet faust-btn--sm',
+                        onClick: () => editComment(version)
+                      }, version.userFeedback ? 'Muokkaa kommenttia…' : 'Lisää kommentti…')
+                    ),
+
+                    version.userFeedback ? e('div', { className: 'faust-card__body' }, 'Oma kommentti: ”' + version.userFeedback + '”') : null,
+
+                    !isCurrent ? e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', marginTop: 'var(--sp-1)' } },
+                      e('button', {
+                        type: 'button',
+                        className: 'faust-btn faust-btn--sm',
+                        onClick: () => restoreFromList(version)
+                      }, 'Palauta tämä versio…'),
+                      // W7: the list stays open under the comparison
+                      e('button', {
+                        type: 'button',
+                        className: 'faust-btn faust-btn--sm',
+                        title: 'Näytä erot tämän version ja luvun nykyisen tekstin välillä',
+                        onClick: () => {
+                          setComparisonVersionId(version.id);
+                          setShowVersionComparison(true);
+                        }
+                      }, 'Vertaa nykyiseen')
+                    ) : null
+                  );
+                })
+              ) :
+              e('div', { className: 'faust-empty' },
+                e('div', { className: 'faust-empty__title' }, 'Ei vielä versioita.'),
+                e('div', { className: 'faust-empty__hint' }, 'Versio tallentuu, kun tekoäly kirjoittaa luvun tai kirjoittaa sen uudelleen.')
+              )
+          )
+        )
+      );
+    })()),
+
+    // Project Settings Dialog. The fields apply as typed; a press on the scrim does not close it.
+    e(ErrorBoundary, { label: 'Projektin asetukset', onDismiss: () => setShowProjectSettings(false) }, showProjectSettings && e('div', {
+      className: 'faust-scrim',
+      style: { zIndex: 'calc(var(--z-modal) + 2)' }
+    },
+      e('div', { className: 'faust-dialog faust-dialog--md', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'project-settings-title' },
+        e('div', { className: 'faust-dialog__header' },
+          e('div', { className: 'faust-dialog__heading' },
+            e('h2', { id: 'project-settings-title', className: 'faust-dialog__title' }, 'Projektin asetukset')
+          ),
+          e('button', {
+            type: 'button',
+            className: 'faust-btn faust-btn--icon',
+            'aria-label': 'Sulje',
+            title: 'Sulje',
+            onClick: () => setShowProjectSettings(false)
+          }, icons.close({ size: 16 }))
+        ),
+
+        e('div', { className: 'faust-dialog__body' },
+          // Title
+          e('label', { className: 'faust-field' },
+            e('span', { className: 'faust-field__label' }, 'Projektin nimi'),
+            e('input', {
+              id: 'project-title',
+              name: 'projectTitle',
+              type: 'text',
+              className: 'faust-input faust-input--author',
+              value: project.title,
+              onChange: (ev) => {
+                setProject(prev => ({ ...prev, title: ev.target.value }));
+                setUnsavedChanges(true);
+              }
+            })
+          ),
+
+          // Author
+          e('label', { className: 'faust-field' },
+            e('span', { className: 'faust-field__label' }, 'Kirjoittaja'),
+            e('input', {
+              id: 'project-author',
+              name: 'projectAuthor',
+              type: 'text',
+              className: 'faust-input faust-input--author',
+              value: project.author || '',
+              onChange: (ev) => {
+                setProject(prev => ({ ...prev, author: ev.target.value }));
+                setUnsavedChanges(true);
+              }
+            })
+          ),
+
+          // Genre: stored keys, shown through the display map
+          e('label', { className: 'faust-field' },
+            e('span', { className: 'faust-field__label' }, 'Genre'),
+            e('select', {
+              id: 'project-genre',
+              name: 'projectGenre',
+              className: 'faust-select',
+              value: project.genre || 'fiction',
+              onChange: (ev) => {
+                setProject(prev => ({ ...prev, genre: ev.target.value }));
+                setUnsavedChanges(true);
               }
             },
-              e('div', {
-                style: {
-                  padding: '12px 16px',
-                  background: 'var(--bronze)' + '22',
-                  borderBottom: '1px solid var(--bronze)',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }
-              },
-                e('h4', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px',
-                    color: 'var(--bronze)',
-                    margin: 0
-                  }
-                }, `✏️ Nykyinen (${activeChapter.currentVersion})`),
-                e('span', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-3)'
-                  }
-                }, `${currentWords} sanaa`)
-              ),
-              e('div', {
-                style: {
-                  padding: '16px',
-                  overflow: 'auto',
-                  flex: 1,
-                  fontFamily: 'EB Garamond',
-                  fontSize: '14px',
-                  lineHeight: '1.8'
-                }
-              },
-                // Render diff with highlighting
-                ...diffResult.map((part, idx) => {
-                  if (part.type === 'same') {
-                    return e('span', { key: idx, style: { color: 'var(--text)' } }, part.text);
-                  } else if (part.type === 'added') {
-                    return e('span', {
-                      key: idx,
-                      style: {
-                        background: '#4CAF5033',
-                        color: '#4CAF50',
-                        borderRadius: '2px'
-                      }
-                    }, part.text);
-                  } else if (part.type === 'removed') {
-                    return e('span', {
-                      key: idx,
-                      style: {
-                        background: '#f4433633',
-                        color: '#f44336',
-                        textDecoration: 'line-through',
-                        borderRadius: '2px'
-                      }
-                    }, part.text);
-                  }
-                  return null;
-                })
+              ['fiction', 'fantasy', 'scifi', 'mystery', 'thriller', 'romance', 'horror', 'literary', 'nonfiction'].map(genre =>
+                e('option', { key: genre, value: genre }, labelOf('genre', genre))
               )
             )
           ),
 
-          // Actions
-          e('div', {
-            style: {
-              marginTop: '16px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }
-          },
-            e('button', {
-              onClick: () => {
-                if (confirm('Palauta tämä versio? Nykyinen sisältö korvataan.')) {
-                  restoreVersion(comparisonVersionId);
-                  setShowVersionComparison(false);
-                }
+          // Word goal of the manuscript (W19). Stored only when it is at least 1: the sidebar and
+          // the Projekti tab divide by it. The field is not controlled, so it can be emptied while typing.
+          e('label', { className: 'faust-field' },
+            e('span', { className: 'faust-field__label' }, 'Käsikirjoituksen tavoite (sanaa)'),
+            e('input', {
+              id: 'project-target-wordcount',
+              name: 'projectTargetWordCount',
+              type: 'number',
+              // min 0 keeps the arrows' step base at 0 (80 000 to 81 000); a value under 1 is not stored
+              min: 0,
+              step: 1000,
+              className: 'faust-input faust-num',
+              defaultValue: (project.targets && project.targets.totalWords) || '',
+              onChange: (ev) => {
+                const words = parseInt(ev.target.value, 10);
+                if (!(words >= 1)) return;
+                setProject(prev => ({ ...prev, targets: { ...(prev.targets || {}), totalWords: words } }));
+                setUnsavedChanges(true);
               },
-              style: {
-                padding: '8px 16px',
-                background: 'var(--bronze)',
-                border: 'none',
-                borderRadius: '4px',
-                color: '#000',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                fontWeight: 600
+              onBlur: (ev) => {
+                if (!(parseInt(ev.target.value, 10) >= 1)) {
+                  ev.target.value = String((project.targets && project.targets.totalWords) || '');
+                }
               }
-            }, '⏪ Palauta tämä versio'),
+            })
+          ),
+
+          // Language
+          e('label', { className: 'faust-field' },
+            e('span', { className: 'faust-field__label' }, 'Käsikirjoituksen kieli'),
+            e('select', {
+              id: 'project-language',
+              name: 'projectLanguage',
+              className: 'faust-select',
+              value: project.language || 'fi',
+              onChange: (ev) => {
+                setProject(prev => ({ ...prev, language: ev.target.value }));
+                setUnsavedChanges(true);
+              }
+            },
+              e('option', { value: 'fi' }, 'Suomi'),
+              e('option', { value: 'en' }, 'Englanti')
+            ),
+            e('span', { className: 'faust-field__hint' }, 'Tekoäly kirjoittaa uudet luvut tällä kielellä. Ei vaikuta oikolukuun.')
+          )
+        ),
+
+        // One button: the fields already apply; saving stays with Tallenna and the menu
+        e('div', { className: 'faust-dialog__footer' },
+          e('span', { className: 'faust-dialog__footer-start faust-meta' },
+            'Muutokset tulevat voimaan heti. Tallenna projekti tavalliseen tapaan (' + shortcut('CmdOrCtrl+S') + ').'
+          ),
+          e('button', {
+            type: 'button',
+            className: 'faust-btn faust-btn--lg faust-btn--primary',
+            onClick: () => setShowProjectSettings(false)
+          }, 'Valmis')
+        )
+      )
+    )),
+
+    // Version Comparison Dialog. It opens over Luvun versiot, which stays open under it (W7).
+    e(ErrorBoundary, { label: 'Versioiden vertailu', onDismiss: () => setShowVersionComparison(false) }, showVersionComparison && comparisonVersionId && (() => {
+      const compVersion = ((activeChapter && activeChapter.versions) || []).find(v => v.id === comparisonVersionId);
+      const compContent = (compVersion && compVersion.content) || '';
+      const currentContent = (activeChapter && activeChapter.content) || '';
+      const currentWords = currentContent.split(/\s+/).filter(Boolean).length;
+      const compWords = compContent.split(/\s+/).filter(Boolean).length;
+      const wordDelta = currentWords - compWords;
+      const chapterName = (activeChapter && activeChapter.title) || 'Nimetön luku';
+      const compNo = String(comparisonVersionId).replace(/\D/g, '') || String(comparisonVersionId);
+      const compDate = compVersion ? new Date(compVersion.timestamp) : null;
+      const compStamp = compDate && !isNaN(compDate.getTime())
+        ? compDate.toLocaleDateString('fi-FI') + ' klo ' + compDate.toLocaleTimeString('fi-FI', { hour: 'numeric', minute: '2-digit' })
+        : '';
+      const restoreCompared = async () => {
+        if (!(await askConfirm(
+          'Palautetaanko versio ' + compNo + '?',
+          'Luvun ”' + chapterName + '” nykyinen teksti korvataan versiolla ' + compNo + '.',
+          'Palauta versio',
+          'Peruuta',
+          { danger: true }
+        ))) return;
+        restoreVersion(comparisonVersionId);
+        setShowVersionComparison(false);
+        setShowVersionHistory(false);
+      };
+
+      return e('div', {
+        className: 'faust-scrim' + (showVersionHistory ? ' is-stacked' : ''),
+        style: { zIndex: 'calc(var(--z-modal) + 2)' },
+        onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setShowVersionComparison(false); }
+      },
+        e('div', { className: 'faust-dialog faust-dialog--xl', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'version-comparison-title' },
+          e('div', { className: 'faust-dialog__header' },
+            e('div', { className: 'faust-dialog__heading' },
+              e('h2', { id: 'version-comparison-title', className: 'faust-dialog__title' }, 'Versioiden vertailu – ' + chapterName),
+              e('div', { className: 'faust-dialog__sub faust-num' },
+                'Sanamäärä ' + (wordDelta > 0 ? '+' : '') + wordDelta.toLocaleString('fi-FI')
+              )
+            ),
             e('button', {
-              onClick: () => setShowVersionComparison(false),
-              style: {
-                padding: '8px 16px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
-              }
-            }, 'Sulje')
+              type: 'button',
+              className: 'faust-btn faust-btn--icon',
+              'aria-label': 'Sulje',
+              title: 'Sulje',
+              onClick: () => setShowVersionComparison(false)
+            }, icons.close({ size: 16 }))
+          ),
+
+          // Two columns of plain text (BUG-20 fallback, reconcile R-20): the marks, the counts
+          // Lisätty / Poistettu and the legend come with I-03, which feeds computeTextDiff into this frame.
+          e('div', { className: 'faust-dialog__body faust-dialog__body--flush' },
+            e('div', { className: 'faust-diff faust-diff--split' },
+              e('div', { className: 'faust-diff__col' },
+                e('div', { className: 'faust-diff__colhead' },
+                  e('span', { className: 'faust-ui' }, 'Versio ' + compNo + (compStamp ? ' · ' + compStamp : '')),
+                  e('span', { className: 'faust-diff__count' }, count(compWords, 'sana'))
+                ),
+                compContent
+                  ? e('div', { className: 'faust-prose' }, compContent)
+                  : e('div', { className: 'faust-meta' }, 'Tyhjä versio')
+              ),
+              e('div', { className: 'faust-diff__rule', 'aria-hidden': 'true' }),
+              e('div', { className: 'faust-diff__col' },
+                e('div', { className: 'faust-diff__colhead' },
+                  e('span', { className: 'faust-ui' }, 'Nykyinen teksti'),
+                  e('span', { className: 'faust-diff__count' }, count(currentWords, 'sana'))
+                ),
+                e('div', { className: 'faust-prose' }, currentContent)
+              )
+            )
+          ),
+
+          e('div', { className: 'faust-dialog__footer' },
+            e('button', {
+              type: 'button',
+              className: 'faust-btn faust-btn--lg',
+              onClick: () => setShowVersionComparison(false)
+            }, 'Sulje'),
+            e('button', {
+              type: 'button',
+              className: 'faust-btn faust-btn--lg faust-btn--primary',
+              disabled: !compVersion,
+              onClick: restoreCompared
+            }, 'Palauta tämä versio…')
           )
         )
       );
     })()),
 
     // CharacterSheet Modal (View/Edit Characters)
-    e(ErrorBoundary, { label: 'Hahmot', onDismiss: () => setShowCharacterSheet(false) }, showCharacterSheet && e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.85)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999
-      }
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg-1)',
-          border: '2px solid var(--bronze)',
-          borderRadius: '8px',
-          padding: '32px',
-          maxWidth: '900px',
-          width: '95%',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          position: 'relative'
-        }
-      },
-        // Header
-        e('h2', {
-          style: {
-            fontFamily: 'EB Garamond',
-            fontSize: '24px',
-            color: 'var(--text)',
-            marginBottom: '8px'
-          }
-        }, characterSheetMode === 'list' ?
-           e('span', null, CharacterEngineLogo(20), ' Characters') :
-           characterSheetMode === 'view' ?
-           e('span', null, CharacterEngineLogo(20), ` ${selectedCharacter?.basicInfo?.name || selectedCharacter?.name || 'Character'}`) :
-           '✏️ Edit Character'),
+    e(ErrorBoundary, { label: 'Hahmot', onDismiss: () => setShowCharacterSheet(false) }, showCharacterSheet && (() => {
+      const characters = project.characters || [];
+      const hasCastPlan = !!(project.castPlan && project.castPlan.defined);
+      const isProfile = characterSheetMode === 'view' && !!selectedCharacter;
+      const nameOf = (char) => (char && ((char.basicInfo && char.basicInfo.name) || char.name)) || 'Nimetön hahmo';
+      const archetypeOf = (char) => (char.archetypal && char.archetypal.primaryArchetype) ||
+        (char.archetype && (char.archetype.archetypeFamily || char.archetype.primaryArchetype)) || '';
+      const closeCharacterSheet = () => {
+        setShowCharacterSheet(false);
+        setCharacterSheetMode('list');
+        setSelectedCharacter(null);
+      };
+      const showCharacterList = () => {
+        setCharacterSheetMode('list');
+        setSelectedCharacter(null);
+      };
+      const deleteCharacter = async (character) => {
+        if (!(await askConfirm('Poistetaanko hahmo?', 'Hahmo ”' + nameOf(character) + '” poistetaan. Poistoa ei voi kumota.', 'Poista hahmo', 'Peruuta', { danger: true }))) return;
+        setProject(prev => ({
+          ...prev,
+          characters: (prev.characters || []).filter((c) => (character.id ? c.id !== character.id : c !== character))
+        }));
+        setUnsavedChanges(true);
+        showCharacterList();
+      };
 
-        e('p', {
-          style: {
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px',
-            color: 'var(--text-2)',
-            marginBottom: '24px'
-          }
-        }, characterSheetMode === 'list' ? `${project.characters.length} characters in your story` :
-           characterSheetMode === 'view' ? 'View character profile' :
-           'Edit character details'),
+      // The profile: one section per layer, key-value rows, stored values through label()
+      const isEmpty = (value) => value === undefined || value === null || value === '';
+      const percent = (value) => (typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) + ' %' : (isEmpty(value) ? null : String(value)));
+      const listOf = (value, toText) => (Array.isArray(value) ? value.filter((v) => !isEmpty(v)).map((v) => (toText ? toText(v) : String(v))).join(', ') : '');
+      const kvRow = (key, value) => (isEmpty(value) ? null
+        : e('div', { key, className: 'faust-kv' }, e('span', null, key + ':'), e('span', null, String(value))));
+      const rowGroup = (key, title, rows) => {
+        const shown = rows.filter(Boolean);
+        if (!shown.length) return null;
+        return e('div', { key, style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
+          title && e('div', { className: 'faust-field__label' }, title),
+          e('div', null, ...shown));
+      };
+      const textBlock = (key, value) => (isEmpty(value) ? null
+        : e('div', { key, style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
+            e('div', { className: 'faust-field__label' }, key),
+            e('div', { className: 'faust-serif', style: { whiteSpace: 'pre-wrap' } }, String(value))));
+      const profileSection = (title, items) => {
+        const shown = items.filter(Boolean);
+        if (!shown.length) return null;
+        return e('div', { key: title, className: 'faust-section' },
+          e('div', { className: 'faust-section__head' },
+            e('div', { className: 'faust-section__title', role: 'heading', 'aria-level': 3 }, title)),
+          e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' } }, ...shown));
+      };
+      const profileSections = (char) => {
+        const info = char.basicInfo || {};
+        const pick = (field) => info[field] ?? char[field];
+        const psych = char.psychological;
+        const p = psych && typeof psych === 'object' ? psych : {};
+        const beliefs = p.beliefSystem || {};
+        const trans = char.transactional || {};
+        const arch = char.archetypal || {};
+        const ensemble = char.ensemble || {};
+        const psychology = char.psychology || {};
+        const voice = char.voice || {};
+        const voiceLines = (Array.isArray(voice.examples) ? voice.examples : []).filter((line) => !isEmpty(line));
+        const archetype = archetypeOf(char);
+        return [
+          profileSection('Perustiedot', [
+            rowGroup('perustiedot', null, [kvRow('Nimi', pick('name')), kvRow('Ikä', pick('age')), kvRow('Ammatti', pick('occupation'))]),
+            textBlock('Ulkonäkö', pick('appearance')),
+            textBlock('Kuvaus', pick('description')),
+            textBlock('Tausta', pick('background'))
+          ]),
+          typeof psych === 'string' && psych.trim() !== '' && profileSection('Profiili', [
+            e('div', { key: 'profiili', className: 'faust-serif', style: { whiteSpace: 'pre-wrap' } }, psych)
+          ]),
+          profileSection('Persoonallisuus', [
+            rowGroup('bigFive', 'Persoonallisuuspiirteet (Big Five)',
+              Object.entries(p.bigFive || {}).map(([trait, value]) => kvRow(labelOf('bigFive', trait), percent(value)))),
+            rowGroup('psyyke', null, [
+              p.dsmCategory && p.dsmCategory !== 'none' ? kvRow('Psyykkinen oireilu', label(p.dsmCategory)) : null,
+              p.existentialTerror && p.existentialTerror.copingMechanism ? kvRow('Selviytymiskeino', label(p.existentialTerror.copingMechanism)) : null,
+              p.trauma && p.trauma.type ? kvRow('Trauma', label(p.trauma.type) + (typeof p.trauma.severity === 'number' ? ' (vakavuus: ' + percent(p.trauma.severity) + ')' : '')) : null,
+              beliefs.worldview ? kvRow('Maailmankuva', label(beliefs.worldview)) : null
+            ]),
+            textBlock('Ydinuskomukset', Array.isArray(beliefs.core_beliefs) ? beliefs.core_beliefs.filter((b) => !isEmpty(b)).join(' · ') : '')
+          ]),
+          profileSection('Vuorovaikutus', [
+            rowGroup('minatilat', 'Minätilat', trans.egoStates ? [
+              kvRow('Vanhempi', percent(trans.egoStates.parent)),
+              kvRow('Aikuinen', percent(trans.egoStates.adult)),
+              kvRow('Lapsi', percent(trans.egoStates.child))
+            ] : []),
+            rowGroup('vuorovaikutus', null, [
+              trans.socialGame && trans.socialGame.game && trans.socialGame.game !== 'none' ? kvRow('Draamakolmio', label(trans.socialGame.game)) : null,
+              trans.communicationStyle ? kvRow('Viestintätyyli', label(trans.communicationStyle)) : null
+            ])
+          ]),
+          profileSection('Arkkityyppi', [
+            rowGroup('arkkityyppi', null, [
+              archetype ? kvRow('Arkkityyppi', label(archetype)) : null,
+              kvRow('Toissijaiset', listOf(arch.secondaryArchetypes, (v) => label(v))),
+              arch.mythicJourney && arch.mythicJourney.stage ? kvRow('Sankarin matka', label(arch.mythicJourney.stage)) : null
+            ]),
+            rowGroup('varjo', 'Varjo', [
+              kvRow('Tukahdutetut piirteet', listOf(arch.shadowWork && arch.shadowWork.suppressedTraits))
+            ])
+          ]),
+          profileSection('Roolit', [
+            rowGroup('roolit', null, [
+              ensemble.storyFit && ensemble.storyFit.narrativeRole ? kvRow('Rooli tarinassa', label(ensemble.storyFit.narrativeRole)) : null,
+              ensemble.groupDynamics && ensemble.groupDynamics.roleInGroup ? kvRow('Rooli ryhmässä', label(ensemble.groupDynamics.roleInGroup)) : null,
+              kvRow('MBTI ja enneagrammi', [psychology.mbti, psychology.enneagram].filter((v) => !isEmpty(v)).join(' · '))
+            ]),
+            (!isEmpty(voice.style) || voiceLines.length > 0) && e('div', { key: 'puhetyyli', style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
+              e('div', { className: 'faust-field__label' }, 'Puhetyyli'),
+              !isEmpty(voice.style) && e('div', { className: 'faust-serif' }, String(voice.style)),
+              ...voiceLines.map((line, i) => e('div', { key: i, className: 'faust-quote' }, '”' + line + '”')))
+          ])
+        ].filter(Boolean);
+      };
 
-        // Close button
-        e('button', {
-          onClick: () => {
-            setShowCharacterSheet(false);
-            setCharacterSheetMode('list');
-            setSelectedCharacter(null);
-          },
-          style: {
-            position: 'absolute',
-            top: '24px',
-            right: '24px',
-            background: 'transparent',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text-3)',
-            padding: '4px 12px',
-            cursor: 'pointer',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px'
-          }
-        }, 'Close'),
-
-        // LIST MODE: Show all characters
-        characterSheetMode === 'list' && e('div', null,
-          e('div', {
-            style: {
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-              gap: '16px'
-            }
-          },
-            project.characters.map((char, idx) => {
-              const name = char.basicInfo?.name || char.name || `Character ${idx + 1}`;
-              const role = char.basicInfo?.role || char.role || '';
-              const archetype = char.archetype?.primaryArchetype || '';
-
-              return e('div', {
+      const listBody = characters.length === 0
+        ? e('div', { className: 'faust-empty' },
+            icons.sol({ size: 40, className: 'faust-empty__icon' }),
+            e('div', { className: 'faust-empty__title' }, 'Ei vielä hahmoja.'),
+            e('div', { className: 'faust-empty__hint' }, hasCastPlan ? 'Luo ensimmäinen valitsemalla + Uusi hahmo…' : 'Aloita valitsemalla Suunnittele hahmot…'))
+        : e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 'var(--sp-3)' } },
+            characters.map((char, idx) => {
+              const role = (char.basicInfo && char.basicInfo.role) || char.role || '';
+              const archetype = archetypeOf(char);
+              return e('button', {
                 key: idx,
+                type: 'button',
+                className: 'faust-card faust-card--click',
                 onClick: () => {
                   setSelectedCharacter(char);
                   setCharacterSheetMode('view');
-                },
-                style: {
-                  padding: '16px',
-                  background: 'var(--bg-2)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s'
                 }
               },
-                e('h3', {
-                  style: {
-                    fontFamily: 'EB Garamond',
-                    fontSize: '18px',
-                    color: 'var(--text)',
-                    marginBottom: '6px'
-                  }
-                }, name),
-
-                role && e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-2)',
-                    marginBottom: '4px'
-                  }
-                }, role),
-
-                archetype && e('div', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '10px',
-                    color: 'var(--bronze)',
-                    marginTop: '8px'
-                  }
-                }, `Archetype: ${archetype}`)
+                e('span', { className: 'faust-card__title' }, nameOf(char)),
+                role && e('span', { className: 'faust-meta' }, 'Rooli tarinassa: ' + label(role)),
+                archetype && e('span', { className: 'faust-meta' }, 'Arkkityyppi: ' + label(archetype))
               );
-            })
-          )
-        ),
+            }));
 
-        // VIEW MODE: Show character details
-        characterSheetMode === 'view' && selectedCharacter && e('div', null,
-          // Basic Info
-          e('div', {
-            style: {
-              marginBottom: '24px',
-              padding: '16px',
-              background: 'var(--bg-2)',
-              borderRadius: '6px',
-              border: '1px solid var(--border-color)'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                marginBottom: '12px'
-              }
-            }, 'BASIC INFO'),
-
-            selectedCharacter.basicInfo && Object.entries(selectedCharacter.basicInfo).map(([key, value]) =>
-              e('div', {
-                key,
-                style: {
-                  marginBottom: '8px',
-                  display: 'flex',
-                  gap: '8px'
+      return e('div', { className: 'faust-scrim' },
+        e('div', { className: 'faust-dialog faust-dialog--lg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'character-sheet-title' },
+          e('div', { className: 'faust-dialog__header' },
+            e('div', { className: 'faust-dialog__heading' },
+              e('h2', { className: 'faust-dialog__title', id: 'character-sheet-title' },
+                icons.sol({ size: 20 }), isProfile ? nameOf(selectedCharacter) : 'Hahmot'),
+              isProfile
+                ? e('div', { className: 'faust-dialog__sub' }, 'Hahmon profiili')
+                : characters.length > 0 && e('div', { className: 'faust-dialog__sub' }, count(characters.length, 'hahmo'))
+            ),
+            !isProfile && e('div', { className: 'faust-dialog__actions' },
+              e('button', {
+                className: 'faust-btn',
+                onClick: () => {
+                  // Both windows share one layer and the builder is mounted earlier: close this one first
+                  closeCharacterSheet();
+                  if (hasCastPlan) openCharacterBuilder();
+                  else openCastPlan();
                 }
-              },
-                e('span', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px',
-                    color: 'var(--text-3)',
-                    minWidth: '120px'
-                  }
-                }, key + ':'),
-                e('span', {
-                  style: {
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px',
-                    color: 'var(--text)'
-                  }
-                }, String(value))
-              )
-            )
+              }, hasCastPlan ? '+ Uusi hahmo…' : 'Suunnittele hahmot…')
+            ),
+            e('button', { className: 'faust-btn faust-btn--icon', 'aria-label': 'Sulje', title: 'Sulje', onClick: closeCharacterSheet },
+              icons.close({ size: 16 }))
           ),
-
-          // Psychological Layer
-          selectedCharacter.psychological && e('div', {
-            style: {
-              marginBottom: '24px',
-              padding: '16px',
-              background: 'var(--bg-2)',
-              borderRadius: '6px',
-              border: '1px solid var(--border-color)'
-            }
-          },
-            e('h3', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                color: 'var(--text-3)',
-                marginBottom: '12px'
-              }
-            }, 'PSYCHOLOGICAL PROFILE'),
-
-            e('div', {
-              style: {
-                fontFamily: 'EB Garamond',
-                fontSize: '14px',
-                lineHeight: '1.7',
-                color: 'var(--text)',
-                whiteSpace: 'pre-wrap'
-              }
-            }, typeof selectedCharacter.psychological === 'string'
-               ? selectedCharacter.psychological
-               : JSON.stringify(selectedCharacter.psychological, null, 2))
+          e('div', { className: 'faust-dialog__body' },
+            isProfile
+              ? e('div', null,
+                  e('div', { style: { marginBottom: 'var(--sp-4)' } },
+                    e('button', { className: 'faust-btn faust-btn--quiet', onClick: showCharacterList },
+                      icons.arrowLeft({ size: 14 }), 'Kaikki hahmot')),
+                  e('div', null, ...profileSections(selectedCharacter)))
+              : listBody
           ),
-
-          // Back button
-          e('div', {
-            style: {
-              marginTop: '24px',
-              display: 'flex',
-              gap: '12px',
-              justifyContent: 'flex-start'
-            }
-          },
-            e('button', {
-              onClick: () => setCharacterSheetMode('list'),
-              style: {
-                padding: '8px 16px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
-              }
-            }, '← Back to List'),
-
-            e('button', {
-              onClick: () => {
-                if (confirm(`Delete character "${selectedCharacter.basicInfo?.name || selectedCharacter.name}"?`)) {
-                  const charIndex = project.characters.indexOf(selectedCharacter);
-                  if (charIndex > -1) {
-                    project.characters.splice(charIndex, 1);
-                    setProject({ ...project });
-                    setUnsavedChanges(true);
-                    setCharacterSheetMode('list');
-                    setSelectedCharacter(null);
-                  }
-                }
-              },
-              style: {
-                padding: '8px 16px',
-                background: 'transparent',
-                border: '1px solid #f44336',
-                borderRadius: '4px',
-                color: '#f44336',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
-              }
-            }, '🗑️ Delete Character')
-          )
+          isProfile && e('div', { className: 'faust-dialog__footer' },
+            e('div', { className: 'faust-dialog__footer-start' },
+              e('button', { className: 'faust-btn faust-btn--sm faust-btn--danger', onClick: () => deleteCharacter(selectedCharacter) }, 'Poista hahmo')))
         )
-      )
-    )),
+      );
+    })()),
 
     // LocationSheet Modal (List View)
-    e(ErrorBoundary, { label: 'Paikat', onDismiss: () => setShowLocationSheet(false) }, showLocationSheet && e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.85)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999
-      }
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg-1)',
-          border: '2px solid var(--bronze)',
-          borderRadius: '8px',
-          padding: '32px',
-          maxWidth: '800px',
-          width: '90%',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          position: 'relative'
-        }
-      },
-        e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '♁ Story Locations'),
-        e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '16px' } },
-          `${Object.keys(project.continuity?.locations || {}).length} locations tracked`),
-
-        // Close button
-        e('button', {
-          onClick: () => setShowLocationSheet(false),
-          style: {
-            position: 'absolute',
-            top: '24px',
-            right: '24px',
-            background: 'transparent',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text-3)',
-            padding: '4px 12px',
-            cursor: 'pointer',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px'
-          }
-        }, 'Close'),
-
-        // Create Location button
-        e('button', {
-          onClick: () => {
-            setSelectedLocation(null);
-            setLocationFormMode('create');
-            setShowLocationFormModal(true);
-          },
-          style: {
-            width: '100%',
-            padding: '12px',
-            marginBottom: '16px',
-            background: 'var(--bronze)',
-            border: 'none',
-            borderRadius: '4px',
-            color: '#000',
-            cursor: 'pointer',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '13px',
-            fontWeight: 600
-          }
-        }, '+ Create New Location'),
-
-        // Locations grid
-        e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' } },
-          Object.values(project.continuity?.locations || {}).map(loc =>
-            e('div', {
-              key: loc.name,
-              onClick: () => {
-                setSelectedLocation(loc);
-                setLocationFormMode('view');
-                setShowLocationFormModal(true);
-              },
-              style: {
-                padding: '12px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }
-            },
-              e('h3', { style: { fontFamily: 'EB Garamond', fontSize: '16px', color: 'var(--text)', marginBottom: '6px' } }, loc.name),
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginBottom: '4px' } },
-                `First mentioned: Chapter ${loc.firstMentioned + 1}`),
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } },
-                `Appearances: ${(loc.appearances || []).length}`)
-            )
+    e(ErrorBoundary, { label: 'Paikat', onDismiss: () => setShowLocationSheet(false) }, showLocationSheet && (() => {
+      // Keyed by the stored object key: a place without a name has no other unique key
+      const locationEntries = Object.entries((project.continuity && project.continuity.locations) || {})
+        .filter(([, loc]) => loc && typeof loc === 'object');
+      return e('div', { className: 'faust-scrim' },
+        e('div', { className: 'faust-dialog faust-dialog--lg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'location-sheet-title' },
+          e('div', { className: 'faust-dialog__header' },
+            e('div', { className: 'faust-dialog__heading' },
+              e('h2', { className: 'faust-dialog__title', id: 'location-sheet-title' }, icons.terra({ size: 20 }), 'Paikat'),
+              locationEntries.length > 0 && e('div', { className: 'faust-dialog__sub' }, count(locationEntries.length, 'paikka'))
+            ),
+            e('div', { className: 'faust-dialog__actions' },
+              e('button', {
+                className: 'faust-btn',
+                onClick: () => {
+                  setSelectedLocation(null);
+                  setLocationFormMode('create');
+                  setShowLocationFormModal(true);
+                }
+              }, '+ Uusi paikka…')
+            ),
+            e('button', { className: 'faust-btn faust-btn--icon', 'aria-label': 'Sulje', title: 'Sulje', onClick: () => setShowLocationSheet(false) },
+              icons.close({ size: 16 }))
+          ),
+          e('div', { className: 'faust-dialog__body' },
+            locationEntries.length === 0
+              ? e('div', { className: 'faust-empty' },
+                  icons.terra({ size: 40, className: 'faust-empty__icon' }),
+                  e('div', { className: 'faust-empty__title' }, 'Ei vielä paikkoja.'),
+                  e('div', { className: 'faust-empty__hint' }, 'Paikat ovat tarinan tapahtumapaikkoja.'))
+              : e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 'var(--sp-3)' } },
+                  locationEntries.map(([storedKey, loc]) =>
+                    e('button', {
+                      key: storedKey,
+                      type: 'button',
+                      className: 'faust-card faust-card--click',
+                      onClick: () => {
+                        setSelectedLocation(loc);
+                        setLocationFormMode('edit');
+                        setShowLocationFormModal(true);
+                      }
+                    },
+                      e('span', { className: 'faust-card__title' }, loc.name || 'Nimetön paikka'),
+                      typeof loc.firstMentioned === 'number' && Number.isFinite(loc.firstMentioned) &&
+                        e('span', { className: 'faust-meta' }, `Ensimmäinen maininta: luku ${loc.firstMentioned + 1}`),
+                      Array.isArray(loc.appearances) && loc.appearances.length > 0 &&
+                        e('span', { className: 'faust-meta' }, `Esiintyy ${loc.appearances.length} luvussa`)
+                    )
+                  )
+                )
           )
         )
-      )
-    )),
+      );
+    })()),
 
     // LocationSheet Form Modal (Create/Edit/View) - External Component
-    e(ErrorBoundary, { label: 'Paikan tiedot', onDismiss: () => setShowLocationFormModal(false) }, showLocationFormModal && window.LocationSheetModal && e(window.LocationSheetModal, {
+    e(ErrorBoundary, { label: 'Paikka', onDismiss: () => setShowLocationFormModal(false) }, showLocationFormModal && window.LocationSheetModal && e(window.LocationSheetModal, {
       isOpen: showLocationFormModal,
       onClose: () => {
         setShowLocationFormModal(false);
@@ -11307,118 +8540,69 @@ ${contextPrompt}`;
       location: selectedLocation,
       locations: Object.values(project.continuity?.locations || {}),
       onSave: handleLocationSave,
+      onDelete: deleteLocation,
       mode: locationFormMode
     })),
 
     // ThreadSheet Modal (Plot Threads List View)
-    e(ErrorBoundary, { label: 'Juonilangat', onDismiss: () => setShowThreadSheet(false) }, showThreadSheet && e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.85)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999
-      }
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg-1)',
-          border: '2px solid var(--bronze)',
-          borderRadius: '8px',
-          padding: '32px',
-          maxWidth: '900px',
-          width: '95%',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          position: 'relative'
-        }
-      },
-        e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '∞ Plot Threads'),
-        e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '16px' } },
-          `${(project.plotThreads || []).length} threads in your story`),
-
-        // Close button
-        e('button', {
-          onClick: () => setShowThreadSheet(false),
-          style: {
-            position: 'absolute',
-            top: '24px',
-            right: '24px',
-            background: 'transparent',
-            border: '1px solid var(--border-color)',
-            borderRadius: '4px',
-            color: 'var(--text-3)',
-            padding: '4px 12px',
-            cursor: 'pointer',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '12px'
-          }
-        }, 'Close'),
-
-        // Create Thread button
-        e('button', {
-          onClick: () => {
-            setSelectedThread(null);
-            setThreadFormMode('create');
-            setShowThreadFormModal(true);
-          },
-          style: {
-            width: '100%',
-            padding: '12px',
-            marginBottom: '16px',
-            background: 'var(--bronze)',
-            border: 'none',
-            borderRadius: '4px',
-            color: '#000',
-            cursor: 'pointer',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '13px',
-            fontWeight: 600
-          }
-        }, '+ Create New Thread'),
-
-        // Threads list
-        e('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } },
-          (project.plotThreads || []).map((thread, idx) =>
-            e('div', {
-              key: idx,
-              onClick: () => {
-                setSelectedThread(thread);
-                setThreadFormMode('view');
-                setShowThreadFormModal(true);
-              },
-              style: {
-                padding: '16px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }
-            },
-              e('h3', { style: { fontFamily: 'EB Garamond', fontSize: '18px', color: 'var(--text)', marginBottom: '8px' } },
-                thread.name || `Thread ${idx + 1}`),
-              thread.description && e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', marginBottom: '8px' } },
-                thread.description),
-              e('div', { style: { display: 'flex', gap: '12px', marginTop: '8px' } },
-                thread.type && e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--sigil)' } },
-                  `Type: ${thread.type}`),
-                thread.status && e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: thread.status === 'resolved' ? '#4CAF50' : '#FFA726' } },
-                  `Status: ${thread.status}`)
-              )
-            )
+    e(ErrorBoundary, { label: 'Juonilangat', onDismiss: () => setShowThreadSheet(false) }, showThreadSheet && (() => {
+      const threads = project.plotThreads || [];
+      const threadChip = (status) => (status === 'resolved' ? 'faust-chip faust-chip--success faust-chip--dot'
+        : status === 'abandoned' ? 'faust-chip faust-chip--struck' : 'faust-chip faust-chip--hollow');
+      return e('div', { className: 'faust-scrim' },
+        e('div', { className: 'faust-dialog faust-dialog--lg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'thread-sheet-title' },
+          e('div', { className: 'faust-dialog__header' },
+            e('div', { className: 'faust-dialog__heading' },
+              e('h2', { className: 'faust-dialog__title', id: 'thread-sheet-title' }, icons.lemniscate({ size: 20 }), 'Juonilangat'),
+              threads.length > 0 && e('div', { className: 'faust-dialog__sub' }, count(threads.length, 'juonilanka'))
+            ),
+            e('div', { className: 'faust-dialog__actions' },
+              e('button', {
+                className: 'faust-btn',
+                onClick: () => {
+                  setSelectedThread(null);
+                  setThreadFormMode('create');
+                  setShowThreadFormModal(true);
+                }
+              }, '+ Uusi juonilanka…')
+            ),
+            e('button', { className: 'faust-btn faust-btn--icon', 'aria-label': 'Sulje', title: 'Sulje', onClick: () => setShowThreadSheet(false) },
+              icons.close({ size: 16 }))
+          ),
+          e('div', { className: 'faust-dialog__body' },
+            threads.length === 0
+              ? e('div', { className: 'faust-empty' },
+                  icons.lemniscate({ size: 40, className: 'faust-empty__icon' }),
+                  e('div', { className: 'faust-empty__title' }, 'Ei vielä juonilankoja.'),
+                  e('div', { className: 'faust-empty__hint' }, 'Juonilanka on juoni, jota seurataan luvusta toiseen.'))
+              : e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' } },
+                  threads.map((thread, idx) =>
+                    e('button', {
+                      key: thread.id || idx,
+                      type: 'button',
+                      className: 'faust-card faust-card--click',
+                      onClick: () => {
+                        setSelectedThread(thread);
+                        setThreadFormMode('edit');
+                        setShowThreadFormModal(true);
+                      }
+                    },
+                      e('span', { className: 'faust-card__head' },
+                        e('span', { className: 'faust-card__title' }, thread.name || 'Nimetön juonilanka'),
+                        thread.status && e('span', { className: threadChip(thread.status) }, labelOf('threadStatus', thread.status))
+                      ),
+                      thread.description && e('span', { className: 'faust-card__body faust-clamp-3' }, thread.description),
+                      thread.type && e('span', { className: 'faust-meta' }, 'Tyyppi: ' + labelOf('threadType', thread.type).toLowerCase())
+                    )
+                  )
+                )
           )
         )
-      )
-    )),
+      );
+    })()),
 
     // ThreadSheet Form Modal (Create/Edit/View) - External Component
-    e(ErrorBoundary, { label: 'Juonilangan tiedot', onDismiss: () => setShowThreadFormModal(false) }, showThreadFormModal && window.ThreadSheetModal && e(window.ThreadSheetModal, {
+    e(ErrorBoundary, { label: 'Juonilanka', onDismiss: () => setShowThreadFormModal(false) }, showThreadFormModal && window.ThreadSheetModal && e(window.ThreadSheetModal, {
       isOpen: showThreadFormModal,
       onClose: () => {
         setShowThreadFormModal(false);
@@ -11427,11 +8611,13 @@ ${contextPrompt}`;
       thread: selectedThread,
       threads: project.plotThreads || [],
       onSave: handleThreadSave,
+      onDelete: deleteThread,
       mode: threadFormMode
     })),
 
     // ChapterSheet Modal (Edit Chapter Details)
     e(ErrorBoundary, { label: 'Luvun tiedot', onDismiss: () => setShowChapterSheetModal(false) }, showChapterSheetModal && window.ChapterSheetModal && e(window.ChapterSheetModal, {
+      isOpen: showChapterSheetModal,
       chapter: activeChapter,
       mode: 'edit',
       onSave: handleChapterSheetSave,
@@ -11439,1062 +8625,539 @@ ${contextPrompt}`;
     })),
 
     // Timeline View Modal
-    e(ErrorBoundary, { label: 'Aikajana', onDismiss: () => setShowTimelineView(false) }, showTimelineView && e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.9)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999
+    e(ErrorBoundary, { label: 'Aikajana', onDismiss: () => setShowTimelineView(false) }, showTimelineView && (() => {
+      const chapters = project.structure || [];
+      const threads = project.plotThreads || [];
+      const lastIndex = Math.max(chapters.length - 1, 0);
+      const threadHues = ['var(--thread-1)', 'var(--thread-2)', 'var(--thread-3)', 'var(--thread-4)', 'var(--thread-5)', 'var(--thread-6)'];
+      // A chapter position as the bars have always read it (the source of the bars is a later fix), kept inside the strip
+      const chapterPosition = (value, fallback) => (
+        typeof value === 'number' && Number.isFinite(value)
+          ? Math.min(Math.max(Math.round(value), 0), lastIndex)
+          : fallback
+      );
+      const closeTimeline = () => setShowTimelineView(false);
+
+      return e('div', {
+        className: 'faust-scrim',
+        onMouseDown: (ev) => { if (ev.target === ev.currentTarget) closeTimeline(); }
       },
-      onClick: () => setShowTimelineView(false)
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg-1)',
-          border: '2px solid var(--bronze)',
-          borderRadius: '8px',
-          padding: '32px',
-          maxWidth: '1200px',
-          width: '95%',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          position: 'relative'
-        },
-        onClick: (ev) => ev.stopPropagation()
-      },
-        // Header
-        e('div', {
-          style: {
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '24px',
-            paddingBottom: '16px',
-            borderBottom: '1px solid var(--border-color)'
-          }
-        },
-          e('div', null,
-            e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '4px' } }, '☽ Aikajana'),
-            e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)' } },
-              'Tarinan tapahtumat ja juonilangat kronologisesti')
-          ),
-          e('button', {
-            onClick: () => setShowTimelineView(false),
-            style: {
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text-3)',
-              padding: '6px 14px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, '✕ Sulje')
-        ),
-
-        // Timeline visualization
-        e('div', {
-          style: {
-            position: 'relative',
-            minHeight: '400px'
-          }
-        },
-          // Chapter timeline (horizontal)
-          e('div', {
-            style: {
-              marginBottom: '32px'
-            }
-          },
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                marginBottom: '12px',
-                textTransform: 'uppercase'
-              }
-            }, 'LUVUT'),
-
-            // Timeline bar
-            e('div', {
-              style: {
-                display: 'flex',
-                gap: '4px',
-                overflowX: 'auto',
-                paddingBottom: '12px'
-              }
-            },
-              (project.structure || []).map((chapter, idx) => {
-                const wordCount = chapter.content ? chapter.content.split(/\s+/).filter(Boolean).length : 0;
-                const statusColors = {
-                  'plan': '#9E9E9E',
-                  'draft': '#FF9800',
-                  'revision': '#2196F3',
-                  'final': '#4CAF50'
-                };
-                const statusColor = statusColors[chapter.status] || '#9E9E9E';
-
-                return e('div', {
-                  key: chapter.id,
-                  onClick: () => {
-                    setActiveChapterId(chapter.id);
-                    setShowTimelineView(false);
-                  },
-                  style: {
-                    minWidth: '120px',
-                    padding: '12px',
-                    background: chapter.id === activeChapterId ? 'var(--bronze)' + '33' : 'var(--bg-2)',
-                    border: `2px solid ${chapter.id === activeChapterId ? 'var(--bronze)' : 'var(--border-color)'}`,
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s'
-                  }
-                },
-                  e('div', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '10px',
-                      color: statusColor,
-                      marginBottom: '4px'
-                    }
-                  }, `Luku ${idx + 1}`),
-                  e('div', {
-                    style: {
-                      fontFamily: 'EB Garamond',
-                      fontSize: '13px',
-                      color: 'var(--text)',
-                      marginBottom: '4px',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis'
-                    }
-                  }, chapter.title || 'Nimetön'),
-                  e('div', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '9px',
-                      color: 'var(--text-3)'
-                    }
-                  }, `${wordCount} sanaa`),
-                  chapter.storyTimestamp && e('div', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '9px',
-                      color: 'var(--bronze)',
-                      marginTop: '4px'
-                    }
-                  }, `◦ ${chapter.storyTimestamp}`)
-                );
-              })
-            )
+        e('div', { className: 'faust-dialog faust-dialog--xl', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'timeline-title' },
+          e('div', { className: 'faust-dialog__header' },
+            e('div', { className: 'faust-dialog__heading' },
+              e('h2', { id: 'timeline-title', className: 'faust-dialog__title' }, icons.luna({ size: 20 }), 'Aikajana'),
+              e('div', { className: 'faust-dialog__sub' }, 'Luvut, tapahtuma-ajat ja juonilangat')
+            ),
+            e('button', {
+              type: 'button',
+              className: 'faust-btn faust-btn--icon',
+              'aria-label': 'Sulje',
+              title: 'Sulje',
+              onClick: closeTimeline
+            }, icons.close({ size: 16 }))
           ),
 
-          // Plot threads timeline
-          (project.plotThreads || []).length > 0 && e('div', {
-            style: {
-              marginBottom: '32px'
-            }
-          },
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                marginBottom: '12px',
-                textTransform: 'uppercase'
-              }
-            }, 'JUONILANGAT'),
+          e('div', { className: 'faust-dialog__body' },
+            chapters.length > 0 ? e('div', { className: 'faust-timeline' },
+              // One grid for the chapters and the threads, so a bar starts and ends under its chapters
+              e('div', { className: 'faust-timeline__grid', style: { '--n': String(chapters.length) } },
+                e('div', { className: 'faust-section__title', style: { gridColumn: '1 / -1' } }, 'Luvut'),
 
-            e('div', {
-              style: {
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px'
-              }
-            },
-              (project.plotThreads || []).map((thread, idx) => {
-                const chapterCount = (project.structure || []).length;
-                const introduced = thread.introduced || 0;
-                const resolved = thread.resolved !== undefined ? thread.resolved : null;
-                const startPercent = (introduced / Math.max(chapterCount, 1)) * 100;
-                const endPercent = resolved !== null ? ((resolved + 1) / Math.max(chapterCount, 1)) * 100 : 100;
-                const threadColors = {
-                  'main_plot': '#FF5722',
-                  'subplot': '#2196F3',
-                  'mystery': '#9C27B0',
-                  'character_arc': '#4CAF50'
-                };
-                const color = threadColors[thread.type] || '#FF9800';
+                chapters.map((chapter, idx) => {
+                  const words = (chapter.content || '').split(/\s+/).filter(Boolean).length;
+                  const status = normStatus(chapter.status);
+                  const isActive = chapter.id === activeChapterId;
 
-                return e('div', {
-                  key: thread.id || idx,
-                  style: {
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px'
-                  }
-                },
-                  // Thread name
-                  e('div', {
-                    style: {
-                      width: '150px',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: 'var(--text)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis'
-                    }
-                  }, thread.name),
-
-                  // Thread timeline bar
-                  e('div', {
-                    style: {
-                      flex: 1,
-                      height: '16px',
-                      background: 'var(--bg-2)',
-                      borderRadius: '8px',
-                      position: 'relative',
-                      overflow: 'hidden'
+                  return e('button', {
+                    key: chapter.id || idx,
+                    type: 'button',
+                    className: 'faust-card faust-card--compact faust-card--click' + (isActive ? ' is-selected' : ''),
+                    style: { gridColumn: String(idx + 2), alignSelf: 'stretch' },
+                    title: 'Avaa luku',
+                    'aria-current': isActive ? 'true' : undefined,
+                    onClick: () => {
+                      setActiveChapterId(chapter.id);
+                      closeTimeline();
                     }
                   },
+                    e('span', { className: 'faust-meta' }, `Luku ${idx + 1}`),
+                    e('span', {
+                      className: 'faust-card__title',
+                      style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+                    }, chapter.title || 'Nimetön luku'),
+                    e('span', { className: 'faust-meta' }, count(words, 'sana')),
+                    e('span', {
+                      className: 'faust-chip ' + (STATUS_CHIP[status] || 'faust-chip--hollow'),
+                      style: { alignSelf: 'flex-start' }
+                    }, labelOf('status', status)),
+                    chapter.storyTimestamp && e('span', { className: 'faust-meta' }, `Tapahtuma-aika: ${chapter.storyTimestamp}`)
+                  );
+                }),
+
+                threads.length > 0 && e('div', {
+                  className: 'faust-section__title',
+                  style: { gridColumn: '1 / -1', marginTop: 'var(--sp-4)' }
+                }, 'Juonilangat'),
+
+                threads.map((thread, idx) => {
+                  const from = chapterPosition(thread.introduced, 0);
+                  const resolvedAt = chapterPosition(thread.resolved, null);
+                  const to = resolvedAt === null ? lastIndex : Math.max(resolvedAt, from);
+                  const status = thread.status || 'active';
+                  const statusChip = status === 'resolved'
+                    ? 'faust-chip--success faust-chip--dot'
+                    : status === 'abandoned' ? 'faust-chip--struck' : 'faust-chip--hollow';
+                  const name = thread.name || 'Nimetön juonilanka';
+
+                  return e(React.Fragment, { key: thread.id || idx },
+                    e('div', { className: 'faust-timeline__name', style: { gridColumn: '1' }, title: name }, name),
                     e('div', {
-                      style: {
-                        position: 'absolute',
-                        left: `${startPercent}%`,
-                        width: `${endPercent - startPercent}%`,
-                        height: '100%',
-                        background: color + '66',
-                        borderRadius: '8px',
-                        borderLeft: `3px solid ${color}`,
-                        borderRight: resolved !== null ? `3px solid ${color}` : 'none'
-                      }
-                    })
-                  ),
-
-                  // Status
-                  e('div', {
-                    style: {
-                      width: '80px',
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '10px',
-                      color: thread.status === 'resolved' ? '#4CAF50' : 'var(--text-2)'
-                    }
-                  }, thread.status === 'resolved' ? '✓ Ratkaistu' : '◯ Avoin')
-                );
-              })
-            )
-          ),
-
-          // Timeline events (from continuity)
-          ((project.continuity?.timeline || []).length > 0) && e('div', null,
-            e('div', {
-              style: {
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)',
-                marginBottom: '12px',
-                textTransform: 'uppercase'
-              }
-            }, '📌 Tapahtumat'),
-
-            e('div', {
-              style: {
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px'
-              }
-            },
-              (project.continuity?.timeline || []).slice(0, 20).map((event, idx) =>
-                e('div', {
-                  key: idx,
-                  style: {
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: '12px',
-                    padding: '10px 12px',
-                    background: 'var(--bg-2)',
-                    borderRadius: '4px',
-                    borderLeft: '3px solid var(--bronze)'
-                  }
-                },
-                  e('div', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '10px',
-                      color: 'var(--bronze)',
-                      minWidth: '60px'
-                    }
-                  }, `Luku ${(event.chapterIndex || 0) + 1}`),
-                  e('div', {
-                    style: {
-                      flex: 1,
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: 'var(--text)'
-                    }
-                  }, event.event || event.description || 'Tapahtuma')
-                )
+                      className: 'faust-timeline__bar' + (resolvedAt === null ? ' is-open' : ''),
+                      style: { '--from': String(from), '--to': String(to), '--thread': threadHues[idx % threadHues.length] }
+                    }),
+                    e('div', { className: 'faust-timeline__status', style: { gridColumn: '-2 / -1' } },
+                      e('span', { className: 'faust-chip ' + statusChip }, labelOf('threadStatus', status))
+                    )
+                  );
+                })
               )
+            ) : e('div', { className: 'faust-empty' },
+              e('div', { className: 'faust-empty__icon' }, icons.luna({ size: 40 })),
+              e('div', { className: 'faust-empty__title' }, 'Ei vielä lukuja.'),
+              e('div', { className: 'faust-empty__hint' }, 'Lisää ensimmäinen luku sivupalkista.')
             )
-          ),
-
-          // Empty state
-          (project.structure || []).length === 0 && e('div', {
-            style: {
-              textAlign: 'center',
-              padding: '40px',
-              color: 'var(--text-3)',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, 'Ei vielä lukuja. Luo ensimmäinen luku aloittaaksesi.')
+          )
         )
-      )
-    )),
+      );
+    })()),
 
     // Research Folder Modal
-    e(ErrorBoundary, { label: 'Tutkimuskansio', onDismiss: () => setShowResearchFolder(false) }, showResearchFolder && e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.9)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999
-      },
-      onClick: () => setShowResearchFolder(false)
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg-1)',
-          border: '2px solid var(--bronze)',
-          borderRadius: '8px',
-          padding: '32px',
-          maxWidth: '1000px',
-          width: '95%',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          position: 'relative'
-        },
-        onClick: (ev) => ev.stopPropagation()
-      },
-        // Header
-        e('div', {
-          style: {
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '24px',
-            paddingBottom: '16px',
-            borderBottom: '1px solid var(--border-color)'
-          }
-        },
-          e('div', null,
-            e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '4px' } }, '⚗ Tutkimuskansio'),
-            e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)' } },
-              'Muistiinpanot, linkit ja referenssimateriaali')
-          ),
-          e('button', {
-            onClick: () => setShowResearchFolder(false),
-            style: {
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text-3)',
-              padding: '6px 14px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, '✕ Sulje')
-        ),
+    e(ErrorBoundary, { label: 'Tutkimuskansio', onDismiss: () => setShowResearchFolder(false) }, showResearchFolder && (() => {
+      const items = project.research || [];
+      const closeResearch = () => setShowResearchFolder(false);
+      const typeIcons = { note: 'note', link: 'link', image: 'file', pdf: 'file' };
 
-        // Add new item buttons
-        e('div', {
-          style: {
-            display: 'flex',
-            gap: '8px',
-            marginBottom: '24px'
-          }
-        },
-          e('button', {
-            onClick: async () => {
-              const title = await askText('Muistiinpanon otsikko:');
-              if (title) {
-                const newItem = {
-                  id: `research-${Date.now()}`,
-                  type: 'note',
-                  title,
-                  content: '',
-                  created: new Date().toISOString()
-                };
-                setProject(prev => ({
-                  ...prev,
-                  research: [...(prev.research || []), newItem]
-                }));
-                setUnsavedChanges(true);
-              }
-            },
-            style: {
-              padding: '10px 16px',
-              background: 'var(--bronze)',
-              border: 'none',
-              borderRadius: '4px',
-              color: '#000',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px',
-              fontWeight: 600
-            }
-          }, '+ Muistiinpano'),
-          e('button', {
-            onClick: async () => {
-              const url = await askText('URL-osoite:');
-              if (url) {
-                const title = await askText('Otsikko (valinnainen):') || url;
-                const newItem = {
-                  id: `research-${Date.now()}`,
-                  type: 'link',
-                  title,
-                  url,
-                  created: new Date().toISOString()
-                };
-                setProject(prev => ({
-                  ...prev,
-                  research: [...(prev.research || []), newItem]
-                }));
-                setUnsavedChanges(true);
-              }
-            },
-            style: {
-              padding: '10px 16px',
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, '+ Linkki'),
-          e('button', {
-            onClick: async () => {
-              const title = await askText('Kuvan/tiedoston kuvaus:');
-              const path = await askText('Tiedostopolku tai URL:');
-              if (title && path) {
-                const newItem = {
-                  id: `research-${Date.now()}`,
-                  type: 'image',
-                  title,
-                  path,
-                  created: new Date().toISOString()
-                };
-                setProject(prev => ({
-                  ...prev,
-                  research: [...(prev.research || []), newItem]
-                }));
-                setUnsavedChanges(true);
-              }
-            },
-            style: {
-              padding: '10px 16px',
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text)',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, '+ Tiedosto')
-        ),
+      // A link opens only as https: the address is trimmed and gets https:// when no scheme was typed
+      const linkAddress = (text) => {
+        const raw = String(text || '').trim();
+        if (!raw) return '';
+        return /^[a-z][a-z0-9+.-]*:(?!\d)/i.test(raw) ? raw : 'https://' + raw;
+      };
 
-        // Research items grid
-        (project.research || []).length > 0 ? e('div', {
-          style: {
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: '16px'
-          }
-        },
-          (project.research || []).map((item, idx) => {
-            const typeIcons = { note: '⟁', link: '☿', image: '◊', pdf: '▤' };
-            const icon = typeIcons[item.type] || '•';
+      const addResearchItem = (fields) => {
+        const newItem = { id: `research-${Date.now()}`, ...fields, created: new Date().toISOString() };
+        setProject(prev => ({
+          ...prev,
+          research: [...(prev.research || []), newItem]
+        }));
+        setUnsavedChanges(true);
+      };
 
-            return e('div', {
-              key: item.id || idx,
-              style: {
-                padding: '16px',
-                background: 'var(--bg-2)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '6px',
-                position: 'relative'
-              }
-            },
-              // Delete button
-              e('button', {
-                onClick: () => {
-                  if (confirm('Poista tämä kohde?')) {
-                    setProject(prev => ({
-                      ...prev,
-                      research: (prev.research || []).filter(r => r.id !== item.id)
-                    }));
-                    setUnsavedChanges(true);
-                  }
-                },
-                style: {
-                  position: 'absolute',
-                  top: '8px',
-                  right: '8px',
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-3)',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  padding: '4px'
-                }
-              }, '×'),
+      // Peruuta or Esc on any step creates nothing
+      const addNote = async () => {
+        const title = await askText('Muistiinpanon otsikko', '', '', 'Lisää muistiinpano');
+        if (!title || !title.trim()) return;
+        addResearchItem({ type: 'note', title: title.trim(), content: '' });
+      };
 
-              // Type icon and title
-              e('div', {
-                style: {
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  marginBottom: '8px'
-                }
-              },
-                e('span', { style: { fontSize: '18px' } }, icon),
-                e('div', {
-                  style: {
-                    fontFamily: 'EB Garamond',
-                    fontSize: '15px',
-                    color: 'var(--text)',
-                    fontWeight: 500
-                  }
-                }, item.title)
-              ),
+      const addLink = async () => {
+        const address = linkAddress(await askText('Linkin osoite', '', '', 'Jatka'));
+        if (!address) return;
+        const title = await askText('Linkin otsikko (valinnainen)', '', '', 'Lisää linkki');
+        if (title === null || title === undefined) return;
+        addResearchItem({ type: 'link', title: title.trim() || address, url: address });
+      };
 
-              // Content based on type
-              item.type === 'note' && e('div', null,
-                e('textarea', {
-                  value: item.content || '',
-                  onChange: (ev) => {
-                    setProject(prev => ({
-                      ...prev,
-                      research: (prev.research || []).map(r =>
-                        r.id === item.id ? { ...r, content: ev.target.value } : r
-                      )
-                    }));
-                    setUnsavedChanges(true);
-                  },
-                  placeholder: 'Kirjoita muistiinpanosi...',
-                  style: {
-                    width: '100%',
-                    height: '100px',
-                    padding: '8px',
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'EB Garamond',
-                    fontSize: '13px',
-                    resize: 'vertical'
-                  }
-                })
-              ),
+      const addFileReference = async () => {
+        const title = await askText('Tiedoston kuvaus', '', '', 'Jatka');
+        if (!title || !title.trim()) return;
+        const path = await askText('Tiedoston polku tai osoite', '', '', 'Lisää tiedostoviite');
+        if (!path || !path.trim()) return;
+        addResearchItem({ type: 'image', title: title.trim(), path: path.trim() });
+      };
 
-              item.type === 'link' && e('a', {
-                href: item.url,
-                target: '_blank',
-                rel: 'noopener noreferrer',
-                style: {
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '11px',
-                  color: 'var(--bronze)',
-                  wordBreak: 'break-all'
-                }
-              }, item.url),
-
-              item.type === 'image' && e('div', null,
-                item.path && (item.path.startsWith('http') ?
-                  e('img', {
-                    src: item.path,
-                    alt: item.title,
-                    style: {
-                      maxWidth: '100%',
-                      maxHeight: '200px',
-                      borderRadius: '4px'
-                    }
-                  }) :
-                  e('div', {
-                    style: {
-                      fontFamily: 'IBM Plex Mono',
-                      fontSize: '11px',
-                      color: 'var(--text-2)'
-                    }
-                  }, `📁 ${item.path}`)
-                )
-              ),
-
-              // Date
-              e('div', {
-                style: {
-                  marginTop: '8px',
-                  fontFamily: 'IBM Plex Mono',
-                  fontSize: '10px',
-                  color: 'var(--text-3)'
-                }
-              }, new Date(item.created).toLocaleDateString('fi-FI'))
-            );
-          })
-        ) : e('div', {
-          style: {
-            textAlign: 'center',
-            padding: '60px 20px',
-            color: 'var(--text-3)'
-          }
-        },
-          e('div', { style: { fontSize: '48px', marginBottom: '16px', fontFamily: 'EB Garamond' } }, '⚗'),
-          e('div', {
-            style: {
-              fontFamily: 'EB Garamond',
-              fontSize: '18px',
-              color: 'var(--text-2)',
-              marginBottom: '8px'
-            }
-          }, 'Tutkimuskansio on tyhjä'),
-          e('div', {
-            style: {
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, 'Lisää muistiinpanoja, linkkejä tai kuvia projektiisi.')
-        )
-      )
-    )),
-
-    // Hybrid Writing Flow Dialog (Continue/Expand/Rewrite/Scene)
-    e(ErrorBoundary, { label: 'Jatka kirjoittamista', onDismiss: () => setShowContinueDialog(false) }, showContinueDialog && e('div', {
-      style: {
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        background: 'rgba(0, 0, 0, 0.85)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999
-      }
-    },
-      e('div', {
-        style: {
-          background: 'var(--bg-1)',
-          border: '2px solid var(--bronze)',
-          borderRadius: '8px',
-          padding: '32px',
-          maxWidth: '900px',
-          width: '95%',
-          maxHeight: '90vh',
-          overflow: 'auto',
-          position: 'relative'
+      const openLink = async (address) => {
+        let opened = false;
+        try {
+          const result = window.electronAPI && window.electronAPI.openExternal
+            ? await window.electronAPI.openExternal(address)
+            : null;
+          opened = !!(result && result.success);
+        } catch (err) {
+          console.error('[Research] Opening a link failed:', err);
         }
+        if (!opened) notify('error', 'Linkkiä ei voitu avata. FAUST avaa vain https-alkuiset osoitteet.');
+      };
+
+      const deleteResearchItem = async (item) => {
+        const kind = labelOf('researchType', item.type).toLowerCase();
+        if (!(await askConfirm(
+          `Poistetaanko ${kind}?`,
+          '”' + item.title + '” poistetaan tutkimuskansiosta. Poistoa ei voi kumota.',
+          `Poista ${kind}`,
+          'Peruuta',
+          { danger: true }
+        ))) return;
+        setProject(prev => ({
+          ...prev,
+          research: (prev.research || []).filter(r => r.id !== item.id)
+        }));
+        setUnsavedChanges(true);
+      };
+
+      return e('div', {
+        className: 'faust-scrim',
+        onMouseDown: (ev) => { if (ev.target === ev.currentTarget) closeResearch(); }
       },
-        // Header
-        e('div', {
-          style: {
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'flex-start',
-            marginBottom: '24px'
-          }
-        },
-          e('div', null,
-            e('h2', { style: { fontFamily: 'EB Garamond', fontSize: '24px', color: 'var(--text)', marginBottom: '8px' } }, '✍️ Hybrid Writing Flow'),
-            e('p', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)' } },
-              'AI avustaa kirjoitustyössäsi eri tavoilla')
-          ),
-          e('button', {
-            onClick: () => {
-              setShowContinueDialog(false);
-              setContinuePreview('');
-              setHybridInput('');
-            },
-            style: {
-              background: 'transparent',
-              border: '1px solid var(--border-color)',
-              borderRadius: '4px',
-              color: 'var(--text-3)',
-              padding: '6px 14px',
-              cursor: 'pointer',
-              fontFamily: 'IBM Plex Mono',
-              fontSize: '12px'
-            }
-          }, '✕ Sulje')
-        ),
-
-        // Mode selector tabs
-        !continuePreview && e('div', {
-          style: {
-            display: 'flex',
-            gap: '8px',
-            marginBottom: '24px',
-            borderBottom: '1px solid var(--border-color)',
-            paddingBottom: '16px'
-          }
-        },
-          ['continue', 'expand', 'rewrite', 'scene'].map(mode => {
-            const labels = {
-              continue: '▶ Jatka',
-              expand: '⊕ Laajenna',
-              rewrite: '⟳ Uudelleenkirjoita',
-              scene: '◇ Luo kohtaus'
-            };
-            const isActive = hybridMode === mode;
-            const isDisabled = mode === 'rewrite' && !textSelection?.text;
-
-            return e('button', {
-              key: mode,
-              onClick: () => !isDisabled && setHybridMode(mode),
-              disabled: isDisabled,
-              style: {
-                flex: 1,
-                padding: '10px 12px',
-                background: isActive ? 'var(--bronze)' : 'transparent',
-                border: `1px solid ${isActive ? 'var(--bronze)' : 'var(--border-color)'}`,
-                borderRadius: '4px',
-                color: isActive ? '#000' : isDisabled ? 'var(--text-3)' : 'var(--text)',
-                cursor: isDisabled ? 'not-allowed' : 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                fontWeight: isActive ? 600 : 400,
-                opacity: isDisabled ? 0.5 : 1
-              }
-            }, labels[mode]);
-          })
-        ),
-
-        // Mode-specific content
-        !continuePreview && e('div', { style: { marginBottom: '24px' } },
-          // Continue mode
-          hybridMode === 'continue' && e('div', null,
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', display: 'block', marginBottom: '8px' } },
-                `Kappaleiden määrä: ${continueParagraphs}`),
-              e('input', {
-                type: 'range',
-                min: 1,
-                max: 5,
-                value: continueParagraphs,
-                onChange: (ev) => setContinueParagraphs(parseInt(ev.target.value)),
-                style: { width: '100%', cursor: 'pointer' }
-              })
+        e('div', { className: 'faust-dialog faust-dialog--lg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'research-title' },
+          e('div', { className: 'faust-dialog__header' },
+            e('div', { className: 'faust-dialog__heading' },
+              e('h2', { id: 'research-title', className: 'faust-dialog__title' }, icons.trigon({ size: 20 }), 'Tutkimuskansio'),
+              e('div', { className: 'faust-dialog__sub' }, 'Muistiinpanot, linkit ja muu taustamateriaali')
             ),
-            e('div', {
-              style: {
-                padding: '12px',
-                background: 'var(--bg-2)',
-                borderRadius: '4px',
-                border: '1px solid var(--border-color)',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '11px',
-                color: 'var(--text-3)'
-              }
-            }, '💡 AI jatkaa kirjoittamista nykyisen tekstisi lopusta samassa tyylissä.')
-          ),
-
-          // Expand mode
-          hybridMode === 'expand' && e('div', null,
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', display: 'block', marginBottom: '8px' } }, 'Tiivistelmä tai synopsis:'),
-              e('textarea', {
-                value: hybridInput,
-                onChange: (ev) => setHybridInput(ev.target.value),
-                placeholder: 'Kirjoita lyhyt tiivistelmä tai sisällysluettelo, jonka haluat laajentaa täysiksi kappaleiksi...',
-                style: {
-                  width: '100%',
-                  height: '120px',
-                  padding: '12px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'EB Garamond',
-                  fontSize: '14px',
-                  resize: 'vertical'
-                }
-              })
+            e('div', { className: 'faust-dialog__actions' },
+              e('button', { type: 'button', className: 'faust-btn', onClick: addNote }, '+ Muistiinpano…'),
+              e('button', { type: 'button', className: 'faust-btn', onClick: addLink }, '+ Linkki…'),
+              e('button', {
+                type: 'button',
+                className: 'faust-btn',
+                title: 'Tallenna muistiin, missä taustamateriaali on. Tiedostoa ei kopioida projektiin.',
+                onClick: addFileReference
+              }, '+ Tiedostoviite…')
             ),
-            e('div', { style: { display: 'flex', gap: '16px', marginBottom: '16px' } },
-              e('div', { style: { flex: 1 } },
-                e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } },
-                  `Tavoite: ${hybridTargetWords} sanaa`),
-                e('input', {
-                  type: 'range',
-                  min: 500,
-                  max: 4000,
-                  step: 500,
-                  value: hybridTargetWords,
-                  onChange: (ev) => setHybridTargetWords(parseInt(ev.target.value)),
-                  style: { width: '100%' }
-                })
-              ),
-              e('div', { style: { flex: 1 } },
-                e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } }, 'Tyyli:'),
-                e('select', {
-                  value: hybridStyle,
-                  onChange: (ev) => setHybridStyle(ev.target.value),
-                  style: {
-                    width: '100%',
-                    padding: '6px 8px',
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '11px'
-                  }
-                },
-                  e('option', { value: 'vivid' }, 'Eloisa'),
-                  e('option', { value: 'concise' }, 'Tiivis'),
-                  e('option', { value: 'descriptive' }, 'Kuvaileva'),
-                  e('option', { value: 'dialogue-heavy' }, 'Dialogipainotteinen')
-                )
-              )
-            )
-          ),
-
-          // Rewrite mode
-          hybridMode === 'rewrite' && e('div', null,
-            textSelection?.text ? e('div', null,
-              e('div', {
-                style: {
-                  marginBottom: '16px',
-                  padding: '12px',
-                  background: 'var(--bg-2)',
-                  borderRadius: '4px',
-                  border: '1px solid var(--border-color)'
-                }
-              },
-                e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)', marginBottom: '8px' } }, 'VALITTU TEKSTI:'),
-                e('div', {
-                  style: {
-                    fontFamily: 'EB Garamond',
-                    fontSize: '14px',
-                    color: 'var(--text)',
-                    maxHeight: '100px',
-                    overflow: 'auto'
-                  }
-                }, textSelection.text)
-              ),
-              e('div', { style: { marginBottom: '16px' } },
-                e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', display: 'block', marginBottom: '8px' } }, 'Ohjeet uudelleenkirjoitukseen:'),
-                e('input', {
-                  type: 'text',
-                  value: hybridInput,
-                  onChange: (ev) => setHybridInput(ev.target.value),
-                  placeholder: 'esim. "tee dramaattisemmaksi", "lisää dialogia", "tiivistä"...',
-                  style: {
-                    width: '100%',
-                    padding: '12px',
-                    background: 'var(--bg)',
-                    border: '1px solid var(--border-color)',
-                    borderRadius: '4px',
-                    color: 'var(--text)',
-                    fontFamily: 'IBM Plex Mono',
-                    fontSize: '12px'
-                  }
-                })
-              )
-            ) : e('div', {
-              style: {
-                padding: '24px',
-                background: 'var(--bg-2)',
-                borderRadius: '4px',
-                border: '1px solid var(--border-color)',
-                textAlign: 'center'
-              }
-            },
-              e('div', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-3)' } },
-                '⚠️ Valitse ensin tekstiä editorista, jota haluat uudelleenkirjoittaa.')
-            )
-          ),
-
-          // Scene mode
-          hybridMode === 'scene' && e('div', null,
-            e('div', { style: { marginBottom: '16px' } },
-              e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--text-2)', display: 'block', marginBottom: '8px' } }, 'Kohtauksen kuvaus:'),
-              e('textarea', {
-                value: hybridInput,
-                onChange: (ev) => setHybridInput(ev.target.value),
-                placeholder: 'Kuvaile kohtaus lyhyesti: keitä on paikalla, mitä tapahtuu, mikä on tunnelma...',
-                style: {
-                  width: '100%',
-                  height: '100px',
-                  padding: '12px',
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  color: 'var(--text)',
-                  fontFamily: 'EB Garamond',
-                  fontSize: '14px',
-                  resize: 'vertical'
-                }
-              })
-            ),
-            e('div', { style: { display: 'flex', gap: '16px' } },
-              e('div', { style: { flex: 1 } },
-                e('label', { style: { fontFamily: 'IBM Plex Mono', fontSize: '11px', color: 'var(--text-3)', display: 'block', marginBottom: '4px' } },
-                  `Pituus: ~${hybridTargetWords} sanaa`),
-                e('input', {
-                  type: 'range',
-                  min: 300,
-                  max: 2500,
-                  step: 100,
-                  value: hybridTargetWords,
-                  onChange: (ev) => setHybridTargetWords(parseInt(ev.target.value)),
-                  style: { width: '100%' }
-                })
-              )
-            )
-          )
-        ),
-
-        // Generate button
-        !continuePreview && e('button', {
-          onClick: () => {
-            if (hybridMode === 'continue') handleContinueWriting();
-            else if (hybridMode === 'expand') handleExpandOutline();
-            else if (hybridMode === 'rewrite') handleRewriteSection();
-            else if (hybridMode === 'scene') handleGenerateScene();
-          },
-          disabled: continuingWriting || (hybridMode !== 'continue' && !hybridInput.trim()) || (hybridMode === 'rewrite' && !textSelection?.text),
-          style: {
-            width: '100%',
-            padding: '14px',
-            background: continuingWriting ? 'var(--bg-2)' : 'var(--sigil)',
-            border: 'none',
-            borderRadius: '4px',
-            color: continuingWriting ? 'var(--text-3)' : '#000',
-            cursor: continuingWriting ? 'not-allowed' : 'pointer',
-            fontFamily: 'IBM Plex Mono',
-            fontSize: '13px',
-            fontWeight: 600,
-            opacity: (continuingWriting || (hybridMode !== 'continue' && !hybridInput.trim())) ? 0.5 : 1
-          }
-        }, continuingWriting ? '◌ Generoidaan...' : '⊛ Generoi'),
-
-        // Preview
-        continuePreview && e('div', null,
-          e('div', {
-            style: {
-              marginBottom: '16px',
-              padding: '20px',
-              background: 'var(--bg-2)',
-              borderRadius: '6px',
-              border: '1px solid var(--border-color)',
-              maxHeight: '400px',
-              overflow: 'auto'
-            }
-          },
-            e('div', {
-              style: {
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '12px'
-              }
-            },
-              e('h3', { style: { fontFamily: 'IBM Plex Mono', fontSize: '12px', color: 'var(--bronze)', margin: 0 } },
-                hybridMode === 'continue' ? '▶ JATKO' : hybridMode === 'expand' ? '⊕ LAAJENNETTU' : hybridMode === 'rewrite' ? '⟳ UUDELLEENKIRJOITETTU' : '◇ KOHTAUS'),
-              e('span', { style: { fontFamily: 'IBM Plex Mono', fontSize: '10px', color: 'var(--text-3)' } },
-                `${continuePreview.split(/\s+/).length} sanaa`)
-            ),
-            e('div', {
-              style: {
-                fontFamily: 'EB Garamond',
-                fontSize: '14px',
-                lineHeight: '1.8',
-                color: 'var(--text)',
-                whiteSpace: 'pre-wrap'
-              }
-            }, continuePreview)
-          ),
-
-          // Accept/Reject buttons
-          e('div', { style: { display: 'flex', gap: '12px' } },
             e('button', {
-              onClick: () => {
-                if (hybridMode === 'continue') acceptContinuation();
-                else if (hybridMode === 'rewrite') acceptRewrite();
-                else acceptExpansion();
-              },
-              style: {
-                flex: 1,
-                padding: '12px',
-                background: 'var(--sigil)',
-                border: 'none',
-                borderRadius: '4px',
-                color: '#000',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px',
-                fontWeight: 600
-              }
-            }, hybridMode === 'continue' ? '✓ Liitä loppuun' : hybridMode === 'rewrite' ? '✓ Korvaa valittu' : '✓ Korvaa luku'),
-            e('button', {
-              onClick: () => {
-                setContinuePreview('');
-              },
-              style: {
-                flex: 1,
-                padding: '12px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
-              }
-            }, '⟳ Generoi uudelleen'),
-            e('button', {
-              onClick: rejectContinuation,
-              style: {
-                padding: '12px 20px',
-                background: 'transparent',
-                border: '1px solid var(--border-color)',
-                borderRadius: '4px',
-                color: 'var(--text-2)',
-                cursor: 'pointer',
-                fontFamily: 'IBM Plex Mono',
-                fontSize: '12px'
-              }
-            }, '✗ Hylkää')
+              type: 'button',
+              className: 'faust-btn faust-btn--icon',
+              'aria-label': 'Sulje',
+              title: 'Sulje',
+              onClick: closeResearch
+            }, icons.close({ size: 16 }))
+          ),
+
+          e('div', { className: 'faust-dialog__body' },
+            items.length > 0 ? e('div', { className: 'faust-cardgrid' },
+              items.map((item, idx) => {
+                const typeKey = typeIcons[item.type] ? item.type : 'image';
+                const address = item.type === 'link' ? linkAddress(item.url) : '';
+
+                return e('div', { key: item.id || idx, className: 'faust-card' },
+                  e('div', { className: 'faust-card__head' },
+                    e('span', { className: 'faust-chip' },
+                      icons[typeIcons[typeKey]]({ size: 12 }),
+                      labelOf('researchType', typeKey)
+                    ),
+                    e('button', {
+                      type: 'button',
+                      className: 'faust-btn faust-btn--icon faust-btn--sm faust-btn--danger',
+                      title: 'Poista',
+                      'aria-label': 'Poista',
+                      onClick: () => deleteResearchItem(item)
+                    }, icons.trash({ size: 14 }))
+                  ),
+                  e('div', { className: 'faust-card__title' }, item.title),
+
+                  item.type === 'note' && e('textarea', {
+                    className: 'faust-textarea faust-textarea--author',
+                    'aria-label': 'Muistiinpano',
+                    value: item.content || '',
+                    onChange: (ev) => {
+                      setProject(prev => ({
+                        ...prev,
+                        research: (prev.research || []).map(r =>
+                          r.id === item.id ? { ...r, content: ev.target.value } : r
+                        )
+                      }));
+                      setUnsavedChanges(true);
+                    },
+                    placeholder: 'Kirjoita muistiinpano…'
+                  }),
+
+                  address && e('div', { className: 'faust-meta', style: { overflowWrap: 'anywhere' } },
+                    e('a', {
+                      href: /^https?:\/\//i.test(address) ? address : '#',
+                      title: 'Avaa selaimessa',
+                      onClick: (ev) => {
+                        ev.preventDefault();
+                        openLink(address);
+                      }
+                    }, item.url)
+                  ),
+
+                  (item.type === 'image' || item.type === 'pdf') && item.path && e('div', {
+                    className: 'faust-meta',
+                    style: { overflowWrap: 'anywhere' }
+                  }, `Tiedosto: ${item.path}`),
+
+                  item.created && e('div', { className: 'faust-card__foot' }, new Date(item.created).toLocaleDateString('fi-FI'))
+                );
+              })
+            ) : e('div', { className: 'faust-empty' },
+              e('div', { className: 'faust-empty__icon' }, icons.trigon({ size: 40 })),
+              e('div', { className: 'faust-empty__title' }, 'Ei vielä taustamateriaalia.'),
+              e('div', { className: 'faust-empty__hint' }, 'Lisää muistiinpanoja tai linkkejä.')
+            )
           )
         )
-      )
-    )),
+      );
+    })()),
+
+    // Kirjoita tekoälyn kanssa: continue the text, write from a summary, rewrite a selection, write a scene
+    e(ErrorBoundary, { label: 'Kirjoita tekoälyn kanssa', onDismiss: () => setShowContinueDialog(false) }, showContinueDialog && (() => {
+      const chapterHasText = !!(activeChapter && chapterText(activeChapter).trim());
+      const hasSelection = !!textSelection?.text;
+      const closeWriting = () => {
+        setShowContinueDialog(false);
+        setContinuePreview('');
+        setHybridInput('');
+      };
+      // One request for the open tab: Luo ehdotus and Luo uusi ehdotus both send it
+      const requestSuggestion = () => {
+        if (hybridMode === 'continue') handleContinueWriting();
+        else if (hybridMode === 'expand') handleExpandOutline();
+        else if (hybridMode === 'rewrite') handleRewriteSection();
+        else if (hybridMode === 'scene') handleGenerateScene();
+      };
+      const requestBlocked = continuingWriting ||
+        (hybridMode === 'continue' && !chapterHasText) ||
+        (hybridMode !== 'continue' && !hybridInput.trim()) ||
+        (hybridMode === 'rewrite' && !hasSelection);
+      // A disabled Luo ehdotus names its reason where M has the sentence (B.8); a busy guard is silent (R-68)
+      const blockedReason = continuingWriting
+        ? undefined
+        : hybridMode === 'continue' && !chapterHasText
+          ? 'Luvussa ei ole vielä tekstiä'
+          : hybridMode === 'rewrite' && !hasSelection
+            ? 'Valitse ensin tekstistä kohta, jonka haluat kirjoittaa uudelleen'
+            : undefined;
+      const modeTabs = [
+        { mode: 'continue', text: 'Jatka tekstiä', tip: 'Tekoäly jatkaa luvun lopusta samalla tyylillä', disabled: !chapterHasText, disabledTip: 'Luvussa ei ole vielä tekstiä' },
+        { mode: 'expand', text: 'Kirjoita tiivistelmästä', tip: 'Tekoäly kirjoittaa tiivistelmästäsi tai juonirungostasi valmista tekstiä', disabled: false },
+        { mode: 'rewrite', text: 'Kirjoita valinta uudelleen', tip: 'Tekoäly kirjoittaa valitsemasi tekstin uudelleen ohjeesi mukaan', disabled: !hasSelection, disabledTip: 'Valitse ensin tekstistä kohta, jonka haluat kirjoittaa uudelleen' },
+        { mode: 'scene', text: 'Kirjoita kohtaus', tip: 'Tekoäly kirjoittaa kohtauksen kuvauksesi pohjalta', disabled: false }
+      ];
+      // The scene request knows three lengths (the thresholds of handleGenerateScene)
+      const sceneLength = hybridTargetWords <= 600
+        ? 'lyhyt (noin 500 sanaa)'
+        : hybridTargetWords >= 1500
+          ? `pitkä (noin ${(2000).toLocaleString('fi-FI')} sanaa)`
+          : `keskipitkä (noin ${(1000).toLocaleString('fi-FI')} sanaa)`;
+      const previewWords = continuePreview ? continuePreview.split(/\s+/).filter(Boolean).length : 0;
+      const appendsOrReplaces = hybridMode === 'expand' || hybridMode === 'scene';
+      // The filled part of a slider's track (the range recipe reads --value)
+      const trackFill = (value, min, max) => ({ '--value': Math.min(Math.max((value - min) / (max - min), 0), 1) * 100 + '%' });
+
+      return e('div', { className: 'faust-scrim' },
+        e('div', {
+          className: 'faust-dialog faust-dialog--lg',
+          role: 'dialog',
+          'aria-modal': 'true',
+          'aria-labelledby': 'ai-writing-title',
+          'aria-busy': continuingWriting ? 'true' : undefined
+        },
+          e('div', { className: 'faust-dialog__header' },
+            e('div', { className: 'faust-dialog__heading' },
+              e('h2', { id: 'ai-writing-title', className: 'faust-dialog__title' }, 'Kirjoita tekoälyn kanssa'),
+              e('div', { className: 'faust-dialog__sub' }, 'Tekoäly ehdottaa tekstiä. Mitään ei lisätä lukuun ennen kuin hyväksyt ehdotuksen.')
+            ),
+            e('button', {
+              type: 'button',
+              className: 'faust-btn faust-btn--icon',
+              'aria-label': 'Sulje',
+              title: 'Sulje',
+              onClick: closeWriting
+            }, icons.close({ size: 16 }))
+          ),
+
+          e('div', { className: 'faust-dialog__body' },
+            continuePreview
+              // The ehdotus
+              ? e('div', { className: 'faust-result' },
+                  e('div', { className: 'faust-result__head' },
+                    e('span', { className: 'faust-label' }, 'Ehdotus · ' + count(previewWords, 'sana'))
+                  ),
+                  e('div', { className: 'faust-result__body' },
+                    e('div', { className: 'faust-prose' }, continuePreview)
+                  )
+                )
+              // The request
+              : e(React.Fragment, null,
+                  e('div', { className: 'faust-tabs', role: 'tablist', style: { marginBottom: 'var(--sp-5)' } },
+                    modeTabs.map(tab => e('button', {
+                      key: tab.mode,
+                      type: 'button',
+                      className: 'faust-tab',
+                      role: 'tab',
+                      'aria-selected': hybridMode === tab.mode,
+                      // While a suggestion is being created the other controls are disabled (V 4.8, busy)
+                      disabled: tab.disabled || continuingWriting,
+                      title: tab.disabled ? tab.disabledTip : tab.tip,
+                      onClick: () => !tab.disabled && !continuingWriting && setHybridMode(tab.mode)
+                    }, tab.text))
+                  ),
+
+                  // Jatka tekstiä
+                  hybridMode === 'continue' && e('label', { className: 'faust-field' },
+                    e('span', { className: 'faust-field__label' }, `Kappaleiden määrä: ${continueParagraphs}`),
+                    e('input', {
+                      type: 'range',
+                      min: 1,
+                      max: 5,
+                      value: continueParagraphs,
+                      disabled: continuingWriting,
+                      style: trackFill(continueParagraphs, 1, 5),
+                      onChange: (ev) => setContinueParagraphs(parseInt(ev.target.value))
+                    }),
+                    e('span', { className: 'faust-field__hint' }, 'Tekoäly jatkaa luvun lopusta samalla tyylillä.')
+                  ),
+
+                  // Kirjoita tiivistelmästä
+                  hybridMode === 'expand' && e(React.Fragment, null,
+                    e('label', { className: 'faust-field' },
+                      e('span', { className: 'faust-field__label' }, 'Tiivistelmä tai juonirunko'),
+                      e('textarea', {
+                        className: 'faust-textarea faust-textarea--author',
+                        value: hybridInput,
+                        disabled: continuingWriting,
+                        onChange: (ev) => setHybridInput(ev.target.value),
+                        placeholder: 'Kirjoita lyhyt tiivistelmä tai juonirunko, josta tekoäly kirjoittaa valmista tekstiä…'
+                      })
+                    ),
+                    e('div', {
+                      style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 200px', gap: 'var(--sp-6)', alignItems: 'end', marginTop: 'var(--sp-4)' }
+                    },
+                      e('label', { className: 'faust-field' },
+                        e('span', { className: 'faust-field__label' }, `Pituus: noin ${hybridTargetWords.toLocaleString('fi-FI')} sanaa`),
+                        e('input', {
+                          type: 'range',
+                          min: 500,
+                          max: 4000,
+                          step: 500,
+                          value: hybridTargetWords,
+                          disabled: continuingWriting,
+                          style: trackFill(hybridTargetWords, 500, 4000),
+                          onChange: (ev) => setHybridTargetWords(parseInt(ev.target.value))
+                        })
+                      ),
+                      e('label', { className: 'faust-field', style: { marginTop: 0 } },
+                        e('span', { className: 'faust-field__label' }, 'Tyyli'),
+                        e('select', {
+                          className: 'faust-select',
+                          value: hybridStyle,
+                          disabled: continuingWriting,
+                          onChange: (ev) => setHybridStyle(ev.target.value)
+                        },
+                          e('option', { value: 'vivid' }, 'Eloisa'),
+                          e('option', { value: 'concise' }, 'Tiivis'),
+                          e('option', { value: 'descriptive' }, 'Kuvaileva'),
+                          e('option', { value: 'dialogue-heavy' }, 'Dialogipainotteinen')
+                        )
+                      )
+                    )
+                  ),
+
+                  // Kirjoita valinta uudelleen
+                  hybridMode === 'rewrite' && (hasSelection
+                    ? e(React.Fragment, null,
+                        e('div', { className: 'faust-excerpt', style: { marginBottom: 'var(--sp-4)' } },
+                          e('div', { className: 'faust-excerpt__caption' }, 'Valittu teksti'),
+                          e('div', { className: 'faust-excerpt__text' }, textSelection.text)
+                        ),
+                        e('label', { className: 'faust-field' },
+                          e('span', { className: 'faust-field__label' }, 'Ohje tekoälylle'),
+                          e('input', {
+                            type: 'text',
+                            className: 'faust-input',
+                            value: hybridInput,
+                            disabled: continuingWriting,
+                            onChange: (ev) => setHybridInput(ev.target.value),
+                            placeholder: 'esim. ”tee dramaattisemmaksi”, ”lisää dialogia”, ”tiivistä”'
+                          })
+                        )
+                      )
+                    : e('div', { className: 'faust-empty' },
+                        e('div', { className: 'faust-empty__title' }, 'Valitse ensin tekstistä kohta, jonka haluat kirjoittaa uudelleen.')
+                      )
+                  ),
+
+                  // Kirjoita kohtaus
+                  hybridMode === 'scene' && e(React.Fragment, null,
+                    e('label', { className: 'faust-field' },
+                      e('span', { className: 'faust-field__label' }, 'Kohtauksen kuvaus'),
+                      e('textarea', {
+                        className: 'faust-textarea faust-textarea--author',
+                        value: hybridInput,
+                        disabled: continuingWriting,
+                        onChange: (ev) => setHybridInput(ev.target.value),
+                        placeholder: 'Kuvaile kohtaus lyhyesti: keitä on paikalla, mitä tapahtuu, mikä on tunnelma…'
+                      })
+                    ),
+                    e('label', { className: 'faust-field' },
+                      e('span', { className: 'faust-field__label' }, 'Pituus: ' + sceneLength),
+                      e('input', {
+                        type: 'range',
+                        min: 300,
+                        max: 2500,
+                        step: 100,
+                        value: hybridTargetWords,
+                        disabled: continuingWriting,
+                        style: trackFill(hybridTargetWords, 300, 2500),
+                        onChange: (ev) => setHybridTargetWords(parseInt(ev.target.value))
+                      })
+                    )
+                  )
+                )
+          ),
+
+          e('div', { className: 'faust-dialog__footer' },
+            continuePreview
+              ? [
+                  e('button', {
+                    key: 'reject',
+                    type: 'button',
+                    className: 'faust-btn faust-btn--lg faust-btn--quiet',
+                    onClick: () => rejectContinuation()
+                  }, 'Hylkää'),
+                  e('button', {
+                    key: 'again',
+                    type: 'button',
+                    className: 'faust-btn faust-btn--lg',
+                    disabled: continuingWriting,
+                    onClick: requestSuggestion
+                  }, 'Luo uusi ehdotus'),
+                  appendsOrReplaces && e('button', {
+                    key: 'replace',
+                    type: 'button',
+                    className: 'faust-btn faust-btn--lg',
+                    onClick: () => acceptExpansion()
+                  }, 'Korvaa koko luku…'),
+                  e('button', {
+                    key: 'accept',
+                    type: 'button',
+                    className: 'faust-btn faust-btn--lg faust-btn--primary',
+                    onClick: () => (hybridMode === 'rewrite' ? acceptRewrite() : acceptContinuation())
+                  }, hybridMode === 'rewrite' ? 'Korvaa valittu teksti' : 'Lisää luvun loppuun')
+                ]
+              : e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--lg faust-btn--primary',
+                  disabled: requestBlocked,
+                  title: blockedReason,
+                  'aria-busy': continuingWriting ? 'true' : undefined,
+                  onClick: requestSuggestion
+                },
+                  continuingWriting && e('span', { className: 'faust-spinner faust-spinner--sm' }),
+                  continuingWriting ? 'Luodaan ehdotusta…' : 'Luo ehdotus'
+                )
+          )
+        )
+      );
+    })()),
 
     // Claude Chat Component
-    e(ErrorBoundary, { label: 'Chat', onDismiss: () => setClaudeChatOpen(false) }, window.ClaudeChat && e(window.ClaudeChat, {
+    e(ErrorBoundary, { label: 'Keskustelu', onDismiss: () => setClaudeChatOpen(false) }, window.ClaudeChat && e(window.ClaudeChat, {
       project: project,
       activeChapter: activeChapter,
-      isOpen: claudeChatOpen,
+      isOpen: claudeChatOpen && !aiAssistantOpen,
       onClose: () => setClaudeChatOpen(false),
       onInsertText: (text) => {
         if (activeChapter) {
@@ -12512,9 +9175,9 @@ ${contextPrompt}`;
     // bar, left of an open Inspector; not rendered while the chat or the Liminal Engine is open.
     !claudeChatOpen && !aiAssistantOpen && e('button', {
       className: 'faust-fab',
-      'aria-label': 'Avaa erillinen keskustelu',
+      'aria-label': 'Avaa erillinen keskustelu: vastaus näkyy sitä mukaa kuin tekoäly kirjoittaa sitä, ja vastauksen voi lisätä luvun loppuun',
       title: 'Avaa erillinen keskustelu: vastaus näkyy sitä mukaa kuin tekoäly kirjoittaa sitä, ja vastauksen voi lisätä luvun loppuun',
-      onClick: () => setClaudeChatOpen(true)
+      onClick: openChat
     }, icons.star8({ size: 16 })),
 
     // Notifications (the replacement for native alert boxes)

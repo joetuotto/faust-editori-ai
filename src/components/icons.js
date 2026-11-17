@@ -1,6 +1,6 @@
 /**
  * src/components/icons.js - FAUST icon module (no dependency, no font, no emoji)
- * 15 sigils and 77 utility icons, drawn for FAUST on one grid.
+ * 17 sigils and 77 utility icons, drawn for FAUST on one grid.
  *
  * Drawing rules
  *   grid      24 x 24 units, 2-unit margin (live area 20 x 20), centred optically
@@ -39,6 +39,8 @@ export const SIGILS = {
   terra:      { d: circle(12, 15.5, 6.5) + 'M12 9V2M9 5.5h6' },                               // location
   lemniscate: { d: 'M12 12c-1.8-3-3.2-5-5-5a5 5 0 0 0 0 10c1.8 0 3.2-2 5-5zm0 0c1.8 3 3.2 5 5 5a5 5 0 0 0 0-10c-1.8 0-3.2 2-5 5z' }, // plot thread
   salt:       { d: circle(12, 12, 8.5) + 'M3.5 12h17' },                                      // story folder (corpus)
+  trigon:     { d: 'M12 2.5l9.5 17.5h-19zM12 10.5l3.5 6.5h-7z' },                             // research folder (Tutkimuskansio): a triangle within a triangle
+  hexagon:    { d: 'M12 2.5l8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5z' },                          // chapter (luku)
   star8:      { vb: '0 0 100 100', f: 'M50 2l8 29 26-15-15 26 29 8-29 8 15 26-26-15-8 29-8-29-26 15 15-26-29-8 29-8-15-26 26 15z' }, // the FAUST mark, and FAUST's own voice
   // chapter status as a lunar phase: plan, draft, revision, final. A smaller class than the
   // type sigils (ring of 12 units), so a status is never taken for a character or the story folder.

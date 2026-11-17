@@ -8,6 +8,9 @@
  *    formatting, find & replace, undo) are applied as the smallest possible
  *    change, so the cursor and the scroll position stay where they were
  *  - real cursor centering for typewriter mode
+ *  - scene breaks (* * *) set as a centred line; a readOnly mode for reference texts
+ *
+ * Its colours are not here: section 14 of styles/faust-components.css themes the editor.
  *
  * The rest of app.js was written against a textarea, so the element handed to
  * `ref` is the editor's scroll element extended with the textarea members the
@@ -19,10 +22,10 @@
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
  */
 
-import { EditorState, Annotation, StateField, StateEffect } from '@codemirror/state';
+import { EditorState, Annotation, StateField, StateEffect, RangeSetBuilder } from '@codemirror/state';
 import {
   EditorView, keymap, placeholder as placeholderExtension,
-  Decoration, MatchDecorator, ViewPlugin
+  Decoration, MatchDecorator, ViewPlugin, tooltips
 } from '@codemirror/view';
 import { standardKeymap, insertNewline } from '@codemirror/commands';
 import { Language, defineLanguageFacet, syntaxHighlighting, HighlightStyle } from '@codemirror/language';
@@ -44,18 +47,20 @@ const proseMarkdown = new Language(
   'markdown'
 );
 
+// Headings in em of the manuscript size, so they follow the zoom: a large heading is set by its
+// size at the display weight, heading 3 and below keep the title weight. Links carry no
+// underline: the parser reads any bracketed text as a link, a [TODO: …] note included.
 const proseHighlight = HighlightStyle.define([
-  { tag: tags.heading1, fontSize: '1.6em', fontWeight: '600', lineHeight: '1.3' },
-  { tag: tags.heading2, fontSize: '1.35em', fontWeight: '600', lineHeight: '1.3' },
-  { tag: tags.heading3, fontSize: '1.15em', fontWeight: '600' },
-  { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: '600' },
-  { tag: tags.strong, fontWeight: '700' },
+  { tag: tags.heading1, fontSize: '1.556em', fontWeight: 'var(--w-serif-display)', lineHeight: '1.25', letterSpacing: '-0.01em' },
+  { tag: tags.heading2, fontSize: '1.278em', fontWeight: 'var(--w-serif-display)', lineHeight: '1.3' },
+  { tag: tags.heading3, fontSize: '1.111em', fontWeight: 'var(--w-serif-title)', lineHeight: '1.4' },
+  { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: 'var(--w-serif-title)' },
+  { tag: tags.strong, fontWeight: 'var(--w-serif-bold)' },
   { tag: tags.emphasis, fontStyle: 'italic' },
   { tag: tags.strikethrough, textDecoration: 'line-through' },
   { tag: tags.quote, fontStyle: 'italic' },
-  { tag: tags.link, textDecoration: 'underline' },
-  // The markers themselves (**, #, >, ***) stay visible but step back
-  { tag: [tags.processingInstruction, tags.contentSeparator, tags.url], color: 'var(--text-3, rgba(128,128,128,0.8))', fontWeight: '400' }
+  // The markers themselves (**, #, >, ***) stay visible but step back: dimmed, regular, upright
+  { tag: [tags.processingInstruction, tags.contentSeparator, tags.url], color: 'var(--text-3)', fontWeight: '400', fontStyle: 'normal' }
 ]);
 
 // --- Search highlights: set from outside with setHighlights(), follow edits ---
@@ -111,6 +116,32 @@ const todoPlugin = decoratorPlugin(new MatchDecorator({
   decoration: todoMark
 }));
 
+// --- Scene break: a line that holds only * * *, *** or --- is set centred and dimmed ---
+
+const SCENE_BREAK = /^\s*([*\-_])(?:\s*\1){2,}\s*$/;
+const sceneBreakLine = Decoration.line({ class: 'cm-faust-scenebreak' });
+
+function sceneBreakDecorations(view) {
+  const builder = new RangeSetBuilder();
+  let lastLine = -1;
+  for (const { from, to } of view.visibleRanges) {
+    for (let pos = from; pos <= to;) {
+      const line = view.state.doc.lineAt(pos);
+      if (line.number > lastLine && SCENE_BREAK.test(line.text)) builder.add(line.from, line.from, sceneBreakLine);
+      lastLine = line.number;
+      pos = line.to + 1;
+    }
+  }
+  return builder.finish();
+}
+
+const sceneBreakPlugin = ViewPlugin.fromClass(class {
+  constructor(view) { this.decorations = sceneBreakDecorations(view); }
+  update(update) {
+    if (update.docChanged || update.viewportChanged) this.decorations = sceneBreakDecorations(update.view);
+  }
+}, { decorations: plugin => plugin.decorations });
+
 // Enter in a list or quote continues it; on an empty item it ends it
 function continueListOnEnter(view) {
   const selection = view.state.selection.main;
@@ -129,6 +160,9 @@ function continueListOnEnter(view) {
   return true;
 }
 
+// Layout only. Colours, the caret, the search hits, the TODO chip, the dimmed tags and the
+// placeholder come from section 14 of styles/faust-components.css (.faust-editor-host .cm-editor …),
+// so they follow the theme; the selectors stay here as the editor's own list of its classes.
 const editorTheme = EditorView.theme({
   '&': {
     height: '100%',
@@ -143,7 +177,6 @@ const editorTheme = EditorView.theme({
   },
   '.cm-content': {
     padding: 'var(--fe-pad-top, 0px) 0 var(--fe-pad-bottom, 0px) var(--fe-pad-left, 0px)',
-    caretColor: 'var(--text, currentColor)',
     cursor: 'text'
   },
   '.cm-line': {
@@ -151,28 +184,15 @@ const editorTheme = EditorView.theme({
     padding: '0 0 var(--fe-para-gap, 0px) 0',
     textAlign: 'var(--fe-align, left)'
   },
-  '.cm-placeholder': {
-    color: 'var(--text-3, rgba(128,128,128,0.6))'
-  },
-  '.cm-faust-match': {
-    backgroundColor: 'rgba(212, 175, 55, 0.28)',
-    borderRadius: '2px'
-  },
-  '.cm-faust-match-current': {
-    backgroundColor: 'rgba(212, 175, 55, 0.7)',
-    borderRadius: '2px'
-  },
+  '.cm-placeholder': {},
+  '.cm-faust-match': {},
+  '.cm-faust-match-current': {},
   '.cm-faust-underline': {
     textDecoration: 'underline'
   },
-  '.cm-faust-tag': {
-    color: 'var(--text-3, rgba(128,128,128,0.8))'
-  },
-  '.cm-faust-todo': {
-    color: 'var(--bronze, #b08d57)',
-    fontFamily: "'IBM Plex Mono', monospace",
-    fontSize: '0.85em'
-  }
+  '.cm-faust-tag': {},
+  '.cm-faust-todo': {},
+  '.cm-faust-scenebreak': {}
 });
 
 const normalizeNewlines = (text) => (text || '').replace(/\r\n?/g, '\n');
@@ -258,7 +278,10 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
     className,
     onMouseUp,
     onKeyUp,
-    onClick
+    onClick,
+    // A reference text that cannot be edited (the second pane, a preview). Read once, when the
+    // editor is created: change it by remounting with a new key.
+    readOnly = false
   } = props;
 
   const hostRef = useRef(null);
@@ -288,7 +311,10 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
       parent: hostRef.current,
       state: EditorState.create({
         doc: normalizeNewlines(value),
+        // Writing aids go inside the three readOnly spreads below, never outside them: a read-only
+        // editor keeps only the Markdown, the marks, the scene breaks, the tooltips and the theme.
         extensions: [
+          ...(readOnly ? [] : []),      // typing aids (smart typing) go here, before the keymap
           keymap.of([
             { key: 'Enter', run: continueListOnEnter },
             { key: 'Enter', run: insertNewline },
@@ -298,12 +324,18 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
           proseMarkdown,
           syntaxHighlighting(proseHighlight),
           highlightField,
+          ...(readOnly ? [] : []),      // suggestion and review marks go here
           underlinePlugin,
           todoPlugin,
+          ...(readOnly ? [] : []),      // story-folder mentions and the inline prompt go here
           placeholderExtension(placeholder || ''),
+          sceneBreakPlugin,
           // Spell checking is switched on and off for the whole window (Työkalut → Oikoluku)
           EditorView.contentAttributes.of({ 'aria-label': 'Käsikirjoitus', spellcheck: 'true' }),
+          // The page is a size container that clips: tooltips (the inline prompt) render in the layer host
+          tooltips({ parent: document.querySelector('.faust-layer') }),
           editorTheme,
+          ...(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
           EditorView.updateListener.of((update) => {
             const external = update.transactions.some(tr => tr.annotation(External));
 
