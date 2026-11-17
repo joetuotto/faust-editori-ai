@@ -1,0 +1,125 @@
+{
+  "model": "c91fb219-b725-43d2-925d-3c6e66bef527:glm-5.3-flash-abliterated",
+  "tag": "v1-toisto",
+  "promptFile": "prompt.txt",
+  "system": "Olet suomen kielen oikolukija. Saat numeroituja rivejä kirjan käsikirjoituksesta. Jokainen rivi on yksi kappale.\n\nKorjaa vain selvät kielivirheet: lyöntivirheet, yhdyssanavirheet, pilkkuvirheet, väärät taivutusmuodot, kongruenssivirheet ja selvät typografiset virheet.\n\nSäännöt:\n1. Älä muuta tyyliä, sanavalintoja, sanajärjestystä tai rytmiä. Älä tiivistä, selkeytä tai paranna tekstiä.\n2. Jos rivillä ei ole virhettä, palauta se merkilleen samana.\n3. Palauta jokainen rivi omalla rivillään ja samalla numerolla: [1], [2] ja niin edelleen. Rivejä on vastauksessa täsmälleen yhtä monta kuin sait. Älä yhdistä, jaa, lisää tai poista rivejä.\n4. Älä muuta, siirrä tai poista merkintöjä, jotka näyttävät tältä: ⟦1⟧. Ne ovat paikkamerkkejä, ja jokaisen on oltava vastauksessa samassa kohdassa.\n5. Vuorosanaviivalla (–) alkavat rivit ovat repliikkejä. Niiden puhekieli ja murre ovat tahallisia: älä muuta niitä yleiskieleksi. Korjaa repliikistä vain selvä lyöntivirhe.\n6. Suomen lainausmerkki on ” ja ajatusviiva –. Älä vaihda niitä suoriin lainausmerkkeihin (\") tai yhdysmerkkeihin (-).\n7. Vastaa vain korjatuilla riveillä <teksti>-tagien sisällä. Ei selityksiä, ei otsikoita, ei koodilohkoja, ei mitään tagien ulkopuolella.\n\nVastauksen muoto:\n<teksti>\n[1] ensimmäinen rivi korjattuna\n[2] toinen rivi korjattuna\n</teksti>",
+  "userTemplate": "Oikolue nämä {N} riviä. Palauta {N} riviä samoilla numeroilla <teksti>-tagien sisällä.\n\n<teksti>\n{RIVIT}\n</teksti>",
+  "batches": [
+    {
+      "model": "c91fb219-b725-43d2-925d-3c6e66bef527:glm-5.3-flash-abliterated",
+      "batch": 1,
+      "ids": [
+        "F1",
+        "N1",
+        "D1",
+        "C1",
+        "F2",
+        "N2",
+        "D2"
+      ],
+      "maxTokens": 12000,
+      "startedAt": "2026-11-16T20:14:02.768Z",
+      "seconds": 15.345,
+      "firstTextSeconds": 2.477,
+      "stopReason": "end_turn",
+      "usage": {
+        "input_tokens": 1133,
+        "output_tokens": 727
+      },
+      "blockTypes": [
+        "thinking",
+        "text"
+      ],
+      "thinkingChars": 352,
+      "text": "<teksti>\n[1] Aamulla järvi oli tyyni kuin lasi. Aino seisoi laiturilla paljain jaloin ja katseli, kuinka sumu nousi hitaasti vasta rannan kuusikkosta. Hän tiesi, että isä palaisi vasta illalla. Kukaan ei kysyisi, missä hän oli ollut.\n[2] Suomen metsistä noin kaksi kolmasosaa on yksityisten perheiden omistuksessa. Tämä selittää, miksi metsäpolitiikka herättää niin voimakkaita tunteita: päätökset koskevat suoraan lähes joka kymmenennen suomalaisen omaisuutta. Keskustelussa unohtuu usein, että omistajien tavoitteet vaihtelevat suuresti.\n[3] – Mä en tiiä, mitä sä oikein odotit. Emmä voi olla joka paikassa yhtä aikaa.\n[4] Sade alkoi iltapäivällä ja jatkui koko yön. Aamulla piha oli täynnä lammikoita, ja omenapuun alimmat oksat roikkuivat melkein maassa. Kissa istui ikkunalaudalla ja seurasi pisaroita, jotka valuivat lasia pitkin.\n[5] Vanha kirjakauppa sijaitsi kapealla kujalla, jonne aurinko ei paistanut edes keskikesällä. Hyllyt notkui pölyisiä niteitä, ja tiskin takana istui mies, joka ei nostanut katsettaan sanomalehdestä. Ovikello kilahti, kun astuin sisään.\n[6] Vuosina 1867–1868 Suomea koetteli nälänhätä, joka tappoi lähes kahdeksan prosenttia väestöstä. Katastrofin syynä oli ⟦2⟧poikkeuksellisen kylmä kevät⟦3⟧, mutta yhtä paljon siihen vaikuttivat hallinnon hidas reakointi ja huonot kulkuyhteydet. Viljaa olisi ollut saatavilla, mutta sitä ei ehditty kuljettaa perille ennen jäiden tuloa.\n[7] – Elä sinä poeka hättäele, kyllä tässä vielä keritään, mummo sanoi ja kaatoi lisää kahiva.\n</teksti>",
+      "error": null
+    },
+    {
+      "model": "c91fb219-b725-43d2-925d-3c6e66bef527:glm-5.3-flash-abliterated",
+      "batch": 2,
+      "ids": [
+        "F3",
+        "N3",
+        "D3",
+        "C2",
+        "F4",
+        "N4",
+        "D4"
+      ],
+      "maxTokens": 12000,
+      "startedAt": "2026-11-16T20:14:18.113Z",
+      "seconds": 52.14,
+      "firstTextSeconds": 40.988,
+      "stopReason": "end_turn",
+      "usage": {
+        "input_tokens": 1113,
+        "output_tokens": 2072
+      },
+      "blockTypes": [
+        "thinking",
+        "text"
+      ],
+      "thinkingChars": 4215,
+      "text": "<teksti>\n[1] Juna lähti Kouvolasta kello kuusi ⟦1⟧, ja vaunussa oli vain kolme matkustajaa. Ikkunan takana pellot liukuivat ohi harmaina ja märkinä. Elias painoi otsansa kylmää lasia vasten ja yritti olla ajattelematta kirjettä, joka poltteli hänen povitaskussaan.\n[2] Lukeminen ei ole synnynnäinen taito, vaan aivot joutuvat opettelemaan sen yhdistämällä näkö- ja kielialueita uudella tavalla. Tutkijat ovat havainneet, että sujuvan lukijan aivoissa kirjainten tunnistus tapahtuu alle sekunnin kymmenesosassa. Siksi harjoittelun määrä ratkaisee enemmän kuin menetelmä.\n[3] – Kattokaas nääs, ei toi moottori lähe käyntiin, jos siihen ei tuu bensaa.\n[4] Opettaja kirjoitti taululle yhden sanan: ”kärsivällisyys”. Sitten hän kääntyi luokan puoleen ja odotti niin kauan, että ⟦6⟧viimeinenkin kuiskaus⟦7⟧ oli vaiennut.\n[5] Mummo kutsui sitä ”hiljaiseksi huoneeksi”, vaikka siellä tikittivät kolme kelloa yhtä aikaa. Lapsena kuvittelin, että kellot kävivät kilpaa ja että se, joka ehtisi ensin keskiyöhön, saisi palkinnoksi koko talon.\n[6] Kyselyn mukaan 62 % vastaajista piti etätyötä ”selvästi tehokkaampana” kuin toimistolla työskentelyä. Tulosta on kuitenkin tulkittava varoen, koska otos painottui asiantuntijatehtäviin eikä mukana ollut juuri lainkaan palvelualojen työntekijöitä.\n[7] – Kyllä mä sen tiedän, notta se on vaikiaa, mutta ei auta itkiä markkinoilla.\n</teksti>",
+      "error": null
+    },
+    {
+      "model": "c91fb219-b725-43d2-925d-3c6e66bef527:glm-5.3-flash-abliterated",
+      "batch": 3,
+      "ids": [
+        "F5",
+        "N5",
+        "D5",
+        "C3",
+        "F6",
+        "N6",
+        "D6"
+      ],
+      "maxTokens": 12000,
+      "startedAt": "2026-11-16T20:15:10.254Z",
+      "seconds": 29.262,
+      "firstTextSeconds": 18.832,
+      "stopReason": "end_turn",
+      "usage": {
+        "input_tokens": 1143,
+        "output_tokens": 1185
+      },
+      "blockTypes": [
+        "thinking",
+        "text"
+      ],
+      "thinkingChars": 1755,
+      "text": "<teksti>\n[1] Talvi tuli sinä vuonna aikaisin. Lokakuun lopussa satama oli jo jäässä, ja kalastajat vetivät veneensä rantaan, ennen kuin ehtivät paikata verkkojaan. Me lapset luistelimme laiturin ympärillä iltaan asti, kunnes äidit huusivat meidät kotiin.\n[2] Kahvi saapui Suomeen 1700-luvun alussa ⟦4⟧, mutta tavallisen kansan juomaksi se yleistyi vasta sata vuotta myöhemmin. Aluksi viranomaiset yrittivät rajoittaa sen käyttöä ylellisyysveroilla ja jopa täyskielloilla, jotka eivät kuitenkaan tehonneet. Nykyään suomalaiset juovat kahvia enemmän kuin mikään muu kansa.\n[3] – Oottekste nähny mun avaimia? Mä jätin ne eilen tohon pöydälle, ja nyt niitä ei oo missään.\n[4] Suomen kirjakielen perusta luotiin 1500-luvulla, kun Mikael Agricola käänsi Uuden testamentin suomeksi. Hänen ratkaisunsa – esimerkiksi monien äänteiden merkintätavat – vaikuttivat kirjoitettuun kieleen vuosisatojen ajan.\n[5] Hän avasi laatikon – sen saman, jota oli vältellyt koko syksyn – ja nosti esiin nipun valokuvia. Kuvissa nauroi nuori nainen, jonka kasvoja hän ei aluksi tunnistanut omikseen. Kädet alkoivat vapista.\n[6] Hyvä tietokirja ei tyydy luettelemaan faktoja. Se rakentaa niistä väitteen. Kirjoittajan on päätettävä, mitä hän jättää pois, sillä jokainen ylimäärinen sivupolku heikentää pääajatusta. Karsiminen on vaikeaa juuri siksi, että kaikki kerätty aineisto tuntuu tärkeältä.\n[7] – Mie oon sanonu sulle monta kertaa, että sinne ei mennä yksin ⟦5⟧. Jää pettää keväällä ennen ko arvaakaan.\n</teksti>",
+      "error": null
+    },
+    {
+      "model": "c91fb219-b725-43d2-925d-3c6e66bef527:glm-5.3-flash-abliterated",
+      "batch": 4,
+      "ids": [
+        "F7",
+        "N7",
+        "D7",
+        "C4",
+        "F8",
+        "F9",
+        "C5"
+      ],
+      "maxTokens": 12000,
+      "startedAt": "2026-11-16T20:15:39.518Z",
+      "seconds": 23.127,
+      "firstTextSeconds": 15.816,
+      "stopReason": "end_turn",
+      "usage": {
+        "input_tokens": 699,
+        "output_tokens": 1408
+      },
+      "blockTypes": [
+        "thinking",
+        "text"
+      ],
+      "thinkingChars": 2037,
+      "text": "<teksti>\n[1] Kirkonkylän raitilla ei liikkunut ketään. Kaupan ikkunassa paloi yksinäinen valo, ja jossain haukkui koira, jonka ääni kantoi kauas pakkasessa. Marketta veti kaulahuivin tiukemmalle ja lähti kävelemään kohti asemaa, vaikka tiesi, ettei viimeinen bussi enää odottaisi.\n[2] Itämeri on matala ja lähes suljettu allas, minkä vuoksi sen vesi vaihtuu erittäin hitaasti. Ravinteet, jotka päätyvät mereen pelloilta ja jätevesistä, kiertävät siellä vuosikymmeniä. Tästä syystä rehevöitymisen pysäyttäminen vaatii kärsivällisyyttä: tulokset näkyvät vasta pitkän ajan kuluttua.\n[3] – Siis ihan oikeesti, se vaan käveli ohi eikä sanonu mitään. Mä olin sillee et okei, ei sit.\n[4] Uni vaikuttaa muistiin enemmän kuin yleensä ajatellaan. Syvän unen aikana aivot siirtävät päivän tapahtumia pitkäkestoiseen muistiin, ja siksi valvottu yö heikentää oppimista vielä seuraavanakin päivänä.\n[5] Isoisän verstaassa tuoksui terva ja tuore puu. Höylät riippuivat seinällä suuruusjärjestyksessä, ja jokaisella työkalulla oli oma paikkansa, jota ei saanut muuttaa. Kun hän kuoli, kukaan ei raaskinut koskea niihin moneen vuoteen.\n[6] Myrsky katkaisi sähköt puoli yhdeksältä. Sytytin kynttilän ja kuuntelin miten tuuli riuhtoi peltikattoa ja miten vanhat hirret narisivat sen otteessa. Pimeässä talo tuntui suuremmalta kuin päivällä, melkein vieraalta... Silti en olisi vaihtanut sitä mihinkään.\n[7] Laiva irtosi laiturista hitaasti, melkein vastahakoisesti. Kannella seisoi ihmisiä, jotka vilkuttivat rannalle jääneille, mutta Henrik ei kääntynyt katsomaan taakseen. Hän oli päättänyt, ettei jättäisi tälle kaupungille edes hyvästejä.\n</teksti>",
+      "error": null
+    }
+  ]
+}

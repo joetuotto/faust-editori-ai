@@ -1,0 +1,4891 @@
+[
+  {
+    "model": "deepseek-v4.1-flash-abliterated-fast",
+    "modelId": "c91fb219-b725-43d2-925d-3c6e66bef527:deepseek-v4.1-flash-abliterated-fast",
+    "tag": "v1",
+    "promptFile": "prompt.txt",
+    "requests": 4,
+    "requestErrors": 0,
+    "stopReasons": {
+      "end_turn": 4
+    },
+    "lines": 28,
+    "planted": 57,
+    "fixed": 55,
+    "unfixed": 2,
+    "alteredOtherwise": 0,
+    "byType": {
+      "pilkku": {
+        "planted": 13,
+        "fixed": 13
+      },
+      "yhdyssana": {
+        "planted": 15,
+        "fixed": 15
+      },
+      "oikeinkirjoitus": {
+        "planted": 13,
+        "fixed": 12
+      },
+      "kongruenssi": {
+        "planted": 11,
+        "fixed": 11
+      },
+      "typografia": {
+        "planted": 5,
+        "fixed": 4
+      }
+    },
+    "byGenre": {
+      "fiktio": {
+        "lines": 9,
+        "planted": 30,
+        "fixed": 29,
+        "wrong": 0,
+        "altered": 0
+      },
+      "tieto": {
+        "lines": 7,
+        "planted": 23,
+        "fixed": 22,
+        "wrong": 0,
+        "altered": 0
+      },
+      "vuorosana": {
+        "lines": 7,
+        "planted": 4,
+        "fixed": 4,
+        "wrong": 1,
+        "altered": 1
+      },
+      "kontrolli": {
+        "lines": 5,
+        "planted": 0,
+        "fixed": 0,
+        "wrong": 0,
+        "altered": 0
+      }
+    },
+    "wrong": 1,
+    "wrongAtPlanted": 0,
+    "wrongElsewhere": 1,
+    "wrongCommaOnly": 0,
+    "typoStraightened": 0,
+    "typoOther": 0,
+    "rewritten": 0,
+    "maxRatio": 0.105,
+    "exactLines": 25,
+    "lost": 0,
+    "duplicate": 0,
+    "split": 0,
+    "extraNumbers": 0,
+    "wrongNumberFormat": 0,
+    "dialogueLines": 7,
+    "dialogueAltered": 1,
+    "dialogueChanges": 1,
+    "controlLines": 5,
+    "controlAltered": 0,
+    "placeholders": 7,
+    "placeholdersLost": 0,
+    "placeholderMoved": 0,
+    "missingOpenTag": 0,
+    "missingCloseTag": 0,
+    "textOutsideTags": 0,
+    "codeFence": 0,
+    "thinkTagInText": 0,
+    "nbspIntroduced": 0,
+    "seconds": [
+      13.419,
+      12.463,
+      13.24,
+      12.104
+    ],
+    "outputTokens": [
+      1775,
+      2042,
+      1630,
+      1614
+    ],
+    "thinkingChars": [
+      3239,
+      4014,
+      2709,
+      2440
+    ],
+    "details": [
+      {
+        "id": "F1",
+        "genre": "fiktio",
+        "batch": 1,
+        "n": 1,
+        "source": "Aamulla järvi oli tyyni kuin lasi. Aino seisoi laiturilla paljain jaloin ja katseli, kuinka sumu nousi hitaasti vasta rannan kuusikkosta. Hän tiesi että isä palaisi vasta illalla. Kukaan ei kysyisi, missä hän oli ollut.",
+        "output": "Aamulla järvi oli tyyni kuin lasi. Aino seisoi laiturilla paljain jaloin ja katseli, kuinka sumu nousi hitaasti vastarannan kuusikosta. Hän tiesi, että isä palaisi vasta illalla. Kukaan ei kysyisi, missä hän oli ollut.",
+        "status": "ok",
+        "ratio": 0.075,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "tiesi että",
+            "right": "tiesi, että",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "vasta rannan",
+            "right": "vastarannan",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuusikkosta",
+            "right": "kuusikosta",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "vasta rannan",
+            "new": "vastarannan",
+            "at": 112
+          },
+          {
+            "old": "kuusikkosta",
+            "new": "kuusikosta",
+            "at": 125
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 147
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N1",
+        "genre": "tieto",
+        "batch": 1,
+        "n": 2,
+        "source": "Suomen metsistä noin kaksi kolmasosaa on yksityisten perheiden omistuksessa. Tämä selittää miksi metsä politiikka herättää niin voimakkaita tunteita: päätökset koskevat suoraan lähes joka kymmenennen suomalaisen omaisuutta. Keskustelussa unohtuu usein, että omistajien tavoitteet vaihtelee suuresti.",
+        "output": "Suomen metsistä noin kaksi kolmasosaa on yksityisten perheiden omistuksessa. Tämä selittää, miksi metsäpolitiikka herättää niin voimakkaita tunteita: päätökset koskevat suoraan lähes joka kymmenennen suomalaisen omaisuutta. Keskustelussa unohtuu usein, että omistajien tavoitteet vaihtelevat suuresti.",
+        "status": "ok",
+        "ratio": 0.077,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "metsä politiikka",
+            "right": "metsäpolitiikka",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "selittää miksi",
+            "right": "selittää, miksi",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "tavoitteet vaihtelee",
+            "right": "tavoitteet vaihtelevat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 90
+          },
+          {
+            "old": "metsä politiikka",
+            "new": "metsäpolitiikka",
+            "at": 97
+          },
+          {
+            "old": "vaihtelee",
+            "new": "vaihtelevat",
+            "at": 280
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D1",
+        "genre": "vuorosana",
+        "batch": 1,
+        "n": 3,
+        "source": "– Mä en tiiä, mitä sä oikein odotit. Emmä voi olla joka paikassa yhtä aikaa.",
+        "output": "– Mä en tiiä, mitä sä oikein odotit. Emmä voi olla joka paikassa yhtä aikaa.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "C1",
+        "genre": "kontrolli",
+        "batch": 1,
+        "n": 4,
+        "source": "Sade alkoi iltapäivällä ja jatkui koko yön. Aamulla piha oli täynnä lammikoita, ja omenapuun alimmat oksat roikkuivat melkein maassa. Kissa istui ikkunalaudalla ja seurasi pisaroita, jotka valuivat lasia pitkin.",
+        "output": "Sade alkoi iltapäivällä ja jatkui koko yön. Aamulla piha oli täynnä lammikoita, ja omenapuun alimmat oksat roikkuivat melkein maassa. Kissa istui ikkunalaudalla ja seurasi pisaroita, jotka valuivat lasia pitkin.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F2",
+        "genre": "fiktio",
+        "batch": 1,
+        "n": 5,
+        "source": "Vanha kirjakauppa sijaitsi kapealla kujalla, jonne aurinko ei paistanut edes keskikesällä. Hyllyt notkui pölyisiä niteitä, ja tiskin takana istui mies joka ei nostanut katsettaan sanoma lehdestä. Ovikello kilahti, kun astuin sisään.",
+        "output": "Vanha kirjakauppa sijaitsi kapealla kujalla, jonne aurinko ei paistanut edes keskikesällä. Hyllyt notkuivat pölyisiä niteitä, ja tiskin takana istui mies, joka ei nostanut katsettaan sanomalehdestä. Ovikello kilahti, kun astuin sisään.",
+        "status": "ok",
+        "ratio": 0.081,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "Hyllyt notkui",
+            "right": "Hyllyt notkuivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "sanoma lehdestä",
+            "right": "sanomalehdestä",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "mies joka",
+            "right": "mies, joka",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "notkui",
+            "new": "notkuivat",
+            "at": 98
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 150
+          },
+          {
+            "old": "sanoma lehdestä",
+            "new": "sanomalehdestä",
+            "at": 179
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N2",
+        "genre": "tieto",
+        "batch": 1,
+        "n": 6,
+        "source": "Vuosina 1867-1868 Suomea koetteli nälänhätä, joka tappoi lähes kahdeksan prosenttia väestöstä. Katastrofin syynä oli ⟦2⟧poikkeuksellisen kylmä kevät⟦3⟧, mutta yhtä paljon siihen vaikuttivat hallinnon hidas reakointi ja huonot kulku yhteydet. Viljaa olisi ollut saatavilla mutta sitä ei ehditty kuljettaa perille ennen jäiden tuloa.",
+        "output": "Vuosina 1867–1868 Suomea koetteli nälänhätä, joka tappoi lähes kahdeksan prosenttia väestöstä. Katastrofin syynä oli ⟦2⟧poikkeuksellisen kylmä kevät⟦3⟧, mutta yhtä paljon siihen vaikuttivat hallinnon hidas reagointi ja huonot kulkuyhteydet. Viljaa olisi ollut saatavilla, mutta sitä ei ehditty kuljettaa perille ennen jäiden tuloa.",
+        "status": "ok",
+        "ratio": 0.061,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "1867-1868",
+            "right": "1867–1868",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kulku yhteydet",
+            "right": "kulkuyhteydet",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "reakointi",
+            "right": "reagointi",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "saatavilla mutta",
+            "right": "saatavilla, mutta",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "1867-1868",
+            "new": "1867–1868",
+            "at": 8
+          },
+          {
+            "old": "reakointi",
+            "new": "reagointi",
+            "at": 206
+          },
+          {
+            "old": "kulku yhteydet",
+            "new": "kulkuyhteydet",
+            "at": 226
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 271
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D2",
+        "genre": "vuorosana",
+        "batch": 1,
+        "n": 7,
+        "source": "– Elä sinä poeka hättäele, kyllä tässä vielä keritään, mummo sanoi ja kaatoi lisää kahiva.",
+        "output": "– Elä sinä poeka hättäele, kyllä tässä vielä keritään, mummo sanoi ja kaatoi lisää kahvia.",
+        "status": "ok",
+        "ratio": 0.056,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "lisää kahiva",
+            "right": "lisää kahvia",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "kahiva",
+            "new": "kahvia",
+            "at": 83
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "F3",
+        "genre": "fiktio",
+        "batch": 2,
+        "n": 1,
+        "source": "Juna lähti Kouvolasta kello kuusi ⟦1⟧, ja vaunussa oli vain kolme matkustajaa. Ikkunan takana pellot liukuivat ohi harmaina ja märkinä. Elias painoi otsansa kylmä lasia vasten ja yritti olla ajatelematta kirjettä, joka poltteli hänen povi taskussaan.",
+        "output": "Juna lähti Kouvolasta kello kuusi ⟦1⟧, ja vaunussa oli vain kolme matkustajaa. Ikkunan takana pellot liukuivat ohi harmaina ja märkinä. Elias painoi otsansa kylmää lasia vasten ja yritti olla ajattelematta kirjettä, joka poltteli hänen povitaskussaan.",
+        "status": "ok",
+        "ratio": 0.086,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "povi taskussaan",
+            "right": "povitaskussaan",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kylmä lasia",
+            "right": "kylmää lasia",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "ajatelematta",
+            "right": "ajattelematta",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "kylmä",
+            "new": "kylmää",
+            "at": 157
+          },
+          {
+            "old": "ajatelematta",
+            "new": "ajattelematta",
+            "at": 191
+          },
+          {
+            "old": "povi taskussaan",
+            "new": "povitaskussaan",
+            "at": 234
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N3",
+        "genre": "tieto",
+        "batch": 2,
+        "n": 2,
+        "source": "Lukeminen ei ole synnynäinen taito, vaan aivot joutuu opettelemaan sen yhdistämällä näkö- ja kielialueita uudella tavalla. Tutkijat ovat havainneet että sujuvan lukijan aivoissa kirjainten tunnistus tapahtuu alle sekunnin kymmenes osassa. Siksi harjoittelun määrä ratkaisee enemmän kuin menetelmä.",
+        "output": "Lukeminen ei ole synnynnäinen taito, vaan aivot joutuvat opettelemaan sen yhdistämällä näkö- ja kielialueita uudella tavalla. Tutkijat ovat havainneet, että sujuvan lukijan aivoissa kirjainten tunnistus tapahtuu alle sekunnin kymmenesosassa. Siksi harjoittelun määrä ratkaisee enemmän kuin menetelmä.",
+        "status": "ok",
+        "ratio": 0.095,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "aivot joutuu",
+            "right": "aivot joutuvat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "havainneet että",
+            "right": "havainneet, että",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "synnynäinen",
+            "right": "synnynnäinen",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kymmenes osassa",
+            "right": "kymmenesosassa",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "synnynäinen",
+            "new": "synnynnäinen",
+            "at": 17
+          },
+          {
+            "old": "joutuu",
+            "new": "joutuvat",
+            "at": 47
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 147
+          },
+          {
+            "old": "kymmenes osassa",
+            "new": "kymmenesosassa",
+            "at": 222
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D3",
+        "genre": "vuorosana",
+        "batch": 2,
+        "n": 3,
+        "source": "– Kattokaas nääs, ei toi moottori lähe käynttiin, jos siihen ei tuu bensaa.",
+        "output": "– Kattokaas nääs, ei toi moottori lähe käyntiin, jos siihen ei tuu bensaa.",
+        "status": "ok",
+        "ratio": 0.063,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "käynttiin",
+            "right": "käyntiin",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "käynttiin",
+            "new": "käyntiin",
+            "at": 39
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "C2",
+        "genre": "kontrolli",
+        "batch": 2,
+        "n": 4,
+        "source": "Opettaja kirjoitti taululle yhden sanan: ”kärsivällisyys”. Sitten hän kääntyi luokan puoleen ja odotti niin kauan, että ⟦6⟧viimeinenkin kuiskaus⟦7⟧ oli vaiennut.",
+        "output": "Opettaja kirjoitti taululle yhden sanan: ”kärsivällisyys”. Sitten hän kääntyi luokan puoleen ja odotti niin kauan, että ⟦6⟧viimeinenkin kuiskaus⟦7⟧ oli vaiennut.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F4",
+        "genre": "fiktio",
+        "batch": 2,
+        "n": 5,
+        "source": "Mummo kutsui sitä \"hiljaiseksi huoneeksi\", vaikka siellä tikitti kolme kelloa yhtä aikaa. Lapsena kuvittelin että kellot kävi kilpaa ja että se, joka ehtisi ensin keski yöhön, saisi palkinnoksi koko talon.",
+        "output": "Mummo kutsui sitä ”hiljaiseksi huoneeksi”, vaikka siellä tikitti kolme kelloa yhtä aikaa. Lapsena kuvittelin, että kellot kävivät kilpaa ja että se, joka ehtisi ensin keskiyöhön, saisi palkinnoksi koko talon.",
+        "status": "ok",
+        "ratio": 0.081,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "\"hiljaiseksi huoneeksi\"",
+            "right": "”hiljaiseksi huoneeksi”",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuvittelin että",
+            "right": "kuvittelin, että",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "keski yöhön",
+            "right": "keskiyöhön",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kellot kävi",
+            "right": "kellot kävivät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "\"",
+            "new": "”",
+            "at": 18
+          },
+          {
+            "old": "\"",
+            "new": "”",
+            "at": 40
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 108
+          },
+          {
+            "old": "kävi",
+            "new": "kävivät",
+            "at": 121
+          },
+          {
+            "old": "keski yöhön",
+            "new": "keskiyöhön",
+            "at": 163
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N4",
+        "genre": "tieto",
+        "batch": 2,
+        "n": 6,
+        "source": "Kyselyn mukaan 62% vastaajista piti etätyötä ”selvästi tehokkaampana” kuin toimistolla työskentelyä. Tulosta on kuitenkin tulkittava varoen koska otos painottui asiantuntija tehtäviin eikä mukana ollut juuri lainkaan palvelualojen työntekijöitä.",
+        "output": "Kyselyn mukaan 62 % vastaajista piti etätyötä ”selvästi tehokkaampana” kuin toimistolla työskentelyä. Tulosta on kuitenkin tulkittava varoen, koska otos painottui asiantuntijatehtäviin eikä mukana ollut juuri lainkaan palvelualojen työntekijöitä.",
+        "status": "ok",
+        "ratio": 0.061,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "62%",
+            "right": "62 %",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "varoen koska",
+            "right": "varoen, koska",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "asiantuntija tehtäviin",
+            "right": "asiantuntijatehtäviin",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": " ",
+            "at": 17
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 139
+          },
+          {
+            "old": "asiantuntija tehtäviin",
+            "new": "asiantuntijatehtäviin",
+            "at": 161
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D4",
+        "genre": "vuorosana",
+        "batch": 2,
+        "n": 7,
+        "source": "– Kyllä mä sen tierän, notta se on vaikiaa, mutta ei auta itkiä markkinoolla.",
+        "output": "– Kyllä mä sen tierän, notta se on vaikiaa, mutta ei auta itkiä markkinoilla.",
+        "status": "ok",
+        "ratio": 0.059,
+        "exact": false,
+        "errors": [],
+        "changes": [
+          {
+            "old": "markkinoolla",
+            "new": "markkinoilla",
+            "at": 64
+          }
+        ],
+        "residual": [
+          {
+            "clean": "markkinoolla",
+            "got": "markkinoilla",
+            "at": 64,
+            "kind": "väärä:sana"
+          }
+        ]
+      },
+      {
+        "id": "F5",
+        "genre": "fiktio",
+        "batch": 3,
+        "n": 1,
+        "source": "Talvi tuli sinä vuonna aikaisin. Lokakuun lopussa satama oli jo jäässä, ja kalastajat veti veneensä rantaan, ennenkuin ehtivät paikata verkkojaan. Me lapset luistellimme laiturin ympärillä iltaan asti kunnes äidit huusivat meidät kotiin.",
+        "output": "Talvi tuli sinä vuonna aikaisin. Lokakuun lopussa satama oli jo jäässä, ja kalastajat vetivät veneensä rantaan, ennen kuin ehtivät paikata verkkojaan. Me lapset luistelimme laiturin ympärillä iltaan asti, kunnes äidit huusivat meidät kotiin.",
+        "status": "ok",
+        "ratio": 0.105,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "ennenkuin",
+            "right": "ennen kuin",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kalastajat veti",
+            "right": "kalastajat vetivät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "luistellimme",
+            "right": "luistelimme",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "asti kunnes",
+            "right": "asti, kunnes",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "veti",
+            "new": "vetivät",
+            "at": 86
+          },
+          {
+            "old": "ennenkuin",
+            "new": "ennen",
+            "at": 109
+          },
+          {
+            "old": "",
+            "new": "kuin ",
+            "at": 119
+          },
+          {
+            "old": "luistellimme",
+            "new": "luistelimme",
+            "at": 157
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 200
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N5",
+        "genre": "tieto",
+        "batch": 3,
+        "n": 2,
+        "source": "Kahvi saapui Suomeen 1700-luvun alussa ⟦4⟧, mutta tavallisen kansan juomaksi se yleistyi vasta sata vuotta myöhemin. Aluksi viranomaiset yritti rajoittaa sen käyttöä ylellisyys veroilla ja jopa täyskielloilla, jotka eivät kuitenkaan tehonneet. Nykyään suomalaiset juovat kahvia enemmän kuin mikään muu kansa.",
+        "output": "Kahvi saapui Suomeen 1700-luvun alussa ⟦4⟧, mutta tavallisen kansan juomaksi se yleistyi vasta sata vuotta myöhemmin. Aluksi viranomaiset yrittivät rajoittaa sen käyttöä ylellisyysveroilla ja jopa täyskielloilla, jotka eivät kuitenkaan tehonneet. Nykyään suomalaiset juovat kahvia enemmän kuin mikään muu kansa.",
+        "status": "ok",
+        "ratio": 0.079,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "viranomaiset yritti",
+            "right": "viranomaiset yrittivät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "ylellisyys veroilla",
+            "right": "ylellisyysveroilla",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "myöhemin",
+            "right": "myöhemmin",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "myöhemin",
+            "new": "myöhemmin",
+            "at": 107
+          },
+          {
+            "old": "yritti",
+            "new": "yrittivät",
+            "at": 137
+          },
+          {
+            "old": "ylellisyys veroilla",
+            "new": "ylellisyysveroilla",
+            "at": 166
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D5",
+        "genre": "vuorosana",
+        "batch": 3,
+        "n": 3,
+        "source": "– Oottekste nähny mun avaimia? Mä jätin ne eilen tohon pöydläle, ja nyt niitä ei oo missään.",
+        "output": "– Oottekste nähny mun avaimia? Mä jätin ne eilen tohon pöydälle, ja nyt niitä ei oo missään.",
+        "status": "ok",
+        "ratio": 0.05,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "pöydläle",
+            "right": "pöydälle",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "pöydläle",
+            "new": "pöydälle",
+            "at": 55
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "C3",
+        "genre": "kontrolli",
+        "batch": 3,
+        "n": 4,
+        "source": "Suomen kirjakielen perusta luotiin 1500-luvulla, kun Mikael Agricola käänsi Uuden testamentin suomeksi. Hänen ratkaisunsa – esimerkiksi monien äänteiden merkintätavat – vaikuttivat kirjoitettuun kieleen vuosisatojen ajan.",
+        "output": "Suomen kirjakielen perusta luotiin 1500-luvulla, kun Mikael Agricola käänsi Uuden testamentin suomeksi. Hänen ratkaisunsa – esimerkiksi monien äänteiden merkintätavat – vaikuttivat kirjoitettuun kieleen vuosisatojen ajan.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F6",
+        "genre": "fiktio",
+        "batch": 3,
+        "n": 5,
+        "source": "Hän avasi laatikon - sen saman, jota oli vältellyt koko syksyn – ja nosti esiin nipun valokuvia. Kuvissa nauroi nuori nainen, jonka kasvoja hän ei aluksi tunistanut omikseen. Kädet alkoi vapista.",
+        "output": "Hän avasi laatikon – sen saman, jota oli vältellyt koko syksyn – ja nosti esiin nipun valokuvia. Kuvissa nauroi nuori nainen, jonka kasvoja hän ei aluksi tunnistanut omikseen. Kädet alkoivat vapista.",
+        "status": "ok",
+        "ratio": 0.056,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "laatikon - sen",
+            "right": "laatikon – sen",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "Kädet alkoi",
+            "right": "Kädet alkoivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "tunistanut",
+            "right": "tunnistanut",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "-",
+            "new": "–",
+            "at": 19
+          },
+          {
+            "old": "tunistanut",
+            "new": "tunnistanut",
+            "at": 154
+          },
+          {
+            "old": "alkoi",
+            "new": "alkoivat",
+            "at": 181
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N6",
+        "genre": "tieto",
+        "batch": 3,
+        "n": 6,
+        "source": "Hyvä tietokirja ei tyydy luettelemaan faktoja. Se rakentaa niistä väitteen. Kirjoittajan on päätettävä mitä hän jättää pois, sillä jokainen ylimäärinen sivupolku heikentää pää ajatusta. Karsiminen on vaikeaa juuri siksi, että kaikki kerätty aineisto tuntuu tärkeältä.",
+        "output": "Hyvä tietokirja ei tyydy luettelemaan faktoja. Se rakentaa niistä väitteen. Kirjoittajan on päätettävä, mitä hän jättää pois, sillä jokainen ylimäärinen sivupolku heikentää pääajatusta. Karsiminen on vaikeaa juuri siksi, että kaikki kerätty aineisto tuntuu tärkeältä.",
+        "status": "ok",
+        "ratio": 0.049,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "päätettävä mitä",
+            "right": "päätettävä, mitä",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "pää ajatusta",
+            "right": "pääajatusta",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "ylimäärinen",
+            "right": "ylimääräinen",
+            "type": "oikeinkirjoitus",
+            "result": "ei korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 102
+          },
+          {
+            "old": "pää ajatusta",
+            "new": "pääajatusta",
+            "at": 172
+          }
+        ],
+        "residual": [
+          {
+            "clean": "ylimääräinen",
+            "got": "ylimäärinen",
+            "at": 141,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "D6",
+        "genre": "vuorosana",
+        "batch": 3,
+        "n": 7,
+        "source": "– Mie oon sanonu sulle monta ketraa, että sinne ei mennä yksin ⟦5⟧. Jää pettää keväällä ennen ko arvaakaan.",
+        "output": "– Mie oon sanonu sulle monta kertaa, että sinne ei mennä yksin ⟦5⟧. Jää pettää keväällä ennen ko arvaakaan.",
+        "status": "ok",
+        "ratio": 0.045,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "monta ketraa",
+            "right": "monta kertaa",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "ketraa",
+            "new": "kertaa",
+            "at": 29
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "F7",
+        "genre": "fiktio",
+        "batch": 4,
+        "n": 1,
+        "source": "Kirkonkylän raitilla ei liikkunut ketään. Kaupan ikkunassa paloi yksinäinen valo, ja jossain haukkui koira, jonka ääni kantoi kauas pakkasessa. Marketta veti kaula huivin tiukemmalle ja lähti kävelemään kohti asemaa vaikka tiesi, ettei viimeinen bussi enään odottaisi.",
+        "output": "Kirkonkylän raitilla ei liikkunut ketään. Kaupan ikkunassa paloi yksinäinen valo, ja jossain haukkui koira, jonka ääni kantoi kauas pakkasessa. Marketta veti kaulahuivin tiukemmalle ja lähti kävelemään kohti asemaa, vaikka tiesi, ettei viimeinen bussi enää odottaisi.",
+        "status": "ok",
+        "ratio": 0.071,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "kaula huivin",
+            "right": "kaulahuivin",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "bussi enään",
+            "right": "bussi enää",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "asemaa vaikka",
+            "right": "asemaa, vaikka",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "kaula huivin",
+            "new": "kaulahuivin",
+            "at": 158
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 215
+          },
+          {
+            "old": "enään",
+            "new": "enää",
+            "at": 252
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N7",
+        "genre": "tieto",
+        "batch": 4,
+        "n": 2,
+        "source": "Itämeri on matala ja lähes suljettu allas, minkä vuoksi sen vesi vaihtuu erittäin hitaasti. Ravinteet jotka päätyvät mereen pelloilta ja jätevesistä, kiertävät siellä vuosi kymmeniä. Tästä syystä rehevöitymisen pysäyttäminen vaatii kärsivällisyyttä: tulokset näkyy vasta pitkän ajan kuluttua.",
+        "output": "Itämeri on matala ja lähes suljettu allas, minkä vuoksi sen vesi vaihtuu erittäin hitaasti. Ravinteet, jotka päätyvät mereen pelloilta ja jätevesistä, kiertävät siellä vuosikymmeniä. Tästä syystä rehevöitymisen pysäyttäminen vaatii kärsivällisyyttä: tulokset näkyvät vasta pitkän ajan kuluttua.",
+        "status": "ok",
+        "ratio": 0.07,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "vuosi kymmeniä",
+            "right": "vuosikymmeniä",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "tulokset näkyy",
+            "right": "tulokset näkyvät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "Ravinteet jotka",
+            "right": "Ravinteet, jotka",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 101
+          },
+          {
+            "old": "vuosi kymmeniä",
+            "new": "vuosikymmeniä",
+            "at": 167
+          },
+          {
+            "old": "näkyy",
+            "new": "näkyvät",
+            "at": 259
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D7",
+        "genre": "vuorosana",
+        "batch": 4,
+        "n": 3,
+        "source": "– Siis ihan oikeesti, se vaan käveli ohi eikä sanonu mitään. Mä olin sillee et okei, ei sit.",
+        "output": "– Siis ihan oikeesti, se vaan käveli ohi eikä sanonu mitään. Mä olin sillee et okei, ei sit.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "C4",
+        "genre": "kontrolli",
+        "batch": 4,
+        "n": 4,
+        "source": "Uni vaikuttaa muistiin enemmän kuin yleensä ajatellaan. Syvän unen aikana aivot siirtävät päivän tapahtumia pitkäkestoiseen muistiin, ja siksi valvottu yö heikentää oppimista vielä seuraavanakin päivänä.",
+        "output": "Uni vaikuttaa muistiin enemmän kuin yleensä ajatellaan. Syvän unen aikana aivot siirtävät päivän tapahtumia pitkäkestoiseen muistiin, ja siksi valvottu yö heikentää oppimista vielä seuraavanakin päivänä.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F8",
+        "genre": "fiktio",
+        "batch": 4,
+        "n": 5,
+        "source": "Isoisän verstaassa tuoksui terva ja tuore puu. Höylät riippui seinällä suuruus järjestyksessä, ja jokaisella työkalulla oli oma paikkansa, jota ei saanut muuttaa. Kun hän kuoli kukaan ei raaskinut koskea niihin moneen vuoteen.",
+        "output": "Isoisän verstaassa tuoksui terva ja tuore puu. Höylät riippuivat seinällä suuruusjärjestyksessä, ja jokaisella työkalulla oli oma paikkansa, jota ei saanut muuttaa. Kun hän kuoli, kukaan ei raaskinut koskea niihin moneen vuoteen.",
+        "status": "ok",
+        "ratio": 0.081,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "Höylät riippui",
+            "right": "Höylät riippuivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "suuruus järjestyksessä",
+            "right": "suuruusjärjestyksessä",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuoli kukaan",
+            "right": "kuoli, kukaan",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "riippui",
+            "new": "riippuivat",
+            "at": 54
+          },
+          {
+            "old": "suuruus järjestyksessä",
+            "new": "suuruusjärjestyksessä",
+            "at": 71
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 176
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "F9",
+        "genre": "fiktio",
+        "batch": 4,
+        "n": 6,
+        "source": "Myrsky katkaisi sähköt puoli yhdeksältä. Sytytin kynttilän ja kuuntelin miten tuuli riuhtoi pelti kattoa ja miten vanhat hirret narisi sen otteessa. Pimeässä talo tuntui suuremmalta kuin päivällä, melkein vieraalta... Silti en olisi vaihtanut sitä mihinkään.",
+        "output": "Myrsky katkaisi sähköt puoli yhdeksältä. Sytytin kynttilän ja kuuntelin, miten tuuli riuhtoi peltikattoa ja miten vanhat hirret narisivat sen otteessa. Pimeässä talo tuntui suuremmalta kuin päivällä, melkein vieraalta... Silti en olisi vaihtanut sitä mihinkään.",
+        "status": "ok",
+        "ratio": 0.071,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "vieraalta...",
+            "right": "vieraalta…",
+            "type": "typografia",
+            "result": "ei korjattu"
+          },
+          {
+            "wrong": "pelti kattoa",
+            "right": "peltikattoa",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "hirret narisi",
+            "right": "hirret narisivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuuntelin miten",
+            "right": "kuuntelin, miten",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 71
+          },
+          {
+            "old": "pelti kattoa",
+            "new": "peltikattoa",
+            "at": 92
+          },
+          {
+            "old": "narisi",
+            "new": "narisivat",
+            "at": 128
+          }
+        ],
+        "residual": [
+          {
+            "clean": "…",
+            "got": "...",
+            "at": 217,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "C5",
+        "genre": "kontrolli",
+        "batch": 4,
+        "n": 7,
+        "source": "Laiva irtosi laiturista hitaasti, melkein vastahakoisesti. Kannella seisoi ihmisiä, jotka vilkuttivat rannalle jääneille, mutta Henrik ei kääntynyt katsomaan taakseen. Hän oli päättänyt, ettei jättäisi tälle kaupungille edes hyvästejä.",
+        "output": "Laiva irtosi laiturista hitaasti, melkein vastahakoisesti. Kannella seisoi ihmisiä, jotka vilkuttivat rannalle jääneille, mutta Henrik ei kääntynyt katsomaan taakseen. Hän oli päättänyt, ettei jättäisi tälle kaupungille edes hyvästejä.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      }
+    ],
+    "fixedShare": 0.9649122807017544,
+    "rewrittenShare": 0,
+    "secondsMean": 12.8,
+    "secondsMax": 13.4,
+    "secondsMin": 12.1,
+    "outputTokensMean": 1765,
+    "thinkingCharsMean": 3101,
+    "misaligned": 0,
+    "rule": {
+      "halfFixed": true,
+      "wrongFewerThanRight": true,
+      "underFifthRewritten": true
+    },
+    "pass": true
+  },
+  {
+    "model": "deepseek-v4.1-flash-abliterated",
+    "modelId": "c91fb219-b725-43d2-925d-3c6e66bef527:deepseek-v4.1-flash-abliterated",
+    "tag": "v1",
+    "promptFile": "prompt.txt",
+    "requests": 4,
+    "requestErrors": 0,
+    "stopReasons": {
+      "end_turn": 4
+    },
+    "lines": 28,
+    "planted": 57,
+    "fixed": 55,
+    "unfixed": 2,
+    "alteredOtherwise": 0,
+    "byType": {
+      "pilkku": {
+        "planted": 13,
+        "fixed": 13
+      },
+      "yhdyssana": {
+        "planted": 15,
+        "fixed": 15
+      },
+      "oikeinkirjoitus": {
+        "planted": 13,
+        "fixed": 12
+      },
+      "kongruenssi": {
+        "planted": 11,
+        "fixed": 11
+      },
+      "typografia": {
+        "planted": 5,
+        "fixed": 4
+      }
+    },
+    "byGenre": {
+      "fiktio": {
+        "lines": 9,
+        "planted": 30,
+        "fixed": 29,
+        "wrong": 1,
+        "altered": 1
+      },
+      "tieto": {
+        "lines": 7,
+        "planted": 23,
+        "fixed": 22,
+        "wrong": 0,
+        "altered": 0
+      },
+      "vuorosana": {
+        "lines": 7,
+        "planted": 4,
+        "fixed": 4,
+        "wrong": 1,
+        "altered": 1
+      },
+      "kontrolli": {
+        "lines": 5,
+        "planted": 0,
+        "fixed": 0,
+        "wrong": 0,
+        "altered": 0
+      }
+    },
+    "wrong": 2,
+    "wrongAtPlanted": 0,
+    "wrongElsewhere": 2,
+    "wrongCommaOnly": 0,
+    "typoStraightened": 0,
+    "typoOther": 0,
+    "rewritten": 0,
+    "maxRatio": 0.108,
+    "exactLines": 24,
+    "lost": 0,
+    "duplicate": 0,
+    "split": 0,
+    "extraNumbers": 0,
+    "wrongNumberFormat": 0,
+    "dialogueLines": 7,
+    "dialogueAltered": 1,
+    "dialogueChanges": 1,
+    "controlLines": 5,
+    "controlAltered": 0,
+    "placeholders": 7,
+    "placeholdersLost": 0,
+    "placeholderMoved": 0,
+    "missingOpenTag": 0,
+    "missingCloseTag": 0,
+    "textOutsideTags": 0,
+    "codeFence": 0,
+    "thinkTagInText": 0,
+    "nbspIntroduced": 0,
+    "seconds": [
+      44.335,
+      51.89,
+      89.729,
+      48.907
+    ],
+    "outputTokens": [
+      1561,
+      3701,
+      3455,
+      2394
+    ],
+    "thinkingChars": [
+      2668,
+      9061,
+      8746,
+      5122
+    ],
+    "details": [
+      {
+        "id": "F1",
+        "genre": "fiktio",
+        "batch": 1,
+        "n": 1,
+        "source": "Aamulla järvi oli tyyni kuin lasi. Aino seisoi laiturilla paljain jaloin ja katseli, kuinka sumu nousi hitaasti vasta rannan kuusikkosta. Hän tiesi että isä palaisi vasta illalla. Kukaan ei kysyisi, missä hän oli ollut.",
+        "output": "Aamulla järvi oli tyyni kuin lasi. Aino seisoi laiturilla paljain jaloin ja katseli, kuinka sumu nousi hitaasti vastarannan kuusikosta. Hän tiesi, että isä palaisi vasta illalla. Kukaan ei kysyisi, missä hän oli ollut.",
+        "status": "ok",
+        "ratio": 0.075,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "tiesi että",
+            "right": "tiesi, että",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "vasta rannan",
+            "right": "vastarannan",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuusikkosta",
+            "right": "kuusikosta",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "vasta rannan",
+            "new": "vastarannan",
+            "at": 112
+          },
+          {
+            "old": "kuusikkosta",
+            "new": "kuusikosta",
+            "at": 125
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 147
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N1",
+        "genre": "tieto",
+        "batch": 1,
+        "n": 2,
+        "source": "Suomen metsistä noin kaksi kolmasosaa on yksityisten perheiden omistuksessa. Tämä selittää miksi metsä politiikka herättää niin voimakkaita tunteita: päätökset koskevat suoraan lähes joka kymmenennen suomalaisen omaisuutta. Keskustelussa unohtuu usein, että omistajien tavoitteet vaihtelee suuresti.",
+        "output": "Suomen metsistä noin kaksi kolmasosaa on yksityisten perheiden omistuksessa. Tämä selittää, miksi metsäpolitiikka herättää niin voimakkaita tunteita: päätökset koskevat suoraan lähes joka kymmenennen suomalaisen omaisuutta. Keskustelussa unohtuu usein, että omistajien tavoitteet vaihtelevat suuresti.",
+        "status": "ok",
+        "ratio": 0.077,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "metsä politiikka",
+            "right": "metsäpolitiikka",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "selittää miksi",
+            "right": "selittää, miksi",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "tavoitteet vaihtelee",
+            "right": "tavoitteet vaihtelevat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 90
+          },
+          {
+            "old": "metsä politiikka",
+            "new": "metsäpolitiikka",
+            "at": 97
+          },
+          {
+            "old": "vaihtelee",
+            "new": "vaihtelevat",
+            "at": 280
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D1",
+        "genre": "vuorosana",
+        "batch": 1,
+        "n": 3,
+        "source": "– Mä en tiiä, mitä sä oikein odotit. Emmä voi olla joka paikassa yhtä aikaa.",
+        "output": "– Mä en tiiä, mitä sä oikein odotit. Emmä voi olla joka paikassa yhtä aikaa.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "C1",
+        "genre": "kontrolli",
+        "batch": 1,
+        "n": 4,
+        "source": "Sade alkoi iltapäivällä ja jatkui koko yön. Aamulla piha oli täynnä lammikoita, ja omenapuun alimmat oksat roikkuivat melkein maassa. Kissa istui ikkunalaudalla ja seurasi pisaroita, jotka valuivat lasia pitkin.",
+        "output": "Sade alkoi iltapäivällä ja jatkui koko yön. Aamulla piha oli täynnä lammikoita, ja omenapuun alimmat oksat roikkuivat melkein maassa. Kissa istui ikkunalaudalla ja seurasi pisaroita, jotka valuivat lasia pitkin.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F2",
+        "genre": "fiktio",
+        "batch": 1,
+        "n": 5,
+        "source": "Vanha kirjakauppa sijaitsi kapealla kujalla, jonne aurinko ei paistanut edes keskikesällä. Hyllyt notkui pölyisiä niteitä, ja tiskin takana istui mies joka ei nostanut katsettaan sanoma lehdestä. Ovikello kilahti, kun astuin sisään.",
+        "output": "Vanha kirjakauppa sijaitsi kapealla kujalla, jonne aurinko ei paistanut edes keskikesällä. Hyllyt notkuivat pölyisiä niteitä, ja tiskin takana istui mies, joka ei nostanut katsettaan sanomalehdestä. Ovikello kilahti, kun astuin sisään.",
+        "status": "ok",
+        "ratio": 0.081,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "Hyllyt notkui",
+            "right": "Hyllyt notkuivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "sanoma lehdestä",
+            "right": "sanomalehdestä",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "mies joka",
+            "right": "mies, joka",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "notkui",
+            "new": "notkuivat",
+            "at": 98
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 150
+          },
+          {
+            "old": "sanoma lehdestä",
+            "new": "sanomalehdestä",
+            "at": 179
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N2",
+        "genre": "tieto",
+        "batch": 1,
+        "n": 6,
+        "source": "Vuosina 1867-1868 Suomea koetteli nälänhätä, joka tappoi lähes kahdeksan prosenttia väestöstä. Katastrofin syynä oli ⟦2⟧poikkeuksellisen kylmä kevät⟦3⟧, mutta yhtä paljon siihen vaikuttivat hallinnon hidas reakointi ja huonot kulku yhteydet. Viljaa olisi ollut saatavilla mutta sitä ei ehditty kuljettaa perille ennen jäiden tuloa.",
+        "output": "Vuosina 1867–1868 Suomea koetteli nälänhätä, joka tappoi lähes kahdeksan prosenttia väestöstä. Katastrofin syynä oli ⟦2⟧poikkeuksellisen kylmä kevät⟦3⟧, mutta yhtä paljon siihen vaikuttivat hallinnon hidas reagointi ja huonot kulkuyhteydet. Viljaa olisi ollut saatavilla, mutta sitä ei ehditty kuljettaa perille ennen jäiden tuloa.",
+        "status": "ok",
+        "ratio": 0.061,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "1867-1868",
+            "right": "1867–1868",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kulku yhteydet",
+            "right": "kulkuyhteydet",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "reakointi",
+            "right": "reagointi",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "saatavilla mutta",
+            "right": "saatavilla, mutta",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "1867-1868",
+            "new": "1867–1868",
+            "at": 8
+          },
+          {
+            "old": "reakointi",
+            "new": "reagointi",
+            "at": 206
+          },
+          {
+            "old": "kulku yhteydet",
+            "new": "kulkuyhteydet",
+            "at": 226
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 271
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D2",
+        "genre": "vuorosana",
+        "batch": 1,
+        "n": 7,
+        "source": "– Elä sinä poeka hättäele, kyllä tässä vielä keritään, mummo sanoi ja kaatoi lisää kahiva.",
+        "output": "– Elä sinä poeka hättäele, kyllä tässä vielä keritään, mummo sanoi ja kaatoi lisää kahvia.",
+        "status": "ok",
+        "ratio": 0.056,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "lisää kahiva",
+            "right": "lisää kahvia",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "kahiva",
+            "new": "kahvia",
+            "at": 83
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "F3",
+        "genre": "fiktio",
+        "batch": 2,
+        "n": 1,
+        "source": "Juna lähti Kouvolasta kello kuusi ⟦1⟧, ja vaunussa oli vain kolme matkustajaa. Ikkunan takana pellot liukuivat ohi harmaina ja märkinä. Elias painoi otsansa kylmä lasia vasten ja yritti olla ajatelematta kirjettä, joka poltteli hänen povi taskussaan.",
+        "output": "Juna lähti Kouvolasta kello kuusi ⟦1⟧, ja vaunussa oli vain kolme matkustajaa. Ikkunan takana pellot liukuivat ohi harmaina ja märkinä. Elias painoi otsansa kylmää lasia vasten ja yritti olla ajattelematta kirjettä, joka poltteli hänen povitaskussaan.",
+        "status": "ok",
+        "ratio": 0.086,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "povi taskussaan",
+            "right": "povitaskussaan",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kylmä lasia",
+            "right": "kylmää lasia",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "ajatelematta",
+            "right": "ajattelematta",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "kylmä",
+            "new": "kylmää",
+            "at": 157
+          },
+          {
+            "old": "ajatelematta",
+            "new": "ajattelematta",
+            "at": 191
+          },
+          {
+            "old": "povi taskussaan",
+            "new": "povitaskussaan",
+            "at": 234
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N3",
+        "genre": "tieto",
+        "batch": 2,
+        "n": 2,
+        "source": "Lukeminen ei ole synnynäinen taito, vaan aivot joutuu opettelemaan sen yhdistämällä näkö- ja kielialueita uudella tavalla. Tutkijat ovat havainneet että sujuvan lukijan aivoissa kirjainten tunnistus tapahtuu alle sekunnin kymmenes osassa. Siksi harjoittelun määrä ratkaisee enemmän kuin menetelmä.",
+        "output": "Lukeminen ei ole synnynnäinen taito, vaan aivot joutuvat opettelemaan sen yhdistämällä näkö- ja kielialueita uudella tavalla. Tutkijat ovat havainneet, että sujuvan lukijan aivoissa kirjainten tunnistus tapahtuu alle sekunnin kymmenesosassa. Siksi harjoittelun määrä ratkaisee enemmän kuin menetelmä.",
+        "status": "ok",
+        "ratio": 0.095,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "aivot joutuu",
+            "right": "aivot joutuvat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "havainneet että",
+            "right": "havainneet, että",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "synnynäinen",
+            "right": "synnynnäinen",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kymmenes osassa",
+            "right": "kymmenesosassa",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "synnynäinen",
+            "new": "synnynnäinen",
+            "at": 17
+          },
+          {
+            "old": "joutuu",
+            "new": "joutuvat",
+            "at": 47
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 147
+          },
+          {
+            "old": "kymmenes osassa",
+            "new": "kymmenesosassa",
+            "at": 222
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D3",
+        "genre": "vuorosana",
+        "batch": 2,
+        "n": 3,
+        "source": "– Kattokaas nääs, ei toi moottori lähe käynttiin, jos siihen ei tuu bensaa.",
+        "output": "– Kattokaas nääs, ei toi moottori lähe käyntiin, jos siihen ei tuu bensaa.",
+        "status": "ok",
+        "ratio": 0.063,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "käynttiin",
+            "right": "käyntiin",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "käynttiin",
+            "new": "käyntiin",
+            "at": 39
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "C2",
+        "genre": "kontrolli",
+        "batch": 2,
+        "n": 4,
+        "source": "Opettaja kirjoitti taululle yhden sanan: ”kärsivällisyys”. Sitten hän kääntyi luokan puoleen ja odotti niin kauan, että ⟦6⟧viimeinenkin kuiskaus⟦7⟧ oli vaiennut.",
+        "output": "Opettaja kirjoitti taululle yhden sanan: ”kärsivällisyys”. Sitten hän kääntyi luokan puoleen ja odotti niin kauan, että ⟦6⟧viimeinenkin kuiskaus⟦7⟧ oli vaiennut.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F4",
+        "genre": "fiktio",
+        "batch": 2,
+        "n": 5,
+        "source": "Mummo kutsui sitä \"hiljaiseksi huoneeksi\", vaikka siellä tikitti kolme kelloa yhtä aikaa. Lapsena kuvittelin että kellot kävi kilpaa ja että se, joka ehtisi ensin keski yöhön, saisi palkinnoksi koko talon.",
+        "output": "Mummo kutsui sitä ”hiljaiseksi huoneeksi”, vaikka siellä tikitti kolme kelloa yhtä aikaa. Lapsena kuvittelin, että kellot kävivät kilpaa ja että se, joka ehtisi ensin keskiyöhön, saisi palkinnoksi koko talon.",
+        "status": "ok",
+        "ratio": 0.081,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "\"hiljaiseksi huoneeksi\"",
+            "right": "”hiljaiseksi huoneeksi”",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuvittelin että",
+            "right": "kuvittelin, että",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "keski yöhön",
+            "right": "keskiyöhön",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kellot kävi",
+            "right": "kellot kävivät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "\"",
+            "new": "”",
+            "at": 18
+          },
+          {
+            "old": "\"",
+            "new": "”",
+            "at": 40
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 108
+          },
+          {
+            "old": "kävi",
+            "new": "kävivät",
+            "at": 121
+          },
+          {
+            "old": "keski yöhön",
+            "new": "keskiyöhön",
+            "at": 163
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N4",
+        "genre": "tieto",
+        "batch": 2,
+        "n": 6,
+        "source": "Kyselyn mukaan 62% vastaajista piti etätyötä ”selvästi tehokkaampana” kuin toimistolla työskentelyä. Tulosta on kuitenkin tulkittava varoen koska otos painottui asiantuntija tehtäviin eikä mukana ollut juuri lainkaan palvelualojen työntekijöitä.",
+        "output": "Kyselyn mukaan 62 % vastaajista piti etätyötä ”selvästi tehokkaampana” kuin toimistolla työskentelyä. Tulosta on kuitenkin tulkittava varoen, koska otos painottui asiantuntijatehtäviin eikä mukana ollut juuri lainkaan palvelualojen työntekijöitä.",
+        "status": "ok",
+        "ratio": 0.061,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "62%",
+            "right": "62 %",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "varoen koska",
+            "right": "varoen, koska",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "asiantuntija tehtäviin",
+            "right": "asiantuntijatehtäviin",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": " ",
+            "at": 17
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 139
+          },
+          {
+            "old": "asiantuntija tehtäviin",
+            "new": "asiantuntijatehtäviin",
+            "at": 161
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D4",
+        "genre": "vuorosana",
+        "batch": 2,
+        "n": 7,
+        "source": "– Kyllä mä sen tierän, notta se on vaikiaa, mutta ei auta itkiä markkinoolla.",
+        "output": "– Kyllä mä sen tierän, notta se on vaikiaa, mutta ei auta itkiä markkinoilla.",
+        "status": "ok",
+        "ratio": 0.059,
+        "exact": false,
+        "errors": [],
+        "changes": [
+          {
+            "old": "markkinoolla",
+            "new": "markkinoilla",
+            "at": 64
+          }
+        ],
+        "residual": [
+          {
+            "clean": "markkinoolla",
+            "got": "markkinoilla",
+            "at": 64,
+            "kind": "väärä:sana"
+          }
+        ]
+      },
+      {
+        "id": "F5",
+        "genre": "fiktio",
+        "batch": 3,
+        "n": 1,
+        "source": "Talvi tuli sinä vuonna aikaisin. Lokakuun lopussa satama oli jo jäässä, ja kalastajat veti veneensä rantaan, ennenkuin ehtivät paikata verkkojaan. Me lapset luistellimme laiturin ympärillä iltaan asti kunnes äidit huusivat meidät kotiin.",
+        "output": "Talvi tuli sinä vuonna aikaisin. Lokakuun lopussa satama oli jo jäässä, ja kalastajat vetivät veneensä rantaan, ennen kuin ehtivät paikata verkkojaan. Me lapset luistelimme laiturin ympärillä iltaan asti, kunnes äidit huusivat meidät kotiin.",
+        "status": "ok",
+        "ratio": 0.105,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "ennenkuin",
+            "right": "ennen kuin",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kalastajat veti",
+            "right": "kalastajat vetivät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "luistellimme",
+            "right": "luistelimme",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "asti kunnes",
+            "right": "asti, kunnes",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "veti",
+            "new": "vetivät",
+            "at": 86
+          },
+          {
+            "old": "ennenkuin",
+            "new": "ennen",
+            "at": 109
+          },
+          {
+            "old": "",
+            "new": "kuin ",
+            "at": 119
+          },
+          {
+            "old": "luistellimme",
+            "new": "luistelimme",
+            "at": 157
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 200
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N5",
+        "genre": "tieto",
+        "batch": 3,
+        "n": 2,
+        "source": "Kahvi saapui Suomeen 1700-luvun alussa ⟦4⟧, mutta tavallisen kansan juomaksi se yleistyi vasta sata vuotta myöhemin. Aluksi viranomaiset yritti rajoittaa sen käyttöä ylellisyys veroilla ja jopa täyskielloilla, jotka eivät kuitenkaan tehonneet. Nykyään suomalaiset juovat kahvia enemmän kuin mikään muu kansa.",
+        "output": "Kahvi saapui Suomeen 1700-luvun alussa ⟦4⟧, mutta tavallisen kansan juomaksi se yleistyi vasta sata vuotta myöhemmin. Aluksi viranomaiset yrittivät rajoittaa sen käyttöä ylellisyysveroilla ja jopa täyskielloilla, jotka eivät kuitenkaan tehonneet. Nykyään suomalaiset juovat kahvia enemmän kuin mikään muu kansa.",
+        "status": "ok",
+        "ratio": 0.079,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "viranomaiset yritti",
+            "right": "viranomaiset yrittivät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "ylellisyys veroilla",
+            "right": "ylellisyysveroilla",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "myöhemin",
+            "right": "myöhemmin",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "myöhemin",
+            "new": "myöhemmin",
+            "at": 107
+          },
+          {
+            "old": "yritti",
+            "new": "yrittivät",
+            "at": 137
+          },
+          {
+            "old": "ylellisyys veroilla",
+            "new": "ylellisyysveroilla",
+            "at": 166
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D5",
+        "genre": "vuorosana",
+        "batch": 3,
+        "n": 3,
+        "source": "– Oottekste nähny mun avaimia? Mä jätin ne eilen tohon pöydläle, ja nyt niitä ei oo missään.",
+        "output": "– Oottekste nähny mun avaimia? Mä jätin ne eilen tohon pöydälle, ja nyt niitä ei oo missään.",
+        "status": "ok",
+        "ratio": 0.05,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "pöydläle",
+            "right": "pöydälle",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "pöydläle",
+            "new": "pöydälle",
+            "at": 55
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "C3",
+        "genre": "kontrolli",
+        "batch": 3,
+        "n": 4,
+        "source": "Suomen kirjakielen perusta luotiin 1500-luvulla, kun Mikael Agricola käänsi Uuden testamentin suomeksi. Hänen ratkaisunsa – esimerkiksi monien äänteiden merkintätavat – vaikuttivat kirjoitettuun kieleen vuosisatojen ajan.",
+        "output": "Suomen kirjakielen perusta luotiin 1500-luvulla, kun Mikael Agricola käänsi Uuden testamentin suomeksi. Hänen ratkaisunsa – esimerkiksi monien äänteiden merkintätavat – vaikuttivat kirjoitettuun kieleen vuosisatojen ajan.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F6",
+        "genre": "fiktio",
+        "batch": 3,
+        "n": 5,
+        "source": "Hän avasi laatikon - sen saman, jota oli vältellyt koko syksyn – ja nosti esiin nipun valokuvia. Kuvissa nauroi nuori nainen, jonka kasvoja hän ei aluksi tunistanut omikseen. Kädet alkoi vapista.",
+        "output": "Hän avasi laatikon – sen saman, jota oli vältellyt koko syksyn – ja nosti esiin nipun valokuvia. Kuvissa nauroi nuori nainen, jonka kasvoja hän ei aluksi tunnistanut omikseen. Kädet alkoivat vapista.",
+        "status": "ok",
+        "ratio": 0.056,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "laatikon - sen",
+            "right": "laatikon – sen",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "Kädet alkoi",
+            "right": "Kädet alkoivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "tunistanut",
+            "right": "tunnistanut",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "-",
+            "new": "–",
+            "at": 19
+          },
+          {
+            "old": "tunistanut",
+            "new": "tunnistanut",
+            "at": 154
+          },
+          {
+            "old": "alkoi",
+            "new": "alkoivat",
+            "at": 181
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N6",
+        "genre": "tieto",
+        "batch": 3,
+        "n": 6,
+        "source": "Hyvä tietokirja ei tyydy luettelemaan faktoja. Se rakentaa niistä väitteen. Kirjoittajan on päätettävä mitä hän jättää pois, sillä jokainen ylimäärinen sivupolku heikentää pää ajatusta. Karsiminen on vaikeaa juuri siksi, että kaikki kerätty aineisto tuntuu tärkeältä.",
+        "output": "Hyvä tietokirja ei tyydy luettelemaan faktoja. Se rakentaa niistä väitteen. Kirjoittajan on päätettävä, mitä hän jättää pois, sillä jokainen ylimäärinen sivupolku heikentää pääajatusta. Karsiminen on vaikeaa juuri siksi, että kaikki kerätty aineisto tuntuu tärkeältä.",
+        "status": "ok",
+        "ratio": 0.049,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "päätettävä mitä",
+            "right": "päätettävä, mitä",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "pää ajatusta",
+            "right": "pääajatusta",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "ylimäärinen",
+            "right": "ylimääräinen",
+            "type": "oikeinkirjoitus",
+            "result": "ei korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 102
+          },
+          {
+            "old": "pää ajatusta",
+            "new": "pääajatusta",
+            "at": 172
+          }
+        ],
+        "residual": [
+          {
+            "clean": "ylimääräinen",
+            "got": "ylimäärinen",
+            "at": 141,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "D6",
+        "genre": "vuorosana",
+        "batch": 3,
+        "n": 7,
+        "source": "– Mie oon sanonu sulle monta ketraa, että sinne ei mennä yksin ⟦5⟧. Jää pettää keväällä ennen ko arvaakaan.",
+        "output": "– Mie oon sanonu sulle monta kertaa, että sinne ei mennä yksin ⟦5⟧. Jää pettää keväällä ennen ko arvaakaan.",
+        "status": "ok",
+        "ratio": 0.045,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "monta ketraa",
+            "right": "monta kertaa",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "ketraa",
+            "new": "kertaa",
+            "at": 29
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "F7",
+        "genre": "fiktio",
+        "batch": 4,
+        "n": 1,
+        "source": "Kirkonkylän raitilla ei liikkunut ketään. Kaupan ikkunassa paloi yksinäinen valo, ja jossain haukkui koira, jonka ääni kantoi kauas pakkasessa. Marketta veti kaula huivin tiukemmalle ja lähti kävelemään kohti asemaa vaikka tiesi, ettei viimeinen bussi enään odottaisi.",
+        "output": "Kirkonkylän raitilla ei liikkunut ketään. Kaupan ikkunassa paloi yksinäinen valo, ja jossain haukkui koira, jonka ääni kantoi kauas pakkasessa. Marketta veti kaulahuivin tiukemmalle ja lähti kävelemään kohti asemaa, vaikka tiesi, ettei viimeinen bussi enää odottaisi.",
+        "status": "ok",
+        "ratio": 0.071,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "kaula huivin",
+            "right": "kaulahuivin",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "bussi enään",
+            "right": "bussi enää",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "asemaa vaikka",
+            "right": "asemaa, vaikka",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "kaula huivin",
+            "new": "kaulahuivin",
+            "at": 158
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 215
+          },
+          {
+            "old": "enään",
+            "new": "enää",
+            "at": 252
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N7",
+        "genre": "tieto",
+        "batch": 4,
+        "n": 2,
+        "source": "Itämeri on matala ja lähes suljettu allas, minkä vuoksi sen vesi vaihtuu erittäin hitaasti. Ravinteet jotka päätyvät mereen pelloilta ja jätevesistä, kiertävät siellä vuosi kymmeniä. Tästä syystä rehevöitymisen pysäyttäminen vaatii kärsivällisyyttä: tulokset näkyy vasta pitkän ajan kuluttua.",
+        "output": "Itämeri on matala ja lähes suljettu allas, minkä vuoksi sen vesi vaihtuu erittäin hitaasti. Ravinteet, jotka päätyvät mereen pelloilta ja jätevesistä, kiertävät siellä vuosikymmeniä. Tästä syystä rehevöitymisen pysäyttäminen vaatii kärsivällisyyttä: tulokset näkyvät vasta pitkän ajan kuluttua.",
+        "status": "ok",
+        "ratio": 0.07,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "vuosi kymmeniä",
+            "right": "vuosikymmeniä",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "tulokset näkyy",
+            "right": "tulokset näkyvät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "Ravinteet jotka",
+            "right": "Ravinteet, jotka",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 101
+          },
+          {
+            "old": "vuosi kymmeniä",
+            "new": "vuosikymmeniä",
+            "at": 167
+          },
+          {
+            "old": "näkyy",
+            "new": "näkyvät",
+            "at": 259
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D7",
+        "genre": "vuorosana",
+        "batch": 4,
+        "n": 3,
+        "source": "– Siis ihan oikeesti, se vaan käveli ohi eikä sanonu mitään. Mä olin sillee et okei, ei sit.",
+        "output": "– Siis ihan oikeesti, se vaan käveli ohi eikä sanonu mitään. Mä olin sillee et okei, ei sit.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "C4",
+        "genre": "kontrolli",
+        "batch": 4,
+        "n": 4,
+        "source": "Uni vaikuttaa muistiin enemmän kuin yleensä ajatellaan. Syvän unen aikana aivot siirtävät päivän tapahtumia pitkäkestoiseen muistiin, ja siksi valvottu yö heikentää oppimista vielä seuraavanakin päivänä.",
+        "output": "Uni vaikuttaa muistiin enemmän kuin yleensä ajatellaan. Syvän unen aikana aivot siirtävät päivän tapahtumia pitkäkestoiseen muistiin, ja siksi valvottu yö heikentää oppimista vielä seuraavanakin päivänä.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F8",
+        "genre": "fiktio",
+        "batch": 4,
+        "n": 5,
+        "source": "Isoisän verstaassa tuoksui terva ja tuore puu. Höylät riippui seinällä suuruus järjestyksessä, ja jokaisella työkalulla oli oma paikkansa, jota ei saanut muuttaa. Kun hän kuoli kukaan ei raaskinut koskea niihin moneen vuoteen.",
+        "output": "Isäisän verstaassa tuoksui terva ja tuore puu. Höylät riippuivat seinällä suuruusjärjestyksessä, ja jokaisella työkalulla oli oma paikkansa, jota ei saanut muuttaa. Kun hän kuoli, kukaan ei raaskinut koskea niihin moneen vuoteen.",
+        "status": "ok",
+        "ratio": 0.108,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "Höylät riippui",
+            "right": "Höylät riippuivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "suuruus järjestyksessä",
+            "right": "suuruusjärjestyksessä",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuoli kukaan",
+            "right": "kuoli, kukaan",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "Isoisän",
+            "new": "Isäisän",
+            "at": 0
+          },
+          {
+            "old": "riippui",
+            "new": "riippuivat",
+            "at": 54
+          },
+          {
+            "old": "suuruus järjestyksessä",
+            "new": "suuruusjärjestyksessä",
+            "at": 71
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 176
+          }
+        ],
+        "residual": [
+          {
+            "clean": "Isoisän",
+            "got": "Isäisän",
+            "at": 0,
+            "kind": "väärä:sana"
+          }
+        ]
+      },
+      {
+        "id": "F9",
+        "genre": "fiktio",
+        "batch": 4,
+        "n": 6,
+        "source": "Myrsky katkaisi sähköt puoli yhdeksältä. Sytytin kynttilän ja kuuntelin miten tuuli riuhtoi pelti kattoa ja miten vanhat hirret narisi sen otteessa. Pimeässä talo tuntui suuremmalta kuin päivällä, melkein vieraalta... Silti en olisi vaihtanut sitä mihinkään.",
+        "output": "Myrsky katkaisi sähköt puoli yhdeksältä. Sytytin kynttilän ja kuuntelin, miten tuuli riuhtoi peltikattoa ja miten vanhat hirret narisivat sen otteessa. Pimeässä talo tuntui suuremmalta kuin päivällä, melkein vieraalta... Silti en olisi vaihtanut sitä mihinkään.",
+        "status": "ok",
+        "ratio": 0.071,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "vieraalta...",
+            "right": "vieraalta…",
+            "type": "typografia",
+            "result": "ei korjattu"
+          },
+          {
+            "wrong": "pelti kattoa",
+            "right": "peltikattoa",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "hirret narisi",
+            "right": "hirret narisivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuuntelin miten",
+            "right": "kuuntelin, miten",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 71
+          },
+          {
+            "old": "pelti kattoa",
+            "new": "peltikattoa",
+            "at": 92
+          },
+          {
+            "old": "narisi",
+            "new": "narisivat",
+            "at": 128
+          }
+        ],
+        "residual": [
+          {
+            "clean": "…",
+            "got": "...",
+            "at": 217,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "C5",
+        "genre": "kontrolli",
+        "batch": 4,
+        "n": 7,
+        "source": "Laiva irtosi laiturista hitaasti, melkein vastahakoisesti. Kannella seisoi ihmisiä, jotka vilkuttivat rannalle jääneille, mutta Henrik ei kääntynyt katsomaan taakseen. Hän oli päättänyt, ettei jättäisi tälle kaupungille edes hyvästejä.",
+        "output": "Laiva irtosi laiturista hitaasti, melkein vastahakoisesti. Kannella seisoi ihmisiä, jotka vilkuttivat rannalle jääneille, mutta Henrik ei kääntynyt katsomaan taakseen. Hän oli päättänyt, ettei jättäisi tälle kaupungille edes hyvästejä.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      }
+    ],
+    "fixedShare": 0.9649122807017544,
+    "rewrittenShare": 0,
+    "secondsMean": 58.7,
+    "secondsMax": 89.7,
+    "secondsMin": 44.3,
+    "outputTokensMean": 2778,
+    "thinkingCharsMean": 6399,
+    "misaligned": 0,
+    "rule": {
+      "halfFixed": true,
+      "wrongFewerThanRight": true,
+      "underFifthRewritten": true
+    },
+    "pass": true
+  },
+  {
+    "model": "glm-5.3-abliterated",
+    "modelId": "c91fb219-b725-43d2-925d-3c6e66bef527:glm-5.3-abliterated",
+    "tag": "v1",
+    "promptFile": "prompt.txt",
+    "requests": 4,
+    "requestErrors": 0,
+    "stopReasons": {
+      "end_turn": 4
+    },
+    "lines": 28,
+    "planted": 57,
+    "fixed": 53,
+    "unfixed": 4,
+    "alteredOtherwise": 0,
+    "byType": {
+      "pilkku": {
+        "planted": 13,
+        "fixed": 12
+      },
+      "yhdyssana": {
+        "planted": 15,
+        "fixed": 15
+      },
+      "oikeinkirjoitus": {
+        "planted": 13,
+        "fixed": 12
+      },
+      "kongruenssi": {
+        "planted": 11,
+        "fixed": 10
+      },
+      "typografia": {
+        "planted": 5,
+        "fixed": 4
+      }
+    },
+    "byGenre": {
+      "fiktio": {
+        "lines": 9,
+        "planted": 30,
+        "fixed": 27,
+        "wrong": 0,
+        "altered": 0
+      },
+      "tieto": {
+        "lines": 7,
+        "planted": 23,
+        "fixed": 22,
+        "wrong": 0,
+        "altered": 0
+      },
+      "vuorosana": {
+        "lines": 7,
+        "planted": 4,
+        "fixed": 4,
+        "wrong": 2,
+        "altered": 1
+      },
+      "kontrolli": {
+        "lines": 5,
+        "planted": 0,
+        "fixed": 0,
+        "wrong": 0,
+        "altered": 0
+      }
+    },
+    "wrong": 2,
+    "wrongAtPlanted": 0,
+    "wrongElsewhere": 2,
+    "wrongCommaOnly": 0,
+    "typoStraightened": 0,
+    "typoOther": 0,
+    "rewritten": 0,
+    "maxRatio": 0.118,
+    "exactLines": 24,
+    "lost": 0,
+    "duplicate": 0,
+    "split": 0,
+    "extraNumbers": 0,
+    "wrongNumberFormat": 0,
+    "dialogueLines": 7,
+    "dialogueAltered": 1,
+    "dialogueChanges": 2,
+    "controlLines": 5,
+    "controlAltered": 0,
+    "placeholders": 7,
+    "placeholdersLost": 0,
+    "placeholderMoved": 0,
+    "missingOpenTag": 0,
+    "missingCloseTag": 0,
+    "textOutsideTags": 0,
+    "codeFence": 0,
+    "thinkTagInText": 0,
+    "nbspIntroduced": 0,
+    "seconds": [
+      49.766,
+      38.334,
+      48.583,
+      21.685
+    ],
+    "outputTokens": [
+      1827,
+      1858,
+      1597,
+      816
+    ],
+    "thinkingChars": [
+      3387,
+      3508,
+      2847,
+      441
+    ],
+    "details": [
+      {
+        "id": "F1",
+        "genre": "fiktio",
+        "batch": 1,
+        "n": 1,
+        "source": "Aamulla järvi oli tyyni kuin lasi. Aino seisoi laiturilla paljain jaloin ja katseli, kuinka sumu nousi hitaasti vasta rannan kuusikkosta. Hän tiesi että isä palaisi vasta illalla. Kukaan ei kysyisi, missä hän oli ollut.",
+        "output": "Aamulla järvi oli tyyni kuin lasi. Aino seisoi laiturilla paljain jaloin ja katseli, kuinka sumu nousi hitaasti vastarannan kuusikosta. Hän tiesi, että isä palaisi vasta illalla. Kukaan ei kysyisi, missä hän oli ollut.",
+        "status": "ok",
+        "ratio": 0.075,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "tiesi että",
+            "right": "tiesi, että",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "vasta rannan",
+            "right": "vastarannan",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuusikkosta",
+            "right": "kuusikosta",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "vasta rannan",
+            "new": "vastarannan",
+            "at": 112
+          },
+          {
+            "old": "kuusikkosta",
+            "new": "kuusikosta",
+            "at": 125
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 147
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N1",
+        "genre": "tieto",
+        "batch": 1,
+        "n": 2,
+        "source": "Suomen metsistä noin kaksi kolmasosaa on yksityisten perheiden omistuksessa. Tämä selittää miksi metsä politiikka herättää niin voimakkaita tunteita: päätökset koskevat suoraan lähes joka kymmenennen suomalaisen omaisuutta. Keskustelussa unohtuu usein, että omistajien tavoitteet vaihtelee suuresti.",
+        "output": "Suomen metsistä noin kaksi kolmasosaa on yksityisten perheiden omistuksessa. Tämä selittää, miksi metsäpolitiikka herättää niin voimakkaita tunteita: päätökset koskevat suoraan lähes joka kymmenennen suomalaisen omaisuutta. Keskustelussa unohtuu usein, että omistajien tavoitteet vaihtelevat suuresti.",
+        "status": "ok",
+        "ratio": 0.077,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "metsä politiikka",
+            "right": "metsäpolitiikka",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "selittää miksi",
+            "right": "selittää, miksi",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "tavoitteet vaihtelee",
+            "right": "tavoitteet vaihtelevat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 90
+          },
+          {
+            "old": "metsä politiikka",
+            "new": "metsäpolitiikka",
+            "at": 97
+          },
+          {
+            "old": "vaihtelee",
+            "new": "vaihtelevat",
+            "at": 280
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D1",
+        "genre": "vuorosana",
+        "batch": 1,
+        "n": 3,
+        "source": "– Mä en tiiä, mitä sä oikein odotit. Emmä voi olla joka paikassa yhtä aikaa.",
+        "output": "– Mä en tiiä, mitä sä oikein odotit. Emmä voi olla joka paikassa yhtä aikaa.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "C1",
+        "genre": "kontrolli",
+        "batch": 1,
+        "n": 4,
+        "source": "Sade alkoi iltapäivällä ja jatkui koko yön. Aamulla piha oli täynnä lammikoita, ja omenapuun alimmat oksat roikkuivat melkein maassa. Kissa istui ikkunalaudalla ja seurasi pisaroita, jotka valuivat lasia pitkin.",
+        "output": "Sade alkoi iltapäivällä ja jatkui koko yön. Aamulla piha oli täynnä lammikoita, ja omenapuun alimmat oksat roikkuivat melkein maassa. Kissa istui ikkunalaudalla ja seurasi pisaroita, jotka valuivat lasia pitkin.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F2",
+        "genre": "fiktio",
+        "batch": 1,
+        "n": 5,
+        "source": "Vanha kirjakauppa sijaitsi kapealla kujalla, jonne aurinko ei paistanut edes keskikesällä. Hyllyt notkui pölyisiä niteitä, ja tiskin takana istui mies joka ei nostanut katsettaan sanoma lehdestä. Ovikello kilahti, kun astuin sisään.",
+        "output": "Vanha kirjakauppa sijaitsi kapealla kujalla, jonne aurinko ei paistanut edes keskikesällä. Hyllyt notkuivat pölyisiä niteitä, ja tiskin takana istui mies, joka ei nostanut katsettaan sanomalehdestä. Ovikello kilahti, kun astuin sisään.",
+        "status": "ok",
+        "ratio": 0.081,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "Hyllyt notkui",
+            "right": "Hyllyt notkuivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "sanoma lehdestä",
+            "right": "sanomalehdestä",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "mies joka",
+            "right": "mies, joka",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "notkui",
+            "new": "notkuivat",
+            "at": 98
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 150
+          },
+          {
+            "old": "sanoma lehdestä",
+            "new": "sanomalehdestä",
+            "at": 179
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N2",
+        "genre": "tieto",
+        "batch": 1,
+        "n": 6,
+        "source": "Vuosina 1867-1868 Suomea koetteli nälänhätä, joka tappoi lähes kahdeksan prosenttia väestöstä. Katastrofin syynä oli ⟦2⟧poikkeuksellisen kylmä kevät⟦3⟧, mutta yhtä paljon siihen vaikuttivat hallinnon hidas reakointi ja huonot kulku yhteydet. Viljaa olisi ollut saatavilla mutta sitä ei ehditty kuljettaa perille ennen jäiden tuloa.",
+        "output": "Vuosina 1867–1868 Suomea koetteli nälänhätä, joka tappoi lähes kahdeksan prosenttia väestöstä. Katastrofin syynä oli ⟦2⟧poikkeuksellisen kylmä kevät⟦3⟧, mutta yhtä paljon siihen vaikuttivat hallinnon hidas reagointi ja huonot kulkuyhteydet. Viljaa olisi ollut saatavilla, mutta sitä ei ehditty kuljettaa perille ennen jäiden tuloa.",
+        "status": "ok",
+        "ratio": 0.061,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "1867-1868",
+            "right": "1867–1868",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kulku yhteydet",
+            "right": "kulkuyhteydet",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "reakointi",
+            "right": "reagointi",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "saatavilla mutta",
+            "right": "saatavilla, mutta",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "1867-1868",
+            "new": "1867–1868",
+            "at": 8
+          },
+          {
+            "old": "reakointi",
+            "new": "reagointi",
+            "at": 206
+          },
+          {
+            "old": "kulku yhteydet",
+            "new": "kulkuyhteydet",
+            "at": 226
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 271
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D2",
+        "genre": "vuorosana",
+        "batch": 1,
+        "n": 7,
+        "source": "– Elä sinä poeka hättäele, kyllä tässä vielä keritään, mummo sanoi ja kaatoi lisää kahiva.",
+        "output": "– Elä sinä poeka hättäele, kyllä tässä vielä keritään, mummo sanoi ja kaatoi lisää kahvia.",
+        "status": "ok",
+        "ratio": 0.056,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "lisää kahiva",
+            "right": "lisää kahvia",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "kahiva",
+            "new": "kahvia",
+            "at": 83
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "F3",
+        "genre": "fiktio",
+        "batch": 2,
+        "n": 1,
+        "source": "Juna lähti Kouvolasta kello kuusi ⟦1⟧, ja vaunussa oli vain kolme matkustajaa. Ikkunan takana pellot liukuivat ohi harmaina ja märkinä. Elias painoi otsansa kylmä lasia vasten ja yritti olla ajatelematta kirjettä, joka poltteli hänen povi taskussaan.",
+        "output": "Juna lähti Kouvolasta kello kuusi ⟦1⟧, ja vaunussa oli vain kolme matkustajaa. Ikkunan takana pellot liukuivat ohi harmaina ja märkinä. Elias painoi otsansa kylmää lasia vasten ja yritti olla ajattelematta kirjettä, joka poltteli hänen povitaskussaan.",
+        "status": "ok",
+        "ratio": 0.086,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "povi taskussaan",
+            "right": "povitaskussaan",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kylmä lasia",
+            "right": "kylmää lasia",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "ajatelematta",
+            "right": "ajattelematta",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "kylmä",
+            "new": "kylmää",
+            "at": 157
+          },
+          {
+            "old": "ajatelematta",
+            "new": "ajattelematta",
+            "at": 191
+          },
+          {
+            "old": "povi taskussaan",
+            "new": "povitaskussaan",
+            "at": 234
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N3",
+        "genre": "tieto",
+        "batch": 2,
+        "n": 2,
+        "source": "Lukeminen ei ole synnynäinen taito, vaan aivot joutuu opettelemaan sen yhdistämällä näkö- ja kielialueita uudella tavalla. Tutkijat ovat havainneet että sujuvan lukijan aivoissa kirjainten tunnistus tapahtuu alle sekunnin kymmenes osassa. Siksi harjoittelun määrä ratkaisee enemmän kuin menetelmä.",
+        "output": "Lukeminen ei ole synnynnäinen taito, vaan aivot joutuvat opettelemaan sen yhdistämällä näkö- ja kielialueita uudella tavalla. Tutkijat ovat havainneet, että sujuvan lukijan aivoissa kirjainten tunnistus tapahtuu alle sekunnin kymmenesosassa. Siksi harjoittelun määrä ratkaisee enemmän kuin menetelmä.",
+        "status": "ok",
+        "ratio": 0.095,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "aivot joutuu",
+            "right": "aivot joutuvat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "havainneet että",
+            "right": "havainneet, että",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "synnynäinen",
+            "right": "synnynnäinen",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kymmenes osassa",
+            "right": "kymmenesosassa",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "synnynäinen",
+            "new": "synnynnäinen",
+            "at": 17
+          },
+          {
+            "old": "joutuu",
+            "new": "joutuvat",
+            "at": 47
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 147
+          },
+          {
+            "old": "kymmenes osassa",
+            "new": "kymmenesosassa",
+            "at": 222
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D3",
+        "genre": "vuorosana",
+        "batch": 2,
+        "n": 3,
+        "source": "– Kattokaas nääs, ei toi moottori lähe käynttiin, jos siihen ei tuu bensaa.",
+        "output": "– Kattokaas nääs, ei toi moottori lähe käyntiin, jos siihen ei tuu bensaa.",
+        "status": "ok",
+        "ratio": 0.063,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "käynttiin",
+            "right": "käyntiin",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "käynttiin",
+            "new": "käyntiin",
+            "at": 39
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "C2",
+        "genre": "kontrolli",
+        "batch": 2,
+        "n": 4,
+        "source": "Opettaja kirjoitti taululle yhden sanan: ”kärsivällisyys”. Sitten hän kääntyi luokan puoleen ja odotti niin kauan, että ⟦6⟧viimeinenkin kuiskaus⟦7⟧ oli vaiennut.",
+        "output": "Opettaja kirjoitti taululle yhden sanan: ”kärsivällisyys”. Sitten hän kääntyi luokan puoleen ja odotti niin kauan, että ⟦6⟧viimeinenkin kuiskaus⟦7⟧ oli vaiennut.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F4",
+        "genre": "fiktio",
+        "batch": 2,
+        "n": 5,
+        "source": "Mummo kutsui sitä \"hiljaiseksi huoneeksi\", vaikka siellä tikitti kolme kelloa yhtä aikaa. Lapsena kuvittelin että kellot kävi kilpaa ja että se, joka ehtisi ensin keski yöhön, saisi palkinnoksi koko talon.",
+        "output": "Mummo kutsui sitä ”hiljaiseksi huoneeksi”, vaikka siellä tikitti kolme kelloa yhtä aikaa. Lapsena kuvittelin, että kellot kävivät kilpaa ja että se, joka ehtisi ensin keskiyöhön, saisi palkinnoksi koko talon.",
+        "status": "ok",
+        "ratio": 0.081,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "\"hiljaiseksi huoneeksi\"",
+            "right": "”hiljaiseksi huoneeksi”",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuvittelin että",
+            "right": "kuvittelin, että",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "keski yöhön",
+            "right": "keskiyöhön",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kellot kävi",
+            "right": "kellot kävivät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "\"",
+            "new": "”",
+            "at": 18
+          },
+          {
+            "old": "\"",
+            "new": "”",
+            "at": 40
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 108
+          },
+          {
+            "old": "kävi",
+            "new": "kävivät",
+            "at": 121
+          },
+          {
+            "old": "keski yöhön",
+            "new": "keskiyöhön",
+            "at": 163
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N4",
+        "genre": "tieto",
+        "batch": 2,
+        "n": 6,
+        "source": "Kyselyn mukaan 62% vastaajista piti etätyötä ”selvästi tehokkaampana” kuin toimistolla työskentelyä. Tulosta on kuitenkin tulkittava varoen koska otos painottui asiantuntija tehtäviin eikä mukana ollut juuri lainkaan palvelualojen työntekijöitä.",
+        "output": "Kyselyn mukaan 62 % vastaajista piti etätyötä ”selvästi tehokkaampana” kuin toimistolla työskentelyä. Tulosta on kuitenkin tulkittava varoen, koska otos painottui asiantuntijatehtäviin eikä mukana ollut juuri lainkaan palvelualojen työntekijöitä.",
+        "status": "ok",
+        "ratio": 0.061,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "62%",
+            "right": "62 %",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "varoen koska",
+            "right": "varoen, koska",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "asiantuntija tehtäviin",
+            "right": "asiantuntijatehtäviin",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": " ",
+            "at": 17
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 139
+          },
+          {
+            "old": "asiantuntija tehtäviin",
+            "new": "asiantuntijatehtäviin",
+            "at": 161
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D4",
+        "genre": "vuorosana",
+        "batch": 2,
+        "n": 7,
+        "source": "– Kyllä mä sen tierän, notta se on vaikiaa, mutta ei auta itkiä markkinoolla.",
+        "output": "– Kyllä mä sen tiedän, notta se on vaikiaa, mutta ei auta itkiä markkinoilla.",
+        "status": "ok",
+        "ratio": 0.118,
+        "exact": false,
+        "errors": [],
+        "changes": [
+          {
+            "old": "tierän",
+            "new": "tiedän",
+            "at": 15
+          },
+          {
+            "old": "markkinoolla",
+            "new": "markkinoilla",
+            "at": 64
+          }
+        ],
+        "residual": [
+          {
+            "clean": "tierän",
+            "got": "tiedän",
+            "at": 15,
+            "kind": "väärä:sana"
+          },
+          {
+            "clean": "markkinoolla",
+            "got": "markkinoilla",
+            "at": 64,
+            "kind": "väärä:sana"
+          }
+        ]
+      },
+      {
+        "id": "F5",
+        "genre": "fiktio",
+        "batch": 3,
+        "n": 1,
+        "source": "Talvi tuli sinä vuonna aikaisin. Lokakuun lopussa satama oli jo jäässä, ja kalastajat veti veneensä rantaan, ennenkuin ehtivät paikata verkkojaan. Me lapset luistellimme laiturin ympärillä iltaan asti kunnes äidit huusivat meidät kotiin.",
+        "output": "Talvi tuli sinä vuonna aikaisin. Lokakuun lopussa satama oli jo jäässä, ja kalastajat vetivät veneensä rantaan, ennen kuin ehtivät paikata verkkojaan. Me lapset luistelimme laiturin ympärillä iltaan asti kunnes äidit huusivat meidät kotiin.",
+        "status": "ok",
+        "ratio": 0.093,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "ennenkuin",
+            "right": "ennen kuin",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kalastajat veti",
+            "right": "kalastajat vetivät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "luistellimme",
+            "right": "luistelimme",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "asti kunnes",
+            "right": "asti, kunnes",
+            "type": "pilkku",
+            "result": "ei korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "veti",
+            "new": "vetivät",
+            "at": 86
+          },
+          {
+            "old": "ennenkuin",
+            "new": "ennen",
+            "at": 109
+          },
+          {
+            "old": "",
+            "new": "kuin ",
+            "at": 119
+          },
+          {
+            "old": "luistellimme",
+            "new": "luistelimme",
+            "at": 157
+          }
+        ],
+        "residual": [
+          {
+            "clean": ",",
+            "got": "",
+            "at": 203,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "N5",
+        "genre": "tieto",
+        "batch": 3,
+        "n": 2,
+        "source": "Kahvi saapui Suomeen 1700-luvun alussa ⟦4⟧, mutta tavallisen kansan juomaksi se yleistyi vasta sata vuotta myöhemin. Aluksi viranomaiset yritti rajoittaa sen käyttöä ylellisyys veroilla ja jopa täyskielloilla, jotka eivät kuitenkaan tehonneet. Nykyään suomalaiset juovat kahvia enemmän kuin mikään muu kansa.",
+        "output": "Kahvi saapui Suomeen 1700-luvun alussa ⟦4⟧, mutta tavallisen kansan juomaksi se yleistyi vasta sata vuotta myöhemmin. Aluksi viranomaiset yrittivät rajoittaa sen käyttöä ylellisyysveroilla ja jopa täyskielloilla, jotka eivät kuitenkaan tehonneet. Nykyään suomalaiset juovat kahvia enemmän kuin mikään muu kansa.",
+        "status": "ok",
+        "ratio": 0.079,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "viranomaiset yritti",
+            "right": "viranomaiset yrittivät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "ylellisyys veroilla",
+            "right": "ylellisyysveroilla",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "myöhemin",
+            "right": "myöhemmin",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "myöhemin",
+            "new": "myöhemmin",
+            "at": 107
+          },
+          {
+            "old": "yritti",
+            "new": "yrittivät",
+            "at": 137
+          },
+          {
+            "old": "ylellisyys veroilla",
+            "new": "ylellisyysveroilla",
+            "at": 166
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D5",
+        "genre": "vuorosana",
+        "batch": 3,
+        "n": 3,
+        "source": "– Oottekste nähny mun avaimia? Mä jätin ne eilen tohon pöydläle, ja nyt niitä ei oo missään.",
+        "output": "– Oottekste nähny mun avaimia? Mä jätin ne eilen tohon pöydälle, ja nyt niitä ei oo missään.",
+        "status": "ok",
+        "ratio": 0.05,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "pöydläle",
+            "right": "pöydälle",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "pöydläle",
+            "new": "pöydälle",
+            "at": 55
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "C3",
+        "genre": "kontrolli",
+        "batch": 3,
+        "n": 4,
+        "source": "Suomen kirjakielen perusta luotiin 1500-luvulla, kun Mikael Agricola käänsi Uuden testamentin suomeksi. Hänen ratkaisunsa – esimerkiksi monien äänteiden merkintätavat – vaikuttivat kirjoitettuun kieleen vuosisatojen ajan.",
+        "output": "Suomen kirjakielen perusta luotiin 1500-luvulla, kun Mikael Agricola käänsi Uuden testamentin suomeksi. Hänen ratkaisunsa – esimerkiksi monien äänteiden merkintätavat – vaikuttivat kirjoitettuun kieleen vuosisatojen ajan.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F6",
+        "genre": "fiktio",
+        "batch": 3,
+        "n": 5,
+        "source": "Hän avasi laatikon - sen saman, jota oli vältellyt koko syksyn – ja nosti esiin nipun valokuvia. Kuvissa nauroi nuori nainen, jonka kasvoja hän ei aluksi tunistanut omikseen. Kädet alkoi vapista.",
+        "output": "Hän avasi laatikon – sen saman, jota oli vältellyt koko syksyn – ja nosti esiin nipun valokuvia. Kuvissa nauroi nuori nainen, jonka kasvoja hän ei aluksi tunnistanut omikseen. Kädet alkoivat vapista.",
+        "status": "ok",
+        "ratio": 0.056,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "laatikon - sen",
+            "right": "laatikon – sen",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "Kädet alkoi",
+            "right": "Kädet alkoivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "tunistanut",
+            "right": "tunnistanut",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "-",
+            "new": "–",
+            "at": 19
+          },
+          {
+            "old": "tunistanut",
+            "new": "tunnistanut",
+            "at": 154
+          },
+          {
+            "old": "alkoi",
+            "new": "alkoivat",
+            "at": 181
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N6",
+        "genre": "tieto",
+        "batch": 3,
+        "n": 6,
+        "source": "Hyvä tietokirja ei tyydy luettelemaan faktoja. Se rakentaa niistä väitteen. Kirjoittajan on päätettävä mitä hän jättää pois, sillä jokainen ylimäärinen sivupolku heikentää pää ajatusta. Karsiminen on vaikeaa juuri siksi, että kaikki kerätty aineisto tuntuu tärkeältä.",
+        "output": "Hyvä tietokirja ei tyydy luettelemaan faktoja. Se rakentaa niistä väitteen. Kirjoittajan on päätettävä, mitä hän jättää pois, sillä jokainen ylimäärinen sivupolku heikentää pääajatusta. Karsiminen on vaikeaa juuri siksi, että kaikki kerätty aineisto tuntuu tärkeältä.",
+        "status": "ok",
+        "ratio": 0.049,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "päätettävä mitä",
+            "right": "päätettävä, mitä",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "pää ajatusta",
+            "right": "pääajatusta",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "ylimäärinen",
+            "right": "ylimääräinen",
+            "type": "oikeinkirjoitus",
+            "result": "ei korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 102
+          },
+          {
+            "old": "pää ajatusta",
+            "new": "pääajatusta",
+            "at": 172
+          }
+        ],
+        "residual": [
+          {
+            "clean": "ylimääräinen",
+            "got": "ylimäärinen",
+            "at": 141,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "D6",
+        "genre": "vuorosana",
+        "batch": 3,
+        "n": 7,
+        "source": "– Mie oon sanonu sulle monta ketraa, että sinne ei mennä yksin ⟦5⟧. Jää pettää keväällä ennen ko arvaakaan.",
+        "output": "– Mie oon sanonu sulle monta kertaa, että sinne ei mennä yksin ⟦5⟧. Jää pettää keväällä ennen ko arvaakaan.",
+        "status": "ok",
+        "ratio": 0.045,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "monta ketraa",
+            "right": "monta kertaa",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "ketraa",
+            "new": "kertaa",
+            "at": 29
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "F7",
+        "genre": "fiktio",
+        "batch": 4,
+        "n": 1,
+        "source": "Kirkonkylän raitilla ei liikkunut ketään. Kaupan ikkunassa paloi yksinäinen valo, ja jossain haukkui koira, jonka ääni kantoi kauas pakkasessa. Marketta veti kaula huivin tiukemmalle ja lähti kävelemään kohti asemaa vaikka tiesi, ettei viimeinen bussi enään odottaisi.",
+        "output": "Kirkonkylän raitilla ei liikkunut ketään. Kaupan ikkunassa paloi yksinäinen valo, ja jossain haukkui koira, jonka ääni kantoi kauas pakkasessa. Marketta veti kaulahuivin tiukemmalle ja lähti kävelemään kohti asemaa, vaikka tiesi, ettei viimeinen bussi enää odottaisi.",
+        "status": "ok",
+        "ratio": 0.071,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "kaula huivin",
+            "right": "kaulahuivin",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "bussi enään",
+            "right": "bussi enää",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "asemaa vaikka",
+            "right": "asemaa, vaikka",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "kaula huivin",
+            "new": "kaulahuivin",
+            "at": 158
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 215
+          },
+          {
+            "old": "enään",
+            "new": "enää",
+            "at": 252
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N7",
+        "genre": "tieto",
+        "batch": 4,
+        "n": 2,
+        "source": "Itämeri on matala ja lähes suljettu allas, minkä vuoksi sen vesi vaihtuu erittäin hitaasti. Ravinteet jotka päätyvät mereen pelloilta ja jätevesistä, kiertävät siellä vuosi kymmeniä. Tästä syystä rehevöitymisen pysäyttäminen vaatii kärsivällisyyttä: tulokset näkyy vasta pitkän ajan kuluttua.",
+        "output": "Itämeri on matala ja lähes suljettu allas, minkä vuoksi sen vesi vaihtuu erittäin hitaasti. Ravinteet, jotka päätyvät mereen pelloilta ja jätevesistä, kiertävät siellä vuosikymmeniä. Tästä syystä rehevöitymisen pysäyttäminen vaatii kärsivällisyyttä: tulokset näkyvät vasta pitkän ajan kuluttua.",
+        "status": "ok",
+        "ratio": 0.07,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "vuosi kymmeniä",
+            "right": "vuosikymmeniä",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "tulokset näkyy",
+            "right": "tulokset näkyvät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "Ravinteet jotka",
+            "right": "Ravinteet, jotka",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 101
+          },
+          {
+            "old": "vuosi kymmeniä",
+            "new": "vuosikymmeniä",
+            "at": 167
+          },
+          {
+            "old": "näkyy",
+            "new": "näkyvät",
+            "at": 259
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D7",
+        "genre": "vuorosana",
+        "batch": 4,
+        "n": 3,
+        "source": "– Siis ihan oikeesti, se vaan käveli ohi eikä sanonu mitään. Mä olin sillee et okei, ei sit.",
+        "output": "– Siis ihan oikeesti, se vaan käveli ohi eikä sanonu mitään. Mä olin sillee et okei, ei sit.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "C4",
+        "genre": "kontrolli",
+        "batch": 4,
+        "n": 4,
+        "source": "Uni vaikuttaa muistiin enemmän kuin yleensä ajatellaan. Syvän unen aikana aivot siirtävät päivän tapahtumia pitkäkestoiseen muistiin, ja siksi valvottu yö heikentää oppimista vielä seuraavanakin päivänä.",
+        "output": "Uni vaikuttaa muistiin enemmän kuin yleensä ajatellaan. Syvän unen aikana aivot siirtävät päivän tapahtumia pitkäkestoiseen muistiin, ja siksi valvottu yö heikentää oppimista vielä seuraavanakin päivänä.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F8",
+        "genre": "fiktio",
+        "batch": 4,
+        "n": 5,
+        "source": "Isoisän verstaassa tuoksui terva ja tuore puu. Höylät riippui seinällä suuruus järjestyksessä, ja jokaisella työkalulla oli oma paikkansa, jota ei saanut muuttaa. Kun hän kuoli kukaan ei raaskinut koskea niihin moneen vuoteen.",
+        "output": "Isoisän verstaassa tuoksui terva ja tuore puu. Höylät riippuivat seinällä suuruusjärjestyksessä, ja jokaisella työkalulla oli oma paikkansa, jota ei saanut muuttaa. Kun hän kuoli, kukaan ei raaskinut koskea niihin moneen vuoteen.",
+        "status": "ok",
+        "ratio": 0.081,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "Höylät riippui",
+            "right": "Höylät riippuivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "suuruus järjestyksessä",
+            "right": "suuruusjärjestyksessä",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuoli kukaan",
+            "right": "kuoli, kukaan",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "riippui",
+            "new": "riippuivat",
+            "at": 54
+          },
+          {
+            "old": "suuruus järjestyksessä",
+            "new": "suuruusjärjestyksessä",
+            "at": 71
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 176
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "F9",
+        "genre": "fiktio",
+        "batch": 4,
+        "n": 6,
+        "source": "Myrsky katkaisi sähköt puoli yhdeksältä. Sytytin kynttilän ja kuuntelin miten tuuli riuhtoi pelti kattoa ja miten vanhat hirret narisi sen otteessa. Pimeässä talo tuntui suuremmalta kuin päivällä, melkein vieraalta... Silti en olisi vaihtanut sitä mihinkään.",
+        "output": "Myrsky katkaisi sähköt puoli yhdeksältä. Sytytin kynttilän ja kuuntelin, miten tuuli riuhtoi peltikattoa ja miten vanhat hirret narisi sen otteessa. Pimeässä talo tuntui suuremmalta kuin päivällä, melkein vieraalta... Silti en olisi vaihtanut sitä mihinkään.",
+        "status": "ok",
+        "ratio": 0.048,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "vieraalta...",
+            "right": "vieraalta…",
+            "type": "typografia",
+            "result": "ei korjattu"
+          },
+          {
+            "wrong": "pelti kattoa",
+            "right": "peltikattoa",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "hirret narisi",
+            "right": "hirret narisivat",
+            "type": "kongruenssi",
+            "result": "ei korjattu"
+          },
+          {
+            "wrong": "kuuntelin miten",
+            "right": "kuuntelin, miten",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 71
+          },
+          {
+            "old": "pelti kattoa",
+            "new": "peltikattoa",
+            "at": 92
+          }
+        ],
+        "residual": [
+          {
+            "clean": "narisivat",
+            "got": "narisi",
+            "at": 128,
+            "kind": "istutettu:ei korjattu"
+          },
+          {
+            "clean": "…",
+            "got": "...",
+            "at": 217,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "C5",
+        "genre": "kontrolli",
+        "batch": 4,
+        "n": 7,
+        "source": "Laiva irtosi laiturista hitaasti, melkein vastahakoisesti. Kannella seisoi ihmisiä, jotka vilkuttivat rannalle jääneille, mutta Henrik ei kääntynyt katsomaan taakseen. Hän oli päättänyt, ettei jättäisi tälle kaupungille edes hyvästejä.",
+        "output": "Laiva irtosi laiturista hitaasti, melkein vastahakoisesti. Kannella seisoi ihmisiä, jotka vilkuttivat rannalle jääneille, mutta Henrik ei kääntynyt katsomaan taakseen. Hän oli päättänyt, ettei jättäisi tälle kaupungille edes hyvästejä.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      }
+    ],
+    "fixedShare": 0.9298245614035088,
+    "rewrittenShare": 0,
+    "secondsMean": 39.6,
+    "secondsMax": 49.8,
+    "secondsMin": 21.7,
+    "outputTokensMean": 1525,
+    "thinkingCharsMean": 2546,
+    "misaligned": 0,
+    "rule": {
+      "halfFixed": true,
+      "wrongFewerThanRight": true,
+      "underFifthRewritten": true
+    },
+    "pass": true
+  },
+  {
+    "model": "glm-5.3-flash-abliterated",
+    "modelId": "c91fb219-b725-43d2-925d-3c6e66bef527:glm-5.3-flash-abliterated",
+    "tag": "v1",
+    "promptFile": "prompt.txt",
+    "requests": 4,
+    "requestErrors": 0,
+    "stopReasons": {
+      "end_turn": 4
+    },
+    "lines": 28,
+    "planted": 57,
+    "fixed": 46,
+    "unfixed": 11,
+    "alteredOtherwise": 0,
+    "byType": {
+      "pilkku": {
+        "planted": 13,
+        "fixed": 12
+      },
+      "yhdyssana": {
+        "planted": 15,
+        "fixed": 14
+      },
+      "oikeinkirjoitus": {
+        "planted": 13,
+        "fixed": 6
+      },
+      "kongruenssi": {
+        "planted": 11,
+        "fixed": 10
+      },
+      "typografia": {
+        "planted": 5,
+        "fixed": 4
+      }
+    },
+    "byGenre": {
+      "fiktio": {
+        "lines": 9,
+        "planted": 30,
+        "fixed": 25,
+        "wrong": 0,
+        "altered": 0
+      },
+      "tieto": {
+        "lines": 7,
+        "planted": 23,
+        "fixed": 21,
+        "wrong": 0,
+        "altered": 0
+      },
+      "vuorosana": {
+        "lines": 7,
+        "planted": 4,
+        "fixed": 0,
+        "wrong": 0,
+        "altered": 0
+      },
+      "kontrolli": {
+        "lines": 5,
+        "planted": 0,
+        "fixed": 0,
+        "wrong": 0,
+        "altered": 0
+      }
+    },
+    "wrong": 0,
+    "wrongAtPlanted": 0,
+    "wrongElsewhere": 0,
+    "wrongCommaOnly": 0,
+    "typoStraightened": 0,
+    "typoOther": 0,
+    "rewritten": 0,
+    "maxRatio": 0.095,
+    "exactLines": 19,
+    "lost": 0,
+    "duplicate": 0,
+    "split": 0,
+    "extraNumbers": 0,
+    "wrongNumberFormat": 0,
+    "dialogueLines": 7,
+    "dialogueAltered": 0,
+    "dialogueChanges": 0,
+    "controlLines": 5,
+    "controlAltered": 0,
+    "placeholders": 7,
+    "placeholdersLost": 0,
+    "placeholderMoved": 0,
+    "missingOpenTag": 0,
+    "missingCloseTag": 0,
+    "textOutsideTags": 0,
+    "codeFence": 0,
+    "thinkTagInText": 0,
+    "nbspIntroduced": 0,
+    "seconds": [
+      52.078,
+      8.009,
+      46.788,
+      8.569
+    ],
+    "outputTokens": [
+      1830,
+      731,
+      741,
+      921
+    ],
+    "thinkingChars": [
+      3524,
+      485,
+      463,
+      750
+    ],
+    "details": [
+      {
+        "id": "F1",
+        "genre": "fiktio",
+        "batch": 1,
+        "n": 1,
+        "source": "Aamulla järvi oli tyyni kuin lasi. Aino seisoi laiturilla paljain jaloin ja katseli, kuinka sumu nousi hitaasti vasta rannan kuusikkosta. Hän tiesi että isä palaisi vasta illalla. Kukaan ei kysyisi, missä hän oli ollut.",
+        "output": "Aamulla järvi oli tyyni kuin lasi. Aino seisoi laiturilla paljain jaloin ja katseli, kuinka sumu nousi hitaasti vastarannan kuusikosta. Hän tiesi, että isä palaisi vasta illalla. Kukaan ei kysyisi, missä hän oli ollut.",
+        "status": "ok",
+        "ratio": 0.075,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "tiesi että",
+            "right": "tiesi, että",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "vasta rannan",
+            "right": "vastarannan",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuusikkosta",
+            "right": "kuusikosta",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "vasta rannan",
+            "new": "vastarannan",
+            "at": 112
+          },
+          {
+            "old": "kuusikkosta",
+            "new": "kuusikosta",
+            "at": 125
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 147
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N1",
+        "genre": "tieto",
+        "batch": 1,
+        "n": 2,
+        "source": "Suomen metsistä noin kaksi kolmasosaa on yksityisten perheiden omistuksessa. Tämä selittää miksi metsä politiikka herättää niin voimakkaita tunteita: päätökset koskevat suoraan lähes joka kymmenennen suomalaisen omaisuutta. Keskustelussa unohtuu usein, että omistajien tavoitteet vaihtelee suuresti.",
+        "output": "Suomen metsistä noin kaksi kolmasosaa on yksityisten perheiden omistuksessa. Tämä selittää, miksi metsäpolitiikka herättää niin voimakkaita tunteita: päätökset koskevat suoraan lähes joka kymmenennen suomalaisen omaisuutta. Keskustelussa unohtuu usein, että omistajien tavoitteet vaihtelevat suuresti.",
+        "status": "ok",
+        "ratio": 0.077,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "metsä politiikka",
+            "right": "metsäpolitiikka",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "selittää miksi",
+            "right": "selittää, miksi",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "tavoitteet vaihtelee",
+            "right": "tavoitteet vaihtelevat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 90
+          },
+          {
+            "old": "metsä politiikka",
+            "new": "metsäpolitiikka",
+            "at": 97
+          },
+          {
+            "old": "vaihtelee",
+            "new": "vaihtelevat",
+            "at": 280
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D1",
+        "genre": "vuorosana",
+        "batch": 1,
+        "n": 3,
+        "source": "– Mä en tiiä, mitä sä oikein odotit. Emmä voi olla joka paikassa yhtä aikaa.",
+        "output": "– Mä en tiiä, mitä sä oikein odotit. Emmä voi olla joka paikassa yhtä aikaa.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "C1",
+        "genre": "kontrolli",
+        "batch": 1,
+        "n": 4,
+        "source": "Sade alkoi iltapäivällä ja jatkui koko yön. Aamulla piha oli täynnä lammikoita, ja omenapuun alimmat oksat roikkuivat melkein maassa. Kissa istui ikkunalaudalla ja seurasi pisaroita, jotka valuivat lasia pitkin.",
+        "output": "Sade alkoi iltapäivällä ja jatkui koko yön. Aamulla piha oli täynnä lammikoita, ja omenapuun alimmat oksat roikkuivat melkein maassa. Kissa istui ikkunalaudalla ja seurasi pisaroita, jotka valuivat lasia pitkin.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F2",
+        "genre": "fiktio",
+        "batch": 1,
+        "n": 5,
+        "source": "Vanha kirjakauppa sijaitsi kapealla kujalla, jonne aurinko ei paistanut edes keskikesällä. Hyllyt notkui pölyisiä niteitä, ja tiskin takana istui mies joka ei nostanut katsettaan sanoma lehdestä. Ovikello kilahti, kun astuin sisään.",
+        "output": "Vanha kirjakauppa sijaitsi kapealla kujalla, jonne aurinko ei paistanut edes keskikesällä. Hyllyt notkuivat pölyisiä niteitä, ja tiskin takana istui mies, joka ei nostanut katsettaan sanomalehdestä. Ovikello kilahti, kun astuin sisään.",
+        "status": "ok",
+        "ratio": 0.081,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "Hyllyt notkui",
+            "right": "Hyllyt notkuivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "sanoma lehdestä",
+            "right": "sanomalehdestä",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "mies joka",
+            "right": "mies, joka",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "notkui",
+            "new": "notkuivat",
+            "at": 98
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 150
+          },
+          {
+            "old": "sanoma lehdestä",
+            "new": "sanomalehdestä",
+            "at": 179
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N2",
+        "genre": "tieto",
+        "batch": 1,
+        "n": 6,
+        "source": "Vuosina 1867-1868 Suomea koetteli nälänhätä, joka tappoi lähes kahdeksan prosenttia väestöstä. Katastrofin syynä oli ⟦2⟧poikkeuksellisen kylmä kevät⟦3⟧, mutta yhtä paljon siihen vaikuttivat hallinnon hidas reakointi ja huonot kulku yhteydet. Viljaa olisi ollut saatavilla mutta sitä ei ehditty kuljettaa perille ennen jäiden tuloa.",
+        "output": "Vuosina 1867–1868 Suomea koetteli nälänhätä, joka tappoi lähes kahdeksan prosenttia väestöstä. Katastrofin syynä oli ⟦2⟧poikkeuksellisen kylmä kevät⟦3⟧, mutta yhtä paljon siihen vaikuttivat hallinnon hidas reagointi ja huonot kulkuyhteydet. Viljaa olisi ollut saatavilla, mutta sitä ei ehditty kuljettaa perille ennen jäiden tuloa.",
+        "status": "ok",
+        "ratio": 0.061,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "1867-1868",
+            "right": "1867–1868",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kulku yhteydet",
+            "right": "kulkuyhteydet",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "reakointi",
+            "right": "reagointi",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "saatavilla mutta",
+            "right": "saatavilla, mutta",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "1867-1868",
+            "new": "1867–1868",
+            "at": 8
+          },
+          {
+            "old": "reakointi",
+            "new": "reagointi",
+            "at": 206
+          },
+          {
+            "old": "kulku yhteydet",
+            "new": "kulkuyhteydet",
+            "at": 226
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 271
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D2",
+        "genre": "vuorosana",
+        "batch": 1,
+        "n": 7,
+        "source": "– Elä sinä poeka hättäele, kyllä tässä vielä keritään, mummo sanoi ja kaatoi lisää kahiva.",
+        "output": "– Elä sinä poeka hättäele, kyllä tässä vielä keritään, mummo sanoi ja kaatoi lisää kahiva.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "lisää kahiva",
+            "right": "lisää kahvia",
+            "type": "oikeinkirjoitus",
+            "result": "ei korjattu"
+          }
+        ],
+        "changes": [],
+        "residual": [
+          {
+            "clean": "kahvia",
+            "got": "kahiva",
+            "at": 83,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "F3",
+        "genre": "fiktio",
+        "batch": 2,
+        "n": 1,
+        "source": "Juna lähti Kouvolasta kello kuusi ⟦1⟧, ja vaunussa oli vain kolme matkustajaa. Ikkunan takana pellot liukuivat ohi harmaina ja märkinä. Elias painoi otsansa kylmä lasia vasten ja yritti olla ajatelematta kirjettä, joka poltteli hänen povi taskussaan.",
+        "output": "Juna lähti Kouvolasta kello kuusi ⟦1⟧, ja vaunussa oli vain kolme matkustajaa. Ikkunan takana pellot liukuivat ohi harmaina ja märkinä. Elias painoi otsansa kylmää lasia vasten ja yritti olla ajattelematta kirjettä, joka poltteli hänen povitaskussaan.",
+        "status": "ok",
+        "ratio": 0.086,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "povi taskussaan",
+            "right": "povitaskussaan",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kylmä lasia",
+            "right": "kylmää lasia",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "ajatelematta",
+            "right": "ajattelematta",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "kylmä",
+            "new": "kylmää",
+            "at": 157
+          },
+          {
+            "old": "ajatelematta",
+            "new": "ajattelematta",
+            "at": 191
+          },
+          {
+            "old": "povi taskussaan",
+            "new": "povitaskussaan",
+            "at": 234
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N3",
+        "genre": "tieto",
+        "batch": 2,
+        "n": 2,
+        "source": "Lukeminen ei ole synnynäinen taito, vaan aivot joutuu opettelemaan sen yhdistämällä näkö- ja kielialueita uudella tavalla. Tutkijat ovat havainneet että sujuvan lukijan aivoissa kirjainten tunnistus tapahtuu alle sekunnin kymmenes osassa. Siksi harjoittelun määrä ratkaisee enemmän kuin menetelmä.",
+        "output": "Lukeminen ei ole synnynnäinen taito, vaan aivot joutuvat opettelemaan sen yhdistämällä näkö- ja kielialueita uudella tavalla. Tutkijat ovat havainneet, että sujuvan lukijan aivoissa kirjainten tunnistus tapahtuu alle sekunnin kymmenesosassa. Siksi harjoittelun määrä ratkaisee enemmän kuin menetelmä.",
+        "status": "ok",
+        "ratio": 0.095,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "aivot joutuu",
+            "right": "aivot joutuvat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "havainneet että",
+            "right": "havainneet, että",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "synnynäinen",
+            "right": "synnynnäinen",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kymmenes osassa",
+            "right": "kymmenesosassa",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "synnynäinen",
+            "new": "synnynnäinen",
+            "at": 17
+          },
+          {
+            "old": "joutuu",
+            "new": "joutuvat",
+            "at": 47
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 147
+          },
+          {
+            "old": "kymmenes osassa",
+            "new": "kymmenesosassa",
+            "at": 222
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D3",
+        "genre": "vuorosana",
+        "batch": 2,
+        "n": 3,
+        "source": "– Kattokaas nääs, ei toi moottori lähe käynttiin, jos siihen ei tuu bensaa.",
+        "output": "– Kattokaas nääs, ei toi moottori lähe käynttiin, jos siihen ei tuu bensaa.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "käynttiin",
+            "right": "käyntiin",
+            "type": "oikeinkirjoitus",
+            "result": "ei korjattu"
+          }
+        ],
+        "changes": [],
+        "residual": [
+          {
+            "clean": "käyntiin",
+            "got": "käynttiin",
+            "at": 39,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "C2",
+        "genre": "kontrolli",
+        "batch": 2,
+        "n": 4,
+        "source": "Opettaja kirjoitti taululle yhden sanan: ”kärsivällisyys”. Sitten hän kääntyi luokan puoleen ja odotti niin kauan, että ⟦6⟧viimeinenkin kuiskaus⟦7⟧ oli vaiennut.",
+        "output": "Opettaja kirjoitti taululle yhden sanan: ”kärsivällisyys”. Sitten hän kääntyi luokan puoleen ja odotti niin kauan, että ⟦6⟧viimeinenkin kuiskaus⟦7⟧ oli vaiennut.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F4",
+        "genre": "fiktio",
+        "batch": 2,
+        "n": 5,
+        "source": "Mummo kutsui sitä \"hiljaiseksi huoneeksi\", vaikka siellä tikitti kolme kelloa yhtä aikaa. Lapsena kuvittelin että kellot kävi kilpaa ja että se, joka ehtisi ensin keski yöhön, saisi palkinnoksi koko talon.",
+        "output": "Mummo kutsui sitä ”hiljaiseksi huoneeksi”, vaikka siellä tikitti kolme kelloa yhtä aikaa. Lapsena kuvittelin, että kellot kävivät kilpaa ja että se, joka ehtisi ensin keskiyöhön, saisi palkinnoksi koko talon.",
+        "status": "ok",
+        "ratio": 0.081,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "\"hiljaiseksi huoneeksi\"",
+            "right": "”hiljaiseksi huoneeksi”",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuvittelin että",
+            "right": "kuvittelin, että",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "keski yöhön",
+            "right": "keskiyöhön",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kellot kävi",
+            "right": "kellot kävivät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "\"",
+            "new": "”",
+            "at": 18
+          },
+          {
+            "old": "\"",
+            "new": "”",
+            "at": 40
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 108
+          },
+          {
+            "old": "kävi",
+            "new": "kävivät",
+            "at": 121
+          },
+          {
+            "old": "keski yöhön",
+            "new": "keskiyöhön",
+            "at": 163
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N4",
+        "genre": "tieto",
+        "batch": 2,
+        "n": 6,
+        "source": "Kyselyn mukaan 62% vastaajista piti etätyötä ”selvästi tehokkaampana” kuin toimistolla työskentelyä. Tulosta on kuitenkin tulkittava varoen koska otos painottui asiantuntija tehtäviin eikä mukana ollut juuri lainkaan palvelualojen työntekijöitä.",
+        "output": "Kyselyn mukaan 62 % vastaajista piti etätyötä ”selvästi tehokkaampana” kuin toimistolla työskentelyä. Tulosta on kuitenkin tulkittava varoen, koska otos painottui asiantuntijatehtäviin eikä mukana ollut juuri lainkaan palvelualojen työntekijöitä.",
+        "status": "ok",
+        "ratio": 0.061,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "62%",
+            "right": "62 %",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "varoen koska",
+            "right": "varoen, koska",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "asiantuntija tehtäviin",
+            "right": "asiantuntijatehtäviin",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": " ",
+            "at": 17
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 139
+          },
+          {
+            "old": "asiantuntija tehtäviin",
+            "new": "asiantuntijatehtäviin",
+            "at": 161
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D4",
+        "genre": "vuorosana",
+        "batch": 2,
+        "n": 7,
+        "source": "– Kyllä mä sen tierän, notta se on vaikiaa, mutta ei auta itkiä markkinoolla.",
+        "output": "– Kyllä mä sen tierän, notta se on vaikiaa, mutta ei auta itkiä markkinoolla.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F5",
+        "genre": "fiktio",
+        "batch": 3,
+        "n": 1,
+        "source": "Talvi tuli sinä vuonna aikaisin. Lokakuun lopussa satama oli jo jäässä, ja kalastajat veti veneensä rantaan, ennenkuin ehtivät paikata verkkojaan. Me lapset luistellimme laiturin ympärillä iltaan asti kunnes äidit huusivat meidät kotiin.",
+        "output": "Talvi tuli sinä vuonna aikaisin. Lokakuun lopussa satama oli jo jäässä, ja kalastajat vetivät veneensä rantaan, ennen kuin ehtivät paikata verkkojaan. Me lapset luistellimme laiturin ympärillä iltaan asti kunnes äidit huusivat meidät kotiin.",
+        "status": "ok",
+        "ratio": 0.067,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "ennenkuin",
+            "right": "ennen kuin",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kalastajat veti",
+            "right": "kalastajat vetivät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "luistellimme",
+            "right": "luistelimme",
+            "type": "oikeinkirjoitus",
+            "result": "ei korjattu"
+          },
+          {
+            "wrong": "asti kunnes",
+            "right": "asti, kunnes",
+            "type": "pilkku",
+            "result": "ei korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "veti",
+            "new": "vetivät",
+            "at": 86
+          },
+          {
+            "old": "ennenkuin",
+            "new": "ennen",
+            "at": 109
+          },
+          {
+            "old": "",
+            "new": "kuin ",
+            "at": 119
+          }
+        ],
+        "residual": [
+          {
+            "clean": "luistelimme",
+            "got": "luistellimme",
+            "at": 161,
+            "kind": "istutettu:ei korjattu"
+          },
+          {
+            "clean": ",",
+            "got": "",
+            "at": 203,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "N5",
+        "genre": "tieto",
+        "batch": 3,
+        "n": 2,
+        "source": "Kahvi saapui Suomeen 1700-luvun alussa ⟦4⟧, mutta tavallisen kansan juomaksi se yleistyi vasta sata vuotta myöhemin. Aluksi viranomaiset yritti rajoittaa sen käyttöä ylellisyys veroilla ja jopa täyskielloilla, jotka eivät kuitenkaan tehonneet. Nykyään suomalaiset juovat kahvia enemmän kuin mikään muu kansa.",
+        "output": "Kahvi saapui Suomeen 1700-luvun alussa ⟦4⟧, mutta tavallisen kansan juomaksi se yleistyi vasta sata vuotta myöhemmin. Aluksi viranomaiset yrittivät rajoittaa sen käyttöä ylellisyysveroilla ja jopa täyskielloilla, jotka eivät kuitenkaan tehonneet. Nykyään suomalaiset juovat kahvia enemmän kuin mikään muu kansa.",
+        "status": "ok",
+        "ratio": 0.079,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "viranomaiset yritti",
+            "right": "viranomaiset yrittivät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "ylellisyys veroilla",
+            "right": "ylellisyysveroilla",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "myöhemin",
+            "right": "myöhemmin",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "myöhemin",
+            "new": "myöhemmin",
+            "at": 107
+          },
+          {
+            "old": "yritti",
+            "new": "yrittivät",
+            "at": 137
+          },
+          {
+            "old": "ylellisyys veroilla",
+            "new": "ylellisyysveroilla",
+            "at": 166
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "D5",
+        "genre": "vuorosana",
+        "batch": 3,
+        "n": 3,
+        "source": "– Oottekste nähny mun avaimia? Mä jätin ne eilen tohon pöydläle, ja nyt niitä ei oo missään.",
+        "output": "– Oottekste nähny mun avaimia? Mä jätin ne eilen tohon pöydläle, ja nyt niitä ei oo missään.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "pöydläle",
+            "right": "pöydälle",
+            "type": "oikeinkirjoitus",
+            "result": "ei korjattu"
+          }
+        ],
+        "changes": [],
+        "residual": [
+          {
+            "clean": "pöydälle",
+            "got": "pöydläle",
+            "at": 55,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "C3",
+        "genre": "kontrolli",
+        "batch": 3,
+        "n": 4,
+        "source": "Suomen kirjakielen perusta luotiin 1500-luvulla, kun Mikael Agricola käänsi Uuden testamentin suomeksi. Hänen ratkaisunsa – esimerkiksi monien äänteiden merkintätavat – vaikuttivat kirjoitettuun kieleen vuosisatojen ajan.",
+        "output": "Suomen kirjakielen perusta luotiin 1500-luvulla, kun Mikael Agricola käänsi Uuden testamentin suomeksi. Hänen ratkaisunsa – esimerkiksi monien äänteiden merkintätavat – vaikuttivat kirjoitettuun kieleen vuosisatojen ajan.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F6",
+        "genre": "fiktio",
+        "batch": 3,
+        "n": 5,
+        "source": "Hän avasi laatikon - sen saman, jota oli vältellyt koko syksyn – ja nosti esiin nipun valokuvia. Kuvissa nauroi nuori nainen, jonka kasvoja hän ei aluksi tunistanut omikseen. Kädet alkoi vapista.",
+        "output": "Hän avasi laatikon – sen saman, jota oli vältellyt koko syksyn – ja nosti esiin nipun valokuvia. Kuvissa nauroi nuori nainen, jonka kasvoja hän ei aluksi tunistanut omikseen. Kädet alkoivat vapista.",
+        "status": "ok",
+        "ratio": 0.028,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "laatikon - sen",
+            "right": "laatikon – sen",
+            "type": "typografia",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "Kädet alkoi",
+            "right": "Kädet alkoivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "tunistanut",
+            "right": "tunnistanut",
+            "type": "oikeinkirjoitus",
+            "result": "ei korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "-",
+            "new": "–",
+            "at": 19
+          },
+          {
+            "old": "alkoi",
+            "new": "alkoivat",
+            "at": 181
+          }
+        ],
+        "residual": [
+          {
+            "clean": "tunnistanut",
+            "got": "tunistanut",
+            "at": 154,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "N6",
+        "genre": "tieto",
+        "batch": 3,
+        "n": 6,
+        "source": "Hyvä tietokirja ei tyydy luettelemaan faktoja. Se rakentaa niistä väitteen. Kirjoittajan on päätettävä mitä hän jättää pois, sillä jokainen ylimäärinen sivupolku heikentää pää ajatusta. Karsiminen on vaikeaa juuri siksi, että kaikki kerätty aineisto tuntuu tärkeältä.",
+        "output": "Hyvä tietokirja ei tyydy luettelemaan faktoja. Se rakentaa niistä väitteen. Kirjoittajan on päätettävä, mitä hän jättää pois, sillä jokainen ylimäärinen sivupolku heikentää pääajatusta. Karsiminen on vaikeaa juuri siksi, että kaikki kerätty aineisto tuntuu tärkeältä.",
+        "status": "ok",
+        "ratio": 0.049,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "päätettävä mitä",
+            "right": "päätettävä, mitä",
+            "type": "pilkku",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "pää ajatusta",
+            "right": "pääajatusta",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "ylimäärinen",
+            "right": "ylimääräinen",
+            "type": "oikeinkirjoitus",
+            "result": "ei korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 102
+          },
+          {
+            "old": "pää ajatusta",
+            "new": "pääajatusta",
+            "at": 172
+          }
+        ],
+        "residual": [
+          {
+            "clean": "ylimääräinen",
+            "got": "ylimäärinen",
+            "at": 141,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "D6",
+        "genre": "vuorosana",
+        "batch": 3,
+        "n": 7,
+        "source": "– Mie oon sanonu sulle monta ketraa, että sinne ei mennä yksin ⟦5⟧. Jää pettää keväällä ennen ko arvaakaan.",
+        "output": "– Mie oon sanonu sulle monta ketraa, että sinne ei mennä yksin ⟦5⟧. Jää pettää keväällä ennen ko arvaakaan.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "monta ketraa",
+            "right": "monta kertaa",
+            "type": "oikeinkirjoitus",
+            "result": "ei korjattu"
+          }
+        ],
+        "changes": [],
+        "residual": [
+          {
+            "clean": "kertaa",
+            "got": "ketraa",
+            "at": 29,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "F7",
+        "genre": "fiktio",
+        "batch": 4,
+        "n": 1,
+        "source": "Kirkonkylän raitilla ei liikkunut ketään. Kaupan ikkunassa paloi yksinäinen valo, ja jossain haukkui koira, jonka ääni kantoi kauas pakkasessa. Marketta veti kaula huivin tiukemmalle ja lähti kävelemään kohti asemaa vaikka tiesi, ettei viimeinen bussi enään odottaisi.",
+        "output": "Kirkonkylän raitilla ei liikkunut ketään. Kaupan ikkunassa paloi yksinäinen valo, ja jossain haukkui koira, jonka ääni kantoi kauas pakkasessa. Marketta veti kaulahuivin tiukemmalle ja lähti kävelemään kohti asemaa, vaikka tiesi, ettei viimeinen bussi enää odottaisi.",
+        "status": "ok",
+        "ratio": 0.071,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "kaula huivin",
+            "right": "kaulahuivin",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "bussi enään",
+            "right": "bussi enää",
+            "type": "oikeinkirjoitus",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "asemaa vaikka",
+            "right": "asemaa, vaikka",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "kaula huivin",
+            "new": "kaulahuivin",
+            "at": 158
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 215
+          },
+          {
+            "old": "enään",
+            "new": "enää",
+            "at": 252
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "N7",
+        "genre": "tieto",
+        "batch": 4,
+        "n": 2,
+        "source": "Itämeri on matala ja lähes suljettu allas, minkä vuoksi sen vesi vaihtuu erittäin hitaasti. Ravinteet jotka päätyvät mereen pelloilta ja jätevesistä, kiertävät siellä vuosi kymmeniä. Tästä syystä rehevöitymisen pysäyttäminen vaatii kärsivällisyyttä: tulokset näkyy vasta pitkän ajan kuluttua.",
+        "output": "Itämeri on matala ja lähes suljettu allas, minkä vuoksi sen vesi vaihtuu erittäin hitaasti. Ravinteet, jotka päätyvät mereen pelloilta ja jätevesistä, kiertävät siellä vuosi kymmeniä. Tästä syystä rehevöitymisen pysäyttäminen vaatii kärsivällisyyttä: tulokset näkyvät vasta pitkän ajan kuluttua.",
+        "status": "ok",
+        "ratio": 0.034,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "vuosi kymmeniä",
+            "right": "vuosikymmeniä",
+            "type": "yhdyssana",
+            "result": "ei korjattu"
+          },
+          {
+            "wrong": "tulokset näkyy",
+            "right": "tulokset näkyvät",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "Ravinteet jotka",
+            "right": "Ravinteet, jotka",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 101
+          },
+          {
+            "old": "näkyy",
+            "new": "näkyvät",
+            "at": 259
+          }
+        ],
+        "residual": [
+          {
+            "clean": "vuosikymmeniä",
+            "got": "vuosi kymmeniä",
+            "at": 168,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "D7",
+        "genre": "vuorosana",
+        "batch": 4,
+        "n": 3,
+        "source": "– Siis ihan oikeesti, se vaan käveli ohi eikä sanonu mitään. Mä olin sillee et okei, ei sit.",
+        "output": "– Siis ihan oikeesti, se vaan käveli ohi eikä sanonu mitään. Mä olin sillee et okei, ei sit.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "C4",
+        "genre": "kontrolli",
+        "batch": 4,
+        "n": 4,
+        "source": "Uni vaikuttaa muistiin enemmän kuin yleensä ajatellaan. Syvän unen aikana aivot siirtävät päivän tapahtumia pitkäkestoiseen muistiin, ja siksi valvottu yö heikentää oppimista vielä seuraavanakin päivänä.",
+        "output": "Uni vaikuttaa muistiin enemmän kuin yleensä ajatellaan. Syvän unen aikana aivot siirtävät päivän tapahtumia pitkäkestoiseen muistiin, ja siksi valvottu yö heikentää oppimista vielä seuraavanakin päivänä.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      },
+      {
+        "id": "F8",
+        "genre": "fiktio",
+        "batch": 4,
+        "n": 5,
+        "source": "Isoisän verstaassa tuoksui terva ja tuore puu. Höylät riippui seinällä suuruus järjestyksessä, ja jokaisella työkalulla oli oma paikkansa, jota ei saanut muuttaa. Kun hän kuoli kukaan ei raaskinut koskea niihin moneen vuoteen.",
+        "output": "Isoisän verstaassa tuoksui terva ja tuore puu. Höylät riippuivat seinällä suuruusjärjestyksessä, ja jokaisella työkalulla oli oma paikkansa, jota ei saanut muuttaa. Kun hän kuoli, kukaan ei raaskinut koskea niihin moneen vuoteen.",
+        "status": "ok",
+        "ratio": 0.081,
+        "exact": true,
+        "errors": [
+          {
+            "wrong": "Höylät riippui",
+            "right": "Höylät riippuivat",
+            "type": "kongruenssi",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "suuruus järjestyksessä",
+            "right": "suuruusjärjestyksessä",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "kuoli kukaan",
+            "right": "kuoli, kukaan",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "riippui",
+            "new": "riippuivat",
+            "at": 54
+          },
+          {
+            "old": "suuruus järjestyksessä",
+            "new": "suuruusjärjestyksessä",
+            "at": 71
+          },
+          {
+            "old": "",
+            "new": ",",
+            "at": 176
+          }
+        ],
+        "residual": []
+      },
+      {
+        "id": "F9",
+        "genre": "fiktio",
+        "batch": 4,
+        "n": 6,
+        "source": "Myrsky katkaisi sähköt puoli yhdeksältä. Sytytin kynttilän ja kuuntelin miten tuuli riuhtoi pelti kattoa ja miten vanhat hirret narisi sen otteessa. Pimeässä talo tuntui suuremmalta kuin päivällä, melkein vieraalta... Silti en olisi vaihtanut sitä mihinkään.",
+        "output": "Myrsky katkaisi sähköt puoli yhdeksältä. Sytytin kynttilän ja kuuntelin, miten tuuli riuhtoi peltikattoa ja miten vanhat hirret narisi sen otteessa. Pimeässä talo tuntui suuremmalta kuin päivällä, melkein vieraalta... Silti en olisi vaihtanut sitä mihinkään.",
+        "status": "ok",
+        "ratio": 0.048,
+        "exact": false,
+        "errors": [
+          {
+            "wrong": "vieraalta...",
+            "right": "vieraalta…",
+            "type": "typografia",
+            "result": "ei korjattu"
+          },
+          {
+            "wrong": "pelti kattoa",
+            "right": "peltikattoa",
+            "type": "yhdyssana",
+            "result": "korjattu"
+          },
+          {
+            "wrong": "hirret narisi",
+            "right": "hirret narisivat",
+            "type": "kongruenssi",
+            "result": "ei korjattu"
+          },
+          {
+            "wrong": "kuuntelin miten",
+            "right": "kuuntelin, miten",
+            "type": "pilkku",
+            "result": "korjattu"
+          }
+        ],
+        "changes": [
+          {
+            "old": "",
+            "new": ",",
+            "at": 71
+          },
+          {
+            "old": "pelti kattoa",
+            "new": "peltikattoa",
+            "at": 92
+          }
+        ],
+        "residual": [
+          {
+            "clean": "narisivat",
+            "got": "narisi",
+            "at": 128,
+            "kind": "istutettu:ei korjattu"
+          },
+          {
+            "clean": "…",
+            "got": "...",
+            "at": 217,
+            "kind": "istutettu:ei korjattu"
+          }
+        ]
+      },
+      {
+        "id": "C5",
+        "genre": "kontrolli",
+        "batch": 4,
+        "n": 7,
+        "source": "Laiva irtosi laiturista hitaasti, melkein vastahakoisesti. Kannella seisoi ihmisiä, jotka vilkuttivat rannalle jääneille, mutta Henrik ei kääntynyt katsomaan taakseen. Hän oli päättänyt, ettei jättäisi tälle kaupungille edes hyvästejä.",
+        "output": "Laiva irtosi laiturista hitaasti, melkein vastahakoisesti. Kannella seisoi ihmisiä, jotka vilkuttivat rannalle jääneille, mutta Henrik ei kääntynyt katsomaan taakseen. Hän oli päättänyt, ettei jättäisi tälle kaupungille edes hyvästejä.",
+        "status": "ok",
+        "ratio": 0,
+        "exact": true,
+        "errors": [],
+        "changes": [],
+        "residual": []
+      }
+    ],
+    "fixedShare": 0.8070175438596491,
+    "rewrittenShare": 0,
+    "secondsMean": 28.9,
+    "secondsMax": 52.1,
+    "secondsMin": 8,
+    "outputTokensMean": 1056,
+    "thinkingCharsMean": 1306,
+    "misaligned": 0,
+    "rule": {
+      "halfFixed": true,
+      "wrongFewerThanRight": true,
+      "underFifthRewritten": true
+    },
+    "pass": true
+  }
+]

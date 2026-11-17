@@ -1,0 +1,37 @@
+{
+  "note": "Keksitty näyteaineisto: kolme kappaletta ja kolmen yhdyskäytävän mallin vastaukset 16.11.2026. Omat kappaleet kansioon test/fixtures/step0/private/ samassa muodossa.",
+  "paragraphs": [
+    {
+      "id": "proosa",
+      "clean": "Kissa istui **ikkunalla** ja katseli, kun sade [TODO: tarkista vuodenaika] piiskasi <u>pihan</u> vanhaa omenapuuta. Se oli _todella_ väsynyt, mutta ei halunnut nukkua, koska naapurin koira haukkui koko ajan [TODO: koiran nimi?].",
+      "planted": "Kissa istui **ikkunalla** ja katseli kun sade [TODO: tarkista vuodenaika] piiskasi <u>pihan</u> vanhaa omena puuta. Se oli _todella_ väsynyt mutta ei halunnut nukkua, koska naapurin koira haukkui koko ajan [TODO: koiran nimi?]."
+    },
+    {
+      "id": "dialogi",
+      "clean": "– Mihin sinä olet menossa? äiti kysyi ja laski kahvikupin pöydälle. – En minä tiedä, poika vastasi hiljaa ja katsoi ikkunasta ulos, missä lumi _vihdoin_ suli [TODO: mikä kuukausi?].",
+      "planted": "– Mihin sinä olet menossa, äiti kysyi ja laski kahvi kupin pöydälle. – En minä tiedä, poika vastasi hiljaa, ja katsoi ikkunasta ulos missä lumi _vihdoin_ suli [TODO: mikä kuukausi?]."
+    },
+    {
+      "id": "puhekieli",
+      "clean": "”Mä en kyl tajuu miks sä aina **jaksat** valittaa”, Sanna sanoi ja heitti repun eteisen lattialle. ”Emmä valita, mä vaan sanon miten asiat on [TODO: tarkista murre].”",
+      "planted": "”Mä en kyl tajuu miks sä aina **jaksat** valittaa”, Sanna sanoi ja heitti repun eteisen lattialle. ”Emmä valita, mä vaan sanon miten asiat on [TODO: tarkista murre].”"
+    }
+  ],
+  "replies": {
+    "glm-5.3-flash-abliterated": {
+      "proosa": "<teksti>Kissa istui ⟦1⟧ikkunalla⟦/1⟧ ja katseli, kun sade ⟦2⟧ piiskasi ⟦3⟧pihan⟦/3⟧ vanhaa omenapuuta. Se oli ⟦4⟧todella⟦/4⟧ väsynyt, mutta ei halunnut nukkua, koska naapurin koira haukkui koko ajan ⟦5⟧.</teksti>",
+      "dialogi": "<teksti>– Mihin sinä olet menossa? äiti kysyi ja laski kahvikupin pöydälle. – En minä tiedä, poika vastasi hiljaa ja katsoi ikkunasta ulos, missä lumi ⟦1⟧vihdoin⟦/1⟧ suli ⟦2⟧.</teksti>",
+      "puhekieli": "<teksti>”Mä en kyl tajuu miks sä aina ⟦1⟧jaksat⟦/1⟧ valittaa”, Sanna sanoi ja heitti repun eteisen lattialle. ”Emmä valita, mä vaan sanon miten asiat on ⟦2⟧.”</teksti>"
+    },
+    "deepseek-v4.1-flash-abliterated-fast": {
+      "proosa": "<teksti>Kissa istui ⟦1⟧ikkunalla⟦/1⟧ ja katseli, kun sade ⟦2⟧ piiskasi ⟦3⟧pihan⟦/3⟧ vanhaa omenapuuta. Se oli ⟦4⟧todella⟦/4⟧ väsynyt, mutta ei halunnut nukkua, koska naapurin koira haukkui koko ajan ⟦5⟧.</teksti>",
+      "dialogi": "<teksti>– Mihin sinä olet menossa, äiti kysyi ja laski kahvikupin pöydälle. – En minä tiedä, poika vastasi hiljaa, ja katsoi ikkunasta ulos, missä lumi ⟦1⟧vihdoin⟦/1⟧ suli ⟦2⟧.</teksti>",
+      "puhekieli": "<teksti>”Mä en kyl tajuu, miks sä aina ⟦1⟧jaksat⟦/1⟧ valittaa”, Sanna sanoi ja heitti repun eteisen lattialle. ”Emmä valita, mä vaan sanon, miten asiat on ⟦2⟧.”</teksti>"
+    },
+    "glm-5.3-abliterated": {
+      "proosa": "<teksti>Kissa istui ⟦1⟧ikkunalla⟦/1⟧ ja katseli, kun sade ⟦2⟧ piiskasi ⟦3⟧pihan⟦/3⟧ vanhaa omenapuuta. Se oli ⟦4⟧todella⟦/4⟧ väsynyt, mutta ei halunnut nukkua, koska naapurin koira haukkui koko ajan ⟦5⟧.</teksti>",
+      "dialogi": "<teksti>– Mihin sinä olet menossa? äiti kysyi ja laski kahvikupin pöydälle. – En minä tiedä, poika vastasi hiljaa ja katsoi ikkunasta ulos, missä lumi ⟦1⟧vihdoin⟦/1⟧ suli ⟦2⟧.</teksti>",
+      "puhekieli": "<teksti>”Mä en kyl tajuu, miks sä aina ⟦1⟧jaksat⟦/1⟧ valittaa”, Sanna sanoi ja heitti repun eteisen lattialle. ”Emmä valita, mä vaan sanon, miten asiat on ⟦2⟧.”</teksti>"
+    }
+  }
+}
