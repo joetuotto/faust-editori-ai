@@ -5,7 +5,8 @@
  * Script-tag compatible version for app.js integration. index.html loads this file in <head>,
  * before the bundle that assigns window.FaustIcons and window.FaustUI, so those globals are read
  * only inside the render function (R-89). The look comes from the dialog, field, section and row
- * classes of styles/faust-components.css. Esc is registered by the cross-region pass (XR-9).
+ * classes of styles/faust-components.css. Esc, the stacking order and the focus go through
+ * window.FaustUI.layerStack (useLayer below).
  *
  * Saving hands onSave only the form's own fields (W22): the chapter's text, versions and word
  * count are never part of the payload, and synopsisManual is computed by the parent
@@ -15,11 +16,37 @@
 (function(window) {
   'use strict';
 
-  const { createElement: e, useState, useEffect, useRef } = React;
+  const { createElement: e, useState, useEffect, useLayoutEffect, useRef } = React;
 
   // Read at render time only: the bundle has not run yet when this file loads.
   const icons = () => window.FaustIcons || {};
   const icon = (name, size) => (icons()[name] ? icons()[name]({ size }) : null);
+
+  // The form is a layer of window.FaustUI.layerStack (R-70; read here, at call time, R-89). Esc does
+  // what Peruuta does; the form stands above the layers that were open before it (its list window),
+  // with the dimming painted once; the focus moves into the form and, when it closes, back to where it
+  // was. Without the stack (the bundle has not run) the form only has no Esc.
+  const FIELDS = 'input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled)';
+  const useLayer = (isOpen, onEscape, panelRef) => {
+    const escapeRef = useRef(onEscape);
+    escapeRef.current = onEscape;
+    const [below, setBelow] = useState(0);
+    useLayoutEffect(() => {
+      if (!isOpen) return undefined;
+      const stack = window.FaustUI && window.FaustUI.layerStack;
+      const previous = document.activeElement;
+      setBelow(stack ? stack.size() : 0);
+      const token = stack ? stack.push(() => escapeRef.current()) : null;
+      const panel = panelRef.current;
+      const first = panel && (panel.querySelector('[data-autofocus]') || panel.querySelector(FIELDS));
+      if (first) first.focus(); else if (panel) panel.focus();
+      return () => {
+        if (token !== null) stack.remove(token);
+        if (previous && previous.focus && document.contains(previous)) previous.focus();
+      };
+    }, [isOpen]);
+    return below;
+  };
 
   // Display maps for the stored values (menu spec A.4). A plain script cannot import the bundle's
   // maps, so this file keeps a copy of the ones it needs; constants.js is not touched. The stored
@@ -161,6 +188,7 @@
     const [isSaving, setIsSaving] = useState(false);
     const [scrollRequest, setScrollRequest] = useState(0);
     const dialogRef = useRef(null);
+    const below = useLayer(isOpen, () => onClose(), dialogRef);
 
     // Loaded once per chapter: a change to the chapter object while the form is open (an analysis
     // finishing in the background) does not wipe what the author has typed.
@@ -327,7 +355,8 @@
     );
 
     return e('div', {
-      className: 'faust-scrim',
+      className: below > 0 ? 'faust-scrim is-stacked' : 'faust-scrim',
+      style: below > 0 ? { zIndex: 'calc(var(--z-modal) + ' + (below + 1) + ')' } : undefined,
       // A press on the scrim closes the view-only window, never the form (R-69).
       onMouseDown: (ev) => {
         if (isViewMode && ev.target === ev.currentTarget) onClose();
@@ -335,6 +364,7 @@
     },
       e('form', {
         ref: dialogRef,
+        tabIndex: -1,
         className: 'faust-dialog faust-dialog--lg',
         role: 'dialog',
         'aria-modal': 'true',
@@ -351,7 +381,7 @@
             type: 'button',
             className: 'faust-btn faust-btn--icon',
             'aria-label': 'Sulje',
-            title: 'Sulje',
+            title: 'Sulje (Esc)',
             onClick: onClose
           }, icon('close', 16))
         ),

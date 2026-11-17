@@ -16,8 +16,9 @@
  */
 
 import { icons } from './icons.js';
+import { layerStack } from './ui.js';
 
-const { createElement: e, useState, useEffect, useRef, useId } = React;
+const { createElement: e, useState, useEffect, useLayoutEffect, useRef, useId } = React;
 
 // Frame (styles/faust-components.css, sections 3, 4 and 9). Prompt and confirm are one-box
 // panels above every modal (--top); shortcuts, export and collection have header, body and footer.
@@ -44,6 +45,37 @@ const dialogHeader = (titleId, title, onClose) => e('div', { className: 'faust-d
   ),
   closeButton(onClose)
 );
+
+/**
+ * An open dialog of this file is a layer of the layer stack in ui.js (R-70). Esc reaches the
+ * topmost layer only, through the stack's one capture listener on window, and runs onEscape
+ * (a function that does nothing: the layer takes Esc and ignores it). Returns how many layers were
+ * open under it when it opened, so that it can stand above them; closing it gives the focus back
+ * to where it was.
+ */
+function useLayer(active, onEscape) {
+  const escapeRef = useRef(onEscape);
+  escapeRef.current = onEscape;
+  const [below, setBelow] = useState(0);
+  useLayoutEffect(() => {
+    if (!active) return undefined;
+    const previous = document.activeElement;
+    setBelow(layerStack.size());
+    const token = layerStack.push((ev) => escapeRef.current(ev));
+    return () => {
+      layerStack.remove(token);
+      if (previous && previous.focus && document.contains(previous)) previous.focus();
+    };
+  }, [active]);
+  return below;
+}
+
+// The scrim of shortcuts, export and collection: above the layers that were open before it, in
+// the order of opening, with the dimming painted once (V 4.8, stacking). Prompt and confirm stay
+// on --top, above every dialog.
+const stackedScrim = (below) => (below > 0
+  ? { className: SCRIM + ' is-stacked', style: { zIndex: `calc(var(--z-modal) + ${below + 1})` } }
+  : { className: SCRIM });
 
 // ---------------------------------------------------------------------------
 // Keys
@@ -301,6 +333,8 @@ export function TextPromptDialog({ request, onDone }) {
   const [value, setValue] = useState('');
   const inputRef = useRef(null);
   const titleId = useId();
+  // Esc cancels, wherever the focus is (the layer stack)
+  useLayer(!!request, () => onDone(null));
 
   useEffect(() => {
     if (!request) return;
@@ -317,15 +351,11 @@ export function TextPromptDialog({ request, onDone }) {
 
   if (!request) return null;
 
+  // Esc never reaches the field: the layer stack takes it first
   const onKeyDown = (ev) => {
     if (ev.key === 'Enter') {
       ev.preventDefault();
       onDone(value);
-    } else if (ev.key === 'Escape') {
-      // Close this dialog only, not whatever is open behind it
-      ev.preventDefault();
-      ev.stopPropagation();
-      onDone(null);
     }
   };
 
@@ -357,23 +387,12 @@ export function TextPromptDialog({ request, onDone }) {
  */
 export function ShortcutsDialog({ open, onClose, aiDisabled = false }) {
   const titleId = useId();
-
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (ev) => {
-      if (ev.key === 'Escape') {
-        ev.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [open, onClose]);
+  const below = useLayer(open, () => onClose());
 
   if (!open) return null;
 
   return e('div', {
-    className: SCRIM,
+    ...stackedScrim(below),
     onMouseDown: (ev) => { if (ev.target === ev.currentTarget) onClose(); }
   },
     e('div', {
@@ -435,17 +454,7 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
     }
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (ev) => {
-      if (ev.key === 'Escape') {
-        ev.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [open, onClose]);
+  const below = useLayer(open, () => onClose());
 
   if (!open) return null;
 
@@ -486,7 +495,7 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
   );
 
   // A form (choices and an action): a press on the scrim closes nothing (R-69)
-  return e('div', { className: SCRIM },
+  return e('div', stackedScrim(below),
     e('div', {
       role: 'dialog',
       'aria-modal': 'true',
@@ -575,25 +584,14 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
 export function ConfirmDialog({ request, onDone }) {
   const confirmRef = useRef(null);
   const titleId = useId();
+  // Esc answers Peruuta; a question that must be answered with a button takes Esc and does
+  // nothing with it (BUG-1), so nothing under it closes either
+  useLayer(!!request, () => { if (!request.requireChoice) onDone(false); });
 
   useEffect(() => {
     if (!request) return;
     const timer = setTimeout(() => confirmRef.current && confirmRef.current.focus(), 0);
-    const onKeyDown = (ev) => {
-      if (ev.key !== 'Escape') return;
-      ev.stopPropagation();
-      if (request.requireChoice) {
-        // A question that must be answered with a button: Esc does nothing (BUG-1)
-        ev.preventDefault();
-        return;
-      }
-      onDone(false);
-    };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      clearTimeout(timer);
-      window.removeEventListener('keydown', onKeyDown, true);
-    };
+    return () => clearTimeout(timer);
   }, [request]);
 
   if (!request) return null;
@@ -670,17 +668,7 @@ export function CollectionDialog({ open, onCancel, onCreate }) {
     return () => clearTimeout(timer);
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKeyDown = (ev) => {
-      if (ev.key === 'Escape') {
-        ev.stopPropagation();
-        onCancel();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [open, onCancel]);
+  const below = useLayer(open, () => onCancel());
 
   if (!open) return null;
 
@@ -718,7 +706,7 @@ export function CollectionDialog({ open, onCancel, onCreate }) {
     extra
   );
 
-  return e('div', { className: SCRIM },
+  return e('div', stackedScrim(below),
     e('div', { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, className: 'faust-dialog faust-dialog--sm' },
       dialogHeader(titleId, 'Uusi kokoelma', onCancel),
 

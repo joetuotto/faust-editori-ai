@@ -7623,24 +7623,43 @@ ${contextPrompt}`;
         }
       };
 
-      return e('div', { className: 'faust-scrim' },
-        e('div', {
-          className: 'faust-dialog faust-dialog--md',
-          style: { '--dialog-w': '600px' },
-          role: 'dialog',
-          'aria-modal': 'true',
-          'aria-labelledby': 'cast-plan-title',
-          'aria-busy': castPlanStep === 2
-        },
-          e('div', { className: 'faust-dialog__header' },
-            e('div', { className: 'faust-dialog__heading' },
-              e('h2', { className: 'faust-dialog__title', id: 'cast-plan-title' }, 'Suunnittele hahmot'),
-              e('div', { className: 'faust-dialog__sub' }, 'Kirjoita, millaisia hahmoja tarinassasi on. Tekoäly ehdottaa kullekin arkkityypin ja huomauttaa puutteista.')
-            ),
-            e('button', { className: 'faust-btn faust-btn--icon', 'aria-label': 'Sulje', title: 'Sulje', onClick: closeCastPlan }, icons.close({ size: 16 }))
-          ),
-
-          e('div', { className: 'faust-dialog__body' },
+      // A step form: a press on the scrim closes nothing; Esc does what Peruuta does (R-69, R-70)
+      return e(Dialog, {
+        title: 'Suunnittele hahmot',
+        sub: 'Kirjoita, millaisia hahmoja tarinassasi on. Tekoäly ehdottaa kullekin arkkityypin ja huomauttaa puutteista.',
+        size: 'md',
+        width: 600,
+        busy: castPlanStep === 2,
+        onClose: closeCastPlan,
+        footerStart: castPlanStep === 3 ? e('button', { className: 'faust-btn faust-btn--lg', onClick: () => setCastPlanStep(1) },
+          icons.arrowLeft({ size: 14 }), 'Muokkaa hahmotyyppejä') : null,
+        footer: e(React.Fragment, null,
+          e('button', { className: 'faust-btn faust-btn--lg', onClick: closeCastPlan }, 'Peruuta'),
+          castPlanStep === 1 ? e('button', {
+            className: 'faust-btn faust-btn--lg faust-btn--primary',
+            disabled: !castTypesDraft.trim(),
+            title: castTypesDraft.trim() ? undefined : 'Kirjoita ensin vähintään yksi hahmotyyppi',
+            onClick: requestCastSuggestions
+          }, 'Pyydä ehdotukset', icons.arrowRight({ size: 14 })) : null,
+          castPlanStep === 3 ? e('button', {
+            className: 'faust-btn faust-btn--lg faust-btn--primary',
+            disabled: castPlanIncomplete,
+            title: castPlanIncomplete ? castIncompleteText : undefined,
+            onClick: () => {
+              // Mark cast plan as defined
+              setProject(prev => ({
+                ...prev,
+                castPlan: {
+                  ...prev.castPlan,
+                  defined: true
+                }
+              }));
+              setUnsavedChanges(true);
+              closeCastPlan();
+            }
+          }, 'Hyväksy hahmosuunnitelma') : null
+        )
+      },
             // Step 1: character types
             castPlanStep === 1 ? e('label', { className: 'faust-field' },
               e('span', { className: 'faust-field__label' }, 'Hahmotyypit, kukin omalle rivilleen'),
@@ -7695,39 +7714,6 @@ ${contextPrompt}`;
                 )
               ) : null
             ) : null
-          ),
-
-          e('div', { className: 'faust-dialog__footer' },
-            castPlanStep === 3 ? e('div', { className: 'faust-dialog__footer-start' },
-              e('button', { className: 'faust-btn faust-btn--lg', onClick: () => setCastPlanStep(1) },
-                icons.arrowLeft({ size: 14 }), 'Muokkaa hahmotyyppejä')
-            ) : null,
-            e('button', { className: 'faust-btn faust-btn--lg', onClick: closeCastPlan }, 'Peruuta'),
-            castPlanStep === 1 ? e('button', {
-              className: 'faust-btn faust-btn--lg faust-btn--primary',
-              disabled: !castTypesDraft.trim(),
-              title: castTypesDraft.trim() ? undefined : 'Kirjoita ensin vähintään yksi hahmotyyppi',
-              onClick: requestCastSuggestions
-            }, 'Pyydä ehdotukset', icons.arrowRight({ size: 14 })) : null,
-            castPlanStep === 3 ? e('button', {
-              className: 'faust-btn faust-btn--lg faust-btn--primary',
-              disabled: castPlanIncomplete,
-              title: castPlanIncomplete ? castIncompleteText : undefined,
-              onClick: () => {
-                // Mark cast plan as defined
-                setProject(prev => ({
-                  ...prev,
-                  castPlan: {
-                    ...prev.castPlan,
-                    defined: true
-                  }
-                }));
-                setUnsavedChanges(true);
-                closeCastPlan();
-              }
-            }, 'Hyväksy hahmosuunnitelma') : null
-          )
-        )
       );
     })() : null),
 
@@ -7774,23 +7760,48 @@ ${contextPrompt}`;
       const voiceExamples = showProfile && characterProfile.voice && Array.isArray(characterProfile.voice.examples)
         ? characterProfile.voice.examples : [];
 
-      return e('div', { className: 'faust-scrim' },
-        e('div', {
-          className: 'faust-dialog faust-dialog--lg',
-          role: 'dialog',
-          'aria-modal': 'true',
-          'aria-labelledby': 'character-builder-title',
-          'aria-busy': characterBuilderStep === 3 || characterBuilderStep === 5
-        },
-          e('div', { className: 'faust-dialog__header' },
-            e('div', { className: 'faust-dialog__heading' },
-              e('h2', { className: 'faust-dialog__title', id: 'character-builder-title' }, icons.sol({ size: 20 }), 'Uusi hahmo'),
-              e('div', { className: 'faust-dialog__sub' }, stepLine)
-            ),
-            e('button', { className: 'faust-btn faust-btn--icon', 'aria-label': 'Sulje', title: 'Sulje', onClick: () => cancelCharacterBuilder() }, icons.close({ size: 16 }))
-          ),
-
-          e('div', { className: 'faust-dialog__body' },
+      // A step form: a press on the scrim closes nothing; Esc, the close button and Peruuta all ask
+      // M D.2 row 16 when something has been entered (cancelCharacterBuilder)
+      return e(Dialog, {
+        title: 'Uusi hahmo',
+        icon: icons.sol({ size: 20 }),
+        sub: stepLine,
+        size: 'lg',
+        busy: characterBuilderStep === 3 || characterBuilderStep === 5,
+        onClose: () => cancelCharacterBuilder(),
+        footerStart: characterBuilderStep === 2 || characterBuilderStep === 4
+          ? e('button', {
+              className: 'faust-btn faust-btn--lg',
+              onClick: () => setCharacterBuilderStep(characterBuilderStep === 2 ? 1 : 2)
+            }, icons.arrowLeft({ size: 14 }), 'Takaisin')
+          : showProfile
+            // BUG-12: going back keeps the generated profile
+            ? e('button', { className: 'faust-btn faust-btn--lg', onClick: () => setCharacterBuilderStep(4) },
+                icons.arrowLeft({ size: 14 }), 'Muokkaa vastauksia')
+            : null,
+        footer: e(React.Fragment, null,
+          e('button', { className: 'faust-btn faust-btn--lg', onClick: () => cancelCharacterBuilder() }, 'Peruuta'),
+          characterBuilderStep === 2 ? e('button', {
+            className: 'faust-btn faust-btn--lg faust-btn--primary',
+            disabled: !characterRealPeople.trim(),
+            // M B.8: a disabled control's tooltip gives the reason (the words of M C.10 row 36)
+            title: characterRealPeople.trim() ? undefined : 'Kirjoita vähintään yksi nimi, esimerkiksi ”Ernst Jünger + C. G. Jung”.',
+            onClick: () => handleCharacterPeopleSubmit()
+          }, 'Jatka kysymyksiin', icons.arrowRight({ size: 14 })) : null,
+          characterBuilderStep === 4 && characterProfile ? e('button', {
+            className: 'faust-btn faust-btn--lg',
+            onClick: () => setCharacterBuilderStep(6)
+          }, 'Näytä profiili', icons.arrowRight({ size: 14 })) : null,
+          characterBuilderStep === 4 ? e('button', {
+            className: 'faust-btn faust-btn--lg faust-btn--primary',
+            onClick: () => handleCharacterAnswersSubmit()
+          }, characterProfile ? 'Luo profiili uudelleen' : 'Luo hahmon profiili', icons.arrowRight({ size: 14 })) : null,
+          showProfile ? e('button', {
+            className: 'faust-btn faust-btn--lg faust-btn--primary',
+            onClick: () => saveCharacterProfile()
+          }, 'Tallenna hahmo') : null
+        )
+      },
             // Step 1: select character type
             characterBuilderStep === 1 ? e('div', null,
               e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-2)' } }, 'Valitse hahmotyyppi, josta luot hahmon'),
@@ -7982,42 +7993,6 @@ ${contextPrompt}`;
                 ) : null
               ) : null
             ) : null
-          ),
-
-          e('div', { className: 'faust-dialog__footer' },
-            characterBuilderStep === 2 || characterBuilderStep === 4 ? e('div', { className: 'faust-dialog__footer-start' },
-              e('button', {
-                className: 'faust-btn faust-btn--lg',
-                onClick: () => setCharacterBuilderStep(characterBuilderStep === 2 ? 1 : 2)
-              }, icons.arrowLeft({ size: 14 }), 'Takaisin')
-            ) : null,
-            showProfile ? e('div', { className: 'faust-dialog__footer-start' },
-              // BUG-12: going back keeps the generated profile
-              e('button', { className: 'faust-btn faust-btn--lg', onClick: () => setCharacterBuilderStep(4) },
-                icons.arrowLeft({ size: 14 }), 'Muokkaa vastauksia')
-            ) : null,
-            e('button', { className: 'faust-btn faust-btn--lg', onClick: () => cancelCharacterBuilder() }, 'Peruuta'),
-            characterBuilderStep === 2 ? e('button', {
-              className: 'faust-btn faust-btn--lg faust-btn--primary',
-              disabled: !characterRealPeople.trim(),
-              // M B.8: a disabled control's tooltip gives the reason (the words of M C.10 row 36)
-              title: characterRealPeople.trim() ? undefined : 'Kirjoita vähintään yksi nimi, esimerkiksi ”Ernst Jünger + C. G. Jung”.',
-              onClick: () => handleCharacterPeopleSubmit()
-            }, 'Jatka kysymyksiin', icons.arrowRight({ size: 14 })) : null,
-            characterBuilderStep === 4 && characterProfile ? e('button', {
-              className: 'faust-btn faust-btn--lg',
-              onClick: () => setCharacterBuilderStep(6)
-            }, 'Näytä profiili', icons.arrowRight({ size: 14 })) : null,
-            characterBuilderStep === 4 ? e('button', {
-              className: 'faust-btn faust-btn--lg faust-btn--primary',
-              onClick: () => handleCharacterAnswersSubmit()
-            }, characterProfile ? 'Luo profiili uudelleen' : 'Luo hahmon profiili', icons.arrowRight({ size: 14 })) : null,
-            showProfile ? e('button', {
-              className: 'faust-btn faust-btn--lg faust-btn--primary',
-              onClick: () => saveCharacterProfile()
-            }, 'Tallenna hahmo') : null
-          )
-        )
       );
     })() : null),
 
@@ -8026,26 +8001,46 @@ ${contextPrompt}`;
     // Regenerate Dialog (Kirjoita luku uudelleen). A form: a press on the scrim does not close it.
     // Busy while the rewrite runs (V 4.8): the instruction and the työtapa are locked, because the
     // running request has already taken both; Peruuta and the close button stay.
-    e(ErrorBoundary, { label: 'Kirjoita luku uudelleen', onDismiss: () => setShowRegenerateDialog(false) }, showRegenerateDialog && e('div', { className: 'faust-scrim' },
-      e('div', { className: 'faust-dialog faust-dialog--lg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'regenerate-dialog-title', 'aria-busy': isGenerating },
-        e('div', { className: 'faust-dialog__header' },
-          e('div', { className: 'faust-dialog__heading' },
-            e('h2', { id: 'regenerate-dialog-title', className: 'faust-dialog__title' },
-              'Kirjoita luku uudelleen – ' + ((activeChapter && activeChapter.title) || 'Nimetön luku'))
-          ),
-          e('button', {
-            type: 'button',
-            className: 'faust-btn faust-btn--icon',
-            'aria-label': 'Sulje',
-            title: 'Sulje',
-            onClick: () => {
-              setShowRegenerateDialog(false);
-              setRegenerateFeedback('');
-            }
-          }, icons.close({ size: 16 }))
-        ),
-
-        e('div', { className: 'faust-dialog__body' },
+    e(ErrorBoundary, { label: 'Kirjoita luku uudelleen', onDismiss: () => setShowRegenerateDialog(false) }, showRegenerateDialog && e(Dialog, {
+      title: 'Kirjoita luku uudelleen – ' + ((activeChapter && activeChapter.title) || 'Nimetön luku'),
+      size: 'lg',
+      busy: isGenerating,
+      // Esc, the close button and Peruuta: the dialog closes and the instruction is cleared
+      onClose: () => {
+        setShowRegenerateDialog(false);
+        setRegenerateFeedback('');
+      },
+      footerStart: e('button', {
+        type: 'button',
+        className: 'faust-btn faust-btn--lg',
+        onClick: () => {
+          setShowRegenerateDialog(false);
+          setShowVersionHistory(true);
+        }
+      }, 'Luvun versiot'),
+      footer: e(React.Fragment, null,
+        e('button', {
+          type: 'button',
+          className: 'faust-btn faust-btn--lg',
+          onClick: () => {
+            setShowRegenerateDialog(false);
+            setRegenerateFeedback('');
+          }
+        }, 'Peruuta'),
+        e('button', {
+          type: 'button',
+          className: 'faust-btn faust-btn--lg faust-btn--primary',
+          onClick: () => regenerateChapter(),
+          // regenerateChapter returns at once while an analysis runs, so the button waits for it too
+          disabled: !regenerateFeedback.trim() || isGenerating || !!analysisBusy,
+          'aria-busy': isGenerating,
+          title: !regenerateFeedback.trim() ? 'Kirjoita ensin, mitä haluat muuttaa' : undefined
+        },
+          isGenerating ? e('span', { className: 'faust-spinner faust-spinner--sm', 'aria-hidden': 'true' }) : null,
+          isGenerating ? 'Kirjoitetaan…' : 'Kirjoita uudelleen'
+        )
+      )
+    },
           // The text is replaced: a warning callout (M C.11 row 1; the second line is BUG-18's)
           e('div', { className: 'faust-callout faust-callout--warning', style: { marginBottom: 'var(--sp-4)' } },
             icons.warning({ size: 16, className: 'faust-callout__icon' }),
@@ -8090,41 +8085,6 @@ ${contextPrompt}`;
               )
             )
           )
-        ),
-
-        e('div', { className: 'faust-dialog__footer' },
-          e('div', { className: 'faust-dialog__footer-start' },
-            e('button', {
-              type: 'button',
-              className: 'faust-btn faust-btn--lg',
-              onClick: () => {
-                setShowRegenerateDialog(false);
-                setShowVersionHistory(true);
-              }
-            }, 'Luvun versiot')
-          ),
-          e('button', {
-            type: 'button',
-            className: 'faust-btn faust-btn--lg',
-            onClick: () => {
-              setShowRegenerateDialog(false);
-              setRegenerateFeedback('');
-            }
-          }, 'Peruuta'),
-          e('button', {
-            type: 'button',
-            className: 'faust-btn faust-btn--lg faust-btn--primary',
-            onClick: () => regenerateChapter(),
-            // regenerateChapter returns at once while an analysis runs, so the button waits for it too
-            disabled: !regenerateFeedback.trim() || isGenerating || !!analysisBusy,
-            'aria-busy': isGenerating,
-            title: !regenerateFeedback.trim() ? 'Kirjoita ensin, mitä haluat muuttaa' : undefined
-          },
-            isGenerating ? e('span', { className: 'faust-spinner faust-spinner--sm', 'aria-hidden': 'true' }) : null,
-            isGenerating ? 'Kirjoitetaan…' : 'Kirjoita uudelleen'
-          )
-        )
-      )
     )),
 
     // Version History Dialog (Luvun versiot). Shows things: a press on the scrim closes it.
@@ -8165,26 +8125,12 @@ ${contextPrompt}`;
         rateVersion(version.id, version.userRating, text || null);
       };
 
-      return e('div', {
-        className: 'faust-scrim',
-        style: { zIndex: 'calc(var(--z-modal) + 1)' },
-        onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setShowVersionHistory(false); }
+      return e(Dialog, {
+        title: 'Luvun versiot – ' + chapterName,
+        size: 'lg',
+        dismissOnScrim: true,
+        onClose: () => setShowVersionHistory(false)
       },
-        e('div', { className: 'faust-dialog faust-dialog--lg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'version-history-title' },
-          e('div', { className: 'faust-dialog__header' },
-            e('div', { className: 'faust-dialog__heading' },
-              e('h2', { id: 'version-history-title', className: 'faust-dialog__title' }, 'Luvun versiot – ' + chapterName)
-            ),
-            e('button', {
-              type: 'button',
-              className: 'faust-btn faust-btn--icon',
-              'aria-label': 'Sulje',
-              title: 'Sulje',
-              onClick: () => setShowVersionHistory(false)
-            }, icons.close({ size: 16 }))
-          ),
-
-          e('div', { className: 'faust-dialog__body' },
             versionList.length > 0 ?
               e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' } },
                 versionList.map(version => {
@@ -8261,31 +8207,24 @@ ${contextPrompt}`;
                 e('div', { className: 'faust-empty__title' }, 'Ei vielä versioita.'),
                 e('div', { className: 'faust-empty__hint' }, 'Versio tallentuu, kun tekoäly kirjoittaa luvun tai kirjoittaa sen uudelleen.')
               )
-          )
-        )
       );
     })()),
 
     // Project Settings Dialog. The fields apply as typed; a press on the scrim does not close it.
-    e(ErrorBoundary, { label: 'Projektin asetukset', onDismiss: () => setShowProjectSettings(false) }, showProjectSettings && e('div', {
-      className: 'faust-scrim',
-      style: { zIndex: 'calc(var(--z-modal) + 2)' }
+    e(ErrorBoundary, { label: 'Projektin asetukset', onDismiss: () => setShowProjectSettings(false) }, showProjectSettings && e(Dialog, {
+      title: 'Projektin asetukset',
+      size: 'md',
+      onClose: () => setShowProjectSettings(false),
+      // One button: the fields already apply; saving stays with Tallenna and the menu
+      footerStart: e('span', { className: 'faust-meta' },
+        'Muutokset tulevat voimaan heti. Tallenna projekti tavalliseen tapaan (' + shortcut('CmdOrCtrl+S') + ').'
+      ),
+      footer: e('button', {
+        type: 'button',
+        className: 'faust-btn faust-btn--lg faust-btn--primary',
+        onClick: () => setShowProjectSettings(false)
+      }, 'Valmis')
     },
-      e('div', { className: 'faust-dialog faust-dialog--md', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'project-settings-title' },
-        e('div', { className: 'faust-dialog__header' },
-          e('div', { className: 'faust-dialog__heading' },
-            e('h2', { id: 'project-settings-title', className: 'faust-dialog__title' }, 'Projektin asetukset')
-          ),
-          e('button', {
-            type: 'button',
-            className: 'faust-btn faust-btn--icon',
-            'aria-label': 'Sulje',
-            title: 'Sulje',
-            onClick: () => setShowProjectSettings(false)
-          }, icons.close({ size: 16 }))
-        ),
-
-        e('div', { className: 'faust-dialog__body' },
           // Title
           e('label', { className: 'faust-field' },
             e('span', { className: 'faust-field__label' }, 'Projektin nimi'),
@@ -8382,20 +8321,6 @@ ${contextPrompt}`;
             ),
             e('span', { className: 'faust-field__hint' }, 'Tekoäly kirjoittaa uudet luvut tällä kielellä. Ei vaikuta oikolukuun.')
           )
-        ),
-
-        // One button: the fields already apply; saving stays with Tallenna and the menu
-        e('div', { className: 'faust-dialog__footer' },
-          e('span', { className: 'faust-dialog__footer-start faust-meta' },
-            'Muutokset tulevat voimaan heti. Tallenna projekti tavalliseen tapaan (' + shortcut('CmdOrCtrl+S') + ').'
-          ),
-          e('button', {
-            type: 'button',
-            className: 'faust-btn faust-btn--lg faust-btn--primary',
-            onClick: () => setShowProjectSettings(false)
-          }, 'Valmis')
-        )
-      )
     )),
 
     // Version Comparison Dialog. It opens over Luvun versiot, which stays open under it (W7).
@@ -8425,31 +8350,31 @@ ${contextPrompt}`;
         setShowVersionHistory(false);
       };
 
-      return e('div', {
-        className: 'faust-scrim' + (showVersionHistory ? ' is-stacked' : ''),
-        style: { zIndex: 'calc(var(--z-modal) + 2)' },
-        onMouseDown: (ev) => { if (ev.target === ev.currentTarget) setShowVersionComparison(false); }
+      // Opened over Luvun versiot, it is the later dialog and stands above it (the stack's order)
+      return e(Dialog, {
+        title: 'Versioiden vertailu – ' + chapterName,
+        sub: e('span', { className: 'faust-num' }, 'Sanamäärä ' + (wordDelta > 0 ? '+' : '') + wordDelta.toLocaleString('fi-FI')),
+        size: 'xl',
+        // Two columns of plain text (BUG-20 fallback, reconcile R-20): the marks, the counts
+        // Lisätty / Poistettu and the legend come with I-03, which feeds computeTextDiff into this frame.
+        bodyMode: 'flush',
+        dismissOnScrim: true,
+        onClose: () => setShowVersionComparison(false),
+        footer: e(React.Fragment, null,
+          e('button', {
+            type: 'button',
+            className: 'faust-btn faust-btn--lg',
+            title: 'Sulje (Esc)',
+            onClick: () => setShowVersionComparison(false)
+          }, 'Sulje'),
+          e('button', {
+            type: 'button',
+            className: 'faust-btn faust-btn--lg faust-btn--primary',
+            disabled: !compVersion,
+            onClick: restoreCompared
+          }, 'Palauta tämä versio…')
+        )
       },
-        e('div', { className: 'faust-dialog faust-dialog--xl', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'version-comparison-title' },
-          e('div', { className: 'faust-dialog__header' },
-            e('div', { className: 'faust-dialog__heading' },
-              e('h2', { id: 'version-comparison-title', className: 'faust-dialog__title' }, 'Versioiden vertailu – ' + chapterName),
-              e('div', { className: 'faust-dialog__sub faust-num' },
-                'Sanamäärä ' + (wordDelta > 0 ? '+' : '') + wordDelta.toLocaleString('fi-FI')
-              )
-            ),
-            e('button', {
-              type: 'button',
-              className: 'faust-btn faust-btn--icon',
-              'aria-label': 'Sulje',
-              title: 'Sulje',
-              onClick: () => setShowVersionComparison(false)
-            }, icons.close({ size: 16 }))
-          ),
-
-          // Two columns of plain text (BUG-20 fallback, reconcile R-20): the marks, the counts
-          // Lisätty / Poistettu and the legend come with I-03, which feeds computeTextDiff into this frame.
-          e('div', { className: 'faust-dialog__body faust-dialog__body--flush' },
             e('div', { className: 'faust-diff faust-diff--split' },
               e('div', { className: 'faust-diff__col' },
                 e('div', { className: 'faust-diff__colhead' },
@@ -8469,22 +8394,6 @@ ${contextPrompt}`;
                 e('div', { className: 'faust-prose' }, currentContent)
               )
             )
-          ),
-
-          e('div', { className: 'faust-dialog__footer' },
-            e('button', {
-              type: 'button',
-              className: 'faust-btn faust-btn--lg',
-              onClick: () => setShowVersionComparison(false)
-            }, 'Sulje'),
-            e('button', {
-              type: 'button',
-              className: 'faust-btn faust-btn--lg faust-btn--primary',
-              disabled: !compVersion,
-              onClick: restoreCompared
-            }, 'Palauta tämä versio…')
-          )
-        )
       );
     })()),
 
@@ -8633,43 +8542,34 @@ ${contextPrompt}`;
               );
             }));
 
-      return e('div', { className: 'faust-scrim' },
-        e('div', { className: 'faust-dialog faust-dialog--lg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'character-sheet-title' },
-          e('div', { className: 'faust-dialog__header' },
-            e('div', { className: 'faust-dialog__heading' },
-              e('h2', { className: 'faust-dialog__title', id: 'character-sheet-title' },
-                icons.sol({ size: 20 }), isProfile ? nameOf(selectedCharacter) : 'Hahmot'),
-              isProfile
-                ? e('div', { className: 'faust-dialog__sub' }, 'Hahmon profiili')
-                : characters.length > 0 && e('div', { className: 'faust-dialog__sub' }, count(characters.length, 'hahmo'))
-            ),
-            !isProfile && e('div', { className: 'faust-dialog__actions' },
-              e('button', {
-                className: 'faust-btn',
-                onClick: () => {
-                  // Both windows share one layer and the builder is mounted earlier: close this one first
-                  closeCharacterSheet();
-                  if (hasCastPlan) openCharacterBuilder();
-                  else openCastPlan();
-                }
-              }, hasCastPlan ? '+ Uusi hahmo…' : 'Suunnittele hahmot…')
-            ),
-            e('button', { className: 'faust-btn faust-btn--icon', 'aria-label': 'Sulje', title: 'Sulje', onClick: closeCharacterSheet },
-              icons.close({ size: 16 }))
-          ),
-          e('div', { className: 'faust-dialog__body' },
-            isProfile
-              ? e('div', null,
-                  e('div', { style: { marginBottom: 'var(--sp-4)' } },
-                    e('button', { className: 'faust-btn faust-btn--quiet', onClick: showCharacterList },
-                      icons.arrowLeft({ size: 14 }), 'Kaikki hahmot')),
-                  e('div', null, ...profileSections(selectedCharacter)))
-              : listBody
-          ),
-          isProfile && e('div', { className: 'faust-dialog__footer' },
-            e('div', { className: 'faust-dialog__footer-start' },
-              e('button', { className: 'faust-btn faust-btn--sm faust-btn--danger', onClick: () => deleteCharacter(selectedCharacter) }, 'Poista hahmo')))
-        )
+      // A list window: a press on the scrim closes it (R-69)
+      return e(Dialog, {
+        title: isProfile ? nameOf(selectedCharacter) : 'Hahmot',
+        icon: icons.sol({ size: 20 }),
+        sub: isProfile ? 'Hahmon profiili' : (characters.length > 0 ? count(characters.length, 'hahmo') : null),
+        size: 'lg',
+        dismissOnScrim: true,
+        onClose: closeCharacterSheet,
+        actions: !isProfile && e('button', {
+          className: 'faust-btn',
+          onClick: () => {
+            // The builder opens in place of this window: close this one first
+            closeCharacterSheet();
+            if (hasCastPlan) openCharacterBuilder();
+            else openCastPlan();
+          }
+        }, hasCastPlan ? '+ Uusi hahmo…' : 'Suunnittele hahmot…'),
+        footerStart: isProfile
+          ? e('button', { className: 'faust-btn faust-btn--sm faust-btn--danger', onClick: () => deleteCharacter(selectedCharacter) }, 'Poista hahmo')
+          : null
+      },
+        isProfile
+          ? e('div', null,
+              e('div', { style: { marginBottom: 'var(--sp-4)' } },
+                e('button', { className: 'faust-btn faust-btn--quiet', onClick: showCharacterList },
+                  icons.arrowLeft({ size: 14 }), 'Kaikki hahmot')),
+              e('div', null, ...profileSections(selectedCharacter)))
+          : listBody
       );
     })()),
 
@@ -8678,27 +8578,23 @@ ${contextPrompt}`;
       // Keyed by the stored object key: a place without a name has no other unique key
       const locationEntries = Object.entries((project.continuity && project.continuity.locations) || {})
         .filter(([, loc]) => loc && typeof loc === 'object');
-      return e('div', { className: 'faust-scrim' },
-        e('div', { className: 'faust-dialog faust-dialog--lg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'location-sheet-title' },
-          e('div', { className: 'faust-dialog__header' },
-            e('div', { className: 'faust-dialog__heading' },
-              e('h2', { className: 'faust-dialog__title', id: 'location-sheet-title' }, icons.terra({ size: 20 }), 'Paikat'),
-              locationEntries.length > 0 && e('div', { className: 'faust-dialog__sub' }, count(locationEntries.length, 'paikka'))
-            ),
-            e('div', { className: 'faust-dialog__actions' },
-              e('button', {
-                className: 'faust-btn',
-                onClick: () => {
-                  setSelectedLocation(null);
-                  setLocationFormMode('create');
-                  setShowLocationFormModal(true);
-                }
-              }, '+ Uusi paikka…')
-            ),
-            e('button', { className: 'faust-btn faust-btn--icon', 'aria-label': 'Sulje', title: 'Sulje', onClick: () => setShowLocationSheet(false) },
-              icons.close({ size: 16 }))
-          ),
-          e('div', { className: 'faust-dialog__body' },
+      // A list window: a press on the scrim closes it (R-69); the place form opens above it
+      return e(Dialog, {
+        title: 'Paikat',
+        icon: icons.terra({ size: 20 }),
+        sub: locationEntries.length > 0 ? count(locationEntries.length, 'paikka') : null,
+        size: 'lg',
+        dismissOnScrim: true,
+        onClose: () => setShowLocationSheet(false),
+        actions: e('button', {
+          className: 'faust-btn',
+          onClick: () => {
+            setSelectedLocation(null);
+            setLocationFormMode('create');
+            setShowLocationFormModal(true);
+          }
+        }, '+ Uusi paikka…')
+      },
             locationEntries.length === 0
               ? e('div', { className: 'faust-empty' },
                   icons.terra({ size: 40, className: 'faust-empty__icon' }),
@@ -8724,8 +8620,6 @@ ${contextPrompt}`;
                     )
                   )
                 )
-          )
-        )
       );
     })()),
 
@@ -8748,27 +8642,23 @@ ${contextPrompt}`;
       const threads = project.plotThreads || [];
       const threadChip = (status) => (status === 'resolved' ? 'faust-chip faust-chip--success faust-chip--dot'
         : status === 'abandoned' ? 'faust-chip faust-chip--struck' : 'faust-chip faust-chip--hollow');
-      return e('div', { className: 'faust-scrim' },
-        e('div', { className: 'faust-dialog faust-dialog--lg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'thread-sheet-title' },
-          e('div', { className: 'faust-dialog__header' },
-            e('div', { className: 'faust-dialog__heading' },
-              e('h2', { className: 'faust-dialog__title', id: 'thread-sheet-title' }, icons.lemniscate({ size: 20 }), 'Juonilangat'),
-              threads.length > 0 && e('div', { className: 'faust-dialog__sub' }, count(threads.length, 'juonilanka'))
-            ),
-            e('div', { className: 'faust-dialog__actions' },
-              e('button', {
-                className: 'faust-btn',
-                onClick: () => {
-                  setSelectedThread(null);
-                  setThreadFormMode('create');
-                  setShowThreadFormModal(true);
-                }
-              }, '+ Uusi juonilanka…')
-            ),
-            e('button', { className: 'faust-btn faust-btn--icon', 'aria-label': 'Sulje', title: 'Sulje', onClick: () => setShowThreadSheet(false) },
-              icons.close({ size: 16 }))
-          ),
-          e('div', { className: 'faust-dialog__body' },
+      // A list window: a press on the scrim closes it (R-69); the thread form opens above it
+      return e(Dialog, {
+        title: 'Juonilangat',
+        icon: icons.lemniscate({ size: 20 }),
+        sub: threads.length > 0 ? count(threads.length, 'juonilanka') : null,
+        size: 'lg',
+        dismissOnScrim: true,
+        onClose: () => setShowThreadSheet(false),
+        actions: e('button', {
+          className: 'faust-btn',
+          onClick: () => {
+            setSelectedThread(null);
+            setThreadFormMode('create');
+            setShowThreadFormModal(true);
+          }
+        }, '+ Uusi juonilanka…')
+      },
             threads.length === 0
               ? e('div', { className: 'faust-empty' },
                   icons.lemniscate({ size: 40, className: 'faust-empty__icon' }),
@@ -8795,8 +8685,6 @@ ${contextPrompt}`;
                     )
                   )
                 )
-          )
-        )
       );
     })()),
 
@@ -8837,26 +8725,15 @@ ${contextPrompt}`;
       );
       const closeTimeline = () => setShowTimelineView(false);
 
-      return e('div', {
-        className: 'faust-scrim',
-        onMouseDown: (ev) => { if (ev.target === ev.currentTarget) closeTimeline(); }
+      // A view: a press on the scrim closes it (R-69)
+      return e(Dialog, {
+        title: 'Aikajana',
+        icon: icons.luna({ size: 20 }),
+        sub: 'Luvut, tapahtuma-ajat ja juonilangat',
+        size: 'xl',
+        dismissOnScrim: true,
+        onClose: closeTimeline
       },
-        e('div', { className: 'faust-dialog faust-dialog--xl', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'timeline-title' },
-          e('div', { className: 'faust-dialog__header' },
-            e('div', { className: 'faust-dialog__heading' },
-              e('h2', { id: 'timeline-title', className: 'faust-dialog__title' }, icons.luna({ size: 20 }), 'Aikajana'),
-              e('div', { className: 'faust-dialog__sub' }, 'Luvut, tapahtuma-ajat ja juonilangat')
-            ),
-            e('button', {
-              type: 'button',
-              className: 'faust-btn faust-btn--icon',
-              'aria-label': 'Sulje',
-              title: 'Sulje',
-              onClick: closeTimeline
-            }, icons.close({ size: 16 }))
-          ),
-
-          e('div', { className: 'faust-dialog__body' },
             chapters.length > 0 ? e('div', { className: 'faust-timeline' },
               // One grid for the chapters and the threads, so a bar starts and ends under its chapters
               e('div', { className: 'faust-timeline__grid', style: { '--n': String(chapters.length) } },
@@ -8925,8 +8802,6 @@ ${contextPrompt}`;
               e('div', { className: 'faust-empty__title' }, 'Ei vielä lukuja.'),
               e('div', { className: 'faust-empty__hint' }, 'Lisää ensimmäinen luku sivupalkista.')
             )
-          )
-        )
       );
     })()),
 
@@ -9004,36 +8879,25 @@ ${contextPrompt}`;
         setUnsavedChanges(true);
       };
 
-      return e('div', {
-        className: 'faust-scrim',
-        onMouseDown: (ev) => { if (ev.target === ev.currentTarget) closeResearch(); }
+      // A view: a press on the scrim closes it (R-69); its notes save as typed
+      return e(Dialog, {
+        title: 'Tutkimuskansio',
+        icon: icons.trigon({ size: 20 }),
+        sub: 'Muistiinpanot, linkit ja muu taustamateriaali',
+        size: 'lg',
+        dismissOnScrim: true,
+        onClose: closeResearch,
+        actions: e(React.Fragment, null,
+          e('button', { type: 'button', className: 'faust-btn', onClick: addNote }, '+ Muistiinpano…'),
+          e('button', { type: 'button', className: 'faust-btn', onClick: addLink }, '+ Linkki…'),
+          e('button', {
+            type: 'button',
+            className: 'faust-btn',
+            title: 'Tallenna muistiin, missä taustamateriaali on. Tiedostoa ei kopioida projektiin.',
+            onClick: addFileReference
+          }, '+ Tiedostoviite…')
+        )
       },
-        e('div', { className: 'faust-dialog faust-dialog--lg', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'research-title' },
-          e('div', { className: 'faust-dialog__header' },
-            e('div', { className: 'faust-dialog__heading' },
-              e('h2', { id: 'research-title', className: 'faust-dialog__title' }, icons.trigon({ size: 20 }), 'Tutkimuskansio'),
-              e('div', { className: 'faust-dialog__sub' }, 'Muistiinpanot, linkit ja muu taustamateriaali')
-            ),
-            e('div', { className: 'faust-dialog__actions' },
-              e('button', { type: 'button', className: 'faust-btn', onClick: addNote }, '+ Muistiinpano…'),
-              e('button', { type: 'button', className: 'faust-btn', onClick: addLink }, '+ Linkki…'),
-              e('button', {
-                type: 'button',
-                className: 'faust-btn',
-                title: 'Tallenna muistiin, missä taustamateriaali on. Tiedostoa ei kopioida projektiin.',
-                onClick: addFileReference
-              }, '+ Tiedostoviite…')
-            ),
-            e('button', {
-              type: 'button',
-              className: 'faust-btn faust-btn--icon',
-              'aria-label': 'Sulje',
-              title: 'Sulje',
-              onClick: closeResearch
-            }, icons.close({ size: 16 }))
-          ),
-
-          e('div', { className: 'faust-dialog__body' },
             items.length > 0 ? e('div', { className: 'faust-cardgrid' },
               items.map((item, idx) => {
                 const typeKey = typeIcons[item.type] ? item.type : 'image';
@@ -9095,8 +8959,6 @@ ${contextPrompt}`;
               e('div', { className: 'faust-empty__title' }, 'Ei vielä taustamateriaalia.'),
               e('div', { className: 'faust-empty__hint' }, 'Lisää muistiinpanoja tai linkkejä.')
             )
-          )
-        )
       );
     })()),
 
@@ -9145,29 +9007,53 @@ ${contextPrompt}`;
       // The filled part of a slider's track (the range recipe reads --value)
       const trackFill = (value, min, max) => ({ '--value': Math.min(Math.max((value - min) / (max - min), 0), 1) * 100 + '%' });
 
-      return e('div', { className: 'faust-scrim' },
-        e('div', {
-          className: 'faust-dialog faust-dialog--lg',
-          role: 'dialog',
-          'aria-modal': 'true',
-          'aria-labelledby': 'ai-writing-title',
-          'aria-busy': continuingWriting ? 'true' : undefined
-        },
-          e('div', { className: 'faust-dialog__header' },
-            e('div', { className: 'faust-dialog__heading' },
-              e('h2', { id: 'ai-writing-title', className: 'faust-dialog__title' }, 'Kirjoita tekoälyn kanssa'),
-              e('div', { className: 'faust-dialog__sub' }, 'Tekoäly ehdottaa tekstiä. Mitään ei lisätä lukuun ennen kuin hyväksyt ehdotuksen.')
-            ),
-            e('button', {
+      // A form: a press on the scrim closes nothing; Esc does what the close button does (R-69, R-70)
+      return e(Dialog, {
+        title: 'Kirjoita tekoälyn kanssa',
+        sub: 'Tekoäly ehdottaa tekstiä. Mitään ei lisätä lukuun ennen kuin hyväksyt ehdotuksen.',
+        size: 'lg',
+        busy: continuingWriting,
+        onClose: closeWriting,
+        footer: continuePreview
+          ? [
+              e('button', {
+                key: 'reject',
+                type: 'button',
+                className: 'faust-btn faust-btn--lg faust-btn--quiet',
+                onClick: () => rejectContinuation()
+              }, 'Hylkää'),
+              e('button', {
+                key: 'again',
+                type: 'button',
+                className: 'faust-btn faust-btn--lg',
+                disabled: continuingWriting,
+                onClick: requestSuggestion
+              }, 'Luo uusi ehdotus'),
+              appendsOrReplaces && e('button', {
+                key: 'replace',
+                type: 'button',
+                className: 'faust-btn faust-btn--lg',
+                onClick: () => acceptExpansion()
+              }, 'Korvaa koko luku…'),
+              e('button', {
+                key: 'accept',
+                type: 'button',
+                className: 'faust-btn faust-btn--lg faust-btn--primary',
+                onClick: () => (hybridMode === 'rewrite' ? acceptRewrite() : acceptContinuation())
+              }, hybridMode === 'rewrite' ? 'Korvaa valittu teksti' : 'Lisää luvun loppuun')
+            ]
+          : e('button', {
               type: 'button',
-              className: 'faust-btn faust-btn--icon',
-              'aria-label': 'Sulje',
-              title: 'Sulje',
-              onClick: closeWriting
-            }, icons.close({ size: 16 }))
-          ),
-
-          e('div', { className: 'faust-dialog__body' },
+              className: 'faust-btn faust-btn--lg faust-btn--primary',
+              disabled: requestBlocked,
+              title: blockedReason,
+              'aria-busy': continuingWriting ? 'true' : undefined,
+              onClick: requestSuggestion
+            },
+              continuingWriting && e('span', { className: 'faust-spinner faust-spinner--sm' }),
+              continuingWriting ? 'Luodaan ehdotusta…' : 'Luo ehdotus'
+            )
+      },
             continuePreview
               // The ehdotus
               ? e('div', { className: 'faust-result' },
@@ -9305,50 +9191,6 @@ ${contextPrompt}`;
                     )
                   )
                 )
-          ),
-
-          e('div', { className: 'faust-dialog__footer' },
-            continuePreview
-              ? [
-                  e('button', {
-                    key: 'reject',
-                    type: 'button',
-                    className: 'faust-btn faust-btn--lg faust-btn--quiet',
-                    onClick: () => rejectContinuation()
-                  }, 'Hylkää'),
-                  e('button', {
-                    key: 'again',
-                    type: 'button',
-                    className: 'faust-btn faust-btn--lg',
-                    disabled: continuingWriting,
-                    onClick: requestSuggestion
-                  }, 'Luo uusi ehdotus'),
-                  appendsOrReplaces && e('button', {
-                    key: 'replace',
-                    type: 'button',
-                    className: 'faust-btn faust-btn--lg',
-                    onClick: () => acceptExpansion()
-                  }, 'Korvaa koko luku…'),
-                  e('button', {
-                    key: 'accept',
-                    type: 'button',
-                    className: 'faust-btn faust-btn--lg faust-btn--primary',
-                    onClick: () => (hybridMode === 'rewrite' ? acceptRewrite() : acceptContinuation())
-                  }, hybridMode === 'rewrite' ? 'Korvaa valittu teksti' : 'Lisää luvun loppuun')
-                ]
-              : e('button', {
-                  type: 'button',
-                  className: 'faust-btn faust-btn--lg faust-btn--primary',
-                  disabled: requestBlocked,
-                  title: blockedReason,
-                  'aria-busy': continuingWriting ? 'true' : undefined,
-                  onClick: requestSuggestion
-                },
-                  continuingWriting && e('span', { className: 'faust-spinner faust-spinner--sm' }),
-                  continuingWriting ? 'Luodaan ehdotusta…' : 'Luo ehdotus'
-                )
-          )
-        )
       );
     })()),
 
