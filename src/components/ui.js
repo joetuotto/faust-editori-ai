@@ -16,9 +16,10 @@
  *
  * Part 2, controls: Button, IconButton, SigilButton, Field, Tabs, Segmented, Chip, Row, Section,
  *   Progress, Spinner, EmptyState, Callout, Rating, VoiceButton, DiffView (+ coalesceDiff).
- * Part 3, layers: layerStack, Dialog, Popover with usePopover, Tooltip. What opens over other
- *   content renders in the layer host (.faust-layer, the last child of .faust-app) through
- *   ReactDOM.createPortal, or in place when there is no host.
+ * Part 3, layers: layerStack, Dialog, Popover with usePopover, Tooltip; holdLayer, returnFocus
+ *   and scrimPress for the modal layers that do not render through Dialog. What opens over other content renders
+ *   in the layer host (.faust-layer, the last child of .faust-app) through ReactDOM.createPortal,
+ *   or in place when there is no host.
  *
  * Esc closes the topmost layer only. Dialogs and anything anchored inside a dialog take it in the
  * capture phase through layerStack; a popover outside a dialog takes it in the bubble phase on
@@ -510,15 +511,22 @@ if (typeof document !== 'undefined') {
 }
 
 /**
- * The stack of open modal layers (dialogs, and popovers or menus inside a dialog), topmost last.
+ * The stack of open modal layers (dialogs, questions, the script-tag forms, and popovers or menus
+ * inside a dialog), topmost last. It is also the one stacking order of every modal layer.
  *   push(onEscape?) → token   remove(token)   isTop(token)   size()
+ *   place(token) → how many layers are open under it (-1 when it is not open)
+ *   subscribe(fn) → unsubscribe; fn runs whenever a layer opens or closes
  * One capture-phase listener on window gives Esc to the topmost layer and stops the event there.
- * A layer pushed without onEscape handles the key itself and checks isTop(token) first (the
- * script-tag form modals, through window.FaustUI.layerStack).
+ * A layer pushed without onEscape handles the key itself and checks isTop(token) first.
+ * A layer with a scrim stands at z --z-modal + place + 1 and is stacked (its scrim not painted)
+ * when its place is above 0; it follows its place through subscribe, so when a layer under it
+ * closes it moves down and the new bottom layer paints the dimming again.
  */
 const layers = [];
 let layerSeq = 0;
 let layerKeysOn = false;
+const layerListeners = new Set();
+const emitLayers = () => Array.from(layerListeners).forEach(fn => fn());
 function onLayerKeyDown(ev) {
   if (ev.key !== 'Escape' || layers.length === 0) return;
   const top = layers[layers.length - 1];
@@ -535,35 +543,51 @@ export const layerStack = {
     }
     const token = ++layerSeq;
     layers.push({ token, onEscape });
+    emitLayers();
     return token;
   },
   remove(token) {
     const index = layers.findIndex(layer => layer.token === token);
-    if (index !== -1) layers.splice(index, 1);
+    if (index === -1) return;
+    layers.splice(index, 1);
+    emitLayers();
   },
   isTop(token) {
     return layers.length > 0 && layers[layers.length - 1].token === token;
   },
   size() {
     return layers.length;
+  },
+  place(token) {
+    return layers.findIndex(layer => layer.token === token);
+  },
+  subscribe(fn) {
+    layerListeners.add(fn);
+    return () => { layerListeners.delete(fn); };
   }
 };
 
 // The background of an open dialog is inert: every sibling on the way from the scrim up to
 // .faust-app (notifications excepted). Counted, so stacked dialogs release in any order.
+// The layer host itself stays live, because a layer opened later renders into it (a dialog over
+// a form or a question that renders in place); what is in it now is held one by one.
 const inertHolds = new Map();
 function holdBackground(scrim) {
   if (!scrim || typeof document === 'undefined') return () => {};
   const top = scrim.closest('.faust-app') || document.body;
   const held = [];
+  const hold = (el) => {
+    const holds = inertHolds.get(el) || 0;
+    if (holds === 0 && el.inert) return;                   // inert for its own reasons: not ours to release
+    if (holds === 0) el.inert = true;
+    inertHolds.set(el, holds + 1);
+    held.push(el);
+  };
   for (let node = scrim; node && node !== top && node.parentElement; node = node.parentElement) {
     for (const sibling of Array.from(node.parentElement.children)) {
       if (sibling === node || sibling.classList.contains('faust-toast-host')) continue;
-      const holds = inertHolds.get(sibling) || 0;
-      if (holds === 0 && sibling.inert) continue;          // inert for its own reasons: not ours to release
-      if (holds === 0) sibling.inert = true;
-      inertHolds.set(sibling, holds + 1);
-      held.push(sibling);
+      if (sibling.classList.contains('faust-layer')) Array.from(sibling.children).forEach(hold);
+      else hold(sibling);
     }
   }
   return () => held.forEach((el) => {
@@ -584,13 +608,49 @@ function keepTabInside(ev) {
   else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
 }
 
-// The open shared dialogs, oldest first. Each dialog takes its z-order and its scrim from its
-// current place in this list, so when a lower dialog closes the ones above it move down: the
-// new bottom one gets the dimming scrim back, and a dialog opened later still lands on top.
-let dialogOrder = [];
-let dialogSeq = 0;
-const dialogListeners = new Set();
-const emitDialogs = () => dialogListeners.forEach(fn => fn(dialogOrder));
+// Where each open modal layer gives the focus back, by its scrim
+const restoreOf = new WeakMap();
+
+/**
+ * Gives the focus back to previous when a modal layer closes. When previous went away with a
+ * layer that closed earlier (a lower dialog closed from the menu while this one was open), the
+ * focus goes where that layer would have given it, and so on down.
+ */
+export function returnFocus(previous) {
+  let target = previous;
+  for (let hops = 0; target && !target.isConnected && hops < 16; hops++) {
+    const scrim = target.closest ? target.closest('.faust-scrim') : null;
+    target = scrim ? restoreOf.get(scrim) : null;
+  }
+  if (target && target.isConnected && typeof target.focus === 'function') target.focus();
+}
+
+/**
+ * What a modal layer that does not render through Dialog takes from it (the prompt, the confirm
+ * and the script-tag forms, on window.FaustUI): the background inert, Tab kept inside the panel,
+ * and previous (the focus before it opened) remembered for returnFocus. Call it once the scrim
+ * and the panel are in the document; it returns the release.
+ */
+export function holdLayer(scrim, panel, previous) {
+  if (scrim && previous) restoreOf.set(scrim, previous);
+  const release = holdBackground(scrim);
+  if (panel) panel.addEventListener('keydown', keepTabInside);
+  return () => {
+    if (panel) panel.removeEventListener('keydown', keepTabInside);
+    release();
+  };
+}
+
+/**
+ * A press on a scrim: the default action of a mousedown would move the focus to the body after the
+ * layer has closed and given the focus back, and out of a form that stays open. So it is always
+ * prevented on the scrim itself; dismiss (a view, not busy) also closes the layer.
+ */
+export function scrimPress(ev, dismiss) {
+  if (ev.target !== ev.currentTarget) return;
+  ev.preventDefault();
+  if (dismiss) dismiss();
+}
 
 /**
  * The shared dialog: scrim and panel in the layer host, Esc through the layer stack (onClose),
@@ -611,35 +671,31 @@ function DialogFrame({ title, sub, icon, size = 'md', width, actions, bodyMode, 
   const titleId = useId();
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-  const [dialogId] = useState(() => ++dialogSeq);
-  const [openList, setOpenList] = useState(dialogOrder);
+  // Its place in the layer stack: how many layers are open under it. Before the layout effect
+  // has pushed it, it is the newest, so the top.
+  const [below, setBelow] = useState(() => layerStack.size());
 
   useLayoutEffect(() => {
-    dialogListeners.add(setOpenList);
-    dialogOrder = [...dialogOrder, dialogId];
-    emitDialogs();
+    const token = layerStack.push(() => { if (onCloseRef.current) onCloseRef.current(); });
+    const follow = () => setBelow(Math.max(0, layerStack.place(token)));
+    follow();
+    const stop = layerStack.subscribe(follow);
     return () => {
-      dialogListeners.delete(setOpenList);
-      dialogOrder = dialogOrder.filter(id => id !== dialogId);
-      emitDialogs();
+      stop();
+      layerStack.remove(token);
     };
   }, []);
-
-  // Before the layout effect has run the dialog is not listed yet: it is the newest, so the top
-  const place = openList.includes(dialogId) ? openList.indexOf(dialogId) : openList.length;
-  const stack = { order: place + 1, stacked: place > 0 };
 
   useEffect(() => {
     const previous = document.activeElement;
     const panel = panelRef.current;
     const target = panel && (panel.querySelector('[data-autofocus]') || panel.querySelector(FIELDS) || panel);
     if (target && target.focus) target.focus();
-    const token = layerStack.push(() => { if (onCloseRef.current) onCloseRef.current(); });
+    if (scrimRef.current && previous) restoreOf.set(scrimRef.current, previous);
     const release = holdBackground(scrimRef.current);
     return () => {
-      layerStack.remove(token);
       release();
-      if (previous && previous.focus && document.contains(previous)) previous.focus();
+      returnFocus(previous);
     };
   }, []);
 
@@ -647,9 +703,9 @@ function DialogFrame({ title, sub, icon, size = 'md', width, actions, bodyMode, 
 
   return inLayer(e('div', {
     ref: scrimRef,
-    className: cx('faust-scrim', stack.stacked && 'is-stacked'),
-    style: { zIndex: `calc(var(--z-modal) + ${stack.order})` },
-    onMouseDown: (ev) => { if (dismissOnScrim && !busy && ev.target === ev.currentTarget) close(); }
+    className: cx('faust-scrim', below > 0 && 'is-stacked'),
+    style: { zIndex: `calc(var(--z-modal) + ${below + 1})` },
+    onMouseDown: (ev) => scrimPress(ev, dismissOnScrim && !busy ? close : null)
   },
     e('div', {
       ref: panelRef,
@@ -966,6 +1022,6 @@ if (typeof window !== 'undefined') {
     notify, inferKind, installAlertShim, ToastHost,
     Button, IconButton, SigilButton, Field, Tabs, Segmented, Chip, Row, Section, Progress, Spinner,
     EmptyState, Callout, Rating, VoiceButton, DiffView, coalesceDiff,
-    layerStack, Dialog, Popover, usePopover, Tooltip
+    layerStack, holdLayer, returnFocus, scrimPress, Dialog, Popover, usePopover, Tooltip
   });
 }

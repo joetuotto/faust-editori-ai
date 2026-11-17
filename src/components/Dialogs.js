@@ -16,13 +16,13 @@
  */
 
 import { icons } from './icons.js';
-import { layerStack } from './ui.js';
+import { layerStack, holdLayer, returnFocus, scrimPress, Dialog } from './ui.js';
 
 const { createElement: e, useState, useEffect, useLayoutEffect, useRef, useId } = React;
 
 // Frame (styles/faust-components.css, sections 3, 4 and 9). Prompt and confirm are one-box
-// panels above every modal (--top); shortcuts, export and collection have header, body and footer.
-const SCRIM = 'faust-scrim';
+// panels above every modal (--top); shortcuts, export and collection render through the shared
+// Dialog of ui.js (header, body and footer, in the layer host).
 const SCRIM_TOP = 'faust-scrim faust-scrim--top';
 const plainPanel = (size) => `faust-dialog faust-dialog--${size} faust-dialog--plain`;
 const buttonClass = ({ primary = false, danger = false } = {}) =>
@@ -30,52 +30,37 @@ const buttonClass = ({ primary = false, danger = false } = {}) =>
 // The button row of a one-box panel: Peruuta first, the action last and right-aligned
 const buttonRowStyle = { display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-2)', marginTop: 'var(--sp-5)' };
 
-// The close control of a dialog header (Esc closes these dialogs too)
-const closeButton = (onClose) => e('button', {
-  type: 'button',
-  className: 'faust-btn faust-btn--icon',
-  'aria-label': 'Sulje',
-  title: 'Sulje (Esc)',
-  onClick: onClose
-}, icons.close({ size: 16 }));
-
-const dialogHeader = (titleId, title, onClose) => e('div', { className: 'faust-dialog__header' },
-  e('div', { className: 'faust-dialog__heading' },
-    e('h2', { id: titleId, className: 'faust-dialog__title' }, title)
-  ),
-  closeButton(onClose)
-);
-
 /**
- * An open dialog of this file is a layer of the layer stack in ui.js (R-70). Esc reaches the
+ * The prompt and the confirm are layers of the layer stack in ui.js (R-70). Esc reaches the
  * topmost layer only, through the stack's one capture listener on window, and runs onEscape
- * (a function that does nothing: the layer takes Esc and ignores it). Returns how many layers were
- * open under it when it opened, so that it can stand above them; closing it gives the focus back
- * to where it was.
+ * (a function that does nothing: the layer takes Esc and ignores it). While open, the background
+ * is inert and Tab stays inside the panel (holdLayer); closing gives the focus back to where it
+ * was. Returns how many layers are open under it, kept current: above another layer the --top
+ * scrim is stacked, so the dimming is painted once (V 4.8, second layer).
  */
-function useLayer(active, onEscape) {
+function useLayer(active, onEscape, scrimRef, panelRef) {
   const escapeRef = useRef(onEscape);
   escapeRef.current = onEscape;
   const [below, setBelow] = useState(0);
   useLayoutEffect(() => {
     if (!active) return undefined;
     const previous = document.activeElement;
-    setBelow(layerStack.size());
     const token = layerStack.push((ev) => escapeRef.current(ev));
+    const follow = () => setBelow(Math.max(0, layerStack.place(token)));
+    follow();
+    const stop = layerStack.subscribe(follow);
+    const release = holdLayer(scrimRef.current, panelRef.current, previous);
     return () => {
+      stop();
       layerStack.remove(token);
-      if (previous && previous.focus && document.contains(previous)) previous.focus();
+      release();
+      returnFocus(previous);
     };
   }, [active]);
   return below;
 }
 
-// The scrim of shortcuts, export and collection: above the layers that were open before it, in
-// the order of opening, with the dimming painted once (V 4.8, stacking). Prompt and confirm stay
-// on --top, above every dialog.
-const stackedScrim = (below) => (below > 0
-  ? { className: SCRIM + ' is-stacked', style: { zIndex: `calc(var(--z-modal) + ${below + 1})` } }
-  : { className: SCRIM });
+const topScrim = (below) => SCRIM_TOP + (below > 0 ? ' is-stacked' : '');
 
 // ---------------------------------------------------------------------------
 // Keys
@@ -332,9 +317,11 @@ const failure = (action, reason) =>
 export function TextPromptDialog({ request, onDone }) {
   const [value, setValue] = useState('');
   const inputRef = useRef(null);
+  const scrimRef = useRef(null);
+  const panelRef = useRef(null);
   const titleId = useId();
   // Esc cancels, wherever the focus is (the layer stack)
-  useLayer(!!request, () => onDone(null));
+  const below = useLayer(!!request, () => onDone(null), scrimRef, panelRef);
 
   useEffect(() => {
     if (!request) return;
@@ -359,9 +346,10 @@ export function TextPromptDialog({ request, onDone }) {
     }
   };
 
-  // A form: a press on the scrim closes nothing (R-69); Esc and Peruuta cancel
-  return e('div', { className: SCRIM_TOP },
-    e('div', { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, className: plainPanel('sm') },
+  // A form: a press on the scrim closes nothing (R-69) and leaves the focus in the field; Esc and
+  // Peruuta cancel
+  return e('div', { ref: scrimRef, className: topScrim(below), onMouseDown: (ev) => scrimPress(ev, null) },
+    e('div', { ref: panelRef, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, className: plainPanel('sm') },
       e('h2', { id: titleId, className: 'faust-dialog__title', style: { whiteSpace: 'pre-line' } }, request.title),
       e('input', {
         ref: inputRef,
@@ -386,33 +374,17 @@ export function TextPromptDialog({ request, onDone }) {
  * aiDisabled leaves out the rows of tekoäly commands.
  */
 export function ShortcutsDialog({ open, onClose, aiDisabled = false }) {
-  const titleId = useId();
-  const below = useLayer(open, () => onClose());
-
   if (!open) return null;
 
-  return e('div', {
-    ...stackedScrim(below),
-    onMouseDown: (ev) => { if (ev.target === ev.currentTarget) onClose(); }
-  },
-    e('div', {
-      role: 'dialog',
-      'aria-modal': 'true',
-      'aria-labelledby': titleId,
-      className: 'faust-dialog faust-dialog--lg',
-      style: { '--dialog-w': '800px' }
-    },
-      dialogHeader(titleId, 'Pikanäppäimet', onClose),
-      e('div', { className: 'faust-dialog__body' },
-        // Two columns of rows: the command in serif, each key a keycap
-        shortcutGrid(SHORTCUT_GROUPS, aiDisabled),
-        EDITOR_SHORTCUT_GROUPS.length > 0 && e('div', { className: 'faust-section' },
-          e('div', { className: 'faust-section__head' },
-            e('div', { className: 'faust-section__title', role: 'heading', 'aria-level': 3 }, 'Tekstissä')
-          ),
-          shortcutGrid(EDITOR_SHORTCUT_GROUPS, aiDisabled)
-        )
-      )
+  // A view: a press on the scrim closes it
+  return e(Dialog, { title: 'Pikanäppäimet', size: 'lg', width: 800, onClose, dismissOnScrim: true },
+    // Two columns of rows: the command in serif, each key a keycap
+    shortcutGrid(SHORTCUT_GROUPS, aiDisabled),
+    EDITOR_SHORTCUT_GROUPS.length > 0 && e('div', { className: 'faust-section' },
+      e('div', { className: 'faust-section__head' },
+        e('div', { className: 'faust-section__title', role: 'heading', 'aria-level': 3 }, 'Tekstissä')
+      ),
+      shortcutGrid(EDITOR_SHORTCUT_GROUPS, aiDisabled)
     )
   );
 }
@@ -444,7 +416,6 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
   const [selected, setSelected] = useState([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState(null); // { kind: 'ok' | 'error', text }
-  const titleId = useId();
 
   // Start clean every time the dialog opens
   useEffect(() => {
@@ -453,8 +424,6 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
       setBusy(false);
     }
   }, [open]);
-
-  const below = useLayer(open, () => onClose());
 
   if (!open) return null;
 
@@ -495,76 +464,68 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
   );
 
   // A form (choices and an action): a press on the scrim closes nothing (R-69)
-  return e('div', stackedScrim(below),
-    e('div', {
-      role: 'dialog',
-      'aria-modal': 'true',
-      'aria-labelledby': titleId,
-      'aria-busy': busy || undefined,
-      className: 'faust-dialog faust-dialog--md'
-    },
-      dialogHeader(titleId, 'Vie käsikirjoitus', onClose),
+  return e(Dialog, {
+    title: 'Vie käsikirjoitus',
+    size: 'md',
+    onClose,
+    busy,
+    footer: e(React.Fragment, null,
+      e('button', { type: 'button', onClick: onClose, className: buttonClass(), title: 'Sulje (Esc)' }, 'Sulje'),
+      e('button', {
+        type: 'button',
+        onClick: runExport,
+        disabled: !canExport,
+        'aria-busy': busy || undefined,
+        className: buttonClass({ primary: true })
+      }, busy && e('span', { className: 'faust-spinner faust-spinner--sm' }), busy ? 'Viedään…' : 'Vie…')
+    )
+  },
+    chapters.length === 0 && e('p', { className: 'faust-serif' },
+      'Projektissa ei ole vielä tekstiä vietäväksi.'),
 
-      e('div', { className: 'faust-dialog__body' },
-        chapters.length === 0 && e('p', { className: 'faust-serif' },
-          'Projektissa ei ole vielä tekstiä vietäväksi.'),
-
-        e('div', { className: 'faust-section' },
-          sectionTitle('Mitä viedään'),
-          e('div', { className: 'faust-check-group faust-check-group--grid', role: 'radiogroup', 'aria-label': 'Mitä viedään' },
-            radio('export-scope', 'all', scope, setScope, 'Koko käsikirjoitus', count(chapters.length, 'luku')),
-            radio('export-scope', 'current', scope, setScope, 'Avoin luku', currentAvailable ? null : 'luvussa ei ole tekstiä', !currentAvailable),
-            radio('export-scope', 'selected', scope, setScope, 'Valitut luvut', null)
-          ),
-
-          scope === 'selected' && e('div', {
-            className: 'faust-card faust-card--compact',
-            style: { maxHeight: '160px', overflowY: 'auto', margin: 'var(--sp-2) 0 0 var(--sp-5)' }
-          },
-            chapters.map(chapter => e('label', {
-              key: chapter.id,
-              className: 'faust-check faust-check--serif'
-            },
-              e('input', {
-                type: 'checkbox',
-                checked: selected.includes(chapter.id),
-                onChange: (ev) => setSelected(prev => ev.target.checked
-                  ? [...prev, chapter.id]
-                  : prev.filter(id => id !== chapter.id))
-              }),
-              e('span', { style: { flex: 1, minWidth: 0 } }, chapter.title),
-              e('span', { className: 'faust-check__hint' }, count(chapter.words, 'sana'))
-            ))
-          )
-        ),
-
-        e('div', { className: 'faust-section' },
-          sectionTitle('Muoto'),
-          e('div', { className: 'faust-check-group faust-check-group--grid', role: 'radiogroup', 'aria-label': 'Muoto' },
-            EXPORT_FORMATS.map(item => radio('export-format', item.id, format, setFormat, item.label, item.hint))
-          )
-        ),
-
-        message && e('div', {
-          role: message.kind === 'error' ? 'alert' : 'status',
-          className: 'faust-callout ' + (message.kind === 'error' ? 'faust-callout--error' : 'faust-callout--success')
-        },
-          e('span', { className: 'faust-callout__icon' },
-            message.kind === 'error' ? icons.error({ size: 16 }) : icons.success({ size: 16 })),
-          e('div', { className: 'faust-callout__title', style: { overflowWrap: 'anywhere' } }, message.text)
-        )
+    e('div', { className: 'faust-section' },
+      sectionTitle('Mitä viedään'),
+      e('div', { className: 'faust-check-group faust-check-group--grid', role: 'radiogroup', 'aria-label': 'Mitä viedään' },
+        radio('export-scope', 'all', scope, setScope, 'Koko käsikirjoitus', count(chapters.length, 'luku')),
+        radio('export-scope', 'current', scope, setScope, 'Avoin luku', currentAvailable ? null : 'luvussa ei ole tekstiä', !currentAvailable),
+        radio('export-scope', 'selected', scope, setScope, 'Valitut luvut', null)
       ),
 
-      e('div', { className: 'faust-dialog__footer' },
-        e('button', { type: 'button', onClick: onClose, className: buttonClass(), title: 'Sulje (Esc)' }, 'Sulje'),
-        e('button', {
-          type: 'button',
-          onClick: runExport,
-          disabled: !canExport,
-          'aria-busy': busy || undefined,
-          className: buttonClass({ primary: true })
-        }, busy && e('span', { className: 'faust-spinner faust-spinner--sm' }), busy ? 'Viedään…' : 'Vie…')
+      scope === 'selected' && e('div', {
+        className: 'faust-card faust-card--compact',
+        style: { maxHeight: '160px', overflowY: 'auto', margin: 'var(--sp-2) 0 0 var(--sp-5)' }
+      },
+        chapters.map(chapter => e('label', {
+          key: chapter.id,
+          className: 'faust-check faust-check--serif'
+        },
+          e('input', {
+            type: 'checkbox',
+            checked: selected.includes(chapter.id),
+            onChange: (ev) => setSelected(prev => ev.target.checked
+              ? [...prev, chapter.id]
+              : prev.filter(id => id !== chapter.id))
+          }),
+          e('span', { style: { flex: 1, minWidth: 0 } }, chapter.title),
+          e('span', { className: 'faust-check__hint' }, count(chapter.words, 'sana'))
+        ))
       )
+    ),
+
+    e('div', { className: 'faust-section' },
+      sectionTitle('Muoto'),
+      e('div', { className: 'faust-check-group faust-check-group--grid', role: 'radiogroup', 'aria-label': 'Muoto' },
+        EXPORT_FORMATS.map(item => radio('export-format', item.id, format, setFormat, item.label, item.hint))
+      )
+    ),
+
+    message && e('div', {
+      role: message.kind === 'error' ? 'alert' : 'status',
+      className: 'faust-callout ' + (message.kind === 'error' ? 'faust-callout--error' : 'faust-callout--success')
+    },
+      e('span', { className: 'faust-callout__icon' },
+        message.kind === 'error' ? icons.error({ size: 16 }) : icons.success({ size: 16 })),
+      e('div', { className: 'faust-callout__title', style: { overflowWrap: 'anywhere' } }, message.text)
     )
   );
 }
@@ -583,10 +544,12 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
  */
 export function ConfirmDialog({ request, onDone }) {
   const confirmRef = useRef(null);
+  const scrimRef = useRef(null);
+  const panelRef = useRef(null);
   const titleId = useId();
   // Esc answers Peruuta; a question that must be answered with a button takes Esc and does
   // nothing with it (BUG-1), so nothing under it closes either
-  useLayer(!!request, () => { if (!request.requireChoice) onDone(false); });
+  const below = useLayer(!!request, () => { if (!request.requireChoice) onDone(false); }, scrimRef, panelRef);
 
   useEffect(() => {
     if (!request) return;
@@ -596,8 +559,9 @@ export function ConfirmDialog({ request, onDone }) {
 
   if (!request) return null;
 
-  return e('div', { className: SCRIM_TOP },
-    e('div', { role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': titleId, className: plainPanel('sm') },
+  // A press on the scrim answers nothing and leaves the focus on the buttons
+  return e('div', { ref: scrimRef, className: topScrim(below), onMouseDown: (ev) => scrimPress(ev, null) },
+    e('div', { ref: panelRef, role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': titleId, className: plainPanel('sm') },
       e('h2', { id: titleId, className: 'faust-dialog__title' }, request.title),
       request.message && e('div', { className: 'faust-serif', style: { whiteSpace: 'pre-line' } }, request.message),
       e('div', { style: buttonRowStyle },
@@ -650,7 +614,6 @@ export function CollectionDialog({ open, onCancel, onCreate }) {
   const [filterMissing, setFilterMissing] = useState(false);
   const nameRef = useRef(null);
   const filterRef = useRef(null);
-  const titleId = useId();
   const nameErrorId = useId();
   const filterErrorId = useId();
 
@@ -667,8 +630,6 @@ export function CollectionDialog({ open, onCancel, onCreate }) {
     const timer = setTimeout(() => nameRef.current && nameRef.current.focus(), 0);
     return () => clearTimeout(timer);
   }, [open]);
-
-  const below = useLayer(open, () => onCancel());
 
   if (!open) return null;
 
@@ -706,55 +667,53 @@ export function CollectionDialog({ open, onCancel, onCreate }) {
     extra
   );
 
-  return e('div', stackedScrim(below),
-    e('div', { role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, className: 'faust-dialog faust-dialog--sm' },
-      dialogHeader(titleId, 'Uusi kokoelma', onCancel),
+  // A form: a press on the scrim closes nothing (R-69); Esc and Peruuta cancel
+  return e(Dialog, {
+    title: 'Uusi kokoelma',
+    size: 'sm',
+    onClose: onCancel,
+    footer: e(React.Fragment, null,
+      e('button', { type: 'button', onClick: onCancel, className: buttonClass() }, 'Peruuta'),
+      e('button', { type: 'button', onClick: create, className: buttonClass({ primary: true }) }, 'Luo kokoelma')
+    )
+  },
+    field('Nimi',
+      e('input', {
+        ref: nameRef,
+        type: 'text',
+        className: 'faust-input faust-input--author',
+        value: name,
+        'aria-invalid': nameMissing || undefined,
+        'aria-describedby': nameErrorId,
+        onChange: (ev) => { setName(ev.target.value); if (nameMissing) setNameMissing(false); }
+      }),
+      e('span', { id: nameErrorId, className: 'faust-field__error' }, nameMissing ? 'Nimi puuttuu.' : '')
+    ),
 
-      e('div', { className: 'faust-dialog__body' },
-        field('Nimi',
-          e('input', {
-            ref: nameRef,
-            type: 'text',
-            className: 'faust-input faust-input--author',
-            value: name,
-            'aria-invalid': nameMissing || undefined,
-            'aria-describedby': nameErrorId,
-            onChange: (ev) => { setName(ev.target.value); if (nameMissing) setNameMissing(false); }
-          }),
-          e('span', { id: nameErrorId, className: 'faust-field__error' }, nameMissing ? 'Nimi puuttuu.' : '')
-        ),
+    field('Kokoelmaan kuuluvat',
+      e('select', {
+        className: 'faust-select',
+        value: type,
+        onChange: (ev) => { setType(ev.target.value); setFilterMissing(false); }
+      }, COLLECTION_KINDS.map(([value, label]) => e('option', { key: value, value }, label)))
+    ),
 
-        field('Kokoelmaan kuuluvat',
-          e('select', {
-            className: 'faust-select',
-            value: type,
-            onChange: (ev) => { setType(ev.target.value); setFilterMissing(false); }
-          }, COLLECTION_KINDS.map(([value, label]) => e('option', { key: value, value }, label)))
-        ),
+    type === 'status' && field('Luvun tila',
+      e('select', {
+        className: 'faust-select',
+        value: status,
+        onChange: (ev) => setStatus(ev.target.value)
+      }, STATUS_OPTIONS.map(([value, label]) => e('option', { key: value, value }, label)))
+    ),
 
-        type === 'status' && field('Luvun tila',
-          e('select', {
-            className: 'faust-select',
-            value: status,
-            onChange: (ev) => setStatus(ev.target.value)
-          }, STATUS_OPTIONS.map(([value, label]) => e('option', { key: value, value }, label)))
-        ),
+    type === 'character' && field('Hahmon nimi',
+      filterInput(character, setCharacter),
+      filterError('Hahmon nimi puuttuu.')
+    ),
 
-        type === 'character' && field('Hahmon nimi',
-          filterInput(character, setCharacter),
-          filterError('Hahmon nimi puuttuu.')
-        ),
-
-        type === 'search' && field('Hakusana',
-          filterInput(term, setTerm),
-          filterError('Hakusana puuttuu.')
-        )
-      ),
-
-      e('div', { className: 'faust-dialog__footer' },
-        e('button', { type: 'button', onClick: onCancel, className: buttonClass() }, 'Peruuta'),
-        e('button', { type: 'button', onClick: create, className: buttonClass({ primary: true }) }, 'Luo kokoelma')
-      )
+    type === 'search' && field('Hakusana',
+      filterInput(term, setTerm),
+      filterError('Hakusana puuttuu.')
     )
   );
 }

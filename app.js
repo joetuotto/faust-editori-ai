@@ -911,12 +911,20 @@ function FAUSTApp() {
   // layers, nearest first: the voice comparison (as Hylkää), the keskustelu, the Liminal Engine
   // panel, and last Keskittymistila. The handler lives in a ref that every render refreshes, so
   // the listener is registered once and needs no list of states.
+  // A panel that closes with the focus inside it gives the focus to the manuscript; otherwise the
+  // focus would fall to the body and the next keys would go nowhere.
+  const closePanelKeepingFocus = (selector, close) => {
+    const active = document.activeElement;
+    const inside = !!(active && active.closest && active.closest(selector));
+    close();
+    if (inside && editorRef.current) editorRef.current.focus();
+  };
   const handleEscapeRef = useRef(null);
   handleEscapeRef.current = (event) => {
     if (event.defaultPrevented || layerStack.size() > 0 || textPrompt || confirmRequest) return;
     if (voiceDiffView) rejectVoiceEdit();
-    else if (claudeChatOpen) setClaudeChatOpen(false);
-    else if (aiAssistantOpen) setAiAssistantOpen(false);
+    else if (claudeChatOpen) closePanelKeepingFocus('.claude-chat-container', () => setClaudeChatOpen(false));
+    else if (aiAssistantOpen) closePanelKeepingFocus('.faust-aipanel', () => setAiAssistantOpen(false));
     else if (focusMode) toggleFocusMode();
     else return;
     event.preventDefault();
@@ -9157,7 +9165,8 @@ ${contextPrompt}`;
       project: project,
       activeChapter: activeChapter,
       isOpen: claudeChatOpen && !aiAssistantOpen,
-      onClose: () => setClaudeChatOpen(false),
+      // Its own Esc (in its field) and its close button: the focus goes to the manuscript
+      onClose: () => closePanelKeepingFocus('.claude-chat-container', () => setClaudeChatOpen(false)),
       onInsertText: (text) => {
         if (activeChapter) {
           // The text as the editor has it now, not as it was at the last render

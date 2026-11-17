@@ -503,6 +503,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
   --dialog-pad: var(--sp-5);
   animation: faust-rise var(--dur-mid) var(--ease-std);
 }
+.faust-dialog:focus { outline: none; }        /* the panel (tabindex -1) only holds the focus of a dialog without a field; its frame stays --dialog-frame, never the browser's ring */
 .faust-dialog--sm { --dialog-w: 420px; }      /* confirm, prompt */
 .faust-dialog--md { --dialog-w: 520px; }      /* export, project settings */
 .faust-dialog--lg { --dialog-w: 720px;  --dialog-pad: var(--sp-6); }     /* sheets, lists, version history, continue writing; keyboard shortcuts at --dialog-w: 800px */

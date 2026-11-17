@@ -5,8 +5,8 @@
  * Script-tag compatible version for app.js integration. index.html loads this file in <head>,
  * before the bundle that assigns window.FaustIcons and window.FaustUI, so those globals are read
  * only inside the render function (R-89). The look comes from the dialog, field, section and row
- * classes of styles/faust-components.css. Esc, the stacking order and the focus go through
- * window.FaustUI.layerStack (useLayer below).
+ * classes of styles/faust-components.css. Esc, the stacking order, the inert background and the
+ * focus go through window.FaustUI.layerStack and window.FaustUI.holdLayer (useLayer below).
  */
 
 (function(window) {
@@ -19,26 +19,35 @@
   const icon = (name, size) => (icons()[name] ? icons()[name]({ size }) : null);
 
   // The form is a layer of window.FaustUI.layerStack (R-70; read here, at call time, R-89). Esc does
-  // what Peruuta does; the form stands above the layers that were open before it (its list window),
-  // with the dimming painted once; the focus moves into the form and, when it closes, back to where it
-  // was. Without the stack (the bundle has not run) the form only has no Esc.
+  // what Peruuta does; the form stands above the layers open under it (its list window) in the one
+  // stacking order of the stack, with the dimming painted once, and follows its place when a layer
+  // under it closes; window.FaustUI.holdLayer makes the background inert and keeps Tab inside the
+  // form; the focus moves into the form and, when it closes, back to where it was. Without the
+  // bundle's globals the form only has no Esc, no stacking and no hold.
   const FIELDS = 'input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled)';
-  const useLayer = (isOpen, onEscape, panelRef) => {
+  const useLayer = (isOpen, onEscape, panelRef, scrimRef) => {
     const escapeRef = useRef(onEscape);
     escapeRef.current = onEscape;
     const [below, setBelow] = useState(0);
     useLayoutEffect(() => {
       if (!isOpen) return undefined;
-      const stack = window.FaustUI && window.FaustUI.layerStack;
+      const ui = window.FaustUI || {};
+      const stack = ui.layerStack;
       const previous = document.activeElement;
-      setBelow(stack ? stack.size() : 0);
       const token = stack ? stack.push(() => escapeRef.current()) : null;
+      const follow = () => setBelow(token !== null ? Math.max(0, stack.place(token)) : 0);
+      follow();
+      const stop = token !== null ? stack.subscribe(follow) : () => {};
+      const release = ui.holdLayer ? ui.holdLayer(scrimRef.current, panelRef.current, previous) : () => {};
+      const restore = ui.returnFocus || ((el) => { if (el && el.focus && document.contains(el)) el.focus(); });
       const panel = panelRef.current;
       const first = panel && (panel.querySelector('[data-autofocus]') || panel.querySelector(FIELDS));
       if (first) first.focus(); else if (panel) panel.focus();
       return () => {
+        stop();
         if (token !== null) stack.remove(token);
-        if (previous && previous.focus && document.contains(previous)) previous.focus();
+        release();
+        restore(previous);
       };
     }, [isOpen]);
     return below;
@@ -194,7 +203,8 @@
     const [isSaving, setIsSaving] = useState(false);
     const [scrollRequest, setScrollRequest] = useState(0);
     const dialogRef = useRef(null);
-    const below = useLayer(isOpen, () => onClose(), dialogRef);
+    const scrimRef = useRef(null);
+    const below = useLayer(isOpen, () => onClose(), dialogRef, scrimRef);
 
     useEffect(() => {
       if (location) setFormData(fromLocation(location));
@@ -364,11 +374,15 @@
     );
 
     return e('div', {
+      ref: scrimRef,
       className: below > 0 ? 'faust-scrim is-stacked' : 'faust-scrim',
-      style: below > 0 ? { zIndex: 'calc(var(--z-modal) + ' + (below + 1) + ')' } : undefined,
-      // A press on the scrim closes the view-only window, never the form (R-69).
+      style: { zIndex: 'calc(var(--z-modal) + ' + (below + 1) + ')' },
+      // A press on the scrim closes the view-only window, never the form (R-69). Its default action
+      // is prevented, so the focus stays in the form, or goes back to the opener, not to the body.
       onMouseDown: (ev) => {
-        if (isViewMode && ev.target === ev.currentTarget) onClose();
+        if (ev.target !== ev.currentTarget) return;
+        ev.preventDefault();
+        if (isViewMode) onClose();
       }
     },
       e('form', {
