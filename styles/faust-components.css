@@ -1152,17 +1152,6 @@ button:not([class*="faust-"]):hover:not(:disabled)  { box-shadow: inset 0 0 0 10
 button:not([class*="faust-"]):active:not(:disabled) { box-shadow: inset 0 0 0 100vmax var(--fill-active); }
 button:not([class*="faust-"]):is(:hover, :active):not(:disabled):is([style^="color: var(--text-3)"], [style*="; color: var(--text-3)"]) { color: var(--text-2) !important; }
 
-/* S2  Labels on a token fill. 67 inline `color: '#000'` sit on --bronze, --sigil or --gold;
-       the first rule fixes those on any element. The second makes the fill alone decide the
-       label of a BUTTON, whatever its inline colour: the header's Tallenna button paints
-       var(--bronze) under a constant var(--text) whenever there are unsaved changes, and it
-       matches only while the conditional background is the fill. The third gives the three
-       fill names one bronze, so two primary buttons side by side match.
-       Delete after '#000' has become var(--on-accent) and the fills var(--accent). */
-:is([style*="background: var(--bronze"], [style*="background: var(--sigil"], [style*="background: var(--gold"]):is([style^="color: rgb(0, 0, 0)"], [style*="; color: rgb(0, 0, 0)"]) { color: var(--on-accent) !important; }
-button:is([style*="background: var(--bronze"], [style*="background: var(--sigil"], [style*="background: var(--gold"]) { color: var(--on-accent) !important; }
-:is([style*="background: var(--sigil"], [style*="background: var(--gold"]) { background: var(--accent) !important; }
-
 /* S3  Field edges and focus for fields that still carry inline styles: the inline
        `border: 1px solid var(--border-color)` is a hairline, a field edge needs 3:1; three
        fields set outline:'none' inline. The chapter title (a bare field) and inline
