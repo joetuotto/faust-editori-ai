@@ -170,6 +170,8 @@ input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--text-di
 .faust-sigil-btn--captioned { width: auto; grid-auto-flow: column; column-gap: var(--sp-1); padding: 0 var(--sp-2) 0 var(--sp-1); }
 .faust-sigil-btn__caption { font: var(--type-meta); color: var(--text-2); white-space: nowrap; }
 .faust-sigil-btn:is(:disabled, [aria-busy="true"], .faust-sigil-btn--primary:hover, .faust-sigil-btn--primary:focus-visible) .faust-sigil-btn__caption { color: inherit; }
+/* the busy spinner (14px) takes the sigil's 20px box, so a captioned tile keeps its width while it runs */
+.faust-sigil-btn > .faust-spinner { margin: 3px; }
 
 /* ============ 4 Fields ============ */
 .faust-field { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
@@ -1017,6 +1019,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 @container formatbar (max-width: 1465px) { .faust-formatbar [data-priority="2"] { display: none; } .faust-formatbar__more { display: inline-flex; } }
 @container formatbar (max-width: 1097px) { .faust-sigil-btn__caption { display: none; } .faust-sigil-btn--captioned { width: var(--h-lg); padding: 0; } }
 @container formatbar (max-width: 749px) { .faust-formatbar [data-priority="3"] { display: none; } }
+/* In a window lower than 720px the bar is 36px: the sigil tiles take the toolbar height (28px), so the
+   sigil bar's frame (32px) clears the bar's bottom rule as it does in the 40px bar */
+@media (max-height: 719px) { .faust-formatbar .faust-sigilbar { --h-lg: var(--h-md); } }
 .faust-page { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 .faust-page__head { flex: none; padding: var(--page-pad-top) var(--page-edge) var(--sp-5); }
 .faust-chapter-title {

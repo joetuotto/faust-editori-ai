@@ -1266,6 +1266,15 @@ function FAUSTApp() {
     return () => observer.disconnect();
   }, [formatMore.open]);
 
+  // Kirjanmerkit and Etsi hang from their format bar buttons. While the bar's container rules hide
+  // those buttons (a narrow bar, a split pane) they hang from the bar's "more" button, whose menu
+  // lists them, so they open over their own pane; when neither button has a box (focus mode, the
+  // card view) Popover takes its fallback place (R-60).
+  const shownElement = (ref) => (ref.current && ref.current.getClientRects().length > 0 ? ref.current : null);
+  const formatBarAnchor = (ownRef) => ({
+    get current() { return shownElement(ownRef) || shownElement(formatMore.anchorRef) || ownRef.current; }
+  });
+
   // The right column holds one docked panel: Tietopaneeli or the Liminal Engine (R-42). The panel
   // opened last stays and closes the other; closing one reopens nothing. Leaving focus mode restores
   // the panels as they were before it, so that render is compared with that state: a command given in
@@ -5418,6 +5427,8 @@ ${contextPrompt}`;
               sigil: 'stone',
               label: 'Magnum Opus',
               primary: true,
+              // generateChapter returns while an analysis runs, so the stone waits too (V 4.5)
+              disabled: !!analysisBusy,
               busy: isGenerating,
               tooltip: isGenerating
                 ? 'Magnum Opus on käynnissä: tekoäly kirjoittaa lukua…'
@@ -5602,11 +5613,13 @@ ${contextPrompt}`;
               editorDimensions: editorDimensions
             }),
 
-            // Bookmarks (MV-65): a popover anchored to the format bar's bookmarks button (R-60); outside
-            // press, Esc and one popover at a time come from usePopover. Rendered in the layer host; it
-            // stays open under the question of its Poista (closeUnlessAsking).
+            // Bookmarks (MV-65): a popover anchored to the format bar's bookmarks button (R-60), or to
+            // the bar's "more" button while the bar hides it (formatBarAnchor); outside press, Esc and
+            // one popover at a time come from usePopover. Rendered in the layer host; it stays open
+            // under the question of its Poista (closeUnlessAsking).
             showBookmarksPanel && e(Popover, {
               ...bookmarksPop.popoverProps,
+              anchorRef: formatBarAnchor(bookmarksPop.anchorRef),
               onClose: closeUnlessAsking(bookmarksPop.close),
               title: `Kirjanmerkit (${(project.bookmarks || []).length})`,
               closeLabel: 'Kätke kirjanmerkit',
@@ -5736,12 +5749,14 @@ ${contextPrompt}`;
                   )
           ) : null,
 
-          // Etsi (MV-64): a popover of 440 px anchored to the format bar's Etsi button (R-60), at the
-          // fallback place when that button is hidden (focus mode, a narrow bar). Outside press, Esc and
-          // one popover at a time come from usePopover; it stays open under the question of
-          // Korvaa kaikki… (closeUnlessAsking). Closing it clears the hits (see closeFindDialog).
+          // Etsi (MV-64): a popover of 440 px anchored to the format bar's Etsi button (R-60), to the
+          // bar's "more" button while the bar hides it (a narrow bar, a split pane), at the fallback
+          // place in focus mode (formatBarAnchor). Outside press, Esc and one popover at a time come
+          // from usePopover; it stays open under the question of Korvaa kaikki… (closeUnlessAsking).
+          // Closing it clears the hits (see closeFindDialog).
           showFindDialog ? e(Popover, {
             ...findPop.popoverProps,
+            anchorRef: formatBarAnchor(findPop.anchorRef),
             onClose: closeUnlessAsking(closeFindDialog),
             width: 440,
             title: showReplaceDialog ? 'Etsi ja korvaa' : 'Etsi',

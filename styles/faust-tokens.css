@@ -134,10 +134,11 @@
   --z-raised: 10;
   --z-sticky: 50;
   --z-float: 100;            /* suggestion bar, floating result, selection bubble */
-  --z-popover: 300;          /* popovers anchored in the editor pane (they render in the layer host, 4.9) */
   /* 500: the inline prompt (a CodeMirror tooltip in the layer host) keeps CodeMirror's own z-index: 500; no token, no rule sets it */
   --z-dock: 900;             /* chat window, launcher */
   --z-panel: 950;            /* a side panel that still overlays (legacy Liminal Engine) */
+  --z-popover: 960;          /* popovers anchored in the editor pane (they render in the layer host, 4.9). Above the
+                                chat window: a popover is always opened after it (a press in the chat closes the popover) */
   --z-dropdown: 1000;        /* menus and popovers anchored in the header */
   --z-modal: 10000;          /* dialogs; legacy modals are 9999 to 10002 */
   --z-dialog: 10100;         /* prompt and confirm: above every modal, migrated or not */
