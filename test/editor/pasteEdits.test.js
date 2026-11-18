@@ -366,9 +366,14 @@ describe('a merged change that would delete a note or a tag is taken apart', () 
     expect(after('Sana [TODO: x].', 'Sana.')).toEqual(['protected-only', [], 'Sana [TODO: x].']);
   });
 
-  test('a change that only loses notes or tags, or whose clipboard still holds a copy of one, stays whole', () => {
+  test('a change that only loses notes or tags, rewrites a note, or whose clipboard still holds a copy of one, keeps them', () => {
     expect(preparePasteEdits(SAMPLE, SAMPLE.replace(' [TODO: tarkista]', ''), realDeps())).toMatchObject({ status: 'protected-only', protectedCount: 1, changes: [] });
     expect(preparePasteEdits(SAMPLE, SAMPLE.replace('<u>kypsä</u>', 'kypsä'), realDeps())).toMatchObject({ status: 'protected-only', protectedCount: 1, changes: [] });
+    // A note whose own text changed is not proposed as a second note beside the first
+    expect(preparePasteEdits(SAMPLE, SAMPLE.replace('[TODO: tarkista]', '[TODO: tehty]'), realDeps())).toMatchObject({ status: 'protected-only', protectedCount: 1, changes: [] });
+    const rewritten = preparePasteEdits(SAMPLE, SAMPLE.replace('[TODO: tarkista] oli', '[TODO: tehty] on'), realDeps());
+    expect(rewritten.changes.map(change => [change.original, change.insert])).toEqual([['oli', 'on']]);
+    expect(rewritten.protectedCount).toBe(1);
     // Two copies of one note in one change and one left: which one went cannot be told, so nothing in it is proposed
     const two = 'Alku [TODO: a] keski [TODO: a] loppu.';
     const merged = { from: 5, to: 30, insert: 'keskellä [TODO: a]', original: '[TODO: a] keski [TODO: a]' };

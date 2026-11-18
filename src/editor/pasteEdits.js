@@ -204,9 +204,11 @@ function splitProtected(target, change, isProtected, deps, cutSpans) {
     const to = piece.to > piece.from ? kept[piece.to - 1] + 1 : from;
     return { from, to, insert: piece.insert, original: target.slice(from, to) };
   });
-  // A piece that spans a lost note or tag would still delete it: it is set aside with it
-  const proposed = placed.filter(piece => !isProtected(piece));
-  const stuck = placed.filter(piece => isProtected(piece));
+  // A piece that spans a lost note or tag would still delete it, and one that brings a note or a tag
+  // in is the rewritten form of a lost one ([TODO: x] → [TODO: y]): both are set aside with it
+  const bringsIn = (piece) => (piece.insert.match(PROTECTED_PATTERN) || []).length > 0;
+  const proposed = placed.filter(piece => !isProtected(piece) && !bringsIn(piece));
+  const stuck = placed.filter(piece => isProtected(piece) || bringsIn(piece));
   if (!proposed.length) return whole;
 
   // One loss per note, and per underline (its opening and closing tag)
