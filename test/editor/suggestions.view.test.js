@@ -638,6 +638,23 @@ describe('drawing', () => {
     expect(el.getSuggestions().currentId).toBe(mennyt);
     expect(v.contentDOM.querySelector(`.cm-faust-sugg-del[data-sugg-id="${mennyt}"]`).classList.contains('cm-faust-sugg-current')).toBe(true);
   });
+
+  test('the theme leaves the bar of the block to the stylesheet, current or not', () => {
+    // VF-11: the bar is the gradient of the binding block in styles/faust-components.css, and the
+    // block under review is drawn there too (VF-6). Only selectors and property names are read here.
+    const baseTheme = jest.spyOn(view.EditorView, 'baseTheme');
+    let theme;
+    try {
+      createSuggestionKit({ ...state, ...view });
+      theme = baseTheme.mock.calls[0][0];
+    } finally {
+      baseTheme.mockRestore();
+    }
+    const leftBorder = Object.keys(theme).filter(selector => Object.keys(theme[selector]).some(name => /^border(Left|InlineStart)/.test(name)));
+    expect(leftBorder).toEqual([]);
+    expect(Object.keys(theme).filter(selector => /^\.cm-faust-block(?![\w-])/.test(selector))).toEqual(['.cm-faust-block']);
+    expect(Object.keys(theme['.cm-faust-block']).filter(name => name.startsWith('border'))).toEqual([]);
+  });
 });
 
 describe('insert block', () => {

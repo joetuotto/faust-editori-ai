@@ -60,7 +60,6 @@ const THEME = {
     backgroundColor: 'var(--sugg-block-bg)',
     color: 'var(--text-2)'
   },
-  '.cm-faust-block.cm-faust-sugg-current': { borderLeftColor: ACCENT },
   '.cm-faust-block-head': SMALL_PRINT,
   '.cm-faust-block-note': SMALL_PRINT,
   '.cm-faust-block-text': { whiteSpace: 'pre-wrap', margin: '0.3em 0' },
