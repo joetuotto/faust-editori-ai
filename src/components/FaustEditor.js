@@ -295,7 +295,9 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
     onClick,
     // A reference text that cannot be edited (the second pane, a preview). Read once, when the
     // editor is created: change it by remounting with a new key.
-    readOnly = false
+    readOnly = false,
+    // The text's accessible name; a read-only text is never spell-checked
+    label = 'Käsikirjoitus'
   } = props;
 
   const hostRef = useRef(null);
@@ -345,7 +347,8 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
           placeholderExtension(placeholder || ''),
           sceneBreakPlugin,
           // Spell checking is switched on and off for the whole window (Työkalut → Oikoluku)
-          EditorView.contentAttributes.of({ 'aria-label': 'Käsikirjoitus', spellcheck: 'true' }),
+          // A read-only reference text has its own name (label) and no spelling marks (lead, 18 Nov 2026)
+          EditorView.contentAttributes.of({ 'aria-label': label, spellcheck: readOnly ? 'false' : 'true' }),
           // The page is a size container that clips: tooltips (the inline prompt) render in the layer host
           tooltips({ parent: document.querySelector('.faust-layer') }),
           editorTheme,

@@ -65,7 +65,7 @@ export const GLYPHS = {
   arrowDown: { d: 'M12 5v14M6 13l6 6 6-6' },
   arrowLeft: { d: 'M19 12H5M11 6l-6 6 6 6' },
   arrowRight: { d: 'M5 12h14M13 6l6 6-6 6' },
-  more: { d: dot(5, 12) + dot(12, 12) + dot(19, 12) },
+  more: { f: circle(5, 12, 1.75) + circle(12, 12, 1.75) + circle(19, 12, 1.75) },   // filled: a stroked dot is a 1px speck
   grip: { d: dot(9, 6) + dot(15, 6) + dot(9, 12) + dot(15, 12) + dot(9, 18) + dot(15, 18) },
   panelLeft: { d: rect(3, 4, 18, 16, 2) + 'M9 4v16' },
   panelRight: { d: rect(3, 4, 18, 16, 2) + 'M15 4v16' },

@@ -285,10 +285,10 @@
   <div class="tn-cols">
     <div class="tn-stack">
       <label class="faust-field"><span class="faust-field__label">Projektin nimi</span><input class="faust-input faust-input--author" value="Lumen alla"><span class="faust-field__hint">Näkyy yläpalkissa ja vientitiedoston nimessä.</span></label>
-      <label class="faust-field"><span class="faust-field__label">Tavoitesanamäärä</span><input class="faust-input" value="50" aria-invalid="true"><span class="faust-field__error">Anna luku väliltä 1 000 – 500 000.</span></label>
+      <label class="faust-field"><span class="faust-field__label">Käsikirjoituksen tavoite (sanaa)</span><input class="faust-input" value="50" aria-invalid="true"><span class="faust-field__error">Anna luku väliltä 1 000 – 500 000.</span></label>
       <label class="faust-field"><span class="faust-field__label">Ei käytössä</span><input class="faust-input" value="http://127.0.0.1:23333" disabled></label>
       <label class="faust-field"><span class="faust-field__label">Vain luku</span><input class="faust-input" value="esimerkki.faust" readonly></label>
-      <label class="faust-field"><span class="faust-field__label">Paikkamerkki</span><input class="faust-input" placeholder="esim. claude-opus-4-5"></label>
+      <label class="faust-field"><span class="faust-field__label">Paikkamerkki</span><input class="faust-input" placeholder="esim. claude-opus-5-5"></label>
       <label class="faust-field"><span class="faust-field__label">--sm (paneeli)</span><input class="faust-input faust-input--sm" value="23333"></label>
     </div>
     <div class="tn-stack">
@@ -299,7 +299,7 @@
     </div>
     <div class="tn-stack">
       <label class="faust-field"><span class="faust-field__label">Fontti</span><select class="faust-select"><option>EB Garamond</option><option>Georgia</option><option>Palatino</option></select></label>
-      <label class="faust-field"><span class="faust-field__label">--sm</span><select class="faust-select faust-select--sm"><option>1.8 (oletus)</option><option>1.5</option></select></label>
+      <label class="faust-field"><span class="faust-field__label">--sm</span><select class="faust-select faust-select--sm"><option>1,8 (oletus)</option><option>1,5</option></select></label>
       <label class="faust-field"><span class="faust-field__label">Ei käytössä</span><select class="faust-select" disabled><option>Claude Sonnet</option></select></label>
       <label class="faust-field"><span class="faust-field__label">Virhe</span><select class="faust-select" aria-invalid="true"><option>Valitse malli</option></select><span class="faust-field__error">Valitse malli ennen yhteyden testaamista.</span></label>
       <div class="faust-field"><span class="faust-field__label">Pituus</span><div class="faust-slider"><input type="range" value="40" style="--value: 40%"><span class="faust-slider__value">800</span></div></div>
@@ -367,7 +367,7 @@
   <p class="tn-lead">Kortti on kulmikas ja varjoton; valittu kortti ja valittu rivi saavat sävyn ja kultaviivan. Merkin rooli näkyy pisteestä tai sanasta, ei väristä yksin.</p>
   <div class="tn-h3">Kortit (.faust-cardgrid)</div>
   <div class="faust-cardgrid">
-    <button class="faust-card faust-card--click"><span class="faust-card__head"><span class="faust-card__title">Saapuminen</span><span class="faust-chip faust-chip--dot faust-chip--warning">Muokattavana</span></span><span class="faust-card__body">Aino palaa kotikaupunkiinsa yöjunalla ja ottaa huoneen hotellista torin laidalta.</span><span class="faust-card__foot"><span>Luku 1</span><span>186 sanaa</span></span></button>
+    <button class="faust-card faust-card--click"><span class="faust-card__head"><span class="faust-card__title">Saapuminen</span><span class="faust-chip faust-chip--accent faust-chip--dot">Muokattavana</span></span><span class="faust-card__body">Aino palaa kotikaupunkiinsa yöjunalla ja ottaa huoneen hotellista torin laidalta.</span><span class="faust-card__foot"><span>Luku 1</span><span>186 sanaa</span></span></button>
     <button class="faust-card faust-card--click is-selected"><span class="faust-card__head"><span class="faust-card__title">Asianajajan luona</span><span class="faust-chip faust-chip--hollow">Luonnos</span></span><span class="faust-card__body">Valittu kortti: sävy ja kultareuna.</span><span class="faust-card__foot"><span>Luku 2</span><span>93 sanaa</span></span></button>
     <div class="faust-card is-dragging"><span class="faust-card__head"><span class="faust-card__title">Talo mäellä</span></span><span class="faust-card__body">Raahattava kortti.</span><span class="faust-card__foot"><span>Luku 3</span><span>47 sanaa</span></span></div>
     <div class="faust-card is-drop-target"><span class="faust-card__head"><span class="faust-card__title">Luku 4</span></span><span class="faust-card__body">Pudotuskohta: kultaviiva vasemmalla.</span><span class="faust-card__foot"><span>Luku 4</span><span>0 sanaa</span></span></div>
@@ -379,7 +379,7 @@
   <div class="tn-h3">Merkit (.faust-chip), piste, näppäin</div>
   <div class="tn-row">
     <span class="faust-chip">Neutraali</span><span class="faust-chip faust-chip--accent">Korostus</span><span class="faust-chip faust-chip--success">Valmis</span><span class="faust-chip faust-chip--warning">Huomio</span><span class="faust-chip faust-chip--error">Virhe</span><span class="faust-chip faust-chip--info">Tieto</span>
-    <span class="faust-chip faust-chip--hollow">Suunnitteilla</span><span class="faust-chip faust-chip--dot">Luonnos</span><span class="faust-chip faust-chip--dot faust-chip--warning">Muokattavana</span><span class="faust-chip faust-chip--dot faust-chip--success">Valmis</span><span class="faust-chip faust-chip--struck">Hylätty</span>
+    <span class="faust-chip faust-chip--hollow">Suunnitteilla</span><span class="faust-chip faust-chip--hollow">Luonnos</span><span class="faust-chip faust-chip--accent faust-chip--dot">Muokattavana</span><span class="faust-chip faust-chip--dot faust-chip--success">Valmis</span><span class="faust-chip faust-chip--struck">Hylätty</span>
     <span class="faust-chip faust-chip--plain">Sade</span><span class="faust-chip faust-chip--count">3</span><span class="faust-chip faust-chip--count">12</span>
   </div>
   <div class="tn-row"><span class="tn-cap tn-cap--w">painikkeena</span>
@@ -426,10 +426,10 @@
   <div class="tn-box tn-box--raised">
     <div class="faust-timeline"><div class="faust-timeline__grid" style="--n: 4">
       <span></span>
-      <div class="faust-card faust-card--compact"><span class="faust-card__title">Saapuminen</span><span class="faust-chip faust-chip--dot faust-chip--success">Valmis</span></div>
-      <div class="faust-card faust-card--compact"><span class="faust-card__title">Asianajajan luona</span><span class="faust-chip faust-chip--dot faust-chip--warning">Muokattavana</span></div>
-      <div class="faust-card faust-card--compact"><span class="faust-card__title">Talo mäellä</span><span class="faust-chip faust-chip--dot">Luonnos</span></div>
-      <div class="faust-card faust-card--compact"><span class="faust-card__title">Luku 4</span><span class="faust-chip faust-chip--hollow">Suunnitteilla</span></div>
+      <div class="faust-card faust-card--compact" style="align-items: flex-start"><span class="faust-card__title">Saapuminen</span><span class="faust-chip faust-chip--dot faust-chip--success">Valmis</span></div>
+      <div class="faust-card faust-card--compact" style="align-items: flex-start"><span class="faust-card__title">Asianajajan luona</span><span class="faust-chip faust-chip--accent faust-chip--dot">Muokattavana</span></div>
+      <div class="faust-card faust-card--compact" style="align-items: flex-start"><span class="faust-card__title">Talo mäellä</span><span class="faust-chip faust-chip--hollow">Luonnos</span></div>
+      <div class="faust-card faust-card--compact" style="align-items: flex-start"><span class="faust-card__title">Luku 4</span><span class="faust-chip faust-chip--hollow">Suunnitteilla</span></div>
       <span></span>
       <span class="faust-timeline__name">Perintö</span><span class="faust-timeline__bar" style="--from: 0; --to: 3; --thread: var(--thread-1)"></span><span class="faust-chip faust-chip--success faust-timeline__status" style="grid-column: -2">Ratkaistu</span>
       <span class="faust-timeline__name">Kadonnut avain</span><span class="faust-timeline__bar is-open" style="--from: 1; --to: 2; --thread: var(--thread-2)"></span><span class="faust-chip faust-timeline__status" style="grid-column: -2">Avoin</span>
@@ -452,7 +452,7 @@
       <div class="tn-row"><span class="tn-cap">.faust-spinner --sm, perus, --lg</span><span class="faust-spinner faust-spinner--sm"></span><span class="faust-spinner"></span><span class="faust-spinner faust-spinner--lg"></span></div>
     </div>
     <div class="tn-box tn-box--panel"><div class="faust-empty faust-empty--compact"><span class="faust-empty__title">Ei viimeisimpiä projekteja</span><span class="faust-empty__hint">--compact</span></div></div>
-    <div class="tn-box tn-box--raised"><div class="faust-empty"><span class="faust-empty__icon"><i data-icon="sol" data-size="40"></i></span><span class="faust-empty__title">Tarinassa ei ole vielä hahmoja.</span><span class="faust-empty__hint">Suunnittele hahmot tai luo ensimmäinen hahmo itse.</span><button class="faust-btn faust-empty__action">Uusi hahmo…</button></div></div>
+    <div class="tn-box tn-box--raised"><div class="faust-empty"><span class="faust-empty__icon"><i data-icon="sol" data-size="40"></i></span><span class="faust-empty__title">Tarinassa ei ole vielä hahmoja.</span><span class="faust-empty__hint">Suunnittele hahmot tai luo ensimmäinen hahmo itse.</span><button class="faust-btn faust-empty__action">+ Uusi hahmo…</button></div></div>
     <div class="tn-box tn-box--raised"><div class="faust-empty is-error"><span class="faust-empty__icon"><i data-icon="error" data-size="40"></i></span><span class="faust-empty__title">Tekoälypyyntö epäonnistui</span><span class="faust-empty__hint">Varmista, että Cherry Studio on käynnissä.</span><button class="faust-btn faust-empty__action">Yritä uudelleen</button></div></div>
   </div>
   <div class="tn-box tn-box--paper" style="margin-top: var(--sp-4)"><div class="faust-empty faust-empty--page"><span class="faust-empty__icon"><i data-icon="stoneFull" data-size="40"></i></span><span class="faust-empty__title">Luvussa ei ole vielä tekstiä</span><span class="faust-empty__hint">--page: aloita kirjoittaminen tai anna Magnum Opuksen kirjoittaa luku.</span></div></div>
@@ -479,7 +479,7 @@ Nyt: 13 450 sanaa</span></div>
       <div class="faust-callout faust-callout--hint"><span class="faust-callout__icon"><i data-icon="idea" data-size="14"></i></span><span class="faust-callout__title">Vihje</span><span class="faust-callout__body">Valitse ensin tekstistä kohta, jonka haluat kirjoittaa uudelleen.</span></div>
       <div class="faust-callout faust-callout--success"><span class="faust-callout__icon"><i data-icon="success" data-size="14"></i></span><span class="faust-callout__title">Avain tallennettu</span><span class="faust-callout__body">Yhteys tekoälyn lähteeseen toimii.</span></div>
       <div class="faust-callout faust-callout--warning"><span class="faust-callout__icon"><i data-icon="warning" data-size="14"></i></span><span class="faust-callout__title">Avain puuttuu</span><span class="faust-callout__body">Lisää API-avain ennen yhteyden testaamista.</span><span class="faust-callout__actions"><button class="faust-btn faust-btn--sm">Tekoälyasetukset…</button></span></div>
-      <div class="faust-callout faust-callout--error"><span class="faust-callout__icon"><i data-icon="error" data-size="14"></i></span><span class="faust-callout__title">Tekoälypyyntö epäonnistui</span><span class="faust-callout__body">Cherry Studion yhdyskäytävään ei saada yhteyttä.</span></div>
+      <div class="faust-callout faust-callout--error"><span class="faust-callout__icon"><i data-icon="error" data-size="14"></i></span><span class="faust-callout__title">Tekoälypyyntö epäonnistui</span><span class="faust-callout__body">Cherry Studioon ei saada yhteyttä.</span></div>
       <div class="faust-callout faust-callout--info"><span class="faust-callout__icon"><i data-icon="info" data-size="14"></i></span><span class="faust-callout__title">Tieto</span><span class="faust-callout__body">Tilannekuvat tallentuvat projektitiedostoon.</span></div>
     </div>
   </div>
@@ -499,7 +499,7 @@ Nyt: 13 450 sanaa</span></div>
     <div class="faust-dialog faust-dialog--sm faust-dialog--plain" role="dialog" aria-label="Kirjanmerkin nimi">
       <div class="faust-dialog__title">Kirjanmerkin nimi</div>
       <input class="faust-input" value="Konduktöörin katse">
-      <div class="tn-row" style="justify-content: flex-end; margin-top: var(--sp-4)"><button class="faust-btn faust-btn--lg">Peruuta</button><button class="faust-btn faust-btn--lg faust-btn--primary">OK</button></div>
+      <div class="tn-row" style="justify-content: flex-end; margin-top: var(--sp-4)"><button class="faust-btn faust-btn--lg">Peruuta</button><button class="faust-btn faust-btn--lg faust-btn--primary">Lisää kirjanmerkki</button></div>
     </div>
     <div class="faust-dialog faust-dialog--md" role="dialog" aria-label="Vie käsikirjoitus" aria-busy="true" style="max-height: 420px">
       <div class="faust-dialog__header"><div class="faust-dialog__heading"><h2 class="faust-dialog__title">Vie käsikirjoitus</h2><div class="faust-dialog__sub">3 lukua · 326 sanaa</div></div><button class="faust-btn faust-btn--icon" aria-label="Sulje"><i data-icon="close" data-size="16"></i></button></div>
@@ -516,7 +516,7 @@ Nyt: 13 450 sanaa</span></div>
   </div>
   <div class="tn-row tn-row--top">
     <div class="faust-dialog faust-dialog--lg" role="dialog" aria-label="Hahmot" style="max-height: 360px">
-      <div class="faust-dialog__header"><div class="faust-dialog__heading"><h2 class="faust-dialog__title"><i data-icon="sol" data-size="20"></i>Hahmot</h2><div class="faust-dialog__sub">Tarinan hahmot ja heidän profiilinsa</div></div><div class="faust-dialog__actions"><button class="faust-btn"><i data-icon="plus" data-size="14"></i>Uusi hahmo…</button></div><button class="faust-btn faust-btn--icon" aria-label="Sulje"><i data-icon="close" data-size="16"></i></button></div>
+      <div class="faust-dialog__header"><div class="faust-dialog__heading"><h2 class="faust-dialog__title"><i data-icon="sol" data-size="20"></i>Hahmot</h2><div class="faust-dialog__sub">Tarinan hahmot ja heidän profiilinsa</div></div><div class="faust-dialog__actions"><button class="faust-btn">+ Uusi hahmo…</button></div><button class="faust-btn faust-btn--icon" aria-label="Sulje"><i data-icon="close" data-size="16"></i></button></div>
       <div class="faust-dialog__body">
         <button class="faust-row faust-row--two faust-row--author is-selected"><span class="faust-row__icon"><i data-icon="sol" data-size="14"></i></span><span class="faust-row__text"><span class="faust-row__title">Aino Kivelä</span><span class="faust-row__meta">Näkökulmahahmo · 3 lukua</span></span></button>
         <button class="faust-row faust-row--two faust-row--author"><span class="faust-row__icon"><i data-icon="sol" data-size="14"></i></span><span class="faust-row__text"><span class="faust-row__title">Asianajaja Lehto</span><span class="faust-row__meta">1 luku</span></span></button>
@@ -538,7 +538,7 @@ Nyt: 13 450 sanaa</span></div>
         <button class="faust-row faust-row--two faust-row--author"><span class="faust-row__text"><span class="faust-row__title">Konduktöörin katse</span><span class="faust-row__meta">Saapuminen</span><span class="faust-quote faust-clamp-2">”…katsoi häntä pitkään, niin kuin olisi tunnistanut…”</span></span></button>
         <button class="faust-row faust-row--two faust-row--author"><span class="faust-row__text"><span class="faust-row__title">Avain 17</span><span class="faust-row__meta">Asianajajan luona</span><span class="faust-quote faust-clamp-2">”…kaiverrettu numero 17…”</span></span></button>
       </div>
-      <div class="faust-popover__foot"><button class="faust-btn faust-btn--sm"><i data-icon="bookmarkAdd" data-size="14"></i>Kirjanmerkki…</button></div>
+      <div class="faust-popover__foot"><button class="faust-btn faust-btn--sm"><i data-icon="bookmarkAdd" data-size="14"></i>+ Kirjanmerkki…</button></div>
     </div>
     <div class="faust-popover faust-popover--header faust-menu" role="menu">
       <div class="faust-menu__label">Viimeisimmät projektit</div>
@@ -552,7 +552,7 @@ Nyt: 13 450 sanaa</span></div>
       <button class="faust-menu__item faust-menu__item--danger" role="menuitem"><i data-icon="trash" data-size="14"></i>Tyhjennä valikko</button>
     </div>
     <div class="tn-stack">
-      <div class="faust-tooltip"><div class="faust-tooltip__title">Scrutinium profundum</div>Analysoi luku: tekoäly arvioi rakenteen, tempon ja kielen.<span class="faust-tooltip__kbd">⇧⌘A</span></div>
+      <div class="faust-tooltip">Analysoi luku: tekoäly arvioi rakenteen, tempon ja kielen.<span class="faust-tooltip__kbd">⇧⌘A</span><div class="faust-tooltip__title">Scrutinium profundum</div></div>
       <div class="faust-tooltip">Näytä tietopaneeli<span class="faust-tooltip__kbd">⌘2</span></div>
       <div class="faust-tooltip">Kätke sivupalkki</div>
     </div>
@@ -717,7 +717,7 @@ Nyt: 13 450 sanaa</span></div>
     </div>
     <div style="padding: var(--sp-5) var(--sp-6)">
       <input class="faust-chapter-title" value="Saapuminen" aria-label="Luvun otsikko">
-      <div class="faust-chapter-meta"><span class="faust-stat"><b>186</b> sanaa</span><span class="faust-chip faust-chip--dot faust-chip--warning">Muokattavana</span><span>Tempo: keskinopea</span></div>
+      <div class="faust-chapter-meta"><span class="faust-stat"><b>186</b> sanaa</span><span class="faust-chip faust-chip--accent faust-chip--dot">Muokattavana</span><span>Tempo: keskinopea</span></div>
     </div>
     <div class="faust-statusbar" style="height: var(--footer-h)"><span class="faust-statusbar__start">Saapuminen</span><span class="faust-statusbar__end"><span class="faust-savestate" data-state="saved"><span class="faust-dot"></span>Tallennettu</span><span class="faust-savestate" data-state="saving"><span class="faust-dot"></span>Tallennetaan…</span><span class="faust-savestate" data-state="error"><span class="faust-dot"></span>Tallennus epäonnistui</span><span class="faust-stat"><b>186</b> sanaa</span><span class="faust-stat">yhteensä <b>326</b> sanaa</span><span data-priority="3">esimerkki.faust</span></span></div>
   </div>
@@ -727,7 +727,7 @@ Nyt: 13 450 sanaa</span></div>
       <div class="faust-panel__head"><span class="faust-panel__title"><i data-icon="star8" data-size="16"></i>Liminal Engine</span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Kätke Liminal Engine"><i data-icon="close" data-size="14"></i></button></div>
       <div class="faust-panel__tabs"><div class="faust-tabs" role="tablist"><button class="faust-tab" role="tab" aria-selected="true">Keskustelu</button><button class="faust-tab" role="tab" aria-selected="false">Tarkistus</button></div></div>
       <div class="faust-panel__body"><div class="faust-excerpt"><span class="faust-excerpt__caption">Valittu teksti</span><span class="faust-excerpt__text">Kaupunki oli pienempi kuin hän muisti.</span></div><p class="faust-serif is-selectable" style="margin-top: var(--sp-3)">Paneelin runko vierii, otsikko ja alaosa pysyvät.</p></div>
-      <div class="faust-panel__foot"><span class="faust-meta">⌘K näyttää ja kätkee</span></div>
+      <div class="faust-panel__foot"><span class="faust-meta">⇧⌘K tai Esc kätkee paneelin · Enter lähettää</span></div>
     </div></div>
     <div class="tn-stack">
       <span class="tn-cap">.faust-fab: lepo ja avattu</span>
@@ -745,7 +745,7 @@ Nyt: 13 450 sanaa</span></div>
         <div class="streaming-indicator"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
       </div>
       <div class="claude-chat-error">Virhe näytetään kerran, viestinä (tämä rivi on piilotettu)</div>
-      <div class="claude-chat-input"><textarea rows="2" placeholder="Kirjoita viesti" aria-label="Viesti"></textarea><button class="send-btn faust-btn faust-btn--primary" title="Lähetä (Enter)">Lähetä</button><button class="send-btn faust-btn faust-btn--primary" aria-busy="true" disabled><span class="faust-spinner faust-spinner--sm"></span>Lähetetään…</button></div>
+      <div class="claude-chat-input"><textarea rows="2" placeholder="Kirjoita viesti…" aria-label="Viesti"></textarea><button class="send-btn faust-btn faust-btn--primary" title="Lähetä (Enter)">Lähetä</button><button class="send-btn faust-btn faust-btn--primary" aria-busy="true" disabled><span class="faust-spinner faust-spinner--sm"></span>Lähetetään…</button></div>
     </div>
   </div>
 </section>
@@ -800,7 +800,7 @@ Nyt: 13 450 sanaa</span></div>
             <div class="faust-formatbar__end"><span class="faust-sigilbar"><button class="faust-sigil-btn" aria-label="Analysoi luku"><i data-icon="mercury" data-size="20"></i></button><button class="faust-sigil-btn" aria-label="Pika-arvio"><i data-icon="alembic" data-size="20"></i></button><button class="faust-sigil-btn" aria-label="Tee tiivistelmä"><i data-icon="sulfur" data-size="20"></i></button><button class="faust-sigil-btn faust-sigil-btn--primary" aria-label="Magnum Opus"><i data-icon="stone" data-size="20"></i></button></span></div>
           </div>
           <div class="faust-page" id="tn-page" style="--ms-size: 18px">
-            <div class="faust-page__head"><input class="faust-chapter-title" value="Saapuminen" aria-label="Luvun otsikko"><div class="faust-chapter-meta"><span class="faust-stat"><b>186</b> sanaa</span><span class="faust-chip faust-chip--dot faust-chip--warning">Muokattavana</span><span>Tempo: keskinopea</span></div></div>
+            <div class="faust-page__head"><input class="faust-chapter-title" value="Saapuminen" aria-label="Luvun otsikko"><div class="faust-chapter-meta"><span class="faust-stat"><b>186</b> sanaa</span><span class="faust-chip faust-chip--accent faust-chip--dot">Muokattavana</span><span>Tempo: keskinopea</span></div></div>
             <div class="faust-page__body"><div class="faust-editor-host"><div class="cm-editor"><div class="cm-scroller"><div class="cm-content">
               <div class="cm-line">Juna pysähtyi asemalle hieman ennen puoltayötä. Laiturilla ei ollut ketään, vain lumi, joka satoi vinosti lamppujen valossa ja peitti raiteet yhä uudelleen. <span class="cm-faust-tag">**</span><strong>Aino</strong><span class="cm-faust-tag">**</span> nosti laukkunsa hyllyltä ja jäi hetkeksi seisomaan käytävälle, ikään kuin olisi vielä voinut kääntyä takaisin.</div>
               <div class="cm-line"><br></div>

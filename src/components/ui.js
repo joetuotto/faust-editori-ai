@@ -124,7 +124,8 @@ function Toast({ item }) {
   },
     e('span', { className: 'faust-toast__icon' },
       item.kind === 'busy' ? e('span', { className: 'faust-spinner' }) : Icon({ name: ICON[item.kind], size: 16 })),
-    e('span', { className: 'faust-toast__text' }, item.text),
+    // A number never stands at a line's end apart from its unit ('50 merkkiä', M B.13)
+    e('span', { className: 'faust-toast__text' }, typeof item.text === 'string' ? item.text.replace(/(\d) (?=[^\s\d])/g, '$1\u00a0') : item.text),
     e('button', { className: 'faust-btn faust-btn--icon faust-btn--sm faust-toast__close', 'aria-label': 'Sulje ilmoitus', onClick: close },
       Icon({ name: 'close', size: 14 })),
     item.detail ? e('span', { className: 'faust-toast__detail' }, item.detail) : null,
@@ -184,7 +185,7 @@ export function IconButton({ icon, label, title, size, danger, pressed, classNam
  * tooltip is the Finnish text, latin the second line of the tooltip; busy shows the spinner;
  * tooltipOff keeps the tooltip away while the tile's own result popover stands where it would show.
  */
-export function SigilButton({ sigil, label, primary, busy = false, tooltip, latin, tooltipOff = false, caption = true, size, className, disabled, ...props }) {
+export function SigilButton({ sigil, label, gloss, primary, busy = false, tooltip, latin, tooltipOff = false, caption = true, size, className, disabled, ...props }) {
   const draw = icons[sigil];
   const button = e('button', {
     type: 'button',
@@ -195,7 +196,9 @@ export function SigilButton({ sigil, label, primary, busy = false, tooltip, lati
     'aria-busy': busy || undefined
   },
     busy ? e('span', { className: 'faust-spinner' }) : draw ? draw({ size: 20 }) : null,
-    caption && e('span', { className: 'faust-sigil-btn__caption' }, label)
+    // A kept name carries its Finnish gloss on the caption's second line (M A.1, B.15: Magnum Opus / kirjoita luku)
+    caption && e('span', { className: cx('faust-sigil-btn__caption', gloss && 'faust-sigil-btn__caption--glossed') }, label,
+      gloss ? e('span', { className: 'faust-sigil-btn__gloss' }, gloss) : null)
   );
   return tooltip || latin ? e(Tooltip, { text: tooltip, title: latin, off: tooltipOff }, button) : button;
 }
@@ -782,7 +785,7 @@ export function Popover(props) {
   return props.open === false ? null : e(PopoverFrame, props);
 }
 
-function PopoverFrame({ anchorRef, title, width, onClose, footer, layer, menu = false, label, restoreFocus,
+function PopoverFrame({ anchorRef, alignRef, title, width, onClose, footer, layer, menu = false, label, restoreFocus,
   closeLabel = 'Sulje', closeTitle, className, children }) {
   const ref = useRef(null);
   const titleId = useId();
@@ -816,6 +819,11 @@ function PopoverFrame({ anchorRef, title, width, onClose, footer, layer, menu = 
       const width = el.offsetWidth;
       let left = rect.left;
       if (left + width > window.innerWidth - margin) left = Math.max(margin, rect.right - width);
+      // alignRef: a box whose right edge the popover keeps (Etsi stands at the editor pane's right
+      // edge, so it lies over the end of the text column, not over its middle where the hits are)
+      const edge = alignRef && alignRef.current;
+      const edgeRect = edge ? edge.getBoundingClientRect() : null;
+      if (edgeRect && edgeRect.width > 0) left = Math.max(margin, Math.min(window.innerWidth - margin, edgeRect.right - margin) - width);
       el.style.left = left + 'px';
       el.style.top = (upwards ? rect.top - gap - el.offsetHeight : rect.bottom + gap) + 'px';
     };
@@ -867,12 +875,18 @@ function PopoverFrame({ anchorRef, title, width, onClose, footer, layer, menu = 
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [layer]);
 
-  // A press outside the popover and its anchor closes it
+  // A press outside the popover and its anchor closes it. A press inside a layer above it does not:
+  // every dialog stands above a popover of the page or the header, and a question (--top scrim)
+  // above a popover inside a dialog.
   useEffect(() => {
     const onPointerDown = (ev) => {
       const el = ref.current;
       const anchor = anchorRef && anchorRef.current;
       if ((el && el.contains(ev.target)) || (anchor && anchor.contains(ev.target))) return;
+      const above = ev.target && ev.target.closest
+        ? ev.target.closest(layer === 'modal' ? '.faust-scrim--top' : '.faust-scrim')
+        : null;
+      if (above) return;
       close();
     };
     document.addEventListener('pointerdown', onPointerDown, true);
@@ -1006,7 +1020,14 @@ export function Tooltip({ title, text, kbd, off = false, children }) {
     // after a press, waits for the pointer like a hover
     onFocus: () => { if (!lastInputWasPointer) show(true); },
     onBlur: hide,
-    onKeyDown: (ev) => { if (ev.key === 'Escape') hide(); }
+    // Esc on a shown tooltip only hides it: the key is used here and goes to nothing else (the app's
+    // Esc chain skips a used key), so it never also closes a panel or the keskustelu
+    onKeyDown: (ev) => {
+      if (ev.key !== 'Escape' || !visible) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      hide();
+    }
   },
     child,
     visible && (text || title || kbd) && inLayer(e('div', { ref: tipRef, id, role: 'tooltip', className: 'faust-tooltip' },

@@ -51,6 +51,7 @@ export function AIProviderSettings({ onProviderChange }) {
   const keyId = useId();
   const modelId = useId();
   const urlId = useId();
+  const sourceName = useId();
 
   const applyConfig = useCallback((next) => {
     setConfig(next);
@@ -171,15 +172,18 @@ export function AIProviderSettings({ onProviderChange }) {
       e('div', { className: 'faust-section__title' }, 'Tekoälyn lähde')
     ),
 
-    e('div', { className: 'faust-segmented faust-segmented--block', role: 'group', 'aria-label': 'Tekoälyn lähde' },
-      SOURCES.map(([value, label]) => e('button', {
-        key: value,
-        type: 'button',
-        className: 'faust-segmented__option',
-        'aria-pressed': config.provider === value,
-        disabled: config.providerFromEnv,
-        onClick: () => changeProvider(value)
-      }, label))
+    // Two radios, one per line: the option names of M A.3 stay whole in the 288px column
+    e('div', { className: 'faust-check-group faust-check-group--column', role: 'radiogroup', 'aria-label': 'Tekoälyn lähde' },
+      SOURCES.map(([value, label]) => e('label', { key: value, className: 'faust-check' },
+        e('input', {
+          type: 'radio',
+          name: sourceName,
+          value,
+          checked: config.provider === value,
+          disabled: config.providerFromEnv,
+          onChange: () => changeProvider(value)
+        }),
+        label))
     ),
 
     config.providerFromEnv && e('div', { className: 'faust-field__hint', style: { marginTop: 'var(--sp-2)' } },
@@ -204,7 +208,7 @@ export function AIProviderSettings({ onProviderChange }) {
         }),
         e('div', { className: 'faust-field__row', style: { justifyContent: 'space-between', alignItems: 'center' } },
           keyChip,
-          actionButton({ label: 'Tallenna avain', onClick: saveKey, disabled: !keyInput.trim() })
+          actionButton({ label: 'Tallenna avain', onClick: saveKey, reason: keyInput.trim() ? null : 'Liitä ensin avain' })
         )
       ),
 
@@ -222,6 +226,12 @@ export function AIProviderSettings({ onProviderChange }) {
             ? e('option', { value: config.model || '' }, modelPlaceholder)
             : models.map(m => e('option', { key: m.id, value: m.id }, m.name))
         ),
+        // What the last fetch or test found, right under the select it is about
+        status && e('div', {
+          role: 'status',
+          className: status.kind === 'error' ? 'faust-field__error' : 'faust-field__hint'
+        }, status.text),
+        // The field's two actions in one row, right-aligned (V 4.2)
         e('div', { className: 'faust-field__row' },
           actionButton({
             label: 'Hae mallit',
@@ -229,25 +239,16 @@ export function AIProviderSettings({ onProviderChange }) {
             disabled: !!busy,
             reason: config.hasCherryKey ? null : NEEDS_KEY,
             busy: busy === 'models'
+          }),
+          actionButton({
+            label: 'Testaa yhteys',
+            onClick: testConnection,
+            disabled: !!busy,
+            reason: !config.hasCherryKey ? NEEDS_KEY : !config.model ? NEEDS_MODELS : null,
+            busy: busy === 'test'
           })
         )
       ),
-
-      // Connection test
-      e('div', { className: 'faust-field__row' },
-        actionButton({
-          label: 'Testaa yhteys',
-          onClick: testConnection,
-          disabled: !!busy,
-          reason: !config.hasCherryKey ? NEEDS_KEY : !config.model ? NEEDS_MODELS : null,
-          busy: busy === 'test'
-        })
-      ),
-
-      status && e('div', {
-        role: 'status',
-        className: status.kind === 'error' ? 'faust-field__error' : 'faust-field__hint'
-      }, status.text),
 
       // Address of the gateway, rarely changed
       e('details', { className: 'faust-disclosure' },

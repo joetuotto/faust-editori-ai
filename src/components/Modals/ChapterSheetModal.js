@@ -77,8 +77,11 @@
   // A stored value outside the list (an older entry) stays selectable under its own name, so that
   // opening and saving the form never changes it.
   const withCurrent = (options, value) => (value && !options.some(option => option.value === value)
-    ? [{ value, label: String(value).replace(/_/g, ' ') }, ...options]
+    ? [{ value, label: ({ ...CHAPTER_STATE, ...NARRATOR })[value] || String(value).replace(/_/g, ' ') }, ...options]
     : options);
+  // The stored status is read as the rest of the app reads it (menu spec A.4, section 1 normStatus):
+  // the legacy 'revised' is 'revision', a missing status is 'plan'
+  const normStatus = (value) => (value === 'revised' ? 'revision' : (value || 'plan'));
 
   const CHAPTER_STATUS = toOptions(window.CONSTANTS?.CHAPTER_STATUS, CHAPTER_STATE);
   const POV_TYPES = toOptions(window.CONSTANTS?.POV_TYPES, NARRATOR);
@@ -106,7 +109,7 @@
   // povType is written only once the author picks one (menu spec E: no pass invents stored values).
   const fromChapter = (chapter) => ({
     title: chapter?.title || '',
-    status: chapter?.status || CHAPTER_STATUS[0].value,
+    status: normStatus(chapter?.status),
     povType: chapter?.povType || '',
     location: chapter?.location || '',
     synopsis: chapter?.synopsis || '',
@@ -389,7 +392,7 @@
         // Header
         e('div', { className: 'faust-dialog__header' },
           e('div', { className: 'faust-dialog__heading' },
-            e('h2', { className: 'faust-dialog__title', id: ID + '-heading' }, icon('book', 20), title)
+            e('h2', { className: 'faust-dialog__title', id: ID + '-heading' }, icon('hexagon', 20), title)
           ),
           e('button', {
             type: 'button',
@@ -408,7 +411,8 @@
           ),
 
           section('Perustiedot',
-            fieldRow('minmax(0, 2fr) minmax(0, 1fr)', [
+            // One column grid for the form: both rows split in halves, so the field edges line up
+            fieldRow('repeat(2, minmax(0, 1fr))', [
               field(ID + '-title', 'Otsikko *', input(ID + '-title', 'title', 'Luvun otsikko'), errors.title, true),
               field(ID + '-status', 'Tila', select(ID + '-status', 'status', CHAPTER_STATUS))
             ]),

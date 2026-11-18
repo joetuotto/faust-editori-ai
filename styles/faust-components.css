@@ -45,7 +45,9 @@ html {
 :is(.cm-faust-match-current, .faust-mark--search-current)::selection,
 :is(.cm-faust-match-current, .faust-mark--search-current) *::selection { color: var(--hl-search-current-text); }
 ::placeholder { color: var(--text-3); opacity: 1; }
+:is(.faust-input--author, .faust-textarea--author)::placeholder { font-style: italic; }      /* an example in the author's face is told from typed text by its slant */
 input[type="checkbox"], input[type="radio"] { width: 14px; height: 14px; margin: 0; flex: none; cursor: pointer; }
+input[type="radio"] { border-radius: 50%; }      /* the focus outline follows the circle */
 input:is([type="checkbox"], [type="radio"], [type="range"]):disabled { cursor: default; }
 label:has(> input[type="checkbox"], > input[type="radio"]) { cursor: pointer; }
 /* The slider is the one native control that is redrawn: a hairline track and a ring thumb.
@@ -56,6 +58,8 @@ input[type="range"]::-webkit-slider-runnable-track { height: 2px; border-radius:
 input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 12px; height: 12px; margin-top: -5px; border-radius: 50%; background: var(--surface-raised); border: 1.5px solid var(--accent-line); }
 input[type="range"]:disabled::-webkit-slider-runnable-track { background: var(--track); }
 input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--text-disabled); }
+input[type="range"]:focus-visible { outline: none; }
+input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px var(--surface-raised), 0 0 0 4px var(--focus-ring); }   /* the one ring, drawn on the thumb, not round the whole track */
 .faust-scroll        { overflow-y: auto; min-height: 0; scrollbar-gutter: stable; overscroll-behavior: contain; }
 .faust-scroll--page  { scrollbar-gutter: stable both-edges; }   /* a centred column stays centred when a classic bar appears */
 
@@ -72,6 +76,9 @@ input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--text-di
 .faust-clamp-2 { -webkit-line-clamp: 2; }
 .faust-clamp-3 { -webkit-line-clamp: 3; }
 .faust-icon    { display: inline-block; flex: none; vertical-align: -0.15em; }
+.faust-icon--sigil { color: var(--accent-line); }                                   /* a sigil beside its words: the gold line, as on the format bar */
+:disabled > .faust-icon--sigil { color: inherit; }
+.faust-kept-name { text-transform: none; letter-spacing: 0; }                       /* a kept name (Magnum Opus, Liminal Engine) is never set in capitals, also inside a caps heading */
 .faust-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* ============ 3 Buttons ============
@@ -164,11 +171,15 @@ input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--text-di
 .faust-sigil-btn--lg { width: var(--h-xl); height: var(--h-xl); }
 :is(.faust-btn, .faust-sigil-btn) .faust-spinner { color: inherit; }
 /* the sigil bar: the four sigils as one instrument, at the right end of the format bar */
-.faust-sigilbar { display: inline-flex; align-items: center; gap: var(--sp-half); padding: 1px; flex: none; border: var(--bw) solid var(--rule); border-radius: calc(var(--radius-sm) + 2px); }
+/* The tiles take the toolbar height (28px) and the frame no inner padding: the frame (30px) clears the
+   40px bar's rules by 5px, and in the 36px bar of a low window (24px tiles) by 5px as well. */
+.faust-sigilbar { --h-lg: var(--h-md); display: inline-flex; align-items: center; gap: var(--sp-half); padding: 0; flex: none; border: var(--bw) solid var(--rule); border-radius: calc(var(--radius-sm) + 2px); }
 /* a tile with its visible one-line caption (a sigil never stands alone): sigil and caption side by side.
    The caption leaves in a narrow format bar (section 15); the aria-label and the tooltip remain. */
 .faust-sigil-btn--captioned { width: auto; grid-auto-flow: column; column-gap: var(--sp-1); padding: 0 var(--sp-2) 0 var(--sp-1); }
 .faust-sigil-btn__caption { font: var(--type-meta); color: var(--text-2); white-space: nowrap; }
+.faust-sigil-btn__caption--glossed { display: flex; flex-direction: column; align-items: flex-start; line-height: 12px; }   /* name over its gloss, inside the 28px tile */
+.faust-sigil-btn__gloss { font-weight: var(--w-mono); }
 .faust-sigil-btn:is(:disabled, [aria-busy="true"], .faust-sigil-btn--primary:hover, .faust-sigil-btn--primary:focus-visible) .faust-sigil-btn__caption { color: inherit; }
 /* the busy spinner (14px) takes the sigil's 20px box, so a captioned tile keeps its width while it runs */
 .faust-sigil-btn > .faust-spinner { margin: 3px; }
@@ -180,6 +191,7 @@ input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--text-di
 .faust-field__label { font: var(--type-meta); color: var(--text-2); }               /* sentence case: one step quieter than a section title */
 .faust-field__hint  { font: var(--type-meta); color: var(--text-3); }
 .faust-field__error { font: var(--type-meta); color: var(--error-text); min-height: 16px; }
+.faust-field__error:empty { display: none; }      /* the slot is there only while it holds a message, so every field has one rhythm */
 .faust-field__row   { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-1); }   /* a field's own action: the field at full width, the button right-aligned on the next line */
 
 .faust-input, .faust-textarea, .faust-select {
@@ -210,12 +222,21 @@ input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--text-di
 .faust-check--serif > input { align-self: center; }
 .faust-check__hint { font: var(--type-meta); color: var(--text-3); margin-left: var(--sp-1); }
 .faust-check-group { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); }
+.faust-check-group--column { flex-direction: column; align-items: flex-start; gap: 0; }      /* one option per line */
+.faust-ai-provider .faust-field + .faust-field { margin-top: 0; }      /* the block's column gap already parts its fields */
+.faust-check-grid  { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: var(--sp-1) var(--sp-4); }   /* two rows of options in shared columns */
+/* a text link that acts in place (a mode switch): a link's look on a button, on the content edge */
+.faust-link { display: inline; padding: 0; background: none; border: 0; font: var(--type-meta); color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.faust-link:hover { color: var(--text); }
 /* choices with hints: box, label and hint in three columns, so the hints share one left edge */
 .faust-check-group--grid { display: grid; grid-template-columns: 14px max-content minmax(0, 1fr); align-items: baseline; gap: var(--sp-2) var(--sp-2); }
 .faust-check-group--grid > .faust-check { display: contents; }
 .faust-check-group--grid .faust-check__hint { margin-left: var(--sp-2); }
-.faust-slider { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--sp-1) var(--sp-3); }
+.faust-dialog .faust-check-group--grid { grid-template-columns: 14px minmax(10rem, max-content) minmax(0, 1fr); }   /* the groups of one dialog share their hint column */
+.faust-dialog__body > .faust-section:last-child { padding-bottom: 0; }      /* the body's own padding closes it */
+.faust-slider { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--sp-1) var(--sp-3); max-width: 360px; }
 .faust-slider > input[type="range"] { width: 100%; }
+.faust-field > input[type="range"] { width: 100%; max-width: 360px; }      /* a small range (1–5) gets a track of its own size, not the dialog's width */
 .faust-slider__value { font: var(--type-meta); color: var(--text); font-variant-numeric: tabular-nums; min-width: 5ch; text-align: right; }
 .faust-slider:has(:disabled) .faust-slider__value { color: var(--text-disabled); }
 /* rating: five 20px buttons in a radiogroup; stars up to the value carry .is-on and are drawn filled */
@@ -286,6 +307,7 @@ input[type="range"]:disabled::-webkit-slider-thumb { border-color: var(--text-di
 .faust-card__head  { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
 .faust-card__title { font: var(--type-title-pop); color: var(--text); }
 .faust-card--compact .faust-card__title { font: var(--type-ui-strong); }
+.faust-card .faust-card__title--author { font: var(--type-title-pop); }      /* a title in the author's words stays serif in a compact card */
 .faust-card__body  { font: var(--type-serif-sm); color: var(--text-2); }            /* the synopsis: upright; italic is kept for verbatim quotation */
 .faust-card__foot  { margin-top: auto; padding-top: var(--sp-2); border-top: var(--bw) solid var(--rule); display: flex; justify-content: space-between; gap: var(--sp-2); font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .faust-card.is-selected :is(.faust-card__foot, .faust-meta, .faust-label, .faust-kv, .faust-stat) { color: var(--text-2); }
@@ -341,17 +363,36 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-row:is(:hover, :focus-within, .is-selected) .faust-row__actions { opacity: 1; }
 /* In the sidebar's narrow column the row actions reserve no width: the name and its line use the whole
    row, and the actions lie over the row's end on the row's own ground (the panel surface under the
-   row's fill), with a short fade on their left edge (the mask reads only alpha). They show on hover,
-   on keyboard focus and on the selected row, and take no press while hidden. */
+   row's fill), with a short fade on their left edge (the mask reads only alpha). Lead decision of
+   18 Nov 2026: compact 24px icon buttons, 72px together, flush right with a 4px inset, shown only on
+   hover and keyboard focus (the selected row too, so its name is never cut at rest). The box takes no
+   press; only a shown button does, so the row's centre always opens the row. */
 .faust-sidebar .faust-row { position: relative; }
 .faust-sidebar .faust-row > .faust-row__actions {
-  position: absolute; top: 50%; right: var(--sp-3); translate: 0 -50%; margin-left: 0;
-  padding-left: var(--sp-4); background: var(--surface-panel); pointer-events: none;
-  -webkit-mask-image: linear-gradient(to right, transparent, var(--surface-panel) var(--sp-4));
-  mask-image: linear-gradient(to right, transparent, var(--surface-panel) var(--sp-4));
+  position: absolute; top: 50%; right: var(--sp-1); translate: 0 -50%; margin-left: 0; gap: 0;
+  padding-left: var(--sp-3); background: var(--surface-panel); pointer-events: none;
+  -webkit-mask-image: linear-gradient(to right, transparent, var(--surface-panel) var(--sp-3));
+  mask-image: linear-gradient(to right, transparent, var(--surface-panel) var(--sp-3));
 }
 .faust-sidebar .faust-row--two > .faust-row__actions { top: var(--sp-2); translate: none; }   /* on the title line */
-.faust-sidebar .faust-row:is(:hover, :focus-within, .is-selected) > .faust-row__actions { pointer-events: auto; }
+.faust-sidebar .faust-row.is-selected > .faust-row__actions { opacity: 0; }
+.faust-sidebar .faust-row:is(:hover, :focus-within) > .faust-row__actions { opacity: 1; }
+.faust-sidebar .faust-row:is(:hover, :focus-within) > .faust-row__actions > .faust-btn { pointer-events: auto; }
+/* The name may take two lines; it is cut only past the second (lead decision of 18 Nov 2026) */
+.faust-sidebar .faust-row > .faust-row__text > .faust-row__title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
+/* A collection row: the chevron hangs in the row's left padding, so the name stands on the chapter
+   names' edge; the count chip holds the end of the title line at rest and gives way to the actions on
+   hover and focus; the second line runs the full text column, under the chip too. */
+.faust-sidebar .faust-row--collection {
+  display: grid; grid-template-columns: var(--sp-3) minmax(0, 1fr) auto; column-gap: 0; row-gap: var(--sp-half);
+  align-items: start; padding-left: 0;
+}
+.faust-row--collection > .faust-row__text { display: contents; }
+.faust-row--collection > .faust-row__icon { grid-row: 1; grid-column: 1; width: var(--sp-3); margin-top: 5px; }   /* centred on the first line: (22px - 12px) / 2 */
+.faust-row--collection .faust-row__title { grid-row: 1; grid-column: 2; }
+.faust-row--collection > .faust-chip { grid-row: 1; grid-column: 3; margin: 1px 0 0 var(--sp-2); }
+.faust-row--collection .faust-row__meta { grid-row: 2; grid-column: 2 / -1; }
+.faust-sidebar .faust-row--collection:is(:hover, :focus-within) > .faust-chip { visibility: hidden; }
 .faust-sidebar .faust-row:hover > .faust-row__actions { background: linear-gradient(var(--fill-hover), var(--fill-hover)), var(--surface-panel); }
 .faust-sidebar .faust-row:active > .faust-row__actions { background: linear-gradient(var(--fill-active), var(--fill-active)), var(--surface-panel); }
 .faust-sidebar .faust-row:is(.is-selected, [aria-current="true"]) > .faust-row__actions { background: linear-gradient(var(--accent-tint), var(--accent-tint)), var(--surface-panel); }
@@ -367,6 +408,11 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-row.is-error .faust-row__meta { color: var(--error-text); }
 .faust-row:is(:disabled, [aria-disabled="true"]) :is(.faust-row__meta, .faust-row__icon) { color: var(--text-disabled); }
 
+/* A list of choices that each move on (the types of Uusi hahmo): edged rows on the content edge */
+.faust-choice-list { display: flex; flex-direction: column; gap: var(--sp-1); }
+.faust-row--choice { border: var(--bw) solid var(--border); min-height: var(--h-lg); }
+.faust-row--choice:hover { border-color: var(--border-control); }
+
 /* A chip on a filled container (hover, pressed, selected, drop target, selected card, hovered or
    active finding) would stack its own tint on that fill: its label steps up to --text and the
    tint and the dot carry the role. A disabled chip gets an opaque well instead. */
@@ -379,6 +425,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-section__title { font: var(--type-label); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-2); }   /* the one caps heading of a panel: a step stronger than a field label */
 .faust-kv { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); min-height: var(--h-sm); font: var(--type-meta); color: var(--text-3); }
 .faust-kv > :last-child { font: var(--type-ui-strong); color: var(--text); font-variant-numeric: tabular-nums; text-align: right; }
+.faust-kv > :last-child.faust-serif { font: var(--type-serif); min-width: 0; overflow-wrap: anywhere; }      /* a value in the author's own words */
+/* In a wide dialog (a character's profile) the value stands next to its label, in the author's face */
+.faust-kv--profile { display: grid; grid-template-columns: 11rem minmax(0, 1fr); justify-content: start; }
+.faust-kv--profile > :last-child { font: var(--type-serif); text-align: left; overflow-wrap: anywhere; }
 .faust-stat { display: inline-flex; align-items: baseline; gap: var(--sp-1); font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .faust-stat > b { font-weight: var(--w-mono-strong); color: var(--text); }
 .faust-stat--hero > b { font-size: 16px; }
@@ -388,7 +438,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-disclosure[open] > summary > .faust-icon { transform: rotate(90deg); }
 
 /* keyboard shortcuts: two columns of rows; the command in serif, each key combination a keycap */
-.faust-shortcuts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--sp-6); }
+.faust-shortcuts { columns: 2; column-gap: var(--sp-6); }      /* two flowing columns: each group starts right under the one before it */
+.faust-shortcuts > * { break-inside: avoid; }
 .faust-shortcut { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); min-height: var(--h-lg); border-bottom: var(--bw) solid var(--rule); font: var(--type-serif); color: var(--text); white-space: nowrap; }
 .faust-shortcut__keys { display: inline-flex; align-items: baseline; gap: var(--sp-1); flex: none; }
 .faust-shortcut__keys > .faust-kbd + .faust-kbd { margin-left: 0; }
@@ -423,7 +474,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 
 .faust-empty { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); max-width: 320px; margin: 0 auto; padding: var(--sp-6) var(--sp-5); text-align: center; }
 .faust-empty__icon  { color: var(--text-3); margin-bottom: var(--sp-1); }
-.faust-empty__title { font: italic var(--w-serif) 17px/24px var(--font-serif); color: var(--text-2); }
+.faust-empty__title { font: italic var(--w-serif) 17px/24px var(--font-serif); color: var(--text-2); text-wrap: balance; }
 .faust-empty__hint  { font: var(--type-meta); color: var(--text-3); }
 .faust-empty__action { margin-top: var(--sp-2); }
 .faust-empty--compact { padding: var(--sp-3) var(--sp-2); gap: var(--sp-1); }
@@ -438,8 +489,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-toast-host {
   position: fixed; z-index: var(--z-toast);
   left: calc(var(--left-col-w) + (100vw - var(--left-col-w) - var(--right-col-w)) / 2); transform: translateX(-50%);
-  top: calc(var(--header-h) + var(--formatbar-h) + var(--sp-2));     /* under the format bar: a one-line toast fits the page's top margin */
-  width: min(440px, calc(100vw - var(--left-col-w) - var(--right-col-w) - 2 * var(--sp-4)));
+  top: calc(var(--header-h) + var(--formatbar-h) + var(--sp-1));     /* under the format bar: a one-line toast (42px) fits the page's 48px top margin */
+  width: min(560px, calc(100vw - var(--left-col-w) - var(--right-col-w) - 2 * var(--sp-4)));   /* a one-sentence notice stays on one line from a 1440px window */
   display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-2);
   pointer-events: none; -webkit-app-region: no-drag;
 }
@@ -453,7 +504,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
   animation: faust-drop var(--dur-fast) var(--ease-out);
 }
 .faust-toast.is-leaving { opacity: 0; transform: translateY(-6px); transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out); }
-.faust-toast__icon   { margin-top: 3px; color: var(--text-3); }
+.faust-toast__icon   { display: flex; align-items: center; height: 22px; color: var(--text-3); }   /* centred on the first 22px line of the text */
 .faust-toast__text   { font: var(--type-serif); white-space: pre-line; overflow-wrap: anywhere; }
 .faust-toast__detail { grid-column: 2; font: var(--type-meta); color: var(--text-2); white-space: pre-line; overflow-wrap: anywhere; max-height: 40vh; overflow-y: auto; user-select: text; }
 .faust-toast__actions { grid-column: 2; display: flex; gap: var(--sp-2); margin-top: var(--sp-1); }
@@ -498,6 +549,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 }
 .faust-scrim--top { z-index: var(--z-dialog); }      /* prompt and confirm only: above any modal, legacy ones included */
 .faust-scrim.is-stacked { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }   /* a dialog over a dialog: the scrim is painted once */
+/* The dialog under it steps back: a veil of the scrim lies on its panel only, so one frame reads as active */
+.faust-scrim:has(~ .faust-scrim.is-stacked) > .faust-dialog { position: relative; }
+.faust-scrim:has(~ .faust-scrim.is-stacked) > .faust-dialog::after { content: ""; position: absolute; inset: 0; background: var(--scrim); pointer-events: none; }
 .faust-dialog {
   display: flex; flex-direction: column; overflow: hidden;
   width: min(var(--dialog-w, 520px), 100%); max-height: 100%;
@@ -520,8 +574,12 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-dialog__title > .faust-icon { color: var(--accent-line); }
 .faust-dialog__sub   { margin-top: var(--sp-1); font: var(--type-meta); color: var(--text-3); }
 .faust-dialog__actions { flex: none; display: flex; align-items: center; gap: var(--sp-2); }      /* header slot before the close button: the create action of a list dialog */
-.faust-dialog__body  { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding: var(--sp-1) var(--dialog-pad) var(--dialog-pad); font: var(--type-serif); }
+/* The body reserves a classic scrollbar's width (--scrollbar-w) on its right and gives it back from its
+   padding, so the content ends on the header's and the footer's right edge whether or not it scrolls. */
+.faust-dialog__body  { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding: var(--sp-1) max(var(--sp-2), calc(var(--dialog-pad) - var(--scrollbar-w))) var(--dialog-pad) var(--dialog-pad); font: var(--type-serif); text-wrap: pretty; }
 .faust-dialog__footer { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-3) var(--dialog-pad); border-top: var(--bw) solid var(--rule); }
+.faust-dialog__toolbar { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-4); }      /* a list dialog's create actions, at the top of its body */
+.faust-dialog__body--lines { white-space-collapse: preserve-breaks; }      /* a message's own line breaks; unlike white-space: pre-line it keeps the body's text-wrap: pretty */
 .faust-dialog__footer-start { margin-right: auto; display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
 .faust-dialog :is(.faust-dialog__header, .faust-dialog__footer) { user-select: none; }
 .faust-dialog--lg > .faust-dialog__header, .faust-dialog--xl > .faust-dialog__header { border-bottom: var(--bw) solid var(--rule); padding-bottom: var(--sp-4); }
@@ -529,7 +587,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* --flush: no padding, the body still scrolls (the version comparison: one scroller, sticky column heads).
    --fixed: no padding and no scrolling; the content brings its own scrolling columns (the import preview).
    Both come after the size rules above, which have the same specificity. */
-.faust-dialog > .faust-dialog__body--flush { padding: 0; }
+.faust-dialog > .faust-dialog__body--flush { padding: 0; scrollbar-gutter: auto; }      /* the sticky heads and their rule reach the frame */
+/* In a flush body the comparison's columns keep the dialog's own inset, so title and text share one left edge */
+.faust-dialog__body--flush .faust-diff__col { padding-inline: var(--dialog-pad); }
+.faust-dialog__body--flush .faust-diff__colhead { margin-inline: calc(-1 * var(--dialog-pad)); padding-inline: var(--dialog-pad); }
 .faust-dialog > .faust-dialog__body--fixed { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 .faust-dialog[aria-busy="true"] :is(.faust-dialog__body, .faust-dialog--plain) { cursor: progress; }
 .faust-dialog > .faust-progress { flex: none; border-radius: 0; }
@@ -555,7 +616,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-popover__head  { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-height: 40px; padding: 0 var(--sp-2) 0 var(--sp-4); }
 .faust-popover__title { font: var(--type-title-pop); color: var(--text); }
 .faust-popover__title > .faust-icon { color: var(--accent-line); margin-right: var(--sp-2); }      /* the sigil before a sigil result's caption, as in a panel title */
-.faust-popover__body  { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 var(--sp-2) var(--sp-2); }
+/* The body shares the head's 16px content edge; 4px on top keep a focus ring drawn outside its first
+   control whole inside the scroller. A row's fill reaches 8px further out, so its text is on the edge. */
+.faust-popover__body  { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--sp-1) var(--sp-4) var(--sp-3); }
+.faust-popover__body .faust-row { width: calc(100% + 2 * var(--sp-2)); margin-inline: calc(-1 * var(--sp-2)); padding-inline: var(--sp-2); }
 .faust-popover__foot  { flex: none; display: flex; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-top: var(--bw) solid var(--rule); }
 /* Fallback place when the anchor is hidden (focus mode hides the format bar and the sigil bar):
    Popover writes no inline top and left and sets data-anchor="none"; the popover then stands
@@ -575,6 +639,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-menu__item[aria-checked="true"] > .faust-icon:first-child { color: var(--accent-line); }
 .faust-menu__item--danger { color: var(--error-text); }
 .faust-menu__item--author { font: var(--type-serif); min-height: var(--h-lg); }
+.faust-menu__slot { flex: none; width: 14px; }                                                  /* the empty leading slot of an unchecked item */
+.faust-menu__text { display: flex; flex-direction: column; min-width: 0; padding-block: var(--sp-1); }   /* a name and its second line (the folder) */
 .faust-menu__shortcut { margin-left: auto; padding-left: var(--sp-5); font: var(--type-meta); color: var(--text-3); }
 .faust-menu__item:is(:hover, :active, :focus-visible, [data-active="true"]) .faust-menu__shortcut { color: var(--text-2); }
 .faust-menu__item:is(:disabled, [aria-disabled="true"]) .faust-menu__shortcut { color: var(--text-disabled); }
@@ -689,6 +755,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-voicebar { gap: var(--sp-3); padding: 0 var(--sp-4) 0 var(--sp-2); }
 .faust-voicebar > div { min-width: 0; }
 .faust-voicebar > div > * { overflow: hidden; text-overflow: ellipsis; }
+.faust-voicebar__hint { font: var(--type-serif-sm); color: var(--text-2); }
+/* the microphone is the bar's one control: it keeps a button's edge at rest */
+.faust-voicebar > .faust-btn--icon:not([data-state="listening"]):not(:disabled) { border-color: var(--border-control); }
 
 /* The inline prompt is a block in the text column (a CodeMirror block widget): it pushes
    the lines apart and covers nothing, so it has no elevation: one frame, no shadow. The
@@ -961,6 +1030,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-header__actions { display: flex; align-items: center; gap: var(--sp-4); flex: none; }
 .faust-header__group { display: flex; align-items: center; gap: var(--sp-half); }
 .faust-header .faust-segmented { border-color: var(--rule); }
+/* Avaa… and its recent-projects chevron: one split control, joined, with a hairline between the two */
+.faust-header__split { display: inline-flex; align-items: center; }
+.faust-header__split > .faust-btn:first-child { padding-right: var(--sp-2); border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.faust-header__split > .faust-btn + .faust-btn { width: 20px; min-width: 20px; border-top-left-radius: 0; border-bottom-left-radius: 0; box-shadow: inset 1px 0 0 var(--rule); }
 .faust-header__more { display: none; }
 @media (max-width: 1279px) { .faust-header [data-priority="2"] .faust-btn__label { display: none; } }
 @media (max-width: 1119px) { .faust-header [data-priority="3"] { display: none; } .faust-header__more { display: inline-flex; } }
@@ -984,13 +1057,26 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-sidebar   > .faust-panel { width: var(--sidebar-w); }
 .faust-inspector > .faust-panel { width: var(--inspector-w); }
 .faust-aipanel   > .faust-panel { width: var(--aipanel-w); }
-.faust-panel__head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-height: 48px; padding: 0 var(--sp-3) 0 var(--sp-4); }
+/* The body reserves a classic scrollbar's width (--scrollbar-w) on its right; the head, the tab row and
+   the foot reserve the same, so all three end on one right edge whether or not the body scrolls. */
+.faust-panel__head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); min-height: 48px; padding: 0 calc(var(--sp-3) + var(--scrollbar-w)) 0 var(--sp-4); }
 .faust-panel__title { font: var(--type-title-panel); color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .faust-panel__title > .faust-icon { color: var(--accent-line); margin-right: var(--sp-2); }
-.faust-panel__tabs { flex: none; padding: 0 var(--sp-4); }
+.faust-panel__tabs { flex: none; padding: 0 calc(var(--sp-4) + var(--scrollbar-w)) 0 var(--sp-4); }
 .faust-panel__body { flex: 1 1 0; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; padding: var(--sp-3) var(--sp-4) var(--sp-5); }
-.faust-panel__foot { flex: none; padding: var(--sp-2) var(--sp-4); border-top: var(--bw) solid var(--rule); }
+.faust-panel__foot { flex: none; padding: var(--sp-2) calc(var(--sp-4) + var(--scrollbar-w)) var(--sp-2) var(--sp-4); border-top: var(--bw) solid var(--rule); }
+/* The sidebar's list fades out over its last 16px, so a row or a button cut by the foot reads as
+   continuing; at the end of the list that strip is the body's own bottom padding. */
+.faust-sidebar .faust-panel__body { -webkit-mask-image: linear-gradient(to bottom, var(--surface-panel) calc(100% - var(--sp-4)), transparent); mask-image: linear-gradient(to bottom, var(--surface-panel) calc(100% - var(--sp-4)), transparent); }
+/* A window lower than 720px: the five tools take toolbar rows (24px) and their heading no extra
+   height, so the list keeps more chapters in view */
+@media (max-height: 719px) {
+  .faust-sidebar .faust-panel__foot { padding-block: var(--sp-1); }
+  .faust-sidebar .faust-panel__foot > .faust-section__head { min-height: var(--h-sm); margin-bottom: 0; }
+  .faust-sidebar .faust-panel__foot > .faust-row { min-height: var(--h-sm); padding-block: 0; }
+}
 .faust-panel :is(input, textarea, [contenteditable], .is-selectable) { user-select: text; cursor: text; }
+.faust-panel .faust-textarea { padding: var(--sp-1) var(--sp-2); }      /* the side panel's fields share the --sm inset (8px) */
 /* The Liminal Engine's message field: a placeholder longer than the field ends in an ellipsis, not mid-word */
 .faust-aipanel .faust-panel__foot .faust-input { text-overflow: ellipsis; }
 
@@ -1023,17 +1109,21 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-formatbar__end { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); flex: none; }
 .faust-formatbar__more { display: none; }
 /* Thresholds for the menu spec's word faces and the captioned sigil bar, measured in Electron 30
-   (XR-5): the bar's content box needs 1450px with every group and the captions, 1082px without the
-   heading group, 734px without the captions too, and 300px with the letters, the "more" button and
-   the four sigils alone. Each threshold keeps 16px in hand (two more digits on the bookmark count,
-   a wider fallback face). The heading group leaves first, then the sigil captions, then the
-   priority-3 groups; the queried width is the content box (the bar's width minus 24px). */
+   (XR-5, polish round 1): the bar's content box needs 1450px with every group and the captions,
+   1093px without the heading group (the stone's caption carries its gloss, M A.1), then without the captions 716px with the three other groups,
+   540px without the insert group (* * *, Muistutus), 431px without the block group (Lainaus and the
+   two lists) and 282px with the letters, the "more" button and the four sigils alone. Each threshold
+   keeps 16px in hand. A group leaves only when the bar really runs out of room, in this order: the
+   headings, the sigil captions, the insert group, the block group, and last the marks (Kirjanmerkki,
+   Kirjanmerkit, Etsi). The queried width is the content box (the bar's width minus 24px). */
 @container formatbar (max-width: 1465px) { .faust-formatbar [data-priority="2"] { display: none; } .faust-formatbar__more { display: inline-flex; } }
-@container formatbar (max-width: 1097px) { .faust-sigil-btn__caption { display: none; } .faust-sigil-btn--captioned { width: var(--h-lg); padding: 0; } }
-@container formatbar (max-width: 749px) { .faust-formatbar [data-priority="3"] { display: none; } }
-/* In a window lower than 720px the bar is 36px: the sigil tiles take the toolbar height (28px), so the
-   sigil bar's frame (32px) clears the bar's bottom rule as it does in the 40px bar */
-@media (max-height: 719px) { .faust-formatbar .faust-sigilbar { --h-lg: var(--h-md); } }
+@container formatbar (max-width: 1109px) { .faust-sigil-btn__caption { display: none; } .faust-sigil-btn--captioned { width: var(--h-lg); padding: 0; } }
+@container formatbar (max-width: 731px) { .faust-formatbar [data-priority="3"] { display: none; } }
+@container formatbar (max-width: 555px) { .faust-formatbar [data-priority="4"] { display: none; } }
+@container formatbar (max-width: 446px) { .faust-formatbar [data-priority="5"] { display: none; } }
+/* In a window lower than 720px the bar is 36px: the sigil tiles take 24px (18px sigils), so the sigil
+   bar's frame (26px) clears the bar's rules by 5px, as it does in the 40px bar */
+@media (max-height: 719px) { .faust-formatbar .faust-sigilbar { --h-lg: var(--h-sm); } .faust-formatbar .faust-sigilbar .faust-sigil-btn > .faust-icon { width: 18px; height: 18px; } }
 .faust-page { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 .faust-page__head { flex: none; padding: var(--page-pad-top) var(--page-edge) var(--sp-5); }
 .faust-chapter-title {
@@ -1043,7 +1133,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
   transition: border-color var(--dur-fast) var(--ease-out);
 }
 .faust-chapter-title:hover { border-bottom-color: var(--rule); }
-.faust-chapter-title:focus-visible { outline: none; border-bottom-color: var(--accent-line); }   /* the one field whose focus is a rule, not a ring: it is a line of the page */
+.faust-chapter-title:focus-visible { outline: none; border-bottom-color: var(--accent-line); box-shadow: 0 1px 0 var(--accent-line); }   /* the one field whose focus is a rule, not a ring: it is a line of the page, 2px of the accent line */
+/* The split view's head: the height of the main pane's format bar, so the two bottom rules meet */
+.faust-split-head { flex: none; display: flex; align-items: center; gap: var(--sp-2); height: var(--formatbar-h); padding: 0 var(--sp-2) 0 var(--sp-4); border-bottom: var(--bw) solid var(--rule); }
+.faust-select { text-overflow: ellipsis; }      /* a value longer than its field ends in an ellipsis */
 /* The split view's reference page: the same title line, read only (a heading, one line, no hover rule) */
 .faust-editor-split .faust-chapter-title { margin: 0; overflow: hidden; white-space: nowrap; }
 .faust-editor-split .faust-chapter-title:hover { border-bottom-color: transparent; }
@@ -1101,10 +1194,11 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
   font: var(--type-serif); animation: faust-rise var(--dur-fast) var(--ease-out);
 }
 .claude-chat-header { flex: none; display: flex; align-items: center; justify-content: space-between; min-height: 40px; padding: 0 var(--sp-2) 0 var(--sp-4); border-bottom: var(--bw) solid var(--rule); }
-.claude-chat-title { display: flex; align-items: center; gap: var(--sp-2); font: var(--type-title-pop); color: var(--text); }
+.claude-chat-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--type-title-pop); color: var(--text); }   /* one line; the whole title is in its tooltip */
 .claude-icon { color: var(--accent-line); display: inline-grid; }
 .claude-chat-controls { display: flex; align-items: center; gap: var(--sp-1); }
-.thinking-toggle { display: flex; align-items: center; gap: var(--sp-2); margin-right: var(--sp-2); font: var(--type-meta); color: var(--text-2); cursor: pointer; }
+.claude-chat-controls { flex: none; }
+.claude-chat-foot { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-half); padding: 0 var(--sp-3) var(--sp-2); }   /* under the field: Perusteellinen vastaus, then the key hint */
 /* Tyhjennä is a word button: its look is faust-btn faust-btn--quiet faust-btn--sm */
 .close-btn { width: var(--h-sm); height: var(--h-sm); display: inline-grid; place-items: center; padding: 0; background: none; border: 0; border-radius: var(--radius-sm); color: var(--text-2); font: var(--type-ui); }
 .close-btn:hover { background: var(--fill-hover); color: var(--text); }

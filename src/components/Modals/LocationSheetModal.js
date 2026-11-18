@@ -430,7 +430,19 @@
 
             fieldRow('repeat(3, minmax(0, 1fr))', [
               field(ID + '-type', 'Tyyppi', select(ID + '-type', 'type', LOCATION_TYPES)),
-              field(ID + '-atmosphere', 'Tunnelma', select(ID + '-atmosphere', 'atmosphere', LOCATION_ATMOSPHERES)),
+              // A stored atmosphere outside the closed list is the author's own words: it stays a text field
+              // (opening and saving the form never changes it), never a raw option in the list
+              field(ID + '-atmosphere', 'Tunnelma',
+                location && location.atmosphere && !LOCATION_ATMOSPHERES.some(option => option.value === location.atmosphere)
+                  ? e('input', {
+                      id: ID + '-atmosphere',
+                      type: 'text',
+                      className: 'faust-input faust-input--author',
+                      value: formData.atmosphere || '',
+                      onChange: (ev) => handleInputChange('atmosphere', ev.target.value),
+                      disabled: isViewMode
+                    })
+                  : select(ID + '-atmosphere', 'atmosphere', LOCATION_ATMOSPHERES)),
               field(ID + '-importance', 'Tärkeys', select(ID + '-importance', 'importance', LOCATION_IMPORTANCE))
             ]),
 
@@ -495,7 +507,7 @@
           e('div', { className: 'faust-dialog__footer-start' },
             canDelete && e('button', {
               type: 'button',
-              className: 'faust-btn faust-btn--sm faust-btn--danger',
+              className: 'faust-btn faust-btn--lg faust-btn--danger',
               disabled: isSaving,
               onClick: () => onDelete(location)
             }, 'Poista paikka'),

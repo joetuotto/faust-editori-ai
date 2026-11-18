@@ -58,11 +58,15 @@
   // values stay English.
   const THREAD_TYPE = {
     main_plot: 'Pääjuoni', subplot: 'Sivujuoni', character_arc: 'Hahmon kehityskaari',
-    theme: 'Teema', mystery: 'Arvoitus', romance: 'Rakkausjuoni'
+    theme: 'Teema', mystery: 'Arvoitus', romance: 'Rakkausjuoni',
+    // written by the thread detection although A.4 does not list it (owner to proofread)
+    relationship: 'Ihmissuhde'
   };
   const THREAD_STATE = {
     planned: 'Suunniteltu', active: 'Avoin', developing: 'Kehittyvä', resolved: 'Ratkaistu', abandoned: 'Hylätty'
   };
+  // The thread detection writes 'open', which is 'active' (Avoin): the form reads it as that key
+  const normThreadStatus = (value) => (value === 'open' ? 'active' : value);
   const PRIORITY = { critical: 'Kriittinen', high: 'Suuri', medium: 'Tavallinen', low: 'Pieni' };
 
   // The lists come from window.CONSTANTS as { value, label } objects; without it, from the map's keys.
@@ -75,7 +79,7 @@
   // A stored value outside the list (an older entry) stays selectable under its own name, so that
   // opening and saving the form never changes it.
   const withCurrent = (options, value) => (value && !options.some(option => option.value === value)
-    ? [{ value, label: String(value).replace(/_/g, ' ') }, ...options]
+    ? [{ value, label: ({ ...THREAD_TYPE, ...THREAD_STATE, ...PRIORITY })[value] || String(value).replace(/_/g, ' ') }, ...options]
     : options);
 
   const THREAD_TYPES = toOptions(window.CONSTANTS?.THREAD_TYPES, THREAD_TYPE);
@@ -100,7 +104,7 @@
   const fromThread = (thread) => ({
     name: thread?.name || '',
     type: thread?.type || THREAD_TYPES[0].value,
-    status: thread?.status || THREAD_STATUS[0].value,
+    status: normThreadStatus(thread?.status) || THREAD_STATUS[0].value,
     priority: thread?.priority || THREAD_PRIORITY[0].value,
     description: thread?.description || '',
     relatedCharacters: thread?.relatedCharacters || [],
@@ -497,7 +501,7 @@
           e('div', { className: 'faust-dialog__footer-start' },
             canDelete && e('button', {
               type: 'button',
-              className: 'faust-btn faust-btn--sm faust-btn--danger',
+              className: 'faust-btn faust-btn--lg faust-btn--danger',
               disabled: isSaving,
               onClick: () => onDelete(thread)
             }, 'Poista juonilanka'),

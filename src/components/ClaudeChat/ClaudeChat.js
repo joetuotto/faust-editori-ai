@@ -223,29 +223,15 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
       React.createElement(
         'div',
         { className: 'claude-chat-header' },
+        // The title on one line and without an icon (M C.9 row 22); the head holds only Tyhjennä and ×
         React.createElement(
           'div',
-          { className: 'claude-chat-title' },
-          React.createElement('span', { className: 'claude-icon' }, icon('star8', 14)),
+          { className: 'claude-chat-title', title: 'Liminal Engine – keskustelu' },
           'Liminal Engine – keskustelu'
         ),
         React.createElement(
           'div',
           { className: 'claude-chat-controls' },
-          React.createElement(
-            'label',
-            {
-              className: 'thinking-toggle',
-              title: 'Tekoäly pohtii vastausta tavallista pidempään. Hitaampi ja kalliimpi; sopii juonen ja rakenteen arviointiin.',
-            },
-            React.createElement('input', {
-              type: 'checkbox',
-              checked: useExtendedThinking,
-              onChange: (e) => setUseExtendedThinking(e.target.checked),
-              disabled: isStreaming,
-            }),
-            React.createElement('span', null, 'Perusteellinen vastaus')
-          ),
           React.createElement(
             'button',
             {
@@ -374,18 +360,33 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
             onClick: sendMessage,
             disabled: isStreaming || !input.trim(),
             'aria-busy': isStreaming,
-            title: 'Lähetä (Enter)',
+            // A disabled control's tooltip gives the reason (M B.8)
+            title: !isStreaming && !input.trim() ? 'Kirjoita ensin viesti' : 'Lähetä (Enter)',
           },
           isStreaming && React.createElement('span', { className: 'faust-spinner faust-spinner--sm' }),
           isStreaming ? 'Lähetetään…' : 'Lähetä'
         )
       ),
 
-      // Key hint under the field
+      // Under the field: the choice that shapes the answer, then the key hint
       React.createElement(
         'div',
-        { className: 'faust-meta', style: { padding: '0 var(--sp-3) var(--sp-2)' } },
-        HINT
+        { className: 'claude-chat-foot' },
+        React.createElement(
+          'label',
+          {
+            className: 'faust-check thinking-toggle',
+            title: 'Tekoäly pohtii vastausta tavallista pidempään. Hitaampi ja kalliimpi; sopii juonen ja rakenteen arviointiin.',
+          },
+          React.createElement('input', {
+            type: 'checkbox',
+            checked: useExtendedThinking,
+            onChange: (e) => setUseExtendedThinking(e.target.checked),
+            disabled: isStreaming,
+          }),
+          'Perusteellinen vastaus'
+        ),
+        React.createElement('div', { className: 'faust-meta' }, HINT)
       )
     );
   }

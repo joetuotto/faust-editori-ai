@@ -20,15 +20,14 @@ import { layerStack, holdLayer, returnFocus, scrimPress, Dialog } from './ui.js'
 
 const { createElement: e, useState, useEffect, useLayoutEffect, useRef, useId } = React;
 
-// Frame (styles/faust-components.css, sections 3, 4 and 9). Prompt and confirm are one-box
-// panels above every modal (--top); shortcuts, export and collection render through the shared
-// Dialog of ui.js (header, body and footer, in the layer host).
+// Frame (styles/faust-components.css, sections 3, 4 and 9). Prompt and confirm are panels above
+// every modal (--top) with the shared dialog's anatomy (header, body, footer with its rule), so there
+// is one dialog frame; shortcuts, export and collection render through the shared Dialog of ui.js.
+// A question has no close button: Peruuta and Esc are its way out (M B.10).
 const SCRIM_TOP = 'faust-scrim faust-scrim--top';
-const plainPanel = (size) => `faust-dialog faust-dialog--${size} faust-dialog--plain`;
+const panelClass = (size) => `faust-dialog faust-dialog--${size}`;
 const buttonClass = ({ primary = false, danger = false } = {}) =>
   'faust-btn faust-btn--lg' + (primary ? ' faust-btn--primary' : '') + (danger ? ' faust-btn--danger' : '');
-// The button row of a one-box panel: Peruuta first, the action last and right-aligned
-const buttonRowStyle = { display: 'flex', justifyContent: 'flex-end', gap: 'var(--sp-2)', marginTop: 'var(--sp-5)' };
 
 /**
  * The prompt and the confirm are layers of the layer stack in ui.js (R-70). Esc reaches the
@@ -349,19 +348,22 @@ export function TextPromptDialog({ request, onDone }) {
   // A form: a press on the scrim closes nothing (R-69) and leaves the focus in the field; Esc and
   // Peruuta cancel
   return e('div', { ref: scrimRef, className: topScrim(below), onMouseDown: (ev) => scrimPress(ev, null) },
-    e('div', { ref: panelRef, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, className: plainPanel('sm') },
-      e('h2', { id: titleId, className: 'faust-dialog__title', style: { whiteSpace: 'pre-line' } }, request.title),
-      e('input', {
-        ref: inputRef,
-        type: 'text',
-        className: 'faust-input',
-        'aria-labelledby': titleId,
-        value,
-        placeholder: request.placeholder || '',
-        onChange: (ev) => setValue(ev.target.value),
-        onKeyDown
-      }),
-      e('div', { style: buttonRowStyle },
+    e('div', { ref: panelRef, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, className: panelClass('sm') },
+      e('div', { className: 'faust-dialog__header' },
+        e('h2', { id: titleId, className: 'faust-dialog__title', style: { whiteSpace: 'pre-line' } }, request.title)),
+      e('div', { className: 'faust-dialog__body' },
+        // The name of a thing the author makes (a bookmark, a snapshot) is typed in the author's face
+        e('input', {
+          ref: inputRef,
+          type: 'text',
+          className: 'faust-input faust-input--author',
+          'aria-labelledby': titleId,
+          value,
+          placeholder: request.placeholder || '',
+          onChange: (ev) => setValue(ev.target.value),
+          onKeyDown
+        })),
+      e('div', { className: 'faust-dialog__footer' },
         e('button', { type: 'button', onClick: () => onDone(null), className: buttonClass() }, 'Peruuta'),
         e('button', { type: 'button', onClick: () => onDone(value), className: buttonClass({ primary: true }) }, request.confirmLabel || 'OK')
       )
@@ -410,7 +412,7 @@ const EXPORT_FORMATS = [
  *   onExport: (choice: { format: string, chapterIds: string[]|null }) => Promise<{ success: boolean, canceled?: boolean, path?: string, error?: string }>
  * }} props
  */
-export function ExportDialog({ open, onClose, chapters, activeChapterId, onExport }) {
+export function ExportDialog({ open, onClose, chapters, activeChapterId, onExport, skipped = 0 }) {
   const [scope, setScope] = useState('all'); // 'all' | 'current' | 'selected'
   const [format, setFormat] = useState('docx');
   const [selected, setSelected] = useState([]);
@@ -486,7 +488,10 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
     e('div', { className: 'faust-section' },
       sectionTitle('Mitä viedään'),
       e('div', { className: 'faust-check-group faust-check-group--grid', role: 'radiogroup', 'aria-label': 'Mitä viedään' },
-        radio('export-scope', 'all', scope, setScope, 'Koko käsikirjoitus', count(chapters.length, 'luku')),
+        // Chapters without text are not exported: the hint says so, so the count matches the sidebar's
+        radio('export-scope', 'all', scope, setScope, 'Koko käsikirjoitus', skipped > 0
+          ? `${count(chapters.length + skipped, 'luku')}, joista ${skipped.toLocaleString('fi-FI')} ${skipped === 1 ? 'tyhjä' : 'tyhjää'} jätetään pois`
+          : count(chapters.length, 'luku')),
         radio('export-scope', 'current', scope, setScope, 'Avoin luku', currentAvailable ? null : 'luvussa ei ole tekstiä', !currentAvailable),
         radio('export-scope', 'selected', scope, setScope, 'Valitut luvut', null)
       ),
@@ -544,6 +549,7 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
  */
 export function ConfirmDialog({ request, onDone }) {
   const confirmRef = useRef(null);
+  const cancelRef = useRef(null);
   const scrimRef = useRef(null);
   const panelRef = useRef(null);
   const titleId = useId();
@@ -553,7 +559,12 @@ export function ConfirmDialog({ request, onDone }) {
 
   useEffect(() => {
     if (!request) return;
-    const timer = setTimeout(() => confirmRef.current && confirmRef.current.focus(), 0);
+    // A destructive question opens on Peruuta, so a reflexive Enter deletes nothing (V 4.8 opening);
+    // the author moves to the action deliberately
+    const timer = setTimeout(() => {
+      const target = request.danger ? cancelRef.current : confirmRef.current;
+      if (target) target.focus();
+    }, 0);
     return () => clearTimeout(timer);
   }, [request]);
 
@@ -561,12 +572,14 @@ export function ConfirmDialog({ request, onDone }) {
 
   // A press on the scrim answers nothing and leaves the focus on the buttons
   return e('div', { ref: scrimRef, className: topScrim(below), onMouseDown: (ev) => scrimPress(ev, null) },
-    e('div', { ref: panelRef, role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': titleId, className: plainPanel('sm') },
-      e('h2', { id: titleId, className: 'faust-dialog__title' }, request.title),
-      request.message && e('div', { className: 'faust-serif', style: { whiteSpace: 'pre-line' } }, request.message),
-      e('div', { style: buttonRowStyle },
+    e('div', { ref: panelRef, role: 'alertdialog', 'aria-modal': 'true', 'aria-labelledby': titleId, className: panelClass('sm') },
+      e('div', { className: 'faust-dialog__header' },
+        e('h2', { id: titleId, className: 'faust-dialog__title' }, request.title)),
+      request.message && e('div', { className: 'faust-dialog__body faust-dialog__body--lines' }, request.message),
+      e('div', { className: 'faust-dialog__footer' },
         e('button', {
           type: 'button',
+          ref: cancelRef,
           onClick: () => onDone(false),
           className: buttonClass({ danger: !!request.dangerCancel })
         }, request.cancelLabel || 'Peruuta'),
