@@ -600,7 +600,8 @@ function createSuggestionController(deps = {}) {
 
       // A selection that ends inside a note must not propose deleting the half it holds
       const cutSpans = cutProtectedSpans(documentText(editor), target.from, target.to);
-      const result = preparePasteEdits(target.text, clipboardText, { wordDiff: deps.wordDiff, changeRatio: deps.changeRatio }, cutSpans);
+      // rawDiff takes apart a merged change that would delete a note, so its other words are still proposed
+      const result = preparePasteEdits(target.text, clipboardText, { wordDiff: deps.wordDiff, changeRatio: deps.changeRatio, rawDiff }, cutSpans);
       // The changes and the range stay here; the dialog only gets the numbers
       if (result.status === 'ok') paste = { rangeId: target.rangeId, changes: result.changes, chapterId: env.activeChapterId };
       else editor.releaseRange(target.rangeId);

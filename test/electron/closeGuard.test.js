@@ -1,8 +1,8 @@
 /** @jest-environment node */
 // Stage I-03 in the main process: the close guard for pending suggestions (reconcile R-24) and the
-// Muokkaa ▸ Ehdotukset submenu. electron.js is loaded with a fake Electron whose app becomes ready,
-// so the window and its close handler exist; the native questions are answered from a queue.
-// dotenv is replaced, so no .env file is read.
+// Muokkaa ▸ Ehdotukset submenu; stage I-04: Muokkaa ▸ Liitä muokkauksina… (the clipboard read in main).
+// electron.js is loaded with a fake Electron whose app becomes ready, so the window and its close
+// handler exist; the native questions are answered from a queue. dotenv is replaced, so no .env file is read.
 
 const fs = require('fs');
 const os = require('os');
@@ -14,6 +14,9 @@ const mockState = {
   windows: [],
   answers: [],        // what showMessageBoxSync answers, in order
   asked: [],          // the messages it was asked
+  handlers: {},       // ipcMain.handle channels
+  clipboard: '',      // what clipboard.readText returns
+  clipboardReads: 0,
   userData: null
 };
 
@@ -51,7 +54,8 @@ jest.mock('electron', () => {
       name: 'FAUST'
     },
     BrowserWindow: FakeWindow,
-    ipcMain: { handle: () => {}, on: (channel, fn) => { mockState.listeners[channel] = fn; } },
+    ipcMain: { handle: (channel, fn) => { mockState.handlers[channel] = fn; }, on: (channel, fn) => { mockState.listeners[channel] = fn; } },
+    clipboard: { readText: () => { mockState.clipboardReads += 1; return mockState.clipboard; } },
     dialog: {
       showSaveDialog: async () => ({}),
       showOpenDialog: async () => ({}),
@@ -198,5 +202,44 @@ describe('Muokkaa ▸ Ehdotukset', () => {
     for (const item of commands) item.click();
     expect(win().sent).toEqual(['accept', 'reject', 'next', 'previous', 'accept-all', 'reject-all', 'restore']
       .map(arg => ['menu-action', 'suggestion', arg]));
+  });
+});
+
+describe('Muokkaa ▸ Liitä muokkauksina… (stage I-04)', () => {
+  const editMenu = () => mockState.menus[mockState.menus.length - 1].find(item => item.label === 'Muokkaa').submenu;
+  const pasteItem = () => editMenu().find(item => item.label === 'Liitä muokkauksina…');
+
+  test('the item stands between Liitä and Valitse kaikki with the accelerator CmdOrCtrl+Alt+V', () => {
+    const labels = editMenu().map(item => item.label || '—');
+    const at = labels.indexOf('Liitä muokkauksina…');
+    expect(labels.slice(at - 1, at + 2)).toEqual(['Liitä', 'Liitä muokkauksina…', 'Valitse kaikki']);
+    expect(pasteItem().accelerator).toBe('CmdOrCtrl+Alt+V');
+    expect(pasteItem().role).toBeUndefined();
+  });
+
+  test('the clipboard is read only when the item is chosen, and goes to the renderer as the argument', () => {
+    mockState.clipboardReads = 0;
+    mockState.clipboard = 'Muokattu kappale.\r\nToinen rivi.';
+    expect(pasteItem()).toBeDefined();
+    expect(mockState.clipboardReads).toBe(0);
+    pasteItem().click();
+    expect(mockState.clipboardReads).toBe(1);
+    expect(win().sent).toEqual([['menu-action', 'paste-as-edits', 'Muokattu kappale.\r\nToinen rivi.']]);
+  });
+
+  test('it is not an AI item: with Tekoäly pois on it stays in Muokkaa and still sends the clipboard', async () => {
+    const viewMenu = () => mockState.menus[mockState.menus.length - 1].find(item => item.label === 'Näytä').submenu.map(item => item.label);
+    expect(viewMenu()).toContain('Liminal Engine (tekoälyavustaja)');
+    expect(await mockState.handlers['prefs:set'](null, { aiOff: true })).toMatchObject({ success: true });
+    try {
+      // The menu was rebuilt without the AI items (the Liminal Engine item of Näytä is one of them)
+      expect(viewMenu()).not.toContain('Liminal Engine (tekoälyavustaja)');
+      expect(editMenu().map(item => item.label)).toContain('Liitä muokkauksina…');
+      mockState.clipboard = 'Teksti.';
+      pasteItem().click();
+      expect(win().sent).toContainEqual(['menu-action', 'paste-as-edits', 'Teksti.']);
+    } finally {
+      await mockState.handlers['prefs:set'](null, { aiOff: false });
+    }
   });
 });

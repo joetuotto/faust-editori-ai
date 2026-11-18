@@ -37,7 +37,8 @@ const MODULES = {
   'src/services/settingsStore.js': ['createSettingsStore', 'getSettingsStore'],
   'src/editor/suggestionModel.js': ['nextId', 'resetIds', 'makeMapper', 'mapSuggestions', 'singleChange', 'firstDifference', 'stillMatches', 'rebaseSuggestions', 'normalizeChanges', 'createSuggestions', 'createState', 'reduce', 'pendingItems', 'rejectedItems', 'hasReviewable', 'acceptChanges', 'blockInsertText', 'blockChange', 'decorationSpecs', 'snapshot', 'bulkAcceptIds', 'relocateTarget', 'CONTEXT_CHARS', 'REBASE_DIFF_LIMIT'],
   'src/editor/suggestionsCore.js': ['createSuggestionKit'],
-  'src/editor/pasteEdits.js': ['PASTE_WARN_RATIO', 'PROTECTED_PATTERN', 'paragraphBreakStyle', 'normalizeClipboard', 'preparePasteEdits'],
+  // I-04 adds the dialog's words (PasteEditsDialog.js draws them)
+  'src/editor/pasteEdits.js': ['PASTE_WARN_RATIO', 'PROTECTED_PATTERN', 'paragraphBreakStyle', 'normalizeClipboard', 'preparePasteEdits', 'PASTE_TEXT', 'pasteDialogText'],
   'src/editor/pendingInsertView.js': ['createBlockView'],
   'src/services/suggestions/suggestionController.js': ['createSuggestionController'],
   'src/services/ai/actions.js': ['BUILTIN_ACTIONS', 'DEFAULT_ACTION_IDS', 'actionsFor', 'findAction', 'menuEntries', 'normalizeSavedPrompts', 'addSavedPrompt', 'removeSavedPrompt', 'labelFromPrompt'],

@@ -645,6 +645,12 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-dialog[aria-busy="true"] :is(.faust-dialog__body, .faust-dialog--plain) { cursor: progress; }
 .faust-dialog > .faust-progress { flex: none; border-radius: 0; }
 
+/* I-04: Liitä muokkauksina */
+/* In the 480px dialog the hint of Tekoäly muualla wraps to two lines. The radio stays on its label's first
+   line (serif line 22px, radio 14px) instead of centring on the two-line row (align-self: center above). */
+.faust-paste .faust-check-group--grid .faust-check > .faust-radio { align-self: start; margin-top: calc((22px - 14px) / 2); }
+/* end I-04 */
+
 /* ============ 10 Popover, menu, tooltip ============ */
 /* The layer host: one plain element, the last child of .faust-app, outside every size
    container. Popover, menu and Tooltip render into it through ReactDOM.createPortal and are

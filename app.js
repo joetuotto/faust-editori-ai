@@ -29,6 +29,8 @@ import { wordDiff, changeRatio, diffSegments, changeStats } from './src/editor/w
 import { appendRow as appendAiLogRow, createLog as createAiLog, decisionRow } from './src/services/ai/usageLog.js';
 import { addAutoSnapshot } from './src/services/project/snapshots.js';
 import { getSettingsStore } from './src/services/settingsStore.js';
+// Liitä muokkauksina: the clipboard compared with the selection, the differences as suggestions (stage I-04)
+import { PasteEditsDialog } from './src/components/PasteEditsDialog.js';
 import {
   TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog, CollectionDialog,
   shortcut, shortcutKeys, count, countParts
@@ -789,6 +791,7 @@ function FAUSTApp() {
   const [textPrompt, setTextPrompt] = useState(null); // open text question, see askText
   const [confirmRequest, setConfirmRequest] = useState(null); // open yes/no question, see askConfirm
   const [suggestionInfo, setSuggestionInfo] = useState(null); // the suggestion bar's BarInfo (stage I-03)
+  const [pasteEditsRequest, setPasteEditsRequest] = useState(null); // open Liitä muokkauksina dialog, see pasteAsEdits (stage I-04)
   const [showReplaceDialog, setShowReplaceDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [replaceTerm, setReplaceTerm] = useState('');
@@ -1039,6 +1042,8 @@ function FAUSTApp() {
         setShowFindDialog(true);
         setShowReplaceDialog(true);
         break;
+      // Muokkaa ▸ Liitä muokkauksina…: arg is the clipboard text, read in main when the item was chosen
+      case 'paste-as-edits': suggestionsRef.current.pasteAsEdits(arg); break;
       case 'suggestion': suggestionsRef.current.menuCommand(arg); break;
 
       // Format
@@ -1506,6 +1511,7 @@ function FAUSTApp() {
     reportPending: (count) => window.electronAPI?.setPendingSuggestions?.(count),
     logDecision: (fields) => appendAiLog(decisionRow(fields)),
     askConfirm: (t, m, c, x) => askConfirm(t, m, c, x, { danger: true }),
+    openPasteDialog: setPasteEditsRequest,
     getSetting: (key, fallback) => getSettingsStore().get(key, fallback),
     setSetting: (key, value) => { getSettingsStore().set(key, value); },
     takeSnapshot: (chapterId, reason) => takeAutoSnapshot(reason)
@@ -2128,6 +2134,8 @@ function FAUSTApp() {
     // The old paths' results on screen (voice, Liminal Engine, Kirjoita tekoälyn kanssa) and their targets
     oldPathTargetRef.current = { voice: null, rewrite: null, liminal: null };
     setVoiceDiffView(null); setAiSuggestion(null); setContinuePreview('');
+    // A Liitä muokkauksina dialog compared the previous project's text (reset() dropped its target)
+    setPasteEditsRequest(null);
     setProject(data);
     setCurrentFilePath(filePath || null);
     setActiveChapterId(data.structure[0]?.id || 'chapter-1');
@@ -4897,6 +4905,22 @@ ${contextPrompt}`;
         onPickFolder: (request) => beginImport('folder', request, { inPreview: true }),
         onDone: finishImport,
         pickError: importPickError
+      })
+    ),
+    // Liitä muokkauksina (stage I-04): Muokkaa ▸ Liitä muokkauksina… ⌥⌘V
+    e(ErrorBoundary, { label: 'Liitä muokkauksina', onDismiss: () => { setPasteEditsRequest(null); suggestionsRef.current.confirmPaste(null); } },
+      e(PasteEditsDialog, {
+        request: pasteEditsRequest,
+        onDone: (choice) => {
+          // The dialog closes first and gives the focus back to the manuscript; only then is the compared
+          // range released or proposed. A range released while the manuscript has no focus redraws its line
+          // under the browser's selection, and the returning focus took the caret from there (the author's
+          // selection jumped to the end of the paragraph after Peruuta or Esc).
+          ReactDOM.flushSync(() => setPasteEditsRequest(null));
+          const result = suggestionsRef.current.confirmPaste(choice);
+          // The compared text changed while the dialog was open (a menu command reaches the editor): nothing was proposed
+          if (result && result.error === 'target-changed') notify('warning', OLD_PATH_CHANGED);
+        }
       })
     ),
     // Focus mode: the header is hidden, so a strip at the top keeps the window draggable

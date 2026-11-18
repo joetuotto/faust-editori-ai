@@ -165,6 +165,7 @@ export const SHORTCUT_GROUPS = [
       ['Leikkaa', 'CmdOrCtrl+X'],
       ['Kopioi', 'CmdOrCtrl+C'],
       ['Liitä', 'CmdOrCtrl+V'],
+      ['Liitä muokkauksina', 'CmdOrCtrl+Alt+V'],
       ['Valitse kaikki', 'CmdOrCtrl+A'],
       ['Etsi', 'CmdOrCtrl+F'],
       ['Etsi seuraava', 'CmdOrCtrl+G'],

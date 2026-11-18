@@ -913,6 +913,21 @@ describe('paste as edits', () => {
     expect(logged(env)).toEqual([expect.objectContaining({ decision: 'accepted', source: 'external-ai', action: 'paste-edits', actionLabel: 'Liitä muokkauksina', count: 2, model: null })]);
   });
 
+  test('pasteAsEdits hands its finest diff on, so the other words of a change that would delete a tag are proposed (X-27)', () => {
+    const real = require('../../src/editor/wordDiff');
+    const rawDiff = jest.fn((a, b) => real.wordDiff(a, b, { raw: true }));
+    const { controller, env, open } = setup({ deps: { wordDiff: (a, b) => real.wordDiff(a, b), rawDiff, changeRatio: real.changeRatio } });
+    const first = open('luku-1');
+    // The text came back without the note and the underline, with two words changed
+    controller.pasteAsEdits('Hän kuiskasi: ”Älä mene.” – Enkä mennyt, vaikka åkerö on kypsä.');
+    expect(rawDiff).toHaveBeenCalled();
+    expect(env.openPasteDialog).toHaveBeenLastCalledWith(expect.objectContaining({
+      status: 'ok', protectedCount: 2, stats: expect.objectContaining({ changeCount: 2 })
+    }));
+    controller.confirmPaste({ source: 'external-ai' });
+    expect(first.getSuggestions().pending.map(item => [item.original, item.insert])).toEqual([['sanoi', 'kuiskasi'], ['oli', 'on']]);
+  });
+
   test('confirmPaste(null) releases the captured range and proposes nothing', () => {
     const { controller, env, open } = setup();
     const first = open('luku-1');

@@ -6,7 +6,9 @@ const {
   PROTECTED_PATTERN,
   paragraphBreakStyle,
   normalizeClipboard,
-  preparePasteEdits
+  preparePasteEdits,
+  PASTE_TEXT,
+  pasteDialogText
 } = require('../../src/editor/pasteEdits');
 
 const SAMPLE = 'Hän sanoi: ”Älä mene.” – Enkä mennyt, vaikka åkerö [TODO: tarkista] oli <u>kypsä</u>.';
@@ -301,5 +303,165 @@ describe('preparePasteEdits', () => {
     expect(found('[TODO: auki')).toEqual([]);
     expect(found('[TODO: a\nb]')).toEqual([]);
     expect(PROTECTED_PATTERN.global).toBe(true);
+  });
+});
+
+// Stage I-04, scenario X-27: the merged diff of the app joins a changed word with a lost tag nearby
+describe('a merged change that would delete a note or a tag is taken apart', () => {
+  const real = require('../../src/editor/wordDiff');
+  const realDeps = () => ({ wordDiff: (a, b, o) => real.wordDiff(a, b, o), changeRatio: real.changeRatio });
+  const TARGET = 'Isä osti talon keväällä 1972 [TODO: tarkista vuosi] ja korjasi sen katon omin <u>käsin</u> ennen talvea.';
+  const CLIPBOARD = 'Isä osti talon syksyllä 1972 ja korjasi sen katon omin käsin ennen joulua.\n';
+
+  test('a word changed one word away from a lost underline is still proposed, and the underline counts once (X-27)', () => {
+    // The app's merged diff joins <u>, </u> and talvea → joulua into one change
+    expect(real.wordDiff(TARGET, CLIPBOARD.trim()).map(change => change.original)).toContain('<u>käsin</u> ennen talvea');
+
+    const result = preparePasteEdits(TARGET, CLIPBOARD, realDeps());
+    expect(result.status).toBe('ok');
+    expect(result.changes.map(change => [change.original, change.insert])).toEqual([['keväällä', 'syksyllä'], ['talvea', 'joulua']]);
+    expect(result.stats.changeCount).toBe(2);
+    expect(result.protectedCount).toBe(2);
+    expect(result.protectedChanges.map(change => [change.original, change.insert])).toEqual([['[TODO: tarkista vuosi] ', ''], ['<u>käsin</u>', 'käsin']]);
+    // Accepting everything that is proposed changes the two words and keeps the note and the underline
+    expect(applyChanges(TARGET, result.changes)).toBe('Isä osti talon syksyllä 1972 [TODO: tarkista vuosi] ja korjasi sen katon omin <u>käsin</u> ennen joulua.');
+  });
+
+  test('the finest diff comes from deps.rawDiff when it is given', () => {
+    const rawDiff = jest.fn((a, b) => real.wordDiff(a, b, { raw: true }));
+    const result = preparePasteEdits(TARGET, CLIPBOARD, { wordDiff: (a, b) => real.wordDiff(a, b), changeRatio: real.changeRatio, rawDiff });
+    // It compares the change's text without the lost tags with the clipboard's text
+    expect(rawDiff).toHaveBeenCalledWith('käsin ennen talvea', 'käsin ennen joulua');
+    expect(result.stats.changeCount).toBe(2);
+  });
+
+  test('a word right after a lost note, and a word inside a lost underline, go alone; note and tags stay', () => {
+    // The finest diff of the whole change pairs the note with "on"; without the note it pairs oli → on
+    const after = preparePasteEdits(SAMPLE, 'Hän kuiskasi: ”Älä mene.” – Enkä mennyt, vaikka åkerö on kypsä.', realDeps());
+    expect(after.changes.map(change => [change.original, change.insert])).toEqual([['sanoi', 'kuiskasi'], ['oli', 'on']]);
+    expect(after.protectedChanges.map(change => change.original)).toEqual(['[TODO: tarkista] ', '<u>kypsä</u>']);
+    expect(after.protectedCount).toBe(2);
+    expect(applyChanges(SAMPLE, after.changes)).toBe('Hän kuiskasi: ”Älä mene.” – Enkä mennyt, vaikka åkerö [TODO: tarkista] on <u>kypsä</u>.');
+
+    const inside = preparePasteEdits(SAMPLE, SAMPLE.replace('<u>kypsä</u>', 'raaka'), realDeps());
+    expect(inside.changes.map(change => [change.original, change.insert])).toEqual([['kypsä', 'raaka']]);
+    expect(inside.protectedCount).toBe(1);
+    expect(applyChanges(SAMPLE, inside.changes)).toContain('<u>raaka</u>.');
+  });
+
+  test('a lost note takes the whitespace of its place with it: no line break or space is proposed for deletion', () => {
+    const after = (target, clipboard) => {
+      const result = preparePasteEdits(target, clipboard, realDeps());
+      return [result.status, result.changes.map(change => [change.original, change.insert]), applyChanges(target, result.changes)];
+    };
+    // A note on a line of its own: its blank line goes with it, so nothing joins two paragraphs
+    expect(after('[TODO: x]\n\n> Kotiin palaaminen.', '> Kotiin palaaminen.')).toEqual(['protected-only', [], '[TODO: x]\n\n> Kotiin palaaminen.']);
+    expect(after('Teksti.\n\n[TODO: x]\n\nLisää tekstiä.', 'Teksti.\n\nLisää sanoja.'))
+      .toEqual(['ok', [['tekstiä', 'sanoja']], 'Teksti.\n\n[TODO: x]\n\nLisää sanoja.']);
+    // A note at the end of a line: the space before it goes, the paragraph break stays
+    expect(after('Sana [TODO: x]\n\nSeuraava kappale.', 'Uusi\n\nSeuraava kappale.'))
+      .toEqual(['ok', [['Sana', 'Uusi']], 'Uusi [TODO: x]\n\nSeuraava kappale.']);
+    // Inside a line, and before a full stop
+    expect(after('alku a [TODO: x] b c', 'alku a b d')).toEqual(['ok', [['c', 'd']], 'alku a [TODO: x] b d']);
+    expect(after('Sana [TODO: x].', 'Sana.')).toEqual(['protected-only', [], 'Sana [TODO: x].']);
+  });
+
+  test('a change that only loses notes or tags, or whose clipboard still holds a copy of one, stays whole', () => {
+    expect(preparePasteEdits(SAMPLE, SAMPLE.replace(' [TODO: tarkista]', ''), realDeps())).toMatchObject({ status: 'protected-only', protectedCount: 1, changes: [] });
+    expect(preparePasteEdits(SAMPLE, SAMPLE.replace('<u>kypsä</u>', 'kypsä'), realDeps())).toMatchObject({ status: 'protected-only', protectedCount: 1, changes: [] });
+    // Two copies of one note in one change and one left: which one went cannot be told, so nothing in it is proposed
+    const two = 'Alku [TODO: a] keski [TODO: a] loppu.';
+    const merged = { from: 5, to: 30, insert: 'keskellä [TODO: a]', original: '[TODO: a] keski [TODO: a]' };
+    expect(two.slice(merged.from, merged.to)).toBe(merged.original);
+    const rawDiff = jest.fn((a, b) => require('../../src/editor/wordDiff').wordDiff(a, b, { raw: true }));
+    const result = preparePasteEdits(two, 'Alku keskellä [TODO: a] loppu.', { wordDiff: () => [merged], changeRatio: () => 0.1, rawDiff });
+    expect(result.changes).toEqual([]);
+    expect(result.protectedChanges).toEqual([merged]);
+    expect(rawDiff).not.toHaveBeenCalled();
+  });
+
+  test('pieces that do not rebuild the change leave it whole', () => {
+    // A finest diff that answers something else (here: a fixed list) is not trusted
+    const merged = [{ from: 78, to: 103, insert: 'käsin ennen joulua', original: '<u>käsin</u> ennen talvea' }];
+    const odd = { wordDiff: () => merged, changeRatio: () => 0.1, rawDiff: () => [{ from: 0, to: 3, insert: '' }, { from: 19, to: 25, insert: 'x' }] };
+    const result = preparePasteEdits(TARGET, TARGET.slice(0, 78) + 'käsin ennen joulua.', odd);
+    expect(result.changes).toEqual([]);
+    expect(result.protectedChanges).toEqual(merged);
+    const throwing = { ...odd, rawDiff: () => { throw new Error('ei'); } };
+    expect(preparePasteEdits(TARGET, TARGET.slice(0, 78) + 'käsin ennen joulua.', throwing).protectedChanges).toEqual(merged);
+  });
+});
+
+// Stage I-04: what PasteEditsDialog.js says about a request of the controller
+describe('the words of the Liitä muokkauksina dialog', () => {
+  const NBSP = '\u00a0';
+  const request = (fields) => ({
+    status: 'ok', scope: 'selection', ratio: 0.1, warn: false, protectedCount: 0, source: 'editor',
+    ...fields,
+    stats: { targetWords: 120, clipboardWords: 118, changeCount: 5, ...(fields && fields.stats) }
+  });
+  const line = (row) => row && `${row.key} ${row.value}`;
+
+  test('a selection: the target line, the clipboard line and the result line; it can paste', () => {
+    const text = pasteDialogText(request());
+    expect(line(text.target)).toBe('Verrataan: valinta, 120 sanaa');
+    expect(line(text.clipboard)).toBe('Leikepöydällä: 118 sanaa');
+    expect(text.result).toBe('5 muutosta');
+    expect(text).toMatchObject({ protectedLine: null, warning: null, notice: null, canPaste: true });
+  });
+
+  test('nothing selected: the target line names the whole chapter', () => {
+    expect(line(pasteDialogText(request({ scope: 'chapter', stats: { targetWords: 326 } })).target))
+      .toBe('Verrataan: koko luku, 326 sanaa (mitään ei ollut valittuna)');
+  });
+
+  test('one word and one change are singular, and thousands are grouped with a no-break space', () => {
+    const one = pasteDialogText(request({ stats: { targetWords: 1, clipboardWords: 1, changeCount: 1 } }));
+    expect(line(one.target)).toBe('Verrataan: valinta, 1 sana');
+    expect(line(one.clipboard)).toBe('Leikepöydällä: 1 sana');
+    expect(one.result).toBe('1 muutos');
+    const many = pasteDialogText(request({ scope: 'chapter', stats: { targetWords: 12345, clipboardWords: 12001, changeCount: 1500 } }));
+    expect(line(many.target)).toBe(`Verrataan: koko luku, 12${NBSP}345 sanaa (mitään ei ollut valittuna)`);
+    expect(line(many.clipboard)).toBe(`Leikepöydällä: 12${NBSP}001 sanaa`);
+    expect(many.result).toBe(`1${NBSP}500 muutosta`);
+  });
+
+  test('changes that would delete a note or an underline are named under the result, singular and plural', () => {
+    expect(pasteDialogText(request({ protectedCount: 1 })).protectedLine)
+      .toBe('1 muutos poistaisi muistutuksen tai alleviivauksen. Se jätetään pois.');
+    expect(pasteDialogText(request({ protectedCount: 2 })).protectedLine)
+      .toBe('2 muutosta poistaisi muistutuksen tai alleviivauksen. Ne jätetään pois.');
+  });
+
+  test('protected-only: the line, no changes to paste, and no paste button', () => {
+    const text = pasteDialogText(request({ status: 'protected-only', protectedCount: 2, stats: { changeCount: 0 } }));
+    expect(text.protectedLine).toBe('2 muutosta poistaisi muistutuksen tai alleviivauksen. Ne jätetään pois.');
+    expect(text.result).toBe('0 muutosta');
+    expect(text.canPaste).toBe(false);
+    expect(text.warning).toBeNull();
+  });
+
+  test('the warning carries the rounded percentage, and only when the request warns', () => {
+    expect(pasteDialogText(request({ ratio: 0.834, warn: true })).warning)
+      .toBe('Leikepöydän teksti poikkeaa verrattavasta tekstistä paljon: noin 83 % sanoista muuttuisi. Tarkista, että leikepöydällä on oikea teksti.');
+    expect(pasteDialogText(request({ ratio: 0.6, warn: false })).warning).toBeNull();
+  });
+
+  test('identical, empty and no editor: the state as a notice, and nothing to paste', () => {
+    const identical = pasteDialogText(request({ status: 'identical', stats: { changeCount: 0 } }));
+    expect(identical).toMatchObject({ notice: 'Leikepöydän teksti on sama kuin verrattava teksti. Muutoksia ei ole.', result: null, canPaste: false });
+    expect(line(identical.target)).toBe('Verrataan: valinta, 120 sanaa');
+    expect(pasteDialogText(request({ status: 'empty' }))).toMatchObject({ notice: 'Leikepöydällä ei ole tekstiä.', target: null, clipboard: null, canPaste: false });
+    expect(pasteDialogText({ status: 'no-editor', scope: 'chapter', stats: { targetWords: 0, clipboardWords: 0, changeCount: 0 } }))
+      .toMatchObject({ notice: 'Liitä muokkauksina toimii, kun jokin luku on auki.', target: null, canPaste: false });
+    expect(pasteDialogText(null)).toMatchObject({ notice: 'Liitä muokkauksina toimii, kun jokin luku on auki.', canPaste: false });
+  });
+
+  test('the fixed words: title, choice and buttons', () => {
+    expect(PASTE_TEXT).toMatchObject({ title: 'Liitä muokkauksina', sourceLabel: 'Kuka muokkasi tekstin?', cancel: 'Peruuta', confirm: 'Liitä muokkauksina', close: 'Sulje' });
+    expect(PASTE_TEXT.sources).toEqual([
+      { id: 'editor', label: 'Kustannustoimittaja', hint: 'ihmisen tekemät korjaukset' },
+      { id: 'external-ai', label: 'Tekoäly muualla', hint: 'esimerkiksi Cherry Studion keskustelu' }
+    ]);
   });
 });

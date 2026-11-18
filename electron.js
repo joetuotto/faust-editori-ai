@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, shell, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, shell, nativeTheme, clipboard } = require('electron');
 const { createRequestTable, classifyAIError, codedError, AI_CONSTANTS, AI_OFF_MESSAGE, CANCELLED_MESSAGE } = require('./utils/aiRequest');
 const appSettings = require('./utils/appSettings');
 const { buildGuardIndex, findProtected, collectStrings } = require('./utils/noAIGuard');
@@ -669,6 +669,13 @@ function createMenu() {
         { label: 'Leikkaa', role: 'cut' },
         { label: 'Kopioi', role: 'copy' },
         { label: 'Liitä', role: 'paste' },
+        // A local tool, not an AI door (never inside aiItems, R-6). The clipboard is read here, only when
+        // the author chooses the item, and goes to this window's renderer as the action's argument (I-04)
+        {
+          label: 'Liitä muokkauksina…',
+          accelerator: 'CmdOrCtrl+Alt+V',
+          click: () => menuAction('paste-as-edits', clipboard.readText())
+        },
         { label: 'Valitse kaikki', role: 'selectAll' },
         separator,
         item('Etsi…', 'show-find', 'CmdOrCtrl+F'),

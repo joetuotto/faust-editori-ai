@@ -528,6 +528,42 @@ Nyt: 13 450 sanaa</span></div>
       <div class="faust-dialog__footer"><span class="faust-dialog__footer-start"><button class="faust-btn faust-btn--lg faust-btn--danger">Poista hahmo</button></span><button class="faust-btn faust-btn--lg">Sulje</button><button class="faust-btn faust-btn--lg faust-btn--primary">Tallenna</button></div>
     </div>
   </div>
+  <!-- I-04: Liitä muokkauksina (the counts, the protected line, the warning and the wrapped hint of the second source) -->
+  <div class="tn-row tn-row--top">
+    <div class="faust-dialog faust-dialog--md faust-paste" role="dialog" aria-label="Liitä muokkauksina" style="--dialog-w: 480px">
+      <div class="faust-dialog__header"><div class="faust-dialog__heading"><h2 class="faust-dialog__title">Liitä muokkauksina</h2></div><button class="faust-btn faust-btn--icon" aria-label="Sulje" title="Sulje (Esc)"><i data-icon="close" data-size="16"></i></button></div>
+      <div class="faust-dialog__body">
+        <div style="display: flex; flex-direction: column; gap: var(--sp-4)">
+          <div>
+            <div class="faust-kv"><span>Verrataan:</span><span>valinta, 39 sanaa</span></div>
+            <div class="faust-kv"><span>Leikepöydällä:</span><span>37 sanaa</span></div>
+            <div class="faust-kv" style="justify-content: flex-end"><span>5 muutosta</span></div>
+            <div class="faust-meta">2 muutosta poistaisi muistutuksen tai alleviivauksen. Ne jätetään pois.</div>
+          </div>
+          <div class="faust-callout faust-callout--warning"><span class="faust-callout__icon"><i data-icon="warning" data-size="16"></i></span><div class="faust-callout__body">Leikepöydän teksti poikkeaa verrattavasta tekstistä paljon: noin 83 % sanoista muuttuisi. Tarkista, että leikepöydällä on oikea teksti.</div></div>
+          <div class="faust-field">
+            <div class="faust-field__label" id="tn-paste-src">Kuka muokkasi tekstin?</div>
+            <div class="faust-check-group faust-check-group--grid" role="radiogroup" aria-labelledby="tn-paste-src"><label class="faust-check faust-check--serif"><span class="faust-radio"><input type="radio" name="tn-paste" checked></span><span>Kustannustoimittaja</span><span class="faust-check__hint">ihmisen tekemät korjaukset</span></label><label class="faust-check faust-check--serif"><span class="faust-radio"><input type="radio" name="tn-paste"></span><span>Tekoäly muualla</span><span class="faust-check__hint">esimerkiksi Cherry Studion keskustelu</span></label></div>
+          </div>
+        </div>
+      </div>
+      <div class="faust-dialog__footer"><button class="faust-btn faust-btn--lg">Peruuta</button><button class="faust-btn faust-btn--lg faust-btn--primary">Liitä muokkauksina</button></div>
+    </div>
+    <div class="faust-dialog faust-dialog--md faust-paste" role="dialog" aria-label="Liitä muokkauksina" style="--dialog-w: 480px">
+      <div class="faust-dialog__header"><div class="faust-dialog__heading"><h2 class="faust-dialog__title">Liitä muokkauksina</h2></div><button class="faust-btn faust-btn--icon" aria-label="Sulje" title="Sulje (Esc)"><i data-icon="close" data-size="16"></i></button></div>
+      <div class="faust-dialog__body">
+        <div style="display: flex; flex-direction: column; gap: var(--sp-4)">
+          <div>
+            <div class="faust-kv"><span>Verrataan:</span><span>koko luku, 186 sanaa (mitään ei ollut valittuna)</span></div>
+            <div class="faust-kv"><span>Leikepöydällä:</span><span>186 sanaa</span></div>
+          </div>
+          <div class="faust-callout faust-callout--info"><span class="faust-callout__icon"><i data-icon="info" data-size="16"></i></span><div class="faust-callout__body">Leikepöydän teksti on sama kuin verrattava teksti. Muutoksia ei ole.</div></div>
+        </div>
+      </div>
+      <div class="faust-dialog__footer"><button class="faust-btn faust-btn--lg" title="Sulje (Esc)">Sulje</button></div>
+    </div>
+  </div>
+  <!-- end I-04 -->
 </section>
 
 <!-- ======================= 10 Popover, menu, tooltip ======================= -->
