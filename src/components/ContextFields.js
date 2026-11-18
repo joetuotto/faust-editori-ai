@@ -6,7 +6,7 @@
  *       Ohjeet tekoälylle in Projektin asetukset: Käsikirjoituksen ydin, Tyyliohje and (from stage
  *       I-07 on) Vältettävät sanat. onChange(patch) merges into the project.
  *   ChapterNoAIField({ chapter, onChange })     Ei tekoälylle on the Luku tab; onChange(boolean)
- *   useNoAIGuard(project)                        keeps the main process's wire guard current
+ *   useNoAIGuard(project, projectKey)            keeps the main process's wire guard current
  *
  * Composition of visual foundations entry VF-30: Section, Field, the textarea and check classes.
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
@@ -112,25 +112,28 @@ function protectedIds(project) {
 /**
  * Sends the text and summaries of the protected chapters to the main process, whose wire guard
  * refuses any request that carries them. At once when the set of protected chapters changes (a
- * box ticked or unticked, another project opened), 400 ms after their text or summary changed.
+ * box ticked or unticked) or another project is opened, 400 ms after their text or summary changed.
+ * projectKey names the open project (its file path): projects reuse chapter ids such as
+ * 'chapter-1', so the ids alone cannot tell that the protected text belongs to another project.
  * With no protected chapter it sends [] once.
  */
-export function useNoAIGuard(project) {
+export function useNoAIGuard(project, projectKey) {
   const ids = protectedIds(project);
+  const key = String(projectKey == null ? '' : projectKey) + '\u0002' + String((project && project.created) || '') + '\u0002' + ids;
   const chapters = useMemo(() => protectedChapters(project), [project && project.structure]);
   const textKey = useMemo(() => chapters.map(chapter => chapter.title + '\u0000' + chapter.text).join('\u0001'), [chapters]);
-  const sentIdsRef = useRef(null);
+  const sentKeyRef = useRef(null);
 
   useEffect(() => {
     const api = typeof window !== 'undefined' ? window.electronAPI : null;
     if (!api || typeof api.setProtectedText !== 'function') return undefined;
     const send = () => api.setProtectedText(chapters);
-    if (sentIdsRef.current !== ids) {
-      sentIdsRef.current = ids;
+    if (sentKeyRef.current !== key) {
+      sentKeyRef.current = key;
       send();
       return undefined;
     }
     const timer = setTimeout(send, 400);
     return () => clearTimeout(timer);
-  }, [ids, textKey]);
+  }, [key, textKey]);
 }

@@ -161,8 +161,11 @@ export function ContextRow(props) {
           disabled: locked,
           onChange: (ev) => toggle(part.id, ev.target.checked)
         }),
-        part.label,
-        e('span', { className: 'faust-check__hint' }, stateText ? `${size} · ${stateText}` : size)),
+        // The size and state on their own line under the label, so a label that wraps in the
+        // 288px column keeps its hint under it instead of in a column of its own
+        e('span', { style: { display: 'flex', flexDirection: 'column' } },
+          part.label,
+          e('span', { className: 'faust-check__hint', style: { marginLeft: 0 } }, stateText ? `${size} · ${stateText}` : size))),
       // The entries of a Tarinakansio part, one by one
       Array.isArray(part.items) && /^codex/.test(part.id) && part.items.map(item => e('label', {
         key: item.key,

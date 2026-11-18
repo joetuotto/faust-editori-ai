@@ -41,10 +41,14 @@ export function AiRoleModels({ config, models, onSave }) {
         const stored = textOf(roles[role]);
         // Without a fetched list the stored id is the only other option, so the select shows it
         const options = list.length > 0 ? list : (stored ? [{ id: stored, name: modelLabel(stored) }] : []);
-        return e(Field, { key: role, label, hint },
+        // The 288px column cuts a long name in the closed select, and two models can share their
+        // start: the role's own model is named whole under it
+        const chosen = stored ? modelLabel(stored) : '';
+        return e(Field, { key: role, label, hint: chosen ? e('span', null, hint, e('br'), 'Käytössä: ' + chosen) : hint },
           e('select', {
             className: 'faust-select faust-select--sm',
             value: stored,
+            title: chosen || undefined,
             onChange: (ev) => onSave({ roles: { [role]: ev.target.value } })
           },
             e('option', { value: '' }, 'Sama kuin oletusmalli'),
@@ -164,9 +168,10 @@ export function AiModelBadge({ role = 'prose', onOpenSettings, config }) {
     : role === 'default'
       ? textOf(cfg.provider === 'cherry' ? cfg.model : cfg.anthropicModel)
       : client.modelFor(role, { ...cfg, roles: isRecord(cfg.roles) ? cfg.roles : {} });
+  // flush-start: when the link wraps under 'Malli: …', its text starts on the same edge
   const link = e('button', {
     type: 'button',
-    className: 'faust-btn faust-btn--quiet faust-btn--sm',
+    className: 'faust-btn faust-btn--quiet faust-btn--sm faust-btn--flush-start',
     title: 'Vaihda malli tietopaneelin Tekoäly-välilehdellä',
     onClick: onOpenSettings
   }, 'Tekoälyasetukset');

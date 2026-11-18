@@ -886,6 +886,9 @@ function createRequestTable(deps = {}) {
 
 module.exports = {
   AI_CONSTANTS,
+  // The two sentences of a request that was not sent or was stopped; electron.js answers the old
+  // handlers with them too, so main carries each literal once
+  AI_OFF_MESSAGE, CANCELLED_MESSAGE,
   codedError, validateRequest, resolveModel, modelSettingsFor, buildParams,
   normalizeStopReason, normalizeUsage, createThinkFilter,
   classifyAIError, createRequestTable

@@ -16,6 +16,9 @@ import { AiModelBadge } from './src/components/AiModelSettings.js';
 import { BookBriefFields, ChapterNoAIField, useNoAIGuard } from './src/components/ContextFields.js';
 import { normalizeContextFields, MESSAGES } from './src/services/ai/contextBuilder.js';
 import { modelLabel } from './src/services/format.fi.js';
+// failureReason: the reason in '<Toiminto> epäonnistui: <syy>.'; asIsNotice: a stop, the switch and
+// the wire guard shown as they are (R-21); bookRunPlan: Magnum Opus without "Ei tekoälylle" chapters
+import { failureReason, asIsNotice, bookRunPlan } from './src/services/ai/oldPaths.js';
 import {
   TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog, CollectionDialog,
   shortcut, shortcutKeys, count, countParts
@@ -205,25 +208,6 @@ const formatDateTimeFi = (value) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleDateString('fi-FI') + ' klo ' + date.toLocaleTimeString('fi-FI', { hour: 'numeric', minute: '2-digit' });
-};
-
-// The reason in '<Toiminto> epäonnistui: <syy>.' (menu spec B.12): one trailing full stop is
-// left to the template, and a missing or English placeholder reason reads 'tuntematon virhe'
-const failureReason = (error) => {
-  const text = String((error && error.message) || error || '').trim().replace(/\.+$/, '');
-  if (!text || /^unknown error$/i.test(text)) return 'tuntematon virhe';
-  return text;
-};
-
-// A stop, the "Tekoäly pois" switch and the "Ei tekoälylle" wire guard are not failures of the
-// action that was asked for: their sentences are shown as they are, never inside
-// '<Toiminto> epäonnistui: …' (reconcile R-21, R-72). Returns { kind, text } or null.
-const AS_IS_SENTENCES = { 'Pyyntö pysäytettiin.': 'info', 'Tekoäly pois -asetus on päällä.': 'warning' };
-const asIsNotice = (error) => {
-  const text = String((error && error.message) || error || '').trim();
-  if (Object.prototype.hasOwnProperty.call(AS_IS_SENTENCES, text)) return { kind: AS_IS_SENTENCES[text], text };
-  if (/^Kehotteessa on tekstiä luvusta /.test(text)) return { kind: 'error', text };
-  return null;
 };
 
 // The reason of a failed listen() in the same form: voiceInput.js rejects with Finnish sentences,
@@ -839,6 +823,7 @@ function FAUSTApp() {
   // AI Modules refs
   const commandManagerRef = useRef(null);
   const batchProcessorRef = useRef(null);
+  const bookRunRef = useRef(false);             // a whole-book run is under way: the processor reads bookRunPlan(project).lent
   const costOptimizerRef = useRef(null);
   const continuityTrackerRef = useRef(null);
   const hybridFlowRef = useRef(null);
@@ -861,8 +846,15 @@ function FAUSTApp() {
   // it current between renders, because fast typing can outrun React state.
   liveContentRef.current = { chapterId: activeChapter?.id, content: activeChapter?.content || '' };
   projectRef.current = project;
-  // The wire guard in main learns the text of the chapters marked "Ei tekoälylle"
-  useNoAIGuard(project);
+  // The wire guard in main learns the text of the chapters marked "Ei tekoälylle"; the file path
+  // tells it another project was opened, which is sent at once even when the chapter ids repeat
+  useNoAIGuard(project, currentFilePath);
+
+  // A selection belongs to the chapter it was made in: another chapter or project starts without one,
+  // so the selected text of a chapter marked "Ei tekoälylle" cannot follow the author elsewhere
+  useEffect(() => {
+    setTextSelection(null);
+  }, [activeChapter && activeChapter.id, currentFilePath, project.created]);
 
   // The active chapter id must always name a chapter that exists. After a
   // delete, a snapshot restore or a jump to an old bookmark it could point at
@@ -2557,7 +2549,9 @@ function FAUSTApp() {
       if (!response.trim()) throw new Error('tekoäly ei palauttanut tekstiä');
       return response;
     }
-    if (!response || response.success === false) throw new Error(failureReason(response && response.error));
+    // The error as main gave it: the caller's catch makes the reason, and a stop or the switch
+    // keeps its sentence whole for asIsNotice (R-21)
+    if (!response || response.success === false) throw new Error(String((response && response.error) || 'tuntematon virhe'));
     const text = response.data || response.content || response.text || '';
     if (!String(text).trim()) throw new Error('tekoäly ei palauttanut tekstiä');
     return text;
@@ -2928,12 +2922,14 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
   };
 
   const AI_NOT_READY = 'Tekoälytoiminnot latautuvat vielä. Odota hetki ja yritä uudelleen.';
+  const ALL_CHAPTERS_NO_AI = 'Kaikki luvut on merkitty ”Ei tekoälylle”. Mitään ei lähetetä.';
 
   // Magnum Opus, one chapter. Asks before it replaces a chapter that has text; nothing is
   // marked busy before the answer, so Peruuta and Esc leave no busy state.
   const generateChapter = async (chapterId) => {
     if (isGenerating || analysisBusy) return;
-    if (chapterNoAI && activeChapter && chapterId === activeChapter.id) { notify('warning', MESSAGES.noAI); return; }
+    // The chapter to write, open or not, is marked "Ei tekoälylle" (R-27)
+    if ((project.structure.find(ch => ch.id === chapterId) || {}).noAI === true) { notify('warning', MESSAGES.noAI); return; }
     if (!window.electronAPI) {
       console.error('[Generate] Electron API not available');
       return;
@@ -3069,12 +3065,22 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
       notify('warning', AI_NOT_READY);
       return;
     }
+    // Chapters marked "Ei tekoälylle" are left out of the run (contracts.md rule 16)
+    const plan = bookRunPlan(project);
+    if (plan.written === 0) {
+      notify('warning', ALL_CHAPTERS_NO_AI);
+      return;
+    }
     const price = aiSource && aiSource.provider === 'cherry'
       ? 'Hinta riippuu Cherry Studiossa valitusta mallista.'
       : 'Hinta: ei arviota tälle mallille.';
+    const which = plan.skipped.length === 0
+      ? `Magnum Opus: tekoäly kirjoittaa jokaisen luvun (${plan.written} kpl) alusta ja korvaa lukujen nykyisen tekstin.`
+      : `Magnum Opus: tekoäly kirjoittaa alusta jokaisen luvun, jota ei ole merkitty ”Ei tekoälylle” (${plan.written} kpl), ja korvaa niiden nykyisen tekstin. ` +
+        `Merkityt luvut (${plan.skipped.length} kpl) jäävät ennalleen.`;
     const confirmed = await askConfirm(
       'Korvataanko kaikkien lukujen teksti?',
-      `Magnum Opus: tekoäly kirjoittaa jokaisen luvun (${project.structure.length} kpl) alusta ja korvaa lukujen nykyisen tekstin.\n\n` +
+      which + '\n\n' +
         price + '\n\n' +
         'Tallenna ensin tilannekuva, niin voit palata nykyiseen tekstiin.',
       'Kirjoita kaikki luvut',
@@ -3097,9 +3103,20 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
       return;
     }
 
+    // The chapters marked "Ei tekoälylle" are neither written nor read: the run reads a copy of the
+    // project in which they lend no text, in runs of their unprotected neighbours (rule 16)
+    const base = projectRef.current || project;
+    const plan = bookRunPlan(base);
+    if (plan.written === 0) {
+      notify('warning', ALL_CHAPTERS_NO_AI);
+      return;
+    }
+
     setIsGenerating(true);
     setMagnumOpusRun('all');
     showBusy('Magnum Opus: valmistellaan…');
+    bookRunRef.current = true;
+    batchProcessorRef.current.project = plan.lent;
 
     try {
       // Set up progress callback
@@ -3117,21 +3134,32 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
         }
       };
 
-      // Get chapter outlines
-      const outlineChapters = project.structure.map(ch => ({
+      // Get chapter outlines (a protected chapter's place is kept, it is never written)
+      const outlineChapters = plan.lent.structure.map(ch => ({
         title: ch.title,
         outline: ch.synopsis || ch.title
       }));
 
-      // Process all chapters
-      const results = await batchProcessorRef.current.processChapters(
-        outlineChapters,
-        {
-          mode: project.ai.currentMode,
-          startFrom: 0,
-          stopAt: project.structure.length
+      // Process the unprotected chapters, one run of neighbours at a time; a failed run ends it
+      const results = { success: true, results: [], errors: [] };
+      for (const run of plan.runs) {
+        const part = await batchProcessorRef.current.processChapters(
+          outlineChapters,
+          {
+            mode: base.ai.currentMode,
+            startFrom: run.startFrom,
+            stopAt: run.stopAt
+          }
+        );
+        results.results.push(...part.results);
+        results.errors.push(...part.errors);
+        if (!part.success) {
+          results.success = false;
+          break;
         }
-      );
+      }
+      // Each result names its chapter by its place in the book the run read
+      const byId = new Map(results.results.map(result => [base.structure[result.chapterIndex].id, result]));
 
       if (results.success) {
         showBusy('Tallennetaan lukujen tekstiä…');
@@ -3139,19 +3167,17 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
         // Extract continuity data for all chapters
         if (continuityTrackerRef.current) {
           showBusy('Päivitetään tarinan tietoja…');
-          for (let idx = 0; idx < results.results.length; idx++) {
-            const result = results.results[idx];
+          for (const result of results.results) {
             if (result?.content) {
-              await continuityTrackerRef.current.extractFromChapter(idx, result.content);
+              await continuityTrackerRef.current.extractFromChapter(result.chapterIndex, result.content);
             }
           }
         }
 
-        // Update all chapters with version history
-        setProject(prev => ({
-          ...prev,
-          structure: prev.structure.map((ch, idx) => {
-            const result = results.results[idx];
+        // Update the written chapters with version history; a chapter marked "Ei tekoälylle" stays
+        setProject(prev => {
+          const structure = prev.structure.map((ch, idx) => {
+            const result = ch.noAI === true ? null : byId.get(ch.id);
             if (!result) return ch;
 
             const versions = versionsKeepingOwnText(ch);
@@ -3188,25 +3214,28 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
               continuityData: continuityData,
               modified: new Date().toISOString()
             };
-          }),
-          targets: {
-            ...prev.targets,
-            currentTotal: results.results.reduce((sum, result) =>
-              sum + (result?.wordCount || 0), 0
-            )
-          }
-        }));
+          });
+          return {
+            ...prev,
+            structure,
+            targets: {
+              ...prev.targets,
+              currentTotal: structure.reduce((sum, ch) => sum + (ch.wordCount || 0), 0)
+            }
+          };
+        });
 
         setUnsavedChanges(true);
 
         // Show summary
         const totalWords = results.results.reduce((sum, r) => sum + (r?.wordCount || 0), 0);
         const totalCost = results.totalCost || 0;
-        const successCount = results.completedChapters || results.results.length;
+        const successCount = results.results.length;
 
         closeBusy();
         notify('success',
-          `Valmis: ${successCount}/${project.structure.length} lukua, ${count(totalWords, 'sana')}. Hinta: ${formatCostFi(totalCost)}.`);
+          `Valmis: ${successCount}/${plan.written} lukua, ${count(totalWords, 'sana')}. Hinta: ${formatCostFi(totalCost)}.` +
+            (plan.skipped.length > 0 ? ` Ei tekoälylle -merkityt luvut (${plan.skipped.length} kpl) jäivät ennalleen.` : ''));
 
         console.log('[Batch Generate] Success:', successCount, 'chapters', totalWords, 'words', `$${totalCost.toFixed(4)}`);
       } else {
@@ -3221,6 +3250,9 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
       if (asIs) notify(asIs.kind, asIs.text);
       else notify('error', 'Lukujen kirjoittaminen epäonnistui: ' + failureReason(error) + '.');
     } finally {
+      // The processor follows the rendered project again
+      bookRunRef.current = false;
+      if (batchProcessorRef.current) batchProcessorRef.current.project = projectRef.current;
       closeBusy();
       setIsGenerating(false);
       setMagnumOpusRun(null);
@@ -4575,7 +4607,8 @@ ${contextPrompt}`;
       hybridFlowRef.current.project = project;
     }
     if (batchProcessorRef.current) {
-      batchProcessorRef.current.project = project;
+      // During a whole-book run the chapters marked "Ei tekoälylle" lend no text (rule 16)
+      batchProcessorRef.current.project = bookRunRef.current ? bookRunPlan(project).lent : project;
     }
     if (refinementManagerRef.current) {
       refinementManagerRef.current.project = project;
@@ -6882,6 +6915,8 @@ ${contextPrompt}`;
           e('div', { style: { display: inspectorTab === 'ai' ? 'block' : 'none' } },
             e(AIProviderSettings, {
               onProviderChange: setAiSource,
+              // Poista avain asks first (stage amendments 0.6)
+              askConfirm,
               // Koepyyntö with the open chapter's context: what the real actions would assemble
               getEditorContext: () => ({
                 project: projectRef.current,
@@ -9369,8 +9404,9 @@ ${contextPrompt}`;
       modelName: modelLabel(aiSource && (aiSource.provider === 'cherry' ? aiSource.model : aiSource.anthropicModel)),
       // Its own Esc (in its field) and its close button: the focus goes to the manuscript
       onClose: () => closePanelKeepingFocus('.claude-chat-container', () => setClaudeChatOpen(false)),
+      // A chapter marked "Ei tekoälylle" takes no answer (the chat, lent no chapter, shows no button)
       onInsertText: (text) => {
-        if (activeChapter) {
+        if (activeChapter && !chapterNoAI) {
           // The text as the editor has it now, not as it was at the last render
           const base = liveContentRef.current.chapterId === activeChapter.id
             ? liveContentRef.current.content

@@ -246,6 +246,78 @@ describe('the old handlers choose no model themselves (A-L13, A-L16)', () => {
   });
 });
 
+// A write that fails: the settings file or the key file is a folder for one case (I-02 review)
+describe('a failed write leaves main on what the file holds', () => {
+  const blockWith = (file) => {
+    const target = path.join(mockState.userData, file);
+    const saved = fs.existsSync(target) ? fs.readFileSync(target) : null;
+    fs.rmSync(target, { recursive: true, force: true });
+    fs.mkdirSync(target);
+    fs.writeFileSync(path.join(target, 'pysayttaja'), '');   // a folder that is not empty
+    return () => {
+      fs.rmSync(target, { recursive: true, force: true });
+      if (saved) fs.writeFileSync(target, saved);
+    };
+  };
+
+  test('a failed key save gives the reason only, so the block reads Avaimen tallennus epäonnistui: <syy>. once', async () => {
+    const restore = blockWith('config.json');
+    try {
+      const result = await invoke('keys:set', { name: 'ANTHROPIC_API_KEY', value: KEY });
+      expect(result).toEqual({ success: false, error: 'asetustiedostoa ei voitu kirjoittaa' });
+      expect(JSON.stringify(result)).not.toContain(KEY);
+    } finally {
+      restore();
+    }
+  });
+
+  test('Tekoäly pois that cannot be written changes neither the refusals nor the menu', async () => {
+    await invoke('keys:set', { name: 'CHERRY_API_KEY', value: KEY });
+    await invoke('ai:set-provider', { provider: 'cherry', model: 'p:model-a' });
+    const restore = blockWith('ui-prefs.json');
+    try {
+      expect(await invoke('prefs:set', { aiOff: true })).toEqual({ success: false, error: 'Asetusten tallennus epäonnistui.' });
+      expect((await invoke('prefs:get')).prefs.aiOff).toBe(false);
+      expect(await invoke('claude-api', { prompt: 'Hei' })).toMatchObject({ success: true, data: 'toimii' });
+
+      // The menu's checkbox: the click finds the switch as main holds it after the failed write
+      const toggle = aiSubmenu().find(item => item.label === 'Tekoäly pois');
+      await toggle.click({ checked: true });
+      expect(aiSubmenu().find(item => item.label === 'Tekoäly pois').checked).toBe(false);
+      expect(labels(aiSubmenu())).toContain('Pysäytä tekoäly');
+      expect((await invoke('prefs:get')).prefs.aiOff).toBe(false);
+      expect(await invoke('claude-api', { prompt: 'Hei' })).toMatchObject({ success: true, data: 'toimii' });
+    } finally {
+      restore();
+    }
+
+    // Once the file can be written, the next change goes through whole
+    expect(await invoke('prefs:set', { aiOff: true })).toMatchObject({ success: true, prefs: { aiOff: true } });
+    expect(await invoke('claude-api', { prompt: 'Hei' })).toEqual({ success: false, error: 'Tekoäly pois -asetus on päällä.' });
+    await invoke('prefs:set', { aiOff: false });
+  });
+
+  test('a change made while an earlier write fails is kept, and only the failed change is taken back', async () => {
+    const restore = blockWith('ui-prefs.json');
+    let first;
+    try {
+      first = invoke('prefs:set', { aiOff: true });
+      // The second change is merged at once; its write comes after the first one's
+      const second = invoke('prefs:set', { 'typo.smartTyping': false });
+      expect(await first).toMatchObject({ success: false });
+      restore();
+      expect(await second).toMatchObject({ success: true });
+      const prefs = (await invoke('prefs:get')).prefs;
+      expect(prefs.aiOff).toBe(false);
+      expect(prefs['typo.smartTyping']).toBe(false);
+      expect(JSON.parse(fs.readFileSync(path.join(mockState.userData, 'ui-prefs.json'), 'utf8'))).toMatchObject({ aiOff: false, 'typo.smartTyping': false });
+    } finally {
+      if (fs.existsSync(path.join(mockState.userData, 'ui-prefs.json')) && fs.statSync(path.join(mockState.userData, 'ui-prefs.json')).isDirectory()) restore();
+      await invoke('prefs:set', { 'typo.smartTyping': null });
+    }
+  });
+});
+
 // Last in the file: the latch of Pysäytä tekoäly runs on the request table's own clock (real time)
 describe('Pysäytä tekoäly and the old handlers (X-22)', () => {
   test('Pysäytä tekoäly stops a running old request, refuses the next one for three seconds, then lets it through', async () => {

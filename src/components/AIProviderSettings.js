@@ -61,7 +61,10 @@ const statusLine = (status) => status && e('div', {
 
 const seconds = (ms) => (ms / 1000).toLocaleString('fi-FI', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-export function AIProviderSettings({ onProviderChange, getEditorContext }) {
+// Poista avain asks first (stage amendments 0.6): which key, and what stops working without it
+const KEY_NAMES_FI = { CHERRY_API_KEY: 'Cherry Studion API-avain', ANTHROPIC_API_KEY: 'Clauden API-avain' };
+
+export function AIProviderSettings({ onProviderChange, getEditorContext, askConfirm }) {
   const api = window.electronAPI;
 
   const [config, setConfig] = useState(null);
@@ -221,6 +224,16 @@ export function AIProviderSettings({ onProviderChange, getEditorContext }) {
   };
 
   const clearKey = async (name) => {
+    if (typeof askConfirm === 'function') {
+      const confirmed = await askConfirm(
+        'Poistetaanko avain?',
+        `${KEY_NAMES_FI[name]} poistetaan FAUSTin asetuksista. Tekoälypyynnöt eivät toimi tällä lähteellä, ennen kuin tallennat avaimen uudelleen.`,
+        'Poista avain',
+        'Peruuta',
+        { danger: true }
+      );
+      if (!confirmed) return;
+    }
     const refreshed = await writeKey(name, '');
     if (refreshed && name === 'CHERRY_API_KEY') setModels([]);
     if (refreshed && name === 'ANTHROPIC_API_KEY') setAnthropicModels([]);
@@ -231,16 +244,21 @@ export function AIProviderSettings({ onProviderChange, getEditorContext }) {
     if (saved.success) applyConfig(saved);
   };
 
+  // A window the list knows is stored with the chosen model, unless one is stored already
+  // (extract A 4.3: after Hae mallit, and when the model is chosen from the list)
+  const storeKnownWindow = async (id, list, current) => {
+    const known = id ? (list || []).find(m => m.id === id) : null;
+    const stored = current && current.modelSettings && current.modelSettings[id];
+    if (known && Number.isInteger(known.window) && !(stored && Number.isFinite(stored.window))) {
+      await savePatch({ modelSettings: { [id]: { window: known.window } } });
+    }
+  };
+
   const saveAnthropicModel = async () => {
     const typed = anthropicModelInput.trim();
     if (typed === (config.anthropicModel || '')) return;
     const saved = await savePatch({ anthropicModel: typed });
-    // A window the list knows is stored with the model, unless one is stored already
-    const known = anthropicModels.find(m => m.id === typed);
-    const stored = saved && saved.success && saved.modelSettings && saved.modelSettings[typed];
-    if (known && Number.isInteger(known.window) && !(stored && Number.isFinite(stored.window))) {
-      await savePatch({ modelSettings: { [typed]: { window: known.window } } });
-    }
+    if (saved && saved.success) await storeKnownWindow(typed, anthropicModels, saved);
   };
 
   const loadAnthropicModels = async () => {
@@ -255,6 +273,7 @@ export function AIProviderSettings({ onProviderChange, getEditorContext }) {
     }
     setAnthropicModels(result.models);
     setStatus({ kind: 'info', text: 'Löytyi ' + count(result.models.length, 'malli') });
+    await storeKnownWindow(config.anthropicModel || '', result.models, config);
   };
 
   const testConnection = async () => {

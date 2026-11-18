@@ -1,5 +1,5 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, shell, nativeTheme } = require('electron');
-const { createRequestTable, classifyAIError, codedError, AI_CONSTANTS } = require('./utils/aiRequest');
+const { createRequestTable, classifyAIError, codedError, AI_CONSTANTS, AI_OFF_MESSAGE, CANCELLED_MESSAGE } = require('./utils/aiRequest');
 const appSettings = require('./utils/appSettings');
 const { buildGuardIndex, findProtected, collectStrings } = require('./utils/noAIGuard');
 const manuscript = require('./utils/manuscript');
@@ -258,9 +258,10 @@ function refuseProtected(payload) {
     : null;
 }
 
-// The two sentences the old handlers answer with when they did not send (contracts.md 8.1, 8.3)
-const AI_OFF_SENTENCE = 'Tekoäly pois -asetus on päällä.';
-const STOPPED_SENTENCE = 'Pyyntö pysäytettiin.';
+// The two sentences the old handlers answer with when they did not send (contracts.md 8.1, 8.3):
+// the request layer's own, from utils/aiRequest.js, so that main carries each literal once
+const AI_OFF_SENTENCE = AI_OFF_MESSAGE;
+const STOPPED_SENTENCE = CANCELLED_MESSAGE;
 
 // --- UI prefs kept by the main process ---
 // Panels and editor settings live in the renderer (localStorage). The theme lives there too;
@@ -307,22 +308,39 @@ async function loadUiPrefs() {
 // One change of the preferences: merged by the rules of utils/appSettings.js, written atomically,
 // one write after another (two quick theme switches cannot tear the file), and sent to the
 // renderer, whose settings store follows it. Resolves with { success, prefs } or { success, error }.
+// uiPrefs takes the change at once (the next change and the theme check compare against it); each
+// write takes uiPrefs as it is at its turn. A failed write takes the change back, unless a later
+// change has replaced it, and tells the renderer, so that main, the menu and the renderer stay on
+// what the file holds.
 let uiPrefsSaving = Promise.resolve();
-async function saveUiPrefs(next) {
+const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+function saveUiPrefs(next) {
   const merged = appSettings.mergePrefs(uiPrefs, next);
-  if (!merged.ok) return { success: false, error: merged.error };
+  if (!merged.ok) return Promise.resolve({ success: false, error: merged.error });
+  const before = uiPrefs;
   uiPrefs = merged.prefs;
-  const text = JSON.stringify(uiPrefs, null, 2);
-  uiPrefsSaving = uiPrefsSaving.catch(() => {}).then(() => writeFileAtomic(getUiPrefsPath(), text));
-  try {
-    await uiPrefsSaving;
-  } catch (error) {
-    console.error('[UI Prefs] Save error:', error.message);
-    return { success: false, error: 'Asetusten tallennus epäonnistui.' };
-  }
-  console.log('[UI Prefs] Saved:', Object.keys(next).join(', '));
-  sendToRenderer('prefs:changed', uiPrefs);
-  return { success: true, prefs: uiPrefs };
+  const keys = Object.keys(next);
+  const turn = uiPrefsSaving
+    .then(() => writeFileAtomic(getUiPrefsPath(), JSON.stringify(uiPrefs, null, 2)))
+    .then(() => {
+      console.log('[UI Prefs] Saved:', keys.join(', '));
+      sendToRenderer('prefs:changed', uiPrefs);
+      return { success: true, prefs: uiPrefs };
+    }, (error) => {
+      console.error('[UI Prefs] Save error:', error.message);
+      const restored = { ...uiPrefs };
+      for (const key of keys) {
+        if (!sameValue(uiPrefs[key], merged.prefs[key])) continue;      // changed again since
+        if (Object.prototype.hasOwnProperty.call(before, key)) restored[key] = before[key];
+        else delete restored[key];
+      }
+      uiPrefs = restored;
+      // After the reply: the renderer's store has then dropped its own unsent value and takes this
+      setImmediate(() => sendToRenderer('prefs:changed', uiPrefs));
+      return { success: false, error: 'Asetusten tallennus epäonnistui.' };
+    });
+  uiPrefsSaving = turn.catch(() => {});
+  return turn;
 }
 
 // --- v1.4.1: Timeout wrapper for AI calls ---
@@ -712,8 +730,9 @@ function createMenu() {
           type: 'checkbox',
           checked: uiPrefs.spellCheck !== false,
           click: async (menuItem) => {
-            await saveUiPrefs({ spellCheck: menuItem.checked });
-            setSpellCheck(menuItem.checked);
+            const saved = await saveUiPrefs({ spellCheck: menuItem.checked });
+            setSpellCheck(uiPrefs.spellCheck !== false);
+            if (!saved.success) createMenu();      // the checkbox shows what main holds
           }
         },
         separator,
@@ -769,9 +788,10 @@ function createMenu() {
               label: 'Tekoäly pois',
               type: 'checkbox',
               checked: uiPrefs.aiOff === true,
+              // Acts on what main holds after the save: a failed write leaves the switch as it was
               click: async (menuItem) => {
-                await saveUiPrefs({ aiOff: menuItem.checked });
-                if (menuItem.checked) aiRequests.abortAll();
+                const saved = await saveUiPrefs({ aiOff: menuItem.checked });
+                if (saved.success && uiPrefs.aiOff === true) aiRequests.abortAll();
                 createMenu();
               }
             }
@@ -1173,7 +1193,8 @@ ipcMain.handle('keys:set', async (_event, { name, value } = {}) => {
     const { encrypted } = await persistApiConfig(result.config);
     return { success: true, encrypted, keys: appSettings.publicKeyStatus(getAIProviderConfig()) };
   } catch (error) {
-    return { success: false, error: 'Avaimen tallennus epäonnistui.' };
+    // The reason only: the settings block writes 'Avaimen tallennus epäonnistui: <syy>.' (6.2)
+    return { success: false, error: 'asetustiedostoa ei voitu kirjoittaa' };
   }
 });
 
@@ -1409,6 +1430,7 @@ ipcMain.handle('prefs:get', () => ({ success: true, prefs: uiPrefs }));
 ipcMain.handle('prefs:set', async (_event, patch) => {
   const before = uiPrefs.aiOff === true;
   const result = await saveUiPrefs(patch);
+  // uiPrefs is what the file holds: after a failed write it is unchanged, and so is the menu
   if (result.success && (uiPrefs.aiOff === true) !== before) {
     if (uiPrefs.aiOff === true) aiRequests.abortAll();
     createMenu();

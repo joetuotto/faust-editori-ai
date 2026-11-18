@@ -9,8 +9,9 @@
  * an edit task also gets the verdict that decides whether its answer could become a suggestion.
  * With "Käytä avoimen luvun kontekstia" the request is assembled by the same context builder as the
  * real actions (selection or the text around the cursor, käsikirjoituksen ydin, tyyliohje), its
- * row shows what is sent and Näytä kehote shows it exactly. getEditorContext() returns
- * { project, chapterId, text, selection }.
+ * row shows what is sent and Näytä kehote shows it exactly. The selection is sent as the real
+ * actions send it: without its [TODO: …] notes for a reading task, with notes and formatting
+ * masked for an edit task. getEditorContext() returns { project, chapterId, text, selection }.
  *
  * Composition of visual foundations entry VF-29. Bundled with app.js by webpack; global React.
  */
@@ -18,7 +19,8 @@ import { Field, Callout } from './ui.js';
 import { icons } from './icons.js';
 import { getAIClient, ROLE_LABELS } from '../services/ai/aiClient.js';
 import { modelLabel, formatCount } from '../services/format.fi.js';
-import { MESSAGES } from '../services/ai/contextBuilder.js';
+import { MESSAGES, stripTodos } from '../services/ai/contextBuilder.js';
+import { maskSpans, placeholderInstruction } from '../services/ai/maskSpans.js';
 import { ContextRow, useContextPreview } from './ContextRow.js';
 
 const { createElement: e, useState, useEffect, useRef } = React;
@@ -78,14 +80,41 @@ export function AiTestRequest({ config, getEditorContext }) {
   const limit = parseInt(String(maxTokens).replace(/\D/g, ''), 10);
   const canUseContext = typeof getEditorContext === 'function';
   const context = canUseContext && useContext ? getEditorContext() : null;
+  // The model of the task and its reasoning headroom, which the request layer adds to the limit
+  const ai = getAIClient();
+  const model = config ? ai.modelFor(role, config) : '';
+  const { headroom } = ai.modelSettings(model, config || undefined);
+
+  // The selection as the real actions send it (contracts.md 11 row 11): a reading task without its
+  // notes; an edit task with notes and formatting masked, and the rule that keeps the placeholders
+  const selected = (() => {
+    if (!context || !context.selection || typeof context.text !== 'string') return '';
+    const { from, to } = context.selection;
+    return Number.isFinite(from) && Number.isFinite(to) ? context.text.slice(Math.min(from, to), Math.max(from, to)) : '';
+  })();
+  const mask = context && editMode && selected ? maskSpans(selected, { structure: selected.includes('\n') }) : null;
+  const payload = !context ? undefined : mask ? mask.text : stripTodos(selected);
+  const rules = mask && mask.spans.length
+    ? [placeholderInstruction(context.project && context.project.language)]
+    : undefined;
+
   const preview = useContextPreview({
-    task: { id: 'custom', role: system, instruction: message },
+    task: { id: 'custom', role: system, instruction: message, payload, ...(rules ? { rules } : {}) },
     ...(context || {}),
     role,
     answerTokens: limit > 0 ? limit : undefined,
     disabled: !context
   });
   const built = preview.built;
+
+  // An outcome belongs to the request that made it: another source, model, kind of task or context
+  // clears it (a running request keeps its own)
+  useEffect(() => {
+    if (handle) return;
+    setResult(null);
+    setOutput('');
+    setRetried(false);
+  }, [config && config.provider, model, editMode, useContext]);
 
   // The defaults follow the kind of task, unless the author has written their own
   const changeEditMode = (on) => {
@@ -97,6 +126,7 @@ export function AiTestRequest({ config, getEditorContext }) {
   };
 
   // Why Lähetä koepyyntö cannot be pressed (M B.8); a running request says it by itself
+  // An edit task needs the text it edits: without it the verdict would have nothing to compare
   const blockedReason = running ? null
     : !(limit > 0) ? 'Anna ensin vastausraja'
     : context
@@ -105,8 +135,10 @@ export function AiTestRequest({ config, getEditorContext }) {
         : built.blocked === 'no-chapter' ? 'Avaa ensin luku'
         : built.blocked ? 'Ei lähetettävää.'
         : built.overBudget ? 'Lyhennä ensin valintaa'
+        : editMode && !payload ? 'Valitse ensin teksti luvusta'
         : null)
       : !message.trim() ? 'Kirjoita ensin viesti'
+      : editMode && taggedText(message) === undefined ? 'Kirjoita ensin muokattava teksti <teksti>-tagien sisään'
       : null;
 
   const send = () => {
@@ -121,7 +153,6 @@ export function AiTestRequest({ config, getEditorContext }) {
     setResult(null);
     setRetried(false);
     setPhase('connecting');
-    const ai = getAIClient();
     const options = {
       role,
       ...request,
@@ -195,7 +226,10 @@ export function AiTestRequest({ config, getEditorContext }) {
           disabled: running,
           onChange: (ev) => setMessage(ev.target.value)
         })),
-      e(Field, { label: 'Vastausraja (tokenia)' },
+      e(Field, {
+        label: 'Vastausraja (tokenia)',
+        hint: headroom > 0 ? `Mallin päättelyvara (${formatCount(headroom)} tokenia) lisätään tähän.` : undefined
+      },
         e('input', {
           type: 'text',
           inputMode: 'numeric',

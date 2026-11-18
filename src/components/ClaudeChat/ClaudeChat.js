@@ -257,7 +257,8 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
               msg.content
             ),
             msg.note && React.createElement('div', { className: 'message-note' }, '— ' + msg.note),
-            msg.role === 'assistant' &&
+            // Only with a chapter to add to: a chapter marked "Ei tekoälylle" is not lent to the chat
+            msg.role === 'assistant' && activeChapter &&
               React.createElement(
                 'button',
                 {

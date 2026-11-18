@@ -29,7 +29,7 @@ const MODULES = {
   'scripts/score-step0.js': ['scoreParagraph', 'scoreModel', 'loadTrials', 'report', 'maskSheet', 'REWRITTEN_RATIO'],
   'scripts/step0/score.js': ['parseResponse', 'isFixed', 'scoreModel'],
   'src/services/format.fi.js': ['formatCount', 'fiDate', 'fiDateTime', 'modelLabel', 'plural', 'pendingSuggestions', 'AI_OFF_SENTENCE'],
-  'utils/aiRequest.js': ['AI_CONSTANTS', 'codedError', 'validateRequest', 'resolveModel', 'modelSettingsFor', 'buildParams', 'normalizeStopReason', 'normalizeUsage', 'createThinkFilter', 'classifyAIError', 'createRequestTable'],
+  'utils/aiRequest.js': ['AI_CONSTANTS', 'AI_OFF_MESSAGE', 'CANCELLED_MESSAGE', 'codedError', 'validateRequest', 'resolveModel', 'modelSettingsFor', 'buildParams', 'normalizeStopReason', 'normalizeUsage', 'createThinkFilter', 'classifyAIError', 'createRequestTable'],
   'utils/appSettings.js': ['KEY_NAMES', 'ROLE_NAMES', 'publicKeyStatus', 'applyKeyWrite', 'applyProviderPatch', 'readRoles', 'readModelSettings', 'mergePrefs'],
   'src/services/ai/aiClient.js': ['CLIENT_CONSTANTS', 'ROLES', 'ROLE_LABELS', 'judgeEdit', 'reasonText', 'stopNote', 'createAIClient', 'getAIClient'],
   'src/services/ai/tokenStats.js': ['DEFAULT_CHARS_PER_TOKEN', 'MIN_CALIBRATION_CHARS', 'MAX_PLAUSIBLE_CHARS_PER_TOKEN', 'MIN_PLAUSIBLE_CHARS_PER_TOKEN', 'estimateTokens', 'updateCalibration', 'looksTruncated'],
@@ -71,6 +71,8 @@ const MODULES = {
   'utils/importFolder.js': ['CHAPTER_EXTENSIONS', 'naturalCompare', 'fileStem', 'cleanImportTitle', 'pairSynopsisFiles', 'classifyEntries', 'readImportFolder', 'resolveSubfolder'],
   'src/services/project/importPlan.js': ['buildRows', 'hasOrderNumbers', 'applyStripNumbers', 'moveRow', 'renameRow', 'setRowIncluded', 'setAllIncluded', 'resetOrder', 'isReordered', 'summarizeRows', 'summaryLine', 'importButtonLabel', 'rowExcerpt', 'targetHints', 'noticeLines', 'isBlankProject', 'buildSelection', 'buildChapterDocs', 'applyImport', 'replaceBlockedReason'],
   'src/services/project/snapshots.js': ['buildSnapshot', 'addAutoSnapshot', 'pruneBulkSnapshots'],
+  // I-02 review: what the old AI paths of app.js share
+  'src/services/ai/oldPaths.js': ['failureReason', 'asIsNotice', 'bookRunPlan'],
   // contracts.md 2.2: existing files that a stage extended (I-01)
   'utils/manuscript.js': ['decodeText', 'splitIntoChapters', 'importDocument']
 };
