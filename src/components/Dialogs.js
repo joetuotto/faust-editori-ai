@@ -170,7 +170,8 @@ export const SHORTCUT_GROUPS = [
       ['Etsi', 'CmdOrCtrl+F'],
       ['Etsi seuraava', 'CmdOrCtrl+G'],
       ['Etsi edellinen', 'CmdOrCtrl+Shift+G'],
-      ['Etsi ja korvaa', 'CmdOrCtrl+Alt+F']
+      ['Etsi ja korvaa', 'CmdOrCtrl+Alt+F'],
+      ['Pikamuokkaus', 'CmdOrCtrl+K', 'ai']
     ]
   },
   {

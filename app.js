@@ -31,6 +31,8 @@ import { addAutoSnapshot } from './src/services/project/snapshots.js';
 import { getSettingsStore } from './src/services/settingsStore.js';
 // Liitä muokkauksina: the clipboard compared with the selection, the differences as suggestions (stage I-04)
 import { PasteEditsDialog } from './src/components/PasteEditsDialog.js';
+// Pikamuokkaus (Cmd+K): the inline prompt, the right-click Tekoäly submenu, Kokeile toisella mallilla (stage I-05)
+import { setupQuickEdit } from './src/services/ai/quickEditSetup.js';
 import {
   TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog, CollectionDialog,
   shortcut, shortcutKeys, count, countParts
@@ -815,6 +817,7 @@ function FAUSTApp() {
   const callAIRef = useRef(null);             // the callAIWithMode of the latest render, for long-lived services
   const refusalRef = useRef(null);            // the last old request that main refused or stopped, see asIsNotice
   const menuHandlerRef = useRef(null);        // see the menu handler
+  const quickEditRef = useRef(null);          // Pikamuokkaus (Cmd+K): the quick-edit controller, created below
   const lastSearchRef = useRef('');           // the term the current search results belong to
   const panelsBeforeFocusRef = useRef(null);  // panel visibility to restore after focus mode
   const [focusExitIdle, setFocusExitIdle] = useState(false); // the exit button fades after 2 s without pointer movement
@@ -872,6 +875,15 @@ function FAUSTApp() {
   // it current between renders, because fast typing can outrun React state.
   liveContentRef.current = { chapterId: activeChapter?.id, content: activeChapter?.content || '' };
   projectRef.current = project;
+  // Pikamuokkaus reads the editor, the project and the suggestion controller through these getters
+  if (!quickEditRef.current) {
+    quickEditRef.current = setupQuickEdit({
+      getEditor: () => editorRef.current,
+      getProject: () => projectRef.current,
+      getChapterId: () => liveContentRef.current.chapterId,
+      getController: () => suggestionsRef.current
+    });
+  }
   // The wire guard in main learns the text of the chapters marked "Ei tekoälylle"; the file path
   // tells it another project was opened, which is sent at once even when the chapter ids repeat
   useNoAIGuard(project, currentFilePath);
@@ -1012,6 +1024,8 @@ function FAUSTApp() {
   // ref that always holds the handler of the latest render. A handler captured
   // at mount would keep seeing the first render's empty project.
   menuHandlerRef.current = (action, arg) => {
+    // While an instruction is typed in the Pikamuokkaus prompt, Cmd+B and the like must not change the manuscript
+    if (quickEditRef.current && quickEditRef.current.blocksMenuAction(action)) return;
     // A command that shows a docked panel leaves focus mode first, then shows its panel (never hides it)
     const wasFocus = focusMode && LEAVES_FOCUS.includes(action);
     if (wasFocus) toggleFocusMode();
@@ -1070,6 +1084,9 @@ function FAUSTApp() {
       case 'toggle-sidebar': wasFocus ? setSidebarCollapsed(false) : setSidebarCollapsed(prev => !prev); break;
       case 'toggle-inspector': if (!wasFocus && showInspector) setShowInspector(false); else showInspectorTab(); break;
       case 'toggle-ai-panel': if (wasFocus || !aiAssistantOpen) openLiminalEngine(); else setAiAssistantOpen(false); break;
+      // Muokkaa ▸ Pikamuokkaus… (Cmd+K) and the right-click Tekoäly submenu (arg: the action id or 'custom')
+      case 'quick-edit': quickEditRef.current.open(); break;
+      case 'ai-action': quickEditRef.current.open({ actionId: arg, requireSelection: true }); break;
       case 'toggle-chat-window': if (wasFocus || !claudeChatOpen) openChat(); else setClaudeChatOpen(false); break;
       case 'toggle-corkboard': wasFocus ? setCorkboardEnabled(true) : setCorkboardEnabled(prev => !prev); break;
       case 'toggle-split-view': if (wasFocus) { setCorkboardEnabled(false); if (!splitViewEnabled) openSplitView(); } else toggleSplitView(); break;
@@ -1402,6 +1419,8 @@ function FAUSTApp() {
     if (!aiOff) return;
     if (aiAssistantOpen) setAiAssistantOpen(false);
     if (claudeChatOpen) setClaudeChatOpen(false);
+    // An open Pikamuokkaus prompt goes too (its request is stopped); its suggestions stay in the text
+    if (quickEditRef.current) quickEditRef.current.cancelAll();
   }, [aiOff]);
 
   // Panels and the window width (R-45, V 6.2). Below 1200 px one side panel is open at a time: opening
@@ -1518,14 +1537,16 @@ function FAUSTApp() {
   });
 
   // Undo/Redo. In an ordinary text field (titles, notes, search) the field's
-  // own undo applies; everywhere else the project history does.
+  // own undo applies; everywhere else the project history does. In the Pikamuokkaus prompt's field
+  // only while an instruction is being written: after a result Cmd+Z undoes the accept just made.
   const runHistory = (direction) => {
     const active = document.activeElement;
-    const inManuscript = active && active.closest && active.closest('.faust-editor-host');
-    if (active && !inManuscript && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
-      document.execCommand(direction);
-      return;
-    }
+    const inManuscript = active && active.closest && active.closest('.cm-content');
+    const inPrompt = active && active.closest && active.closest('.cm-faust-prompt');
+    const fieldUndo = inPrompt
+      ? quickEditRef.current.fieldOwnsUndo()
+      : (active && !inManuscript && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA'));
+    if (fieldUndo) { document.execCommand(direction); return; }
 
     const manager = commandManagerRef.current;
     if (!manager) return;
@@ -2131,6 +2152,8 @@ function FAUSTApp() {
     getAIClient().cancelAll();
     projectEpochRef.current += 1; setProjectEpoch(projectEpochRef.current);
     suggestionsRef.current.reset();
+    // The Pikamuokkaus prompt, its request and its attempts belong to the previous project
+    if (quickEditRef.current) quickEditRef.current.reset();
     // The old paths' results on screen (voice, Liminal Engine, Kirjoita tekoälyn kanssa) and their targets
     oldPathTargetRef.current = { voice: null, rewrite: null, liminal: null };
     setVoiceDiffView(null); setAiSuggestion(null); setContinuePreview('');
@@ -5966,6 +5989,8 @@ ${contextPrompt}`;
               value: activeChapter.content,
               onChange: (text, meta) => updateChapterContent(text, false, meta),
               ...suggestionsRef.current.editorProps(activeChapter.id),
+              // The Pikamuokkaus prompt reports what the author does there to the quick-edit controller
+              aiHost: quickEditRef.current.host,
               onMouseUp: handleTextSelection,
               onKeyUp: handleTextSelection,
               typewriterMode: typewriterMode, // the editor keeps the cursor line centered
@@ -7606,6 +7631,8 @@ ${contextPrompt}`;
               }, 'Hylkää'),
               e('button', {
                 className: 'faust-btn faust-btn--primary',
+                // The shorter path for a small change is one modifier away (reconcile R-1)
+                title: 'Korvaa valinnan tällä ehdotuksella. Lyhyeen muutokseen riittää Pikamuokkaus (' + shortcut('CmdOrCtrl+K') + ').',
                 onClick: applyAiSuggestion
               }, 'Korvaa valittu teksti')
             )

@@ -94,7 +94,8 @@ function createInlinePromptKit(cm, options = {}) {
     '.cm-faust-prompt-field:focus': { outline: 'none', borderColor: 'var(--accent-line)' },
     '.cm-faust-prompt-field[aria-invalid="true"]': { borderColor: 'var(--error)' },
     '.cm-faust-prompt-field::placeholder': { color: 'var(--text-3)' },
-    '.cm-faust-prompt button, .cm-faust-prompt select, .cm-faust-prompt input': {
+    // The prompt's own controls; the context row in its slot keeps the look of its component classes
+    '.cm-faust-prompt button:not(:where(.cm-faust-prompt-context *)), .cm-faust-prompt select:not(:where(.cm-faust-prompt-context *)), .cm-faust-prompt input:not(:where(.cm-faust-prompt-context *))': {
       font: 'inherit',
       color: 'var(--text)',
       background: 'transparent',
@@ -102,9 +103,9 @@ function createInlinePromptKit(cm, options = {}) {
       borderRadius: '3px',
       padding: '3px 8px'
     },
-    '.cm-faust-prompt button': { cursor: 'pointer' },
-    '.cm-faust-prompt button:hover': { borderColor: 'var(--accent-line)' },
-    '.cm-faust-prompt button:disabled': { color: 'var(--text-3)', cursor: 'default', borderColor: 'var(--border)' },
+    '.cm-faust-prompt button:not(:where(.cm-faust-prompt-context *))': { cursor: 'pointer' },
+    '.cm-faust-prompt button:not(:where(.cm-faust-prompt-context *)):hover': { borderColor: 'var(--accent-line)' },
+    '.cm-faust-prompt button:not(:where(.cm-faust-prompt-context *)):disabled': { color: 'var(--text-3)', cursor: 'default', borderColor: 'var(--border)' },
     '.cm-faust-prompt button.cm-faust-prompt-primary': { borderColor: 'var(--accent-line)', color: 'var(--accent-text)' },
     '.cm-faust-prompt button.cm-faust-prompt-link': {
       border: 'none',

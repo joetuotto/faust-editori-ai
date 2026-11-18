@@ -112,6 +112,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open a web page in the system browser (https only, checked in the main process)
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
+  // A right click in the manuscript: where, whether text is selected, the quick actions of the
+  // project; main matches it to its own context-menu event for the Tekoäly submenu (stage I-05)
+  reportManuscriptContext: (info) => ipcRenderer.send('context:manuscript', info),
+
   // Theme ('NOX' or 'DEIS'): the main process mirrors it into the native layer
   // (menus, select lists, confirm boxes) and into the window's background
   setTheme: (theme) => ipcRenderer.send('theme-changed', theme),

@@ -3,39 +3,8 @@
  */
 const { resolveEditTarget } = require('../../src/editor/promptTarget');
 
-// A small stand-in for src/editor/blocks.js (another package of the same
-// change): the Block shape for the kinds of lines these tests use. The
-// integration stage switches this file to the real module.
-const stubBlocks = {
-  splitBlocks(text) {
-    const blocks = [];
-    let from = 0;
-    for (const line of text.split('\n')) {
-      const to = from + line.length;
-      let kind = 'paragraph';
-      let prefix = '';
-      let rest = line;
-      let match;
-      if (!line.trim()) kind = 'blank';
-      else if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) kind = 'break';
-      else if ((match = /^(#{1,6}\s+)(.*)$/.exec(line))) [kind, prefix, rest] = ['heading', match[1], match[2]];
-      else if ((match = /^(>\s?)(.*)$/.exec(line))) [kind, prefix, rest] = ['quote', match[1], match[2]];
-      else if ((match = /^(\s*(?:[-*+]|\d+[.)])\s+)(.*)$/.exec(line))) [kind, prefix, rest] = ['list', match[1], match[2]];
-
-      const plain = kind === 'blank' || kind === 'break';
-      const body = plain ? '' : rest.trim();
-      const bodyFrom = plain ? from : from + prefix.length + (rest.length - rest.trimStart().length);
-      const block = { n: blocks.length + 1, from, to, kind, text: line, prefix: plain ? '' : text.slice(from, bodyFrom), body, bodyFrom, bodyTo: bodyFrom + body.length };
-      if (kind === 'paragraph') block.dialogue = /^[–—]/.test(body);
-      blocks.push(block);
-      from = to + 1;
-    }
-    return blocks;
-  },
-  blockAt(blocks, pos) {
-    return blocks.find((block) => pos >= block.from && pos <= block.to) || null;
-  }
-};
+// The real block reader of the editor (src/editor/blocks.js), as quickEdit.js passes it
+const blocks = require('../../src/editor/blocks.js');
 
 // "Kissa |istui| tässä": | marks the selection (one | = cursor)
 function sel(marked) {
@@ -49,7 +18,7 @@ function sel(marked) {
 // The resolved target shown the same way, with its kind in front
 function show(marked) {
   const [text, from, to] = sel(marked);
-  const result = resolveEditTarget(text, from, to, stubBlocks);
+  const result = resolveEditTarget(text, from, to, blocks);
   if (!result.ok) return result.code;
   return `${result.kind}: ${text.slice(0, result.from)}|${text.slice(result.from, result.to)}|${text.slice(result.to)}`;
 }
@@ -70,8 +39,8 @@ describe('resolveEditTarget with a selection', () => {
 
   test('a selection made backwards gives the same target', () => {
     const text = 'Kissa istui tässä.';
-    expect(resolveEditTarget(text, 12, 5, stubBlocks)).toEqual(resolveEditTarget(text, 5, 12, stubBlocks));
-    expect(resolveEditTarget(text, 12, 5, stubBlocks)).toEqual({ ok: true, from: 6, to: 11, kind: 'selection' });
+    expect(resolveEditTarget(text, 12, 5, blocks)).toEqual(resolveEditTarget(text, 5, 12, blocks));
+    expect(resolveEditTarget(text, 12, 5, blocks)).toEqual({ ok: true, from: 6, to: 11, kind: 'selection' });
   });
 
   test('a selection of only whitespace falls back to the paragraph at its start', () => {
@@ -117,13 +86,13 @@ describe('resolveEditTarget with a cursor', () => {
     // A marker with nothing after it has no body to edit
     expect(show('#| ')).toBe('no-paragraph');
     expect(show('|')).toBe('no-paragraph');
-    expect(resolveEditTarget('', 0, 0, stubBlocks)).toEqual({ ok: false, code: 'no-paragraph' });
+    expect(resolveEditTarget('', 0, 0, blocks)).toEqual({ ok: false, code: 'no-paragraph' });
   });
 
   test('positions outside the text are clamped', () => {
-    expect(resolveEditTarget('Yksi rivi.', 99, 99, stubBlocks)).toEqual({ ok: true, from: 0, to: 10, kind: 'paragraph' });
-    expect(resolveEditTarget('Yksi rivi.', -5, 4, stubBlocks)).toEqual({ ok: true, from: 0, to: 4, kind: 'selection' });
-    expect(resolveEditTarget(undefined, 0, 0, stubBlocks)).toEqual({ ok: false, code: 'no-paragraph' });
+    expect(resolveEditTarget('Yksi rivi.', 99, 99, blocks)).toEqual({ ok: true, from: 0, to: 10, kind: 'paragraph' });
+    expect(resolveEditTarget('Yksi rivi.', -5, 4, blocks)).toEqual({ ok: true, from: 0, to: 4, kind: 'selection' });
+    expect(resolveEditTarget(undefined, 0, 0, blocks)).toEqual({ ok: false, code: 'no-paragraph' });
   });
 
   test('a block reader that finds no block gives no-paragraph', () => {

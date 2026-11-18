@@ -1084,10 +1084,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-field { padding: var(--sp-2) var(--sp-3); background: var(--surface-sunken); color: var(--text); border: var(--bw) solid var(--border-control); border-radius: var(--radius-sm); font: var(--type-input); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-field:focus { border-color: var(--focus-ring); outline: var(--bw-strong) solid var(--focus-ring); outline-offset: 0; }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-field[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 2px var(--error-bg); }
-:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(button, select, input) { min-height: var(--h-sm); padding: 0 var(--sp-2); background: transparent; color: var(--text); border: var(--bw) solid var(--border); border-radius: var(--radius-sm); font: var(--type-meta); }
-:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(select, input) { background: var(--surface-sunken); border-color: var(--border-control); }
-:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:not(:disabled):hover { background: var(--fill-hover); border-color: var(--border-control); }
-:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:disabled { color: var(--text-disabled); border-color: var(--rule); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(button, select, input):not(:where(.cm-faust-prompt-context *)) { min-height: var(--h-sm); padding: 0 var(--sp-2); background: transparent; color: var(--text); border: var(--bw) solid var(--border); border-radius: var(--radius-sm); font: var(--type-meta); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(select, input):not(:where(.cm-faust-prompt-context *)) { background: var(--surface-sunken); border-color: var(--border-control); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:not(:where(.cm-faust-prompt-context *)):not(:disabled):hover { background: var(--fill-hover); border-color: var(--border-control); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:not(:where(.cm-faust-prompt-context *)):disabled { color: var(--text-disabled); border-color: var(--rule); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-chips button { background: var(--fill-subtle); border-color: transparent; color: var(--text-2); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-chips button:not(:disabled):hover { background: var(--fill-active); border-color: transparent; color: var(--text); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
@@ -1111,6 +1111,29 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:is([data-role="attempt-prev"], [data-role="attempt-next"], [data-role="delete-prompt"]) { width: var(--h-sm); padding: 0; font-size: 0; }
 .faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:is([data-role="block-prev"], [data-role="block-next"])::before,
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:is([data-role="attempt-prev"], [data-role="attempt-next"], [data-role="delete-prompt"])::before { content: ""; display: block; width: 14px; height: 14px; margin: auto; background: currentColor; -webkit-mask: var(--glyph) center / contain no-repeat; mask: var(--glyph) center / contain no-repeat; }
+
+/* I-05: the Pikamuokkaus prompt on its own, without the bridges L1 and S4, and its context row */
+/* The editor's tooltip host in the layer host (tooltips({ parent }) of FaustEditor.js; CodeMirror
+   creates it with the first tooltip, which is the prompt). CodeMirror gives it the editor's theme
+   classes (ͼ…), so the editor root's rules (display: flex and position: relative, both !important,
+   and height: 100%) made it a page-high item of the app column: the main area lost its height and
+   the empty box took the pointer. It only holds the prompt; it takes no room and no pointer.
+   A marked layout rule: !important only to beat CodeMirror's own !important. */
+.faust-layer > [class^="ͼ"] { position: absolute !important; top: 0; left: 0; width: 0; height: 0; display: block !important; pointer-events: none; }
+.faust-layer > [class^="ͼ"] > .cm-tooltip { pointer-events: auto; }
+/* The prompt's buttons carry no faust- class, so the bridge's inset veil (L1) lay over their own hover
+   fill and only S4 gave a disabled chip its look: the prompt draws both itself, press included. */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:not(:where(.cm-faust-prompt-context *)) { box-shadow: none; }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:not(:where(.cm-faust-prompt-context *, .cm-faust-prompt-link)):not(:disabled):active { background: var(--fill-active); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-primary:not(:disabled):active { background: var(--accent-active); border-color: var(--accent-active); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-chips button:disabled { background: var(--fill-subtle); border-color: transparent; color: var(--text-disabled); }
+/* A glyph button is as high as its siblings: the hidden character's line box (16px of --type-meta)
+   no longer stands under the 14px icon */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:is([data-role="attempt-prev"], [data-role="attempt-next"], [data-role="delete-prompt"]) { line-height: 0; }
+/* "Mitä malli näkee" (ContextRow, mounted into the prompt's slot) keeps its own classes' look; the
+   slot only spaces it from the controls above */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-context:not(:empty) { margin-top: var(--sp-2); }
+/* end I-05 */
 
 /* The page: one measure, one left edge, one scroller. The page element (.faust-page) is the
    editor content box. It carries --ms-size (and, with a manuscript face other than EB Garamond,

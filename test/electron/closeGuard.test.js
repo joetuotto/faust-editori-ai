@@ -187,7 +187,9 @@ describe('Muokkaa ▸ Ehdotukset', () => {
     const items = editMenu();
     const last = items[items.length - 1];
     expect(last.label).toBe('Ehdotukset');
-    expect(items[items.length - 2].type).toBe('separator');
+    // Stage I-05 puts Pikamuokkaus… (an AI item) between the separator and the submenu (reconcile 12.2)
+    const before = items.slice(0, -1).filter(item => item.label !== 'Pikamuokkaus…');
+    expect(before[before.length - 1].type).toBe('separator');
     const commands = last.submenu.filter(item => item.type !== 'separator');
     expect(commands.map(item => item.label)).toEqual([
       'Hyväksy ehdotus', 'Hylkää ehdotus', 'Seuraava ehdotus', 'Edellinen ehdotus',

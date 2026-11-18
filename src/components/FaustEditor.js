@@ -30,6 +30,12 @@
  * accept's undo meta, and the props suggestionSeed / onSuggestionsChange connect the editor to the
  * suggestion controller (contracts.md 4.1).
  *
+ * The inline prompt (src/editor/inlinePrompt.js, stage I-05) is the Cmd+K prompt under a captured
+ * range of the suggestion layer: a tooltip in the layer host. Its intents go to the prop `aiHost`
+ * (the quick-edit controller, { handle(intent, view) }), read through a ref, so the editor always
+ * reaches the current one; the controller reaches the view through faustView. No facade member is
+ * added for it.
+ *
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
  */
 
@@ -48,6 +54,7 @@ import {
   readSuggestionMeta, suggestionEvents, suggestionSnapshot, suggestionState
 } from '../editor/suggestions.js';
 import { wordDiff } from '../editor/wordDiff.js';
+import { inlinePrompt } from '../editor/inlinePrompt.js';
 import { modelLabel } from '../services/format.fi.js';
 
 const { createElement: e, useRef, useLayoutEffect, forwardRef } = React;
@@ -349,6 +356,8 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
     // suggestions when the editor mounts, and every change of them
     suggestionSeed,
     onSuggestionsChange,
+    // The quick-edit controller ({ handle(intent, view) }) that the inline prompt reports to (I-05)
+    aiHost,
     // The text's accessible name; a read-only text is never spell-checked
     label = 'Käsikirjoitus'
   } = props;
@@ -357,6 +366,7 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
   const viewRef = useRef(null);
   const onChangeRef = useRef(onChange);
   const onSuggestionsRef = useRef(onSuggestionsChange);
+  const aiHostRef = useRef(aiHost);
   const typewriterRef = useRef(!!typewriterMode);
   // Texts this editor has reported through onChange and not yet seen come back as `value`
   const pendingRef = useRef([]);
@@ -365,6 +375,7 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
 
   onChangeRef.current = onChange;
   onSuggestionsRef.current = onSuggestionsChange;
+  aiHostRef.current = aiHost;
   typewriterRef.current = !!typewriterMode;
 
   // Create the editor once per mount (the parent remounts it per chapter with `key`)
@@ -420,7 +431,9 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
           ]),
           underlinePlugin,
           todoPlugin,
-          ...(readOnly ? [] : []),      // story-folder mentions and the inline prompt go here
+          ...(readOnly ? [] : [         // story-folder mentions and the inline prompt go here
+            inlinePrompt({ host: () => aiHostRef.current })
+          ]),
           placeholderExtension(placeholder || ''),
           sceneBreakPlugin,
           // Spell checking is switched on and off for the whole window (Työkalut → Oikoluku)

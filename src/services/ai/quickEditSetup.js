@@ -1,0 +1,264 @@
+/**
+ * src/services/ai/quickEditSetup.js - the quick edit (Cmd+K) assembled for the app (stage I-05)
+ *
+ *   setupQuickEdit({ getEditor, getProject, getChapterId, getController, writeAtCursor })
+ *     → the controller of src/services/ai/quickEdit.js: { open, host, isPromptFocused, fieldOwnsUndo,
+ *       blocksMenuAction, cancelAll, reset }
+ *
+ * The controller gets the app's real parts here: the settings store, the one AI client, the text
+ * functions, the context session, the suggestion controller and the five functions of the inline
+ * prompt (src/editor/inlinePrompt.js). Nothing here decides anything about an edit.
+ *
+ * What this file adds is the context row ("Mitä malli näkee") in the prompt: whenever there is a
+ * built request for the open prompt (a dry build when the prompt opens, the real one before
+ * sending), the row is mounted into the prompt's context slot. The parts the author switches off
+ * or adds there go into the next build, and a request whose prompt the model did not see whole
+ * puts a notice in the row.
+ *
+ * An ES module bundled by webpack: every CommonJS module is taken with `import`, never `require`.
+ */
+import { createQuickEdit } from './quickEdit.js';
+import { editTask, writeTask } from './editRequest.js';
+import { getAIClient } from './aiClient.js';
+import { getContextSession } from './contextSession.js';
+import { isChapterBlocked, MESSAGES } from './contextBuilder.js';
+import { cleanModelOutput } from './cleanModelOutput.js';
+import { maskSpans, unmaskSpans, placeholderInstruction } from './maskSpans.js';
+import { getSettingsStore } from '../settingsStore.js';
+import { modelLabel } from '../format.fi.js';
+import { projectKind, folderName } from '../story/codex.js';
+import { wordDiff, changeRatio } from '../../editor/wordDiff.js';
+import { trimToSentence } from '../../editor/sentences.js';
+import { splitBlocks, blockAt } from '../../editor/blocks.js';
+import { openPrompt, updatePrompt, closePrompt, getPrompt, focusPrompt } from '../../editor/inlinePrompt.js';
+import { mountContextRow } from '../../components/ContextRow.js';
+
+const TRUNCATED_NOTICE = 'Malli ei nähnyt koko kehotetta.';
+
+// The prompt's slot for the row (inlinePromptView.js creates it once per prompt and never touches
+// its children). The prompt is a tooltip in the layer host; the app has one at a time.
+function contextSlotOf(view) {
+  const doc = view && view.dom ? view.dom.ownerDocument : null;
+  if (!doc) return null;
+  const prompts = doc.querySelectorAll('.cm-tooltip.cm-faust-prompt');
+  const prompt = prompts.length > 0 ? prompts[prompts.length - 1] : null;
+  return prompt ? prompt.querySelector('[data-role="context"]') : null;
+}
+
+// One pending frame: the streamed preview is drawn at most once per frame, the newest text wins
+function frameScheduler() {
+  let frame = 0;
+  let next = null;
+  return (fn) => {
+    next = fn;
+    if (frame) return;
+    const run = () => {
+      frame = 0;
+      const job = next;
+      next = null;
+      if (job) job();
+    };
+    frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(run) : setTimeout(run, 16);
+  };
+}
+
+/**
+ * @param {{ getEditor: () => object | null, getProject: () => object, getChapterId: () => string | null,
+ *           getController: () => object, writeAtCursor?: boolean }} options
+ */
+export function setupQuickEdit({ getEditor, getProject, getChapterId, getController, writeAtCursor = false }) {
+  const settings = getSettingsStore();
+  const ai = getAIClient();
+  const getView = () => {
+    const editor = getEditor();
+    return editor && editor.faustView ? editor.faustView : null;
+  };
+
+  // ---------------------------------------------------------------------------
+  // The context row of the open prompt
+  // ---------------------------------------------------------------------------
+
+  // slot: the element the row lives in; args and built: the last build for this prompt;
+  // exclude (undefined = what the session remembers for the task) and include: the row's lists
+  const row = { slot: null, unmount: null, args: null, built: null, exclude: undefined, include: [], notice: null };
+
+  const taskIdOf = (args) => (args && args.task && typeof args.task.id === 'string' ? args.task.id : 'edit');
+  const excludeFor = (args) => (row.exclude !== undefined ? row.exclude : getContextSession().getExclude(taskIdOf(args)));
+  const withRowLists = (args) => ({
+    ...args,
+    exclude: row.exclude !== undefined ? row.exclude : args.exclude,
+    include: row.include.length > 0 ? row.include : args.include
+  });
+
+  function renderRow() {
+    if (!row.slot || !row.built || !row.slot.isConnected) return;
+    const { built, args } = row;
+    const project = (args && args.project) || getProject() || {};
+    const systemAsUser = built.model ? ai.modelSettings(built.model).systemAsUser === true : false;
+    row.unmount = mountContextRow(row.slot, {
+      built,
+      folder: folderName(project),
+      taskId: taskIdOf(args),
+      exclude: excludeFor(args),
+      include: row.include,
+      onExcludeChange: (ids) => { row.exclude = ids; rebuild(); },
+      onIncludeChange: (ids) => { row.include = ids; rebuild(); },
+      notice: row.notice || undefined,
+      systemAsUser
+    });
+  }
+
+  function remember(args, built) {
+    row.args = args;
+    row.built = built;
+    row.notice = null;
+    renderRow();
+  }
+
+  // The same request again with the row's lists (a part switched off or added in the row)
+  function rebuild() {
+    if (!row.args) return;
+    remember(row.args, getContextSession().build(withRowLists(row.args)));
+  }
+
+  // The row goes with its prompt. Unmounted a moment later: the prompt may close inside a render.
+  function dropRow() {
+    const unmount = row.unmount;
+    row.slot = null;
+    row.unmount = null;
+    row.args = null;
+    row.built = null;
+    if (unmount) setTimeout(unmount, 0);
+  }
+  function sweepSoon() {
+    setTimeout(() => {
+      if (row.slot && !row.slot.isConnected) dropRow();
+    }, 0);
+  }
+
+  // A dry build when the prompt opens: everything that goes with the instruction, before it is written
+  function dryBuild(view) {
+    const open = getPrompt(view);
+    const editor = getEditor();
+    if (!open || !open.ui || open.ui.phase === 'blocked' || !editor) return;
+    const project = getProject() || {};
+    const value = editor.value;
+    let args;
+    try {
+      if (open.ui.mode === 'write') {
+        const task = writeTask({ direction: '', length: open.ui.length, projectKind: projectKind(project), language: project.language });
+        args = { task, project, chapterId: getChapterId(), text: value, cursor: open.from, role: 'prose', answerTokens: task.answerTokens };
+      } else {
+        const target = value.slice(open.from, open.to);
+        if (!target.trim()) return;
+        const mask = maskSpans(target, { structure: target.includes('\n') });
+        // editTask wants an instruction; the row shows the request without one until it is written
+        const task = {
+          ...editTask({
+            instruction: '-',
+            target: mask.text,
+            placeholderRule: mask.spans.length ? placeholderInstruction(project.language) : '',
+            language: project.language
+          }),
+          instruction: ''
+        };
+        args = { task, project, chapterId: getChapterId(), text: value, selection: { from: open.from, to: open.to }, role: 'edit', answerTokens: task.answerTokens };
+      }
+    } catch (error) {
+      return;
+    }
+    remember(args, getContextSession().build(withRowLists(args)));
+  }
+
+  // A new prompt gets a new row; the same prompt pointed at a new range keeps its row
+  function attachRow(view) {
+    const slot = contextSlotOf(view);
+    if (!slot || slot === row.slot) return;
+    dropRow();
+    row.slot = slot;
+    row.exclude = undefined;
+    row.include = [];
+    row.notice = null;
+    dryBuild(view);
+  }
+
+  // ---------------------------------------------------------------------------
+  // What the controller gets
+  // ---------------------------------------------------------------------------
+
+  const ui = {
+    openPrompt(view, spec) {
+      const opened = openPrompt(view, spec);
+      if (opened) attachRow(view);
+      return opened;
+    },
+    updatePrompt,
+    closePrompt(view, options) {
+      const closed = closePrompt(view, options);
+      sweepSoon();
+      return closed;
+    },
+    getPrompt,
+    focusPrompt
+  };
+
+  const context = {
+    build(args) {
+      const merged = withRowLists(args);
+      const built = getContextSession().build(merged);
+      remember(merged, built);
+      return built;
+    },
+    isBlocked: isChapterBlocked,
+    noAIMessage: MESSAGES.noAI
+  };
+
+  // The client as it is; a result says whether the model saw the whole prompt, which the row shows
+  const client = {
+    modelFor: (role) => ai.modelFor(role),
+    listModels: () => ai.listModels(),
+    requestEdit(options) {
+      const handle = ai.requestEdit(options);
+      const slot = row.slot;
+      const result = Promise.resolve(handle.result).then((value) => {
+        if (value && value.promptTruncated && slot && row.slot === slot) {
+          row.notice = TRUNCATED_NOTICE;
+          renderRow();
+        }
+        return value;
+      });
+      return { id: handle.id, result, cancel: () => handle.cancel() };
+    }
+  };
+
+  const quickEdit = createQuickEdit({
+    getView,
+    getEditor,
+    getProject,
+    getChapterId,
+    settings,
+    ai: client,
+    modelLabel,
+    text: { wordDiff, changeRatio, cleanModelOutput, maskSpans, unmaskSpans, placeholderInstruction, trimToSentence, splitBlocks, blockAt },
+    context,
+    projectKind,
+    controller: getController(),
+    ui,
+    reportContext: (info) => {
+      const api = typeof window !== 'undefined' ? window.electronAPI : null;
+      if (api && typeof api.reportManuscriptContext === 'function') api.reportManuscriptContext(info);
+    },
+    schedule: frameScheduler(),
+    writeAtCursor: writeAtCursor === true
+  });
+
+  // The editor's intents go to the controller; a prompt that closed by itself takes its row along
+  const host = {
+    handle(intent, view) {
+      quickEdit.host.handle(intent, view);
+      if (intent && (intent.type === 'prompt-closed' || intent.type === 'view-destroyed')) sweepSoon();
+    }
+  };
+
+  return { ...quickEdit, host };
+}

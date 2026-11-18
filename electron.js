@@ -4,6 +4,7 @@ const appSettings = require('./utils/appSettings');
 const { buildGuardIndex, findProtected, collectStrings } = require('./utils/noAIGuard');
 const manuscript = require('./utils/manuscript');
 const importFolder = require('./utils/importFolder');
+const aiContextMenu = require('./utils/aiContextMenu');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -480,6 +481,15 @@ function attachContextMenu(win) {
       template.push({ label: 'Kopioi', role: 'copy' });
     }
 
+    // Tekoäly ▸ for a selection in the manuscript (I-05): the renderer reported this click a moment
+    // ago; the point ties the report to it, so a right click in another field never gets the submenu.
+    // A chapter marked "Ei tekoälylle" reports nothing, and "Tekoäly pois" leaves it out (R-8).
+    const context = aiContextMenu.takeContext(manuscriptContext, params, Date.now());
+    manuscriptContext = null;
+    if (context && context.actions.length > 0 && uiPrefs.aiOff !== true) {
+      template.push({ type: 'separator' }, aiContextMenu.buildAiSubmenu(context, (id) => menuAction('ai-action', id)));
+    }
+
     if (template.length > 0) {
       Menu.buildFromTemplate(template).popup({ window: win });
     }
@@ -558,6 +568,13 @@ app.on('before-quit', () => {
 
 ipcMain.on('project:set-dirty', (_event, dirty) => {
   rendererDirty = !!dirty;
+});
+
+// A right click in the manuscript, reported by the renderer just before Electron's own
+// context-menu event: { x, y, hasSelection, actions } (the inline prompt, stage I-05)
+let manuscriptContext = null;
+ipcMain.on('context:manuscript', (_event, info) => {
+  manuscriptContext = aiContextMenu.sanitizeContext(info, Date.now());
 });
 
 ipcMain.on('suggestions:set-pending', (_event, count) => {
@@ -683,6 +700,12 @@ function createMenu() {
         item('Etsi edellinen', 'find-previous', 'CmdOrCtrl+Shift+G'),
         item('Etsi ja korvaa…', 'show-find-replace', 'CmdOrCtrl+Alt+F'),
         separator,
+        // An instruction at the selection; the change comes as suggestions (I-05). The panel on ⇧⌘K is the
+        // conversation about the text, and each path names the other (R-1)
+        ...aiItems({
+          ...item('Pikamuokkaus…', 'quick-edit', 'CmdOrCtrl+K'),
+          toolTip: 'Kirjoita ohje valitun tekstin kohdalle. Muutos tulee ehdotuksena tekstiin. Keskustelu tekstistä: Liminal Engine (' + (isMac ? '⇧⌘K' : 'Ctrl+Shift+K') + ').'
+        }),
         // The review keys live in the editor while something is pending; here without accelerators (R-5)
         {
           label: 'Ehdotukset',
