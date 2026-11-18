@@ -1231,6 +1231,12 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:is([data-role="block-prev"], [data-role="block-next"]) { line-height: 0; }
 /* Write mode: "Muokkaa tätä kappaletta" stands one gap after the Pituus select, not against it. Layout only. */
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-length + .cm-faust-prompt-link { margin-left: var(--sp-3); }
+/* The model's name in the block head wraps as one unit, never at its hyphen; a name wider than the
+   block ends in an ellipsis. Layout only. */
+.faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-model { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+/* Tekoäly pois: the block keeps Hyväksy and Hylkää (they only move text the author has); Uusi yritys
+   would send a request, and an AI control is absent while AI is off (contract rule 0.12) */
+.faust-app.is-ai-off .cm-faust-block [data-role="block-retry"] { display: none; }
 /* end I-09 */
 
 /* The page: one measure, one left edge, one scroller. The page element (.faust-page) is the

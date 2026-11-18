@@ -280,6 +280,33 @@ describe('layout', () => {
     expect(part(atEnd, 'before').text.endsWith('Jälkeen 4. Aamulla satama oli hiljainen, ja lokit kiertelivät laiturin yllä.')).toBe(true);
   });
 
+  test('a write task\'s following text ends at the next scene break or heading; an edit keeps the rest of the chapter', () => {
+    const project = makeProject();
+    const scene = 'Hotellin aulassa paloi yksi lamppu.\n\nVastaanoton takana istui vanha nainen.';
+    const later = 'Aamulla lumi oli lakannut. Aino lähti pankkiin.';
+    const lead = 'Hän oli lähtenyt täältä kaksikymmentä vuotta sitten.';
+    for (const mark of ['* * *', '***', '---', '# Toinen osa']) {
+      const text = `${lead}\n\n${scene}\n\n${mark}\n\n${later}`;
+      const built = buildContext({ task: { id: 'write', instruction: 'Jatka.' }, project, chapterId: 'c4', text, cursor: lead.length });
+      expect(part(built, 'after').text).toBe(scene);
+      expect(part(built, 'after').fullChars).toBe(scene.length);
+      expect(sent(built)).not.toContain('pankkiin');
+      // Not a missing part: the scene is all there is to fit in front of
+      expect(describeParts(built).dropped).toBe('');
+
+      const edit = buildContext({ task: { id: 'edit', instruction: 'Tiivistä.' }, project, chapterId: 'c4', text, selection: { start: 0, end: lead.length } });
+      expect(part(edit, 'after').text).toContain('pankkiin');
+    }
+
+    // A list item or a dialogue line is not a scene break; the caret right before a break sends no following text
+    const listed = `${lead}\n- käydä pankissa\n– Tule jo, Mari sanoi.\n\n* * *\n${later}`;
+    expect(part(buildContext({ task: 'write', project, chapterId: 'c4', text: listed, cursor: lead.length }), 'after').text)
+      .toBe('- käydä pankissa\n– Tule jo, Mari sanoi.');
+    const atBreak = buildContext({ task: 'write', project, chapterId: 'c4', text: `${lead}\n\n* * *\n${later}`, cursor: lead.length });
+    expect(part(atBreak, 'after')).toBeUndefined();
+    expect(user(atBreak)).not.toContain('<seuraava_teksti>');
+  });
+
   test('a write task includes the summary of its own chapter in <luvun_tiivistelma>, without TODO notes', () => {
     const project = makeProject();
     project.structure[3].synopsis = 'Myrsky nousee. [TODO: tarkista tuulen suunta]\nSisarukset jäävät saareen.';

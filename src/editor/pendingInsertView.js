@@ -135,8 +135,16 @@ function createBlockView(doc, options = {}) {
     const attemptCount = Math.max(1, next.attemptCount | 0);
     const attempt = Math.max(0, Math.min(attemptCount - 1, next.attempt | 0));
 
+    // The model's name is its own span, so a narrow block wraps it whole and never at its hyphen
     const headText = TEXT.head + (next.modelName ? ` · ${next.modelName}` : '');
-    if (head.textContent !== headText) head.textContent = headText;
+    if (head.textContent !== headText) {
+      head.textContent = next.modelName ? `${TEXT.head} · ` : TEXT.head;
+      if (next.modelName) {
+        const name = element('span', 'block-model', 'cm-faust-block-model');
+        name.textContent = next.modelName;
+        head.appendChild(name);
+      }
+    }
 
     // The text node changes in place, so the buttons keep their state while text streams in
     let shownText = body;

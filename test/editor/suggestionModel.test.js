@@ -1302,6 +1302,30 @@ describe('block', () => {
     expect(finished().block.meta).toBe(META);
   });
 
+  test('each attempt keeps the meta of its own request, and a decision names the request of the attempt on screen', () => {
+    const first = { ...META, requestLogId: 'req-1' };
+    const second = { ...META, requestLogId: 'req-2' };
+    let state = M.reduce(start(), { type: 'blockAppend', id: 'b1', text: 'Ensimmäinen.' });
+    state = M.reduce(state, { type: 'blockFinish', id: 'b1', status: 'done', meta: first });
+    state = M.reduce(state, { type: 'blockRetry', id: 'b1' });
+    state = M.reduce(state, { type: 'blockFinish', id: 'b1', status: 'done', text: 'Toinen.', meta: second });
+    expect(state.block.attempts.map(attempt => attempt.meta)).toEqual([first, second]);
+    // The block's own meta is the newest request's (the head names its model)
+    expect(state.block.meta).toBe(second);
+
+    // ‹ 1/2 › and Hyväksy: the decision row links to the request that wrote attempt 1
+    const shown = M.reduce(state, { type: 'blockShow', id: 'b1', index: 0 });
+    const change = M.blockChange(shown, SAMPLE);
+    const mapper = M.makeMapper([change]);
+    const accepted = M.reduce(shown, { type: 'blockAccepted', id: 'b1', insert: change.insert, mapPos: mapper.mapPos, touchesRange: mapper.touchesRange });
+    expect(accepted.event.items[0].meta.requestLogId).toBe('req-1');
+    // So does a rejection of the attempt on screen
+    expect(M.reduce(shown, { type: 'blockReject', id: 'b1' }).event.items[0].meta.requestLogId).toBe('req-1');
+    expect(M.reduce(state, { type: 'blockReject', id: 'b1' }).event.items[0].meta.requestLogId).toBe('req-2');
+    // An attempt finished without meta (the facade's own test calls) falls back on the block's
+    expect(finished().block.attempts[0]).not.toHaveProperty('meta');
+  });
+
   test('blockFinish with empty text removes the attempt, and the block when it was the only attempt', () => {
     const only = M.reduce(start(), { type: 'blockFinish', id: 'b1', status: 'error', text: '', note: 'Ei ehdotusta.' });
     expect(only.block).toBeNull();

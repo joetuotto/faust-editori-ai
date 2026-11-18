@@ -110,7 +110,7 @@ function writeTask({ direction, length, projectKind, language } = {}) {
     '- Jatka täsmälleen siitä, mihin <edeltava_teksti> päättyy. Älä toista aiempaa tekstiä äläkä tiivistä sitä.',
     `- ${size.rule}`,
     '- Säilytä aikamuoto, näkökulma, henkilöiden nimet ja tyyli.',
-    '- Jos <seuraava_teksti> on annettu, uuden tekstin pitää sopia sen eteen. Älä kirjoita sitä uudelleen.'
+    '- Jos <seuraava_teksti> on annettu, se jatkuu heti uuden tekstin jälkeen. Kirjoita vain se, mikä mahtuu edeltävän ja seuraavan tekstin väliin. Älä toista seuraavaa tekstiä äläkä kerro sen tapahtumia etukäteen.'
   ];
   if (isFinnish(language)) {
     rules.push('- Käytä suomalaisia lainausmerkkejä ” ja ajatusviivaa –. Merkitse vuorosanat samalla tavalla kuin edeltävässä tekstissä.');

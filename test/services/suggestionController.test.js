@@ -278,21 +278,80 @@ describe('session store', () => {
     expect(back.state().ranges).toEqual([]);
   });
 
-  test('a block that was still streaming at unmount is stored as stopped with the text it had', () => {
+  // A draft being written when its chapter is left (stage I-09 review)
+  const leaveWhileStreaming = (text, { attempts = [], deps } = {}) => {
+    const harness = setup({ deps });
+    const first = harness.open('luku-1');
+    let state = M.reduce(first.state(), { type: 'blockStart', id: 'b1', pos: 22, meta: META, docText: SAMPLE });
+    for (const earlier of attempts) {
+      state = M.reduce(state, { type: 'blockAppend', id: 'b1', text: earlier.text });
+      state = M.reduce(state, { type: 'blockFinish', id: 'b1', status: 'done', meta: earlier.meta });
+      state = M.reduce(state, { type: 'blockRetry', id: 'b1' });
+    }
+    if (text) state = M.reduce(state, { type: 'blockAppend', id: 'b1', text });
+    harness.controller.editorProps('luku-1').onSuggestionsChange(M.snapshot(state), state.event);
+    harness.streamingTotal = harness.controller.pendingTotal();
+    harness.controller.editorProps('luku-1').onSuggestionsChange(M.snapshot(state), { type: 'unmount', docText: SAMPLE, state });
+    harness.env.editor = null;
+    harness.stored = () => {
+      const seed = harness.controller.editorProps('luku-1').suggestionSeed(SAMPLE);
+      return seed.state ? M.snapshot(seed.state).block : null;
+    };
+    return harness;
+  };
+
+  test('a block left mid-stream by a chapter switch keeps the text up to the last full sentence with the stop note', () => {
+    const { controller, stored } = leaveWhileStreaming('Sumu nousi. Sitten');
+    expect(controller.pendingTotal()).toBe(1);
+    expect(stored()).toMatchObject({
+      id: 'b1', status: 'stopped', text: 'Sumu nousi.', state: 'pending',
+      note: 'Pysäytetty. Teksti on leikattu viimeiseen kokonaiseen virkkeeseen.'
+    });
+
+    // The stored text is in the manuscript's typography, as a stop in the editor gives it
+    const typed = leaveWhileStreaming('Hän sanoi: "Tule." Sitten hän').stored();
+    expect(typed.text).toBe('Hän sanoi: ”Tule.”');
+  });
+
+  test('a block left before its first full sentence is dropped, and only that attempt when earlier ones exist', () => {
+    const alone = leaveWhileStreaming('Sumu nousi järvel');
+    expect(alone.controller.pendingTotal()).toBe(0);
+    expect(alone.stored()).toBeNull();
+
+    const kept = leaveWhileStreaming('Usva peit', { attempts: [{ text: 'Ensimmäinen virke.', meta: { ...META, requestLogId: 'req-1' } }] });
+    expect(kept.controller.pendingTotal()).toBe(1);
+    expect(kept.stored()).toMatchObject({ status: 'done', text: 'Ensimmäinen virke.', attempt: 0, attemptCount: 1, note: null });
+  });
+
+  test('a streaming block counts as pending for the close guard and the project-switch question', async () => {
     const { controller, env, open } = setup();
     const first = open('luku-1');
-    const started = M.reduce(first.state(), { type: 'blockStart', id: 'b1', pos: 22, meta: META, docText: SAMPLE });
-    const streaming = M.reduce(started, { type: 'blockAppend', id: 'b1', text: 'Sumu nousi. Sitten' });
-    // A streaming block is not a pending suggestion yet
+    const streaming = M.reduce(M.reduce(first.state(), { type: 'blockStart', id: 'b1', pos: 22, meta: META, docText: SAMPLE }),
+      { type: 'blockAppend', id: 'b1', text: 'Sumu' });
     controller.editorProps('luku-1').onSuggestionsChange(M.snapshot(streaming), streaming.event);
-    expect(controller.pendingTotal()).toBe(0);
-
-    controller.editorProps('luku-1').onSuggestionsChange(M.snapshot(streaming), { type: 'unmount', docText: SAMPLE, state: streaming });
-    env.editor = null;
     expect(controller.pendingTotal()).toBe(1);
+    expect(env.reportPending).toHaveBeenLastCalledWith(1);
+    await expect(controller.confirmDiscard()).resolves.toBe(true);
+    expect(env.askConfirm).toHaveBeenCalledWith('Hylätäänkö käsittelemättömät ehdotukset?', expect.stringContaining('1 käsittelemätön ehdotus'), 'Hylkää ehdotukset', 'Palaa ehdotuksiin');
+  });
 
-    const seed = controller.editorProps('luku-1').suggestionSeed(SAMPLE);
-    expect(M.snapshot(seed.state).block).toMatchObject({ id: 'b1', status: 'stopped', text: 'Sumu nousi. Sitten', state: 'pending' });
+  test('the request row of a draft whose chapter was left reaches its stored attempt and its decision row', () => {
+    const { controller, env, open } = leaveWhileStreaming('Sumu nousi. Sitten');
+    const logMeta = { ...META, action: 'write-here', requestLogId: 'req-9' };
+    expect(controller.linkStoredBlock('luku-1', 'b1', logMeta)).toBe(true);
+    // Once only, and never for another block
+    expect(controller.linkStoredBlock('luku-1', 'b1', { ...logMeta, requestLogId: 'req-10' })).toBe(false);
+    expect(controller.linkStoredBlock('luku-1', 'b2', logMeta)).toBe(false);
+
+    const back = open('luku-1');
+    expect(back.getSuggestions().block).toMatchObject({ id: 'b1', status: 'stopped', meta: logMeta });
+    // Hylkää logs the decision with the request's row
+    back.emit(M.reduce(back.state(), { type: 'blockReject', id: 'b1' }).event);
+    expect(logged(env).pop()).toMatchObject({ decision: 'rejected', requestLogId: 'req-9', after: 'Sumu nousi.' });
+
+    // A draft that kept no attempt has nothing to link
+    const gone = leaveWhileStreaming('Sumu nou');
+    expect(gone.controller.linkStoredBlock('luku-1', 'b1', logMeta)).toBe(false);
   });
 });
 

@@ -23,7 +23,9 @@ const TEXT = {
   discardMany: (count) => `Käsikirjoituksessa on ${count} käsittelemätöntä ehdotusta. Ne eivät säily, kun projekti vaihtuu. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.`,
   discardConfirm: 'Hylkää ehdotukset',
   discardCancel: 'Palaa ehdotuksiin',
-  pasteLabel: 'Liitä muokkauksina'
+  pasteLabel: 'Liitä muokkauksina',
+  // The stop note of the insert block (contracts 8.6), also when leaving the chapter stops it
+  stoppedNote: 'Pysäytetty. Teksti on leikattu viimeiseen kokonaiseen virkkeeseen.'
 };
 
 const PASTE_SOURCES = ['editor', 'external-ai'];
@@ -54,13 +56,24 @@ const failed = (error, skipped = []) => ({ ok: false, groupId: null, ids: [], sk
 
 /**
  * @param {{ wordDiff: (original: string, revised: string) => Array, rawDiff?: (a: string, b: string) => Array,
- *           changeRatio: (original: string, revised: string) => number }} deps
+ *           changeRatio: (original: string, revised: string) => number, stopText?: (text: string) => string }} deps
  *   wordDiff and changeRatio serve "Liitä muokkauksina"; rawDiff is the finest
  *   word diff, used to keep suggestions through text changes (without it they
- *   are dropped wherever the text changed around them).
+ *   are dropped wherever the text changed around them). stopText is what a
+ *   draft that was still being written keeps when its chapter is left (default:
+ *   its last full sentence in the manuscript's typography, as a stop in the editor).
  */
 function createSuggestionController(deps = {}) {
   const rawDiff = typeof deps.rawDiff === 'function' ? deps.rawDiff : undefined;
+
+  // The same cut as a stop in the editor (quickEdit.js, write flow step 5a). Taken when needed (contract 0.7).
+  function stopText(text) {
+    if (typeof deps.stopText === 'function') return String(deps.stopText(text) || '');
+    const { trimToSentence } = require('../../editor/sentences.js');
+    const { normaliseModelText } = require('../../editor/typography.fi.js');
+    const kept = trimToSentence(String(text == null ? '' : text));
+    return kept.trim() ? normaliseModelText(kept) : '';
+  }
 
   let env = {};
   // Raised by reset(): editors that were created before it belong to the previous project
@@ -74,6 +87,9 @@ function createSuggestionController(deps = {}) {
                                   // ({ dropped: true } once its editor went: the dialog is still open)
   let bulkSnapshotId = null;      // snapshot taken for the bulk accept that is running
   const blockHandlers = new Set();
+  // blockId → index of the attempt that was still being written when its chapter was left: its
+  // request row exists only when the cancelled request ends, after the editor went (linkStoredBlock)
+  const awaitingLog = new Map();
   let lastInfo = null;
   let lastTotal = 0;              // the main process starts from zero as well
 
@@ -117,9 +133,9 @@ function createSuggestionController(deps = {}) {
   // editor on screen still belongs to the old one.
   const openEditor = (chapterId) => (chapterId != null && chapterId === env.activeChapterId ? facade() : null);
 
-  // A finished block is one pending thing; one that is still being written is not yet
-  const countOf = (shot) => shot.pending.length +
-    (shot.block && shot.block.state === 'pending' && shot.block.status !== 'streaming' ? 1 : 0);
+  // A pending block is one pending thing, also while it is still being written: the close guard and the
+  // project-switch question must not let a draft go without a word (I-09 step 6)
+  const countOf = (shot) => shot.pending.length + (shot.block && shot.block.state === 'pending' ? 1 : 0);
 
   const tracks = (state) => !!state && (state.items.length > 0 || !!state.block);
 
@@ -256,10 +272,18 @@ function createSuggestionController(deps = {}) {
 
   function storeUnmounted(chapterId, event) {
     let state = event.state;
-    // A block that was still being written is kept as stopped, with the text it had
+    // Leaving the chapter stops a block that was still being written, as Pysäytä does: it keeps its text
+    // up to the last full sentence with the stop note, and an attempt without one is dropped (the block
+    // too, when it was the only attempt). The request itself is cancelled by its owner (quickEdit).
     const block = state && state.block;
-    if (block && block.state === 'pending' && block.attempts[block.attempt] && block.attempts[block.attempt].status === 'streaming') {
-      state = model.reduce(state, { type: 'blockFinish', id: block.id, status: 'stopped' });
+    const shown = block && block.attempts[block.attempt];
+    if (block && block.state === 'pending' && shown && shown.status === 'streaming') {
+      const kept = stopText(shown.text);
+      state = model.reduce(state, {
+        type: 'blockFinish', id: block.id, status: 'stopped', text: kept, note: kept ? TEXT.stoppedNote : null
+      });
+      const left = state.block && state.block.id === block.id ? state.block : null;
+      if (left && left.attempts.length === block.attempts.length) awaitingLog.set(block.id, block.attempt);
     }
     // A chapter that was deleted takes its suggestions with it
     if (Array.isArray(env.chapters) && !chapterOf(chapterId)) state = null;
@@ -597,6 +621,25 @@ function createSuggestionController(deps = {}) {
       return () => { blockHandlers.delete(handler); };
     },
 
+    /**
+     * The request row of a draft whose chapter was left while it was being written. The row's id
+     * comes with the cancelled request's result, after the editor went; the stored attempt takes the
+     * request's meta then, so a decision on it names its request row (contracts 1.1 `requestLogId`).
+     * @returns {boolean} whether a stored attempt took the meta
+     */
+    linkStoredBlock(chapterId, blockId, meta) {
+      const index = awaitingLog.get(blockId);
+      awaitingLog.delete(blockId);
+      const record = records.get(chapterId);
+      const block = record && record.state ? record.state.block : null;
+      if (index === undefined || !block || block.id !== blockId || !meta || typeof meta !== 'object') return false;
+      const attempt = block.attempts[index];
+      if (!attempt || attempt.meta) return false;
+      const attempts = block.attempts.map((entry, i) => (i === index ? { ...entry, meta } : entry));
+      record.state = { ...record.state, block: { ...block, attempts, meta } };
+      return true;
+    },
+
     // --- Liitä muokkauksina ---
 
     /** Compare the clipboard with the selection (or the whole chapter) and open the dialog. */
@@ -700,6 +743,7 @@ function createSuggestionController(deps = {}) {
       live = null;
       paste = null;
       bulkSnapshotId = null;
+      awaitingLog.clear();
       lastInfo = JSON.stringify(null);
       lastTotal = 0;
       call('reportPending', 0);

@@ -208,10 +208,10 @@ function createSuggestionKit(cm) {
     },
 
     provide: (field) => [
-      EditorView.decorations.compute([field], state => buildDecorations(state.field(field), configOf(state)).all),
+      EditorView.decorations.compute([field, 'doc'], state => buildDecorations(state.field(field), configOf(state), state.doc).all),
       EditorView.atomicRanges.of(view => {
         const value = view.state.field(field, false);
-        return value ? buildDecorations(value, configOf(view.state)).atomic : Decoration.none;
+        return value ? buildDecorations(value, configOf(view.state), view.state.doc).atomic : Decoration.none;
       })
     ]
   });
@@ -346,10 +346,20 @@ function createSuggestionKit(cm) {
     return name == null ? '' : String(name);
   }
 
-  function buildDecorations(value, config) {
+  // Inside a paragraph the block stands after the spaces that follow its place, so the rest of the
+  // paragraph does not start with a space on screen. Only the drawing moves: the text still goes in at
+  // the block's own position (blockInsertText).
+  function blockShownAt(doc, pos) {
+    if (!doc || !Number.isInteger(pos) || pos < 0 || pos >= doc.length) return pos;
+    const rest = doc.sliceString(pos, doc.lineAt(pos).to);
+    return pos + /^[ \t]*/.exec(rest)[0].length;
+  }
+
+  function buildDecorations(value, config, doc) {
     const modelName = modelNameOf(value, config);
+    const blockAt = value.block ? blockShownAt(doc, value.block.pos) : null;
     const cached = decorationCache.get(value.items);
-    if (cached && cached.block === value.block && cached.ranges === value.ranges &&
+    if (cached && cached.block === value.block && cached.ranges === value.ranges && cached.blockAt === blockAt &&
         cached.viewMode === value.viewMode && cached.currentId === value.currentId && cached.modelName === modelName) {
       return cached.result;
     }
@@ -381,7 +391,7 @@ function createSuggestionKit(cm) {
           break;
         }
         case 'block':
-          all.push(Decoration.widget({ widget: new BlockWidget(spec, modelName), block: true, side: 1 }).range(spec.pos));
+          all.push(Decoration.widget({ widget: new BlockWidget(spec, modelName), block: true, side: 1 }).range(blockAt != null ? blockAt : spec.pos));
           break;
         case 'target':
           all.push(Decoration.mark({ class: 'cm-faust-target' }).range(spec.from, spec.to));
@@ -393,7 +403,7 @@ function createSuggestionKit(cm) {
 
     const result = { all: Decoration.set(all, true), atomic: Decoration.set(atomic, true) };
     decorationCache.set(value.items, {
-      block: value.block, ranges: value.ranges, viewMode: value.viewMode, currentId: value.currentId, modelName, result
+      block: value.block, blockAt, ranges: value.ranges, viewMode: value.viewMode, currentId: value.currentId, modelName, result
     });
     return result;
   }

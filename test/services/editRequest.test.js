@@ -192,7 +192,7 @@ describe('writeTask', () => {
       '- Jatka täsmälleen siitä, mihin <edeltava_teksti> päättyy. Älä toista aiempaa tekstiä äläkä tiivistä sitä.',
       '- Kirjoita yksi kappale, enintään noin 120 sanaa.',
       '- Säilytä aikamuoto, näkökulma, henkilöiden nimet ja tyyli.',
-      '- Jos <seuraava_teksti> on annettu, uuden tekstin pitää sopia sen eteen. Älä kirjoita sitä uudelleen.',
+      '- Jos <seuraava_teksti> on annettu, se jatkuu heti uuden tekstin jälkeen. Kirjoita vain se, mikä mahtuu edeltävän ja seuraavan tekstin väliin. Älä toista seuraavaa tekstiä äläkä kerro sen tapahtumia etukäteen.',
       '- Käytä suomalaisia lainausmerkkejä ” ja ajatusviivaa –. Merkitse vuorosanat samalla tavalla kuin edeltävässä tekstissä.',
       '- Vastaa vain näin: <teksti>uusi teksti</teksti>. Ei selityksiä, ei otsikoita eikä muuta tekstiä tagien ulkopuolella.'
     ]);
@@ -310,7 +310,7 @@ describe('wording', () => {
       '- Jatka täsmälleen siitä, mihin <edeltava_teksti> päättyy. Älä toista aiempaa tekstiä äläkä tiivistä sitä.',
       '- Kirjoita kaksi tai kolme kappaletta, yhteensä enintään noin 350 sanaa.',
       '- Säilytä aikamuoto, näkökulma, henkilöiden nimet ja tyyli.',
-      '- Jos <seuraava_teksti> on annettu, uuden tekstin pitää sopia sen eteen. Älä kirjoita sitä uudelleen.',
+      '- Jos <seuraava_teksti> on annettu, se jatkuu heti uuden tekstin jälkeen. Kirjoita vain se, mikä mahtuu edeltävän ja seuraavan tekstin väliin. Älä toista seuraavaa tekstiä äläkä kerro sen tapahtumia etukäteen.',
       '- Käytä suomalaisia lainausmerkkejä ” ja ajatusviivaa –. Merkitse vuorosanat samalla tavalla kuin edeltävässä tekstissä.',
       '- Älä keksi lähteitä, lukuja tai sitaatteja. Jos väite tarvitsee lähteen, merkitse kohta näin: [TODO: lähde].',
       '- Vastaa vain näin: <teksti>uusi teksti</teksti>. Ei selityksiä, ei otsikoita eikä muuta tekstiä tagien ulkopuolella.'

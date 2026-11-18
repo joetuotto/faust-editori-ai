@@ -233,3 +233,21 @@ test('the header names the model and says the text is not in the manuscript yet'
   block.render({ ...base, modelName: '' });
   expect(find('block-head').textContent).toBe('Tekoälyn luonnos · ei vielä käsikirjoituksessa');
 });
+
+test('the model name is a span of its own, so a narrow block wraps it whole and never at its hyphen', () => {
+  const { block, find } = mount({ ...base, modelName: 'deepseek-v4.1-flash-abliterated' });
+  const name = find('block-model');
+  expect(name.tagName).toBe('SPAN');
+  expect(name.className).toBe('cm-faust-block-model');
+  expect(name.textContent).toBe('deepseek-v4.1-flash-abliterated');
+  expect(find('block-head').textContent).toBe('Tekoälyn luonnos · ei vielä käsikirjoituksessa · deepseek-v4.1-flash-abliterated');
+
+  // A new name replaces the span; streaming text does not rebuild it
+  block.render({ ...base, modelName: 'kimi-k2', text: 'Sumu' });
+  const kimi = find('block-model');
+  block.render({ ...base, modelName: 'kimi-k2', text: 'Sumu nousi.' });
+  expect(find('block-model')).toBe(kimi);
+  expect(find('block-head').querySelectorAll('[data-role="block-model"]')).toHaveLength(1);
+  block.render({ ...base, modelName: '' });
+  expect(find('block-model')).toBeNull();
+});

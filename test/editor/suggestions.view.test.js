@@ -814,8 +814,10 @@ describe('insert block', () => {
 
     const children = [...v.contentDOM.children];
     expect(children.map(node => node.className.split(' ')[0])).toEqual(['cm-line', 'cm-faust-block', 'cm-line', 'cm-line']);
-    expect(children[0].textContent).toBe('Eka kappale');
-    expect(children[2].textContent).toBe(' jatkuu tässä pitkään.');
+    // The block stands after the space that follows its place: the rest of the paragraph starts with a word
+    expect(children[0].textContent).toBe('Eka kappale ');
+    expect(children[2].textContent).toBe('jatkuu tässä pitkään.');
+    expect(el.getInsertBlock().pos).toBe(11);
     const block = children[1];
     expect(block.querySelector('[data-role="block-head"]').textContent).toBe('Tekoälyn luonnos · ei vielä käsikirjoituksessa · kimi-k2');
     expect(block.querySelector('[data-role="block-text"]').textContent).toBe('Odotetaan mallia…');

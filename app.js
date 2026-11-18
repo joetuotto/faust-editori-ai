@@ -5041,7 +5041,8 @@ ${contextPrompt}`;
   });
 
   return e('div', {
-    className: (focusMode ? 'faust-app faust-focus-mode' : 'faust-app') + (isFullScreen ? ' is-fullscreen' : ''),
+    // is-ai-off: the insert block hides its Uusi yritys while Tekoäly pois is on (I-09 CSS block)
+    className: (focusMode ? 'faust-app faust-focus-mode' : 'faust-app') + (isFullScreen ? ' is-fullscreen' : '') + (aiDisabled ? ' is-ai-off' : ''),
     // Widths of the open side panels, for everything that centres on the editor pane
     // (notifications, popovers, chat window); 0px for a closed panel
     style: {

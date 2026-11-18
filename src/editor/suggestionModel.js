@@ -777,7 +777,8 @@ function blockAsSuggestion(block, insert) {
     to: block.pos,
     insert: typeof insert === 'string' ? insert : cleanBlockText(shown ? shown.text : ''),
     original: '',
-    meta: block.meta,
+    // The request of the attempt on screen: the decision row names its request row
+    meta: shown && shown.meta != null ? shown.meta : block.meta,
     context: block.context,
     block: { attempts: block.attempts, attempt: block.attempt }
   };
@@ -1400,7 +1401,10 @@ function reduceBlock(state, action) {
       }
 
       const note = action.note == null || action.note === '' ? null : String(action.note);
-      return changed(state, { block: { ...block, attempts: withAttempt({ text, status, note }), meta } },
+      // Each attempt keeps the meta of the request that wrote it, so a decision on an earlier
+      // attempt (‹ 1/2 ›) names that attempt's request row, not the newest one
+      const attempt = action.meta != null ? { text, status, note, meta: action.meta } : { text, status, note };
+      return changed(state, { block: { ...block, attempts: withAttempt(attempt), meta } },
         blockEvent('finish', block.id));
     }
 

@@ -67,6 +67,9 @@ const TASK_PROFILES = {
     role: 'Olet kirjailijan kirjoitusapuri. Jatkat tekstiä kirjailijan omalla äänellä.',
     parts: ['style', 'brief', 'avoid', 'codexAlways', 'codexMentioned', 'summaries', 'chapterSummary', 'before', 'after'],
     limits: { before: 12000, after: 1500, summaries: 6000 },
+    // The text after the cursor ends with its scene: what lies past a scene break or a heading is not
+    // what the new text must fit in front of, and a model given it writes that scene instead (I-09 review)
+    afterEndsAtScene: true,
     payloadTag: null,
     payloadLabel: null
   },
@@ -387,6 +390,16 @@ function surroundingText(content, range) {
   };
 }
 
+// A scene break (a line of three or more *, - or _, as blocks.js and the export read it) or a heading
+const SCENE_END = /^\s*(?:([-*_])(?:\s*\1){2,}\s*|#{1,6}\s.*)$/;
+
+// The text after the cursor up to the end of its scene
+function sceneHead(text) {
+  const lines = String(text || '').split('\n');
+  const end = lines.findIndex(line => SCENE_END.test(line));
+  return end === -1 ? String(text || '') : trimBlankLines(lines.slice(0, end).join('\n'));
+}
+
 // The avoid list as the model reads it: quotation marks of exact items removed
 function avoidItems(value) {
   const raw = typeof value === 'string' ? parseTermList(value) : Array.isArray(value) ? value : [];
@@ -496,12 +509,13 @@ function buildContext({
 
   const around = wanted.has('before') || wanted.has('after') ? surroundingText(content, range) : { before: '', after: '' };
   const before = wanted.has('before') ? tailLines(around.before, limits.before) : '';
-  const after = wanted.has('after') ? headLines(around.after, limits.after) : '';
+  const afterText = profile.afterEndsAtScene ? sceneHead(around.after) : around.after;
+  const after = wanted.has('after') ? headLines(afterText, limits.after) : '';
   if (before) {
     addPart('before', 'user', 'teksti ennen', [{ key: 'before', label: 'teksti ennen', text: before }], around.before.length, 'tail');
   }
   if (after) {
-    addPart('after', 'user', 'teksti jälkeen', [{ key: 'after', label: 'teksti jälkeen', text: after }], around.after.length, 'head');
+    addPart('after', 'user', 'teksti jälkeen', [{ key: 'after', label: 'teksti jälkeen', text: after }], afterText.length, 'head');
   }
 
   // Mentions are looked for in what is being sent, as capped by the limits

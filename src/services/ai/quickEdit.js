@@ -47,6 +47,32 @@ const overBudgetText = (built) => {
   const { formatCount } = require('../format.fi.js');
   return `Teksti on liian pitkä tälle mallille: noin ${formatCount(built.totalTokens)} tokenia, tilaa ${formatCount(built.budgetTokens)}. Lyhennä valintaa tai vaihda mallia.`;
 };
+/**
+ * Where a write at the caret lands. Notes and underline tags are only marks in
+ * the editor, so the caret can stand inside one, and inside a word: the draft
+ * then goes after the note, the underlined span or the word, never into it
+ * (blockInsertText adds the spaces). textTools is taken when needed (contract 0.7).
+ */
+function writePlace(value, pos) {
+  const { WORD_CHAR, TODO_PATTERN_SOURCE, UNDERLINE_PATTERN_SOURCE } = require('../../editor/textTools.js');
+  const source = String(value == null ? '' : value);
+  let at = Math.max(0, Math.min(source.length, Number.isFinite(pos) ? pos : source.length));
+  const lineStart = source.lastIndexOf('\n', at - 1) + 1;
+  let lineEnd = source.indexOf('\n', at);
+  if (lineEnd === -1) lineEnd = source.length;
+
+  const marks = new RegExp(`${TODO_PATTERN_SOURCE}|${UNDERLINE_PATTERN_SOURCE}|<\\/?u>`, 'g');
+  for (const match of source.slice(lineStart, lineEnd).matchAll(marks)) {
+    const from = lineStart + match.index;
+    const to = from + match[0].length;
+    if (from < at && at < to) at = to;
+  }
+  if (at > lineStart && at < lineEnd && WORD_CHAR.test(source[at - 1]) && WORD_CHAR.test(source[at])) {
+    while (at < lineEnd && WORD_CHAR.test(source[at])) at += 1;
+  }
+  return at;
+}
+
 const repairedNote = (count) => (
   count === 1
     ? '1 suojattu kohta puuttui vastauksesta, ja se palautettiin paikalleen.'
@@ -56,8 +82,9 @@ const repairedNote = (count) => (
 /**
  * @param {object} deps see the list in the task brief: getView, getEditor, getProject, getChapterId, settings, ai,
  *   modelLabel, text, context, projectKind, controller, ui, and the optional normalizeTypography,
- *   proofreadSelection, reportContext, schedule, now, writeAtCursor, confirmDelete
- *   (confirmDelete(savedPrompt) → boolean | Promise<boolean>: asked before a saved prompt is deleted)
+ *   proofreadSelection, reportContext, schedule, now, writeAtCursor, confirmDelete, notify
+ *   (confirmDelete(savedPrompt) → boolean | Promise<boolean>: asked before a saved prompt is deleted;
+ *   notify(kind, text): the word for an insert block's outcome that has no prompt to show it in)
  * @returns {{ open(options?: object): boolean, host: { handle(intent: object, view: object): void },
  *             isPromptFocused(): boolean, fieldOwnsUndo(): boolean, blocksMenuAction(action: string): boolean,
  *             contextChanged(): void, contextChecked(built: object): void, cancelAll(): void, reset(): void }}
@@ -71,6 +98,7 @@ function createQuickEdit(deps) {
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const writeAtCursor = deps.writeAtCursor === true;
   const confirmDelete = typeof deps.confirmDelete === 'function' ? deps.confirmDelete : null;
+  const notify = typeof deps.notify === 'function' ? deps.notify : () => {};
 
   let sessions = [];        // edit sessions of this project, oldest first (memory only)
   let writes = [];          // one record per insert block, for "Uusi yritys"
@@ -258,7 +286,23 @@ function createQuickEdit(deps) {
     }
 
     if (mode === 'write') {
-      const captured = editor.captureSelection({ fallback: 'caret' });
+      // A draft already waits in this chapter, and a chapter holds one (brief step 8): say so and show it,
+      // instead of a prompt that could only be refused and that would stand over the draft
+      const block = typeof editor.getInsertBlock === 'function' ? editor.getInsertBlock() : null;
+      if (block && block.state === 'pending') {
+        notify('warning', promptMessage('conflict'));
+        if (typeof editor.revealPos === 'function' && Number.isFinite(block.pos)) editor.revealPos(block.pos);
+        return true;
+      }
+      const pos = writePlace(value, start);
+      // A pending suggestion at the place: the block could not start there either
+      const shot = typeof editor.getSuggestions === 'function' ? editor.getSuggestions() : null;
+      if (shot && Array.isArray(shot.pending) && shot.pending.some((item) => item.from <= pos && pos <= item.to)) {
+        return openBlocked(view, editor, mode, pos, 'conflict', promptMessage('conflict'));
+      }
+      const captured = pos === start
+        ? editor.captureSelection({ fallback: 'caret' })
+        : editor.captureRange(pos, pos, { highlight: false });
       if (!captured) return false;
       const state = baseState('write', 'cursor', { canEditParagraph: resolveEditTarget(value, start, start, text).ok });
       return showPrompt(view, 'write', { view, mode, rangeId: captured.rangeId, state, session: null, chapterId, last: null });
@@ -1087,7 +1131,8 @@ function createQuickEdit(deps) {
     if (prompt !== p || !editor || active || !aiOn()) return;
 
     const range = editor.getRange(p.rangeId);
-    const pos = range ? range.from : Math.min(editor.selectionStart, editor.selectionEnd);
+    // The text may have changed under the open prompt: never into a word, a note or a tag
+    const pos = writePlace(editor.value, range ? range.from : Math.min(editor.selectionStart, editor.selectionEnd));
     const record = {
       blockId: null,
       chapterId: p.chapterId,
@@ -1185,10 +1230,19 @@ function createQuickEdit(deps) {
     };
     const tidy = (value) => (value && normalizeTypography ? normalizeTypography(value) : value);
 
+    // The chapter was left while the draft was written: the suggestion layer stored it as stopped (trimmed,
+    // with the stop note). Its request row is known only now; the stored attempt takes it (contracts 1.1).
+    if (!ours) {
+      if (result.logMeta && controller && typeof controller.linkStoredBlock === 'function') {
+        controller.linkStoredBlock(record.chapterId, record.blockId, result.logMeta);
+      }
+      return;
+    }
+
     // A stop is finished here and nowhere else: the block's "Pysäytä", Esc in
     // the manuscript and "Pysäytä tekoäly" only cancel the request.
     if (result.cancelled) {
-      if (!ours || first.status !== 'streaming') return;
+      if (first.status !== 'streaming') return;
       const out = tidy(text.trimToSentence(text.cleanModelOutput(request.textSoFar, { tag: 'teksti' }).text));
       if (out) {
         editor.finishInsertBlock(record.blockId, { status: 'stopped', text: out, note: STOPPED_NOTE, meta: result.logMeta });
@@ -1196,11 +1250,10 @@ function createQuickEdit(deps) {
       }
       editor.finishInsertBlock(record.blockId, { status: 'stopped', text: '' });
       if (gone()) reopenWrite(record, pos, { note: promptMessage('no-sentence'), afterRequest: true });
+      // Earlier attempts stay on screen: say why the new one went
+      else notify('info', promptMessage('no-sentence'));
       return;
     }
-
-    // The chapter was left: the suggestion layer has stored the block as stopped
-    if (!ours) return;
 
     let out = '';
     let note = null;
@@ -1227,6 +1280,8 @@ function createQuickEdit(deps) {
     // An empty attempt disappears; when it was the only one, so does the block
     editor.finishInsertBlock(record.blockId, { status: 'error', text: '', note: result.reasonText });
     if (gone()) reopenWrite(record, pos, { note: result.reasonText || null, afterRequest: true });
+    // Earlier attempts stay on screen: the reason has no other place
+    else if (result.reasonText) notify('error', result.reasonText);
   }
 
   // The block's own buttons that need the owner of the request
@@ -1256,10 +1311,20 @@ function createQuickEdit(deps) {
         messages: [],
         maxTokens: 0
       };
-      if (!prepareWrite(record, editor, block.pos, () => {})) return;
       writes.push(record);
       while (writes.length > MAX_WRITES) writes.shift();
     }
+
+    // The same task (direction and length) again, built now: the chapter may have been marked
+    // "Ei tekoälylle" meanwhile (contract rule 16 a, brief step 8), and the text before the block
+    // may have changed. A refusal leaves the block as it is and says why.
+    if (context.isBlocked(project(), chapterId)) {
+      notify('warning', context.noAIMessage);
+      return;
+    }
+    record.pos = Number.isFinite(block.pos) ? block.pos : record.pos;
+    const refused = (reason) => notify('warning', (reason && (reason.blocked || reason.note)) || promptMessage('no-paragraph'));
+    if (!prepareWrite(record, editor, record.pos, refused)) return;
 
     // Earlier attempts stay; -1 means one is still streaming
     if (editor.retryInsertBlock(block.id) < 0) return;

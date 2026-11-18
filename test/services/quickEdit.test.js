@@ -448,6 +448,7 @@ function harness(options = {}) {
   };
 
   const reportContext = jest.fn();
+  const notify = jest.fn();
   quick = createQuickEdit({
     getView: () => state.view,
     getEditor: () => state.editor,
@@ -462,6 +463,7 @@ function harness(options = {}) {
     controller,
     ui,
     reportContext,
+    notify,
     now: () => 1763300000000,
     ...(options.deps || {})
   });
@@ -481,6 +483,7 @@ function harness(options = {}) {
     context,
     controller,
     reportContext,
+    notify,
     send,
     blockAction: (action) => blockHandler(action, editor.getInsertBlock(), state.chapterId),
     get prompt() { return ui.current ? ui.current.ui : null; },
@@ -590,7 +593,8 @@ describe('open', () => {
     expect(edit.prompt).toMatchObject({ mode: 'edit', kind: 'paragraph', phase: 'idle' });
     expect(edit.editor.captureSelection).not.toHaveBeenCalled();
 
-    const write = harness({ marked, deps: { writeAtCursor: true } });
+    // Write mode at a word's edge (a caret inside a word: see 'write: a caret inside a word, …')
+    const write = harness({ marked: marked.replace('käv|eli', 'käveli|'), deps: { writeAtCursor: true } });
     expect(write.quick.open()).toBe(true);
     expect(write.editor.captureSelection).toHaveBeenCalledWith({ fallback: 'caret' });
     expect(write.editor.captureRange).not.toHaveBeenCalled();
@@ -2285,14 +2289,22 @@ describe('write at cursor', () => {
     await flush();
     const first = h.ai.calls[0];
 
+    // The author typed before the block meanwhile: the block moved with the text
+    h.editor.value = `Yö. ${h.editor.value}`;
+    h.editor.block.pos += 'Yö. '.length;
     h.blockAction('retry');
 
     expect(h.editor.retryInsertBlock).toHaveBeenCalledWith('b1');
     expect(h.editor.startInsertBlock).toHaveBeenCalledTimes(1);   // the same block
     expect(h.ai.requestEdit).toHaveBeenCalledTimes(2);
-    // The same request again
-    expect(h.lastCall.opts.system).toBe(first.opts.system);
-    expect(h.lastCall.opts.messages).toBe(first.opts.messages);
+    // The same task again (direction and length), built on the text as it is now, at the block's place
+    expect(h.context.build).toHaveBeenCalledTimes(2);
+    const [firstArgs, againArgs] = h.context.build.mock.calls.map((call) => call[0]);
+    expect(againArgs.task).toEqual(firstArgs.task);
+    expect(againArgs).toMatchObject({ text: h.editor.value, cursor: POS + 'Yö. '.length, role: 'prose', chapterId: 'chapter-1' });
+    const rebuilt = h.context.build.mock.results[1].value;
+    expect(h.lastCall.opts.system).toBe(rebuilt.system);
+    expect(h.lastCall.opts.messages).toBe(rebuilt.messages);
     expect(h.lastCall.opts.maxTokens).toBe(first.opts.maxTokens);
     expect(h.lastCall.opts.meta).toEqual(first.opts.meta);
     expect(h.editor.getInsertBlock()).toMatchObject({ status: 'streaming', attempt: 1, attemptCount: 2 });
@@ -2306,12 +2318,117 @@ describe('write at cursor', () => {
       ['done', 'Usva peitti rannan.']
     ]);
 
-    // A retry that fails leaves the earlier attempts and does not reopen the prompt
+    // A retry that fails leaves the earlier attempts and does not reopen the prompt; the reason has no
+    // other place, so it is a notification
     h.blockAction('retry');
     h.lastCall.fail('empty', 'Ei ehdotusta: malli palautti tyhjän tekstin.');
     await flush();
     expect(h.editor.block.attempts).toHaveLength(2);
     expect(h.ui.openPrompt).toHaveBeenCalledTimes(1);
+    expect(h.notify).toHaveBeenLastCalledWith('error', 'Ei ehdotusta: malli palautti tyhjän tekstin.');
+  });
+
+  test('write: retry in a chapter marked Ei tekoälylle sends nothing and says so', async () => {
+    const h = writer();
+    start(h);
+    h.lastCall.accept('Sumu nousi järveltä.');
+    await flush();
+
+    // Marked on the Luku tab while the block was pending
+    h.state.blockedChapters.add('chapter-1');
+    h.blockAction('retry');
+    expect(h.ai.requestEdit).toHaveBeenCalledTimes(1);
+    expect(h.editor.retryInsertBlock).not.toHaveBeenCalled();
+    expect(h.editor.block.attempts).toHaveLength(1);
+    expect(h.notify).toHaveBeenCalledWith('warning', NO_AI);
+
+    // A build the builder refuses (over budget) leaves the block alone as well and gives its reason
+    h.state.blockedChapters.clear();
+    h.state.nextBuilt = { overBudget: true, totalTokens: 9000, budgetTokens: 4000 };
+    h.blockAction('retry');
+    expect(h.ai.requestEdit).toHaveBeenCalledTimes(1);
+    expect(h.editor.retryInsertBlock).not.toHaveBeenCalled();
+    expect(h.notify).toHaveBeenLastCalledWith('warning', expect.stringContaining('Teksti on liian pitkä tälle mallille'));
+  });
+
+  test('write: a retry stopped before its first full sentence keeps the earlier attempts and says why the new one went', async () => {
+    const h = writer();
+    start(h);
+    h.lastCall.accept('Sumu nousi järveltä.');
+    await flush();
+    h.blockAction('retry');
+    h.lastCall.stream('<teksti>Usva peit');
+    h.blockAction('stop');
+    await flush();
+
+    expect(h.editor.block.attempts.map((attempt) => attempt.text)).toEqual(['Sumu nousi järveltä.']);
+    expect(h.ui.openPrompt).toHaveBeenCalledTimes(1);
+    expect(h.notify).toHaveBeenCalledWith('info', 'Pysäytetty ennen ensimmäistä kokonaista virkettä.');
+  });
+
+  test('write: Cmd+K while a draft waits in the chapter says so and shows the draft instead of opening a prompt', async () => {
+    const h = writer();
+    start(h);
+    h.lastCall.accept('Sumu nousi järveltä.');
+    await flush();
+    h.editor.revealPos = jest.fn();
+
+    expect(h.quick.open()).toBe(true);
+    expect(h.ui.openPrompt).toHaveBeenCalledTimes(1);   // only the first prompt
+    expect(h.notify).toHaveBeenCalledWith('warning', 'Kohdassa on jo käsittelemätön ehdotus. Käsittele se ensin.');
+    expect(h.editor.revealPos).toHaveBeenCalledWith(POS);
+    expect(h.ai.requestEdit).toHaveBeenCalledTimes(1);
+
+    // With a selection Cmd+K is an edit, as before
+    h.editor.selectionStart = 0;
+    h.editor.selectionEnd = 'Ilta pimeni.'.length;
+    h.quick.open();
+    expect(h.prompt.mode).toBe('edit');
+  });
+
+  test('write: Cmd+K at a pending suggestion opens blocked with the conflict sentence and sends nothing', () => {
+    const h = writer();
+    h.editor.pending.push({ id: 's9', groupId: 'g9', from: POS - 'rannalla.'.length, to: POS, insert: 'rannassa.', original: 'rannalla.', meta: {} });
+    h.quick.open();
+    expect(h.prompt).toMatchObject({ mode: 'write', phase: 'blocked' });
+    expect(h.prompt.blocked.message).toBe('Kohdassa on jo käsittelemätön ehdotus. Käsittele se ensin.');
+    expect(h.ai.requestEdit).not.toHaveBeenCalled();
+  });
+
+  test('write: a caret inside a word, a note or an underline tag writes after it', () => {
+    const cases = [
+      ['Ilta pimeni.\nÅke seisoi ran|nalla hiljaa.', 'Ilta pimeni.\nÅke seisoi rannalla'.length],
+      ['Ilta pimeni.\nÅke [TODO: tarkista| vuosi] seisoi.', 'Ilta pimeni.\nÅke [TODO: tarkista vuosi]'.length],
+      ['Ilta pimeni.\nÅke <|u>seisoi</u> rannalla.', 'Ilta pimeni.\nÅke <u>seisoi</u>'.length],
+      ['Ilta pimeni.\nÅke <u>sei|soi</u> rannalla.', 'Ilta pimeni.\nÅke <u>seisoi</u>'.length],
+      ['Ilta pimeni.\nÅke <u>seisoi</|u> rannalla.', 'Ilta pimeni.\nÅke <u>seisoi</u>'.length],
+      // At a word's edge nothing moves
+      ['Ilta pimeni.\nÅke seisoi| rannalla.', 'Ilta pimeni.\nÅke seisoi'.length]
+    ];
+    for (const [marked, pos] of cases) {
+      const h = harness({ marked, deps: { writeAtCursor: true } });
+      h.quick.open();
+      expect(h.prompt.mode).toBe('write');
+      const range = h.editor.getRange(h.ui.current.rangeId);
+      expect([marked, range.from]).toEqual([marked, pos]);
+      h.send({ type: 'submit', instruction: 'Sumu nousee' });
+      expect(h.editor.startInsertBlock.mock.calls[0][0].pos).toBe(pos);
+      expect(h.context.build.mock.calls[0][0].cursor).toBe(pos);
+    }
+  });
+
+  test('write: a draft whose chapter was left gives its request row to the stored attempt when the result arrives', async () => {
+    const h = writer();
+    h.controller.linkStoredBlock = jest.fn(() => true);
+    start(h);
+    h.lastCall.stream('<teksti>Sumu nousi järveltä. Åke');
+    const oldView = h.view;
+    h.state.view = { name: 'toinen' };
+    h.state.editor = makeEditor('Toinen luku.', 0, 0, { released() {} });
+    h.quick.host.handle({ type: 'view-destroyed' }, oldView);
+    await flush();
+    expect(h.controller.linkStoredBlock).toHaveBeenCalledWith('chapter-1', 'b1', h.ai.calls[0].logMeta);
+    expect(h.notify).not.toHaveBeenCalled();
   });
 
   test('write: retry while an attempt is streaming, or with AI off, starts nothing', async () => {

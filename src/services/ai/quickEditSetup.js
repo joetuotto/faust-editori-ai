@@ -42,8 +42,11 @@ import { normaliseModelText, effectiveLineStartDash } from '../../editor/typogra
 import { TEXT_DEPS } from '../language/languageTools.js';
 import { openPrompt, updatePrompt, closePrompt, getPrompt, focusPrompt } from '../../editor/inlinePrompt.js';
 import { mountContextRow, manualChoicesFor } from '../../components/ContextRow.js';
+import { notify } from '../../components/ui.js';
 
 const TRUNCATED_NOTICE = 'Malli ei nähnyt koko kehotetta.';
+// How long typing in a write prompt's field rests before the row counts the new direction
+const DIRECTION_SETTLE_MS = 250;
 
 // The prompt's slot for the row (inlinePromptView.js creates it once per prompt and never touches
 // its children). The prompt is a tooltip in the layer host; the app has one at a time.
@@ -53,6 +56,12 @@ function contextSlotOf(view) {
   const prompts = doc.querySelectorAll('.cm-tooltip.cm-faust-prompt');
   const prompt = prompts.length > 0 ? prompts[prompts.length - 1] : null;
   return prompt ? prompt.querySelector('[data-role="context"]') : null;
+}
+
+// The direction field of the prompt that holds a context slot: what the author has typed so far
+function fieldOf(slot) {
+  const prompt = slot && typeof slot.closest === 'function' ? slot.closest('.cm-faust-prompt') : null;
+  return prompt ? prompt.querySelector('[data-role="field"]') : null;
 }
 
 // One pending frame: the streamed preview is drawn at most once per frame, the newest text wins
@@ -187,8 +196,11 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
     let args;
     try {
       if (open.ui.mode === 'write') {
-        // A prompt reopened after a stop or a refusal keeps the author's direction (its draft): the row counts it
-        const task = writeTask({ direction: open.ui.draft || '', length: open.ui.length, projectKind: projectKind(project), language: project.language });
+        // The direction as it stands in the field (a reopened prompt starts with the kept one, its draft),
+        // so the row and Näytä kehote show the instruction that Enter would send
+        const field = fieldOf(row.slot);
+        const direction = field ? field.value : (open.ui.draft || '');
+        const task = writeTask({ direction, length: open.ui.length, projectKind: projectKind(project), language: project.language });
         args = { task, project, chapterId: getChapterId(), text: value, cursor: open.from, role: 'prose', answerTokens: task.answerTokens };
       } else {
         const target = value.slice(open.from, open.to);
@@ -222,6 +234,22 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
     dropRow();
     row.slot = slot;
     dryBuild(view);
+    followDirection(view, slot);
+  }
+
+  // A write prompt's instruction is the direction being typed: the row follows it a moment after
+  // typing stops (the listener goes with the prompt's element)
+  function followDirection(view, slot) {
+    const field = fieldOf(slot);
+    if (!field) return;
+    let timer = 0;
+    field.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const open = getPrompt(view);
+        if (row.slot === slot && slot.isConnected && open && open.ui && open.ui.mode === 'write') dryBuild(view);
+      }, DIRECTION_SETTLE_MS);
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -328,7 +356,9 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
     // Deleting a saved prompt asks first (rule 0.6)
     confirmDelete: typeof askConfirm === 'function'
       ? (saved) => askConfirm('Poistetaanko ohje?', `Tallennettu ohje ”${saved.label}” poistetaan.`, 'Poista ohje', 'Peruuta', { danger: true })
-      : null
+      : null,
+    // An insert block's outcome that has no prompt to show it in (a retry dropped or refused, a second draft)
+    notify
   });
 
   // The editor's intents go to the controller; a prompt that closed by itself takes its row along

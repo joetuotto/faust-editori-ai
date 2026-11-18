@@ -58,6 +58,19 @@ function promptOf(built, promptText, systemAsUser, sent) {
 
 const TURN_LABELS = { user: 'Käyttäjäviesti', assistant: 'Mallin vastaus' };
 
+// The line's parts ("oma ohje 28") each wrap as one unit: the line breaks only between them, so a
+// number never stands alone on the next line. The text is the same; only the wrapping is held.
+const SEPARATOR = ' · ';
+function lineParts(line) {
+  const parts = String(line || '').split(SEPARATOR);
+  const out = [];
+  parts.forEach((part, index) => {
+    if (index > 0) out.push(SEPARATOR);
+    out.push(e('span', { key: index, style: { whiteSpace: 'nowrap' } }, part));
+  });
+  return out;
+}
+
 /** Kehote: what is sent, as it is sent. A view: a press on the scrim closes it. */
 export function PromptDialog({ open, built, promptText, systemAsUser, sent, onClose }) {
   const [copied, setCopied] = useState(false);
@@ -139,7 +152,7 @@ export function ContextRow(props) {
       notice
         ? e(Callout, { role: 'warning' }, notice)
         : e('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 'var(--sp-1) var(--sp-2)' } },
-            e('span', { className: 'faust-meta', title: NUMBERS_TITLE }, line + (note ? ' ' + note : '')),
+            e('span', { className: 'faust-meta', title: NUMBERS_TITLE }, ...lineParts(line), note ? ' ' + note : null),
             promptButton && e('span', { style: { marginLeft: 'auto' } }, promptButton)),
       dialog
     );
@@ -200,7 +213,7 @@ export function ContextRow(props) {
 
   return e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
     replaced || e('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 'var(--sp-1) var(--sp-2)' } },
-      e('span', { className: 'faust-meta', title: NUMBERS_TITLE }, described.line),
+      e('span', { className: 'faust-meta', title: NUMBERS_TITLE }, ...lineParts(described.line)),
       e('span', { className: 'faust-stat', title: NUMBERS_TITLE, style: { marginLeft: 'auto' } }, described.total),
       // The two buttons wrap as one group, right-aligned, in a narrow column
       e('span', { style: { display: 'flex', gap: 'var(--sp-1)', marginLeft: 'auto' } },
