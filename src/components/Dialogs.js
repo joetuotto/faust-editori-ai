@@ -202,6 +202,7 @@ export const SHORTCUT_GROUPS = [
     items: [
       ['Sivupalkki', 'CmdOrCtrl+1'],
       ['Tietopaneeli', 'CmdOrCtrl+2'],
+      ['Tarkistus', 'CmdOrCtrl+3'],
       ['Liminal Engine (tekoälyavustaja)', 'CmdOrCtrl+Shift+K', 'ai'],
       ['Keskittymistila', 'CmdOrCtrl+Shift+F'],
       ['Lähennä', 'CmdOrCtrl+Plus'],

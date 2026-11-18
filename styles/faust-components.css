@@ -300,6 +300,16 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 .faust-segmented__option:disabled:is([aria-pressed="true"], [aria-checked="true"]) { background: var(--fill-subtle); box-shadow: inset 0 0 0 1px var(--text-disabled); }   /* the value of a locked control stays readable: the label and its ring share the disabled ink */
 .faust-segmented__option:disabled > .faust-icon { color: inherit; }
 
+/* I-08: Tietopaneeli's five tabs (reconcile R-40). One row, no wrapping: the sides and the gap step down.
+   Two classes, so the rule wins over section 15's .faust-panel__tabs. The row gives up the classic-scrollbar
+   reserve of the other panel rows: with it the five labels (284px, 294px with the busy dot) overflow the
+   281px left in the 320px panel; without it they have 296px. */
+.faust-panel__tabs.faust-panel__tabs--dense { padding: 0 var(--sp-3); }
+.faust-panel__tabs--dense > .faust-tabs { gap: var(--sp-2); }
+/* The busy dot stays on its label's line (in a row 2px narrower it went under the label and the row grew) */
+.faust-panel__tabs--dense .faust-tab { white-space: nowrap; }
+/* end I-08 */
+
 /* ============ 6 Cards, chips, rows, sections ============ */
 /* An index card: square-cut (4px), bordered, no shadow. 8px and shadows are for layers that float. */
 .faust-card {
@@ -1027,6 +1037,23 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-codex-state[data-state="mentioned"] { background: linear-gradient(90deg, currentColor 50%, transparent 50%); }
 .faust-codex-state[data-state="never"]     { color: var(--text-3); background: linear-gradient(135deg, transparent 43%, currentColor 43% 57%, transparent 57%); }
 /* end I-07 */
+
+/* I-08: Tarkistus (ReviewPanel.js, VF-23). The parts of a section stand one gap apart; a card's badges,
+   actions and status chips take the card's text column and wrap in the 288px column. */
+.faust-review__part + .faust-review__part { margin-top: var(--sp-3); }
+/* The icon stands on the kind's 16px line: inline, its SVG sat on the body text's 26px line, 8px below the kind */
+.faust-finding__icon { display: flex; align-items: center; height: 16px; margin-top: 0; }
+.faust-finding__badges { grid-column: 2 / -1; display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+.faust-review .faust-finding__actions { flex-wrap: wrap; }
+.faust-finding__status { grid-column: 2 / -1; gap: var(--sp-1); }
+.faust-review .faust-finding__quote { overflow-wrap: anywhere; }
+/* The model's name (gateway names run to 36 characters) takes a line of its own under the check's name:
+   beside it in the auto column it squeezed the name's column to nothing and the two were drawn over each other */
+.faust-review .faust-finding__where { grid-column: 2 / -1; overflow-wrap: anywhere; }
+/* Oma tarkistus: the checkbox stands on the first line of its two-line label (the shared serif check centres it) */
+.faust-review-check .faust-check--serif { align-items: flex-start; }
+.faust-review-check .faust-check--serif > input { align-self: flex-start; margin-top: calc((22px - 14px) / 2); }
+/* end I-08 */
 
 /* ============ 14 Editor (CodeMirror) ============
  * Specificity (0,3,0) or more: at least one class more than the CodeMirror theme, which is

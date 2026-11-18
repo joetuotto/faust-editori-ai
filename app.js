@@ -44,6 +44,10 @@ import { getContextSession } from './src/services/ai/contextSession.js';
 import { TEXT_DEPS as textDeps } from './src/services/language/languageTools.js';
 // Tarinakansio in the sidebar and its research-note copy (stage I-07)
 import { CodexPanel, CopyToCodexButton } from './src/components/CodexPanel.js';
+// Tarkistus, the fifth tab of Tietopaneeli, and its own-check dialog (stage I-08)
+import { ReviewPanel } from './src/components/ReviewPanel.js';
+import { ReviewCheckDialog, saveCustomCheck } from './src/components/ReviewCheckDialog.js';
+import { createDefaultReviewController } from './src/services/review/reviewController.js';
 import {
   TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog, CollectionDialog,
   shortcut, shortcutKeys, count, countParts
@@ -229,7 +233,9 @@ const LEAVES_FOCUS = [
   // I-06: the four doors of Kielen työkalut
   'check-typography', 'proofread-chapter', 'voikko-check-chapter', 'voikko-help',
   // I-07: Tarinakansio opens the sidebar
-  'show-codex'
+  'show-codex',
+  // I-08: Tietopaneeli on its Tarkistus tab
+  'show-review'
 ];
 
 // 16.11.2026 klo 14.32
@@ -389,6 +395,9 @@ const createDefaultProject = () => ({
     castDynamics: null,  // AI-analyzed relationships
     warnings: []
   },
+
+  // Tarkistus (contracts.md section 5, stage I-08): the limit of Pitkät virkkeet; the findings live in the chapters
+  review: { longSentenceWords: 30 },
 
   // Goals
   targets: {
@@ -806,7 +815,7 @@ function FAUSTApp() {
   // Claude Chat state
   const [claudeChatOpen, setClaudeChatOpen] = useState(false);
 
-  // Tietopaneeli tabs: editor (Ulkoasu), chapter (Luku), project (Projekti), ai (Tekoäly). Opens on Luku.
+  // Tietopaneeli tabs: editor (Ulkoasu), chapter (Luku), project (Projekti), ai (Tekoäly), review (Tarkistus). Opens on Luku.
   const [inspectorTab, setInspectorTab] = useState('chapter');
 
   // Find & Replace state
@@ -886,6 +895,13 @@ function FAUSTApp() {
   if (!commandManagerRef.current) commandManagerRef.current = new CommandManager();
   const suggestionsRef = useRef(null);
   if (!suggestionsRef.current) suggestionsRef.current = createSuggestionController({ wordDiff, rawDiff: (a, b) => wordDiff(a, b, { raw: true }), changeRatio });
+  // Tarkistus (stage I-08): the review controller keeps the running check, the selected check, the filter and
+  // the selected finding while the tab is hidden; a change in it renders the app again (the tick)
+  const reviewRef = useRef(null);
+  if (!reviewRef.current) reviewRef.current = createDefaultReviewController();
+  const [, setReviewTick] = useState(0);
+  const [reviewCheckRequest, setReviewCheckRequest] = useState(null);    // Oma tarkistus: { check } or null
+  const [reviewCustomChecks] = useSetting('review.customChecks', []);
   const projectEpochRef = useRef(0);
   const [projectEpoch, setProjectEpoch] = useState(0);
   // What the old paths SENT to the model (sentTarget: chapter, text, offsets, project epoch), stored
@@ -1142,6 +1158,8 @@ function FAUSTApp() {
       // View
       case 'toggle-sidebar': wasFocus ? setSidebarCollapsed(false) : setSidebarCollapsed(prev => !prev); break;
       case 'toggle-inspector': if (!wasFocus && showInspector) setShowInspector(false); else showInspectorTab(); break;
+      // Näytä ▸ Tarkistus (⌘3): pressed again while the tab is showing, it hides Tietopaneeli
+      case 'show-review': if (!wasFocus && showInspector && inspectorTab === 'review') setShowInspector(false); else showInspectorTab('review'); break;
       case 'toggle-ai-panel': if (wasFocus || !aiAssistantOpen) openLiminalEngine(); else setAiAssistantOpen(false); break;
       // Muokkaa ▸ Pikamuokkaus… (Cmd+K) and the right-click Tekoäly submenu (arg: the action id or 'custom')
       case 'quick-edit': quickEditRef.current.open(); break;
@@ -1614,6 +1632,28 @@ function FAUSTApp() {
     getSetting: (key, fallback) => getSettingsStore().get(key, fallback),
     setSetting: (key, value) => { getSettingsStore().set(key, value); },
     takeSnapshot: (chapterId, reason) => takeAutoSnapshot(reason)
+  });
+
+  // The review controller sees this render's project, chapter, live text and selection (stage I-08).
+  // Findings and statuses are not manuscript text: they are written to the chapter without an undo step.
+  // aiOff is aiDisabled, never aiHidden: focus mode does not switch the tab's model checks off.
+  reviewRef.current.bind({
+    project,
+    activeChapterId: activeChapter ? activeChapter.id : null,
+    liveText: liveContentRef.current.content,
+    selection: textSelection ? { from: textSelection.start, to: textSelection.end } : null,
+    getEditor: () => editorRef.current,
+    getProject: () => projectRef.current,
+    updateChapter: (chapterId, fn) => {
+      setProject(prev => ({ ...prev, structure: prev.structure.map(ch => (ch.id === chapterId ? fn(ch) : ch)) }));
+      setUnsavedChanges(true);
+    },
+    updateProject: (fn) => { setProject(fn); setUnsavedChanges(true); },
+    propose: (chapterId, changes, options) => suggestionsRef.current.propose(chapterId, changes, options),
+    askConfirm: (t, m, c, x) => askConfirm(t, m, c, x, { danger: true }),
+    visible: showInspector && inspectorTab === 'review',
+    aiOff: aiDisabled,
+    notify: () => setReviewTick(tick => tick + 1)
   });
 
   // Undo/Redo. In an ordinary text field (titles, notes, search) the field's
@@ -2227,6 +2267,7 @@ function FAUSTApp() {
       typography: { ...defaults.typography, ...(data.typography || {}) },
       proofread: { ...defaults.proofread, ...(data.proofread || {}) },
       keepNote: typeof data.keepNote === 'string' ? data.keepNote.slice(0, 1000) : '',
+      review: { ...defaults.review, ...(data.review || {}) },
       ai: {
         ...defaults.ai,
         ...(data.ai || {}),
@@ -2252,6 +2293,8 @@ function FAUSTApp() {
     setPasteEditsRequest(null);
     // Miksi? answers belong to the previous project's changes (Kielen työkalut remounts with the epoch)
     explainCacheRef.current.clear();
+    // A running check, the selected finding and the failure details belong to the previous project
+    reviewRef.current.reset();
     setProject(data);
     setCurrentFilePath(filePath || null);
     setActiveChapterId(data.structure[0]?.id || 'chapter-1');
@@ -5062,6 +5105,19 @@ ${contextPrompt}`;
         }
       })
     ),
+    // Oma tarkistus (stage I-08): opened from the Tarkistus tab's picker; the result goes into review.customChecks
+    e(ErrorBoundary, { label: 'Oma tarkistus', onDismiss: () => setReviewCheckRequest(null) },
+      e(ReviewCheckDialog, {
+        request: reviewCheckRequest,
+        existing: reviewCustomChecks,
+        askConfirm,
+        onDone: (result) => {
+          const request = reviewCheckRequest;
+          setReviewCheckRequest(null);
+          saveCustomCheck(result, request, reviewRef.current);
+        }
+      })
+    ),
     // Focus mode: the header is hidden, so a strip at the top keeps the window draggable
     focusMode && e('div', { className: 'faust-focus-drag' }),
     focusMode && e('button', {
@@ -5299,7 +5355,7 @@ ${contextPrompt}`;
               'aria-pressed': showInspector,
               title: showInspector
                 ? 'Kätke tietopaneeli (' + shortcut('CmdOrCtrl+2') + ')'
-                : 'Näytä tietopaneeli: tekstin ulkoasu, luvun ja projektin tiedot sekä tekoälyasetukset (' + shortcut('CmdOrCtrl+2') + ')',
+                : 'Näytä tietopaneeli: tekstin ulkoasu, luvun ja projektin tiedot, tekoälyasetukset ja tarkistukset (' + shortcut('CmdOrCtrl+2') + ')',
               onClick: () => (showInspector ? setShowInspector(false) : showInspectorTab())
             }, icons.panelRight({ size: 16 })),
             !aiDisabled && e('button', {
@@ -6140,6 +6196,9 @@ ${contextPrompt}`;
               // Vältettävät sanat and the Tarinakansio mentions; ⌘-click on a name opens its entry (I-07)
               termHighlights,
               onMentionClick: openCodexEntry,
+              // The Tarkistus tab's open findings, only while the tab is on screen; a click selects its card (I-08)
+              findingHighlights: reviewRef.current.highlightProps(),
+              onFindingClick: (id) => reviewRef.current.onFindingClick(id),
               onMouseUp: handleTextSelection,
               onKeyUp: handleTextSelection,
               typewriterMode: typewriterMode, // the editor keeps the cursor line centered
@@ -6711,7 +6770,8 @@ ${contextPrompt}`;
           ),
 
           // Tab Navigation: the row only (arrow keys, Home, End); the panels below stay where they are
-          e('div', { className: 'faust-panel__tabs' },
+          // Five tabs in one dense row (R-40); Tarkistus carries the busy dot while a check runs
+          e('div', { className: 'faust-panel__tabs faust-panel__tabs--dense' },
             e(Tabs, {
               label: 'Tietopaneeli',
               value: inspectorTab,
@@ -6720,7 +6780,8 @@ ${contextPrompt}`;
                 { id: 'editor', label: 'Ulkoasu', title: 'Fontti, riviväli, zoomaus, teema ja kirjoittamisen asetukset' },
                 { id: 'chapter', label: 'Luku', title: 'Avoimen luvun tiedot ja versiot' },
                 { id: 'project', label: 'Projekti', title: 'Projektin tiedot, tavoitteet, hahmot, juonilangat ja johdonmukaisuus' },
-                { id: 'ai', label: 'Tekoäly', title: 'Tekoälyn lähde, avain ja malli sekä tekoälyn kirjoitustoiminnot' }
+                { id: 'ai', label: 'Tekoäly', title: 'Tekoälyn lähde, avain ja malli sekä tekoälyn kirjoitustoiminnot' },
+                { id: 'review', label: 'Tarkistus', title: 'Avoimen luvun tarkistukset ja niiden havainnot (' + shortcut('CmdOrCtrl+3') + ')', busy: !!reviewRef.current.view().running }
               ]
             })
           ),
@@ -7281,6 +7342,26 @@ ${contextPrompt}`;
               )
             );
           })(),
+
+          // TARKISTUS TAB (stage I-08): the checks of the open chapter and their findings. Every other block of
+          // the body is gated by its own tab (R-26), so nothing else shows under this one.
+          inspectorTab === 'review' && e(ErrorBoundary, { label: 'Tarkistus', onDismiss: () => setInspectorTab('chapter') },
+            e(ReviewPanel, {
+              controller: reviewRef.current,
+              view: reviewRef.current.view(),
+              project,
+              chapter: activeChapter,
+              text: liveContentRef.current.content,
+              aiOff: aiDisabled,
+              aiConfig: aiSource,
+              onOpenLanguageTool: setLanguagePanel,
+              onOpenProjectSettings: () => setShowProjectSettings(true),
+              onOpenAISettings: openAISettings,
+              onOpenCodexEntry: openCodexEntry,
+              onSelectChapter: setActiveChapterId,
+              onEditCheck: setReviewCheckRequest,
+              askConfirm
+            })),
 
           // Story Continuity Tracker
           inspectorTab === 'project' && continuityTrackerRef.current && (() => {

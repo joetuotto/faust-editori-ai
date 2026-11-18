@@ -791,6 +791,8 @@ function createMenu() {
       submenu: [
         item('Sivupalkki', 'toggle-sidebar', 'CmdOrCtrl+1'),
         item('Tietopaneeli', 'toggle-inspector', 'CmdOrCtrl+2'),
+        // Tietopaneeli on its Tarkistus tab (I-08). Not in aiItems: its local checks work with AI off
+        item('Tarkistus', 'show-review', 'CmdOrCtrl+3'),
         ...aiItems(
           { ...item('Liminal Engine (tekoälyavustaja)', 'toggle-ai-panel', 'CmdOrCtrl+Shift+K'), toolTip: 'Näytä tai kätke tekoälyavustajan paneeli' },
           item('Keskustelu', 'toggle-chat-window')
