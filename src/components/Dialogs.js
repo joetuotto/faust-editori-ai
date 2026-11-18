@@ -460,7 +460,9 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
     key: value,
     className: 'faust-check faust-check--serif'
   },
-    e('input', { type: 'radio', name, value, checked: current === value, disabled, onChange: () => onChange(value) }),
+    // The round wrapper carries the focus ring (the native radio paints any ring as a square)
+    e('span', { className: 'faust-radio' },
+      e('input', { type: 'radio', name, value, checked: current === value, disabled, onChange: () => onChange(value) })),
     e('span', null, label),
     e('span', { className: 'faust-check__hint' }, hint || '')
   );
@@ -559,11 +561,10 @@ export function ConfirmDialog({ request, onDone }) {
 
   useEffect(() => {
     if (!request) return;
-    // A destructive question opens on Peruuta, so a reflexive Enter deletes nothing (V 4.8 opening);
-    // the author moves to the action deliberately
+    // Focus starts on the confirm button and Enter confirms, a danger question too (R-67, M E.6;
+    // V 4.8's "focus starts on the cancel button" is not adopted)
     const timer = setTimeout(() => {
-      const target = request.danger ? cancelRef.current : confirmRef.current;
-      if (target) target.focus();
+      if (confirmRef.current) confirmRef.current.focus();
     }, 0);
     return () => clearTimeout(timer);
   }, [request]);

@@ -143,7 +143,22 @@ const PROFILE_LABELS = {
   approach: 'lähestyminen', ordeal: 'koettelemus', reward: 'palkinto', road_back: 'paluumatka',
   resurrection: 'ylösnousemus', return_with_elixir: 'paluu eliksiirin kanssa'
 };
-const label = (value) => PROFILE_LABELS[value] || String(value == null ? '' : value).replace(/_/g, ' ');
+// A value stored in words (an old file, a hand-made character: 'Etsijä') follows the table's case, lower case
+// after a label (M B.1: 'Arkkityyppi: etsijä'); upperFirst() capitalises it where it stands alone. An acronym stays.
+const label = (value) => {
+  if (PROFILE_LABELS[value]) return PROFILE_LABELS[value];
+  const text = String(value == null ? '' : value).replace(/_/g, ' ');
+  return /^[A-ZÅÄÖ][a-zåäö]/.test(text) ? text.charAt(0).toLowerCase() + text.slice(1) : text;
+};
+
+// The words of a chapter version, counted from its text (the list, the Luku tab and the comparison
+// agree, M B.13: one count); a stored count is used only when the version carries no text
+const versionWords = (version) => (version && typeof version.content === 'string'
+  ? version.content.split(/\s+/).filter(Boolean).length
+  : Number(version && version.wordCount) || 0);
+
+// The categorical thread colours, in thread order: Aikajana's bars and the stripes of the Juonilangat cards
+const THREAD_HUES = ['var(--thread-1)', 'var(--thread-2)', 'var(--thread-3)', 'var(--thread-4)', 'var(--thread-5)', 'var(--thread-6)'];
 
 // Chapter status as stored: the legacy collection filter 'revised' is 'revision', a missing status is 'plan'
 const normStatus = (value) => (value === 'revised' ? 'revision' : (value || 'plan'));
@@ -4658,9 +4673,44 @@ ${contextPrompt}`;
     editor.setHighlights(inChapter, inChapter.indexOf(current));
 
     if (current && current.chapterId === activeChapter.id) {
-      editor.scrollToPos(current.start);
+      // The popover stands over the pane's upper right (V 6.5: not over what the author acts on): when it
+      // lies over the text column, the hit goes 16px under its lower edge instead of the pane's middle
+      const pop = document.querySelector('.faust-popover--find');
+      const pane = editor.getBoundingClientRect();
+      const column = editor.querySelector('.cm-content');
+      const popRect = pop && pop.getBoundingClientRect();
+      const colRect = column && column.getBoundingClientRect();
+      const overText = popRect && colRect && popRect.left < colRect.right - 1 && popRect.right > colRect.left + 1 && popRect.bottom > pane.top;
+      const clearance = overText ? popRect.bottom - pane.top + 16 : 0;
+      editor.scrollToPos(current.start, clearance > 0 && clearance + 64 < pane.height ? clearance : undefined);
     }
   }, [searchResults, currentSearchIndex, activeChapterId, showFindDialog]);
+
+  // The dock floats over the page's last lines (V 6.5): when the voice bar or the voice comparison appears
+  // for a selection that lies under it, the text scrolls up until the selection ends 16px above the
+  // occupant (the 30vh of free scroll under the last line leaves room). The selection's start stays in view.
+  useEffect(() => {
+    if (!((voiceInputAvailable && textSelection) || voiceDiffView)) return undefined;
+    const frame = requestAnimationFrame(() => {
+      const scroller = editorRef.current;
+      const view = scroller && scroller.faustView;
+      const page = scroller && scroller.closest('.faust-page');
+      const occupant = page && page.querySelector(':scope > .faust-dock > *');
+      if (!view || !occupant) return;
+      const range = view.state.selection.main;
+      const end = view.coordsAtPos(range.to);
+      const start = view.coordsAtPos(range.from);
+      if (!end || !start) return;
+      // The occupant's resting top (it rises 6px as it appears): the dock's bottom less its height
+      const restingTop = occupant.parentElement.getBoundingClientRect().bottom - occupant.offsetHeight;
+      const overlap = end.bottom - (restingTop - 16);
+      if (overlap <= 0) return;
+      const room = start.top - scroller.getBoundingClientRect().top - 8;
+      const step = Math.min(overlap, Math.max(0, room));
+      if (step > 0) scroller.scrollTop += step;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [textSelection, voiceDiffView, voiceInputAvailable]);
 
   // Editing while results are shown moves the text under them: search again
   useEffect(() => {
@@ -4817,7 +4867,10 @@ ${contextPrompt}`;
                         localStorage.removeItem('faust-recent-files');
                         setShowRecentFilesMenu(false);
                       }
-                    }, 'Tyhjennä valikko')
+                    },
+                      // the empty leading slot of the file items, so every label starts on one edge (V 4.9)
+                      e('span', { className: 'faust-menu__slot', 'aria-hidden': true }),
+                      'Tyhjennä valikko')
                   ]
             ),
 
@@ -4849,6 +4902,8 @@ ${contextPrompt}`;
               ...snapshotsPop.popoverProps,
               onClose: closeUnlessAsking(snapshotsPop.close),
               layer: 'header',
+              // 360 px: a snapshot card keeps Poista · Vertaa sanamäärää · Palauta… on one row (V 4.9 per-popover width)
+              width: 360,
               title: `Tilannekuvat (${(project.snapshots || []).length})`,
               closeLabel: 'Kätke tilannekuvat',
               closeTitle: 'Kätke tilannekuvat'
@@ -4880,7 +4935,7 @@ ${contextPrompt}`;
                           count(snapshot.chapterCount || 0, 'luku') + ' · ' + count(snapshot.totalWords || 0, 'sana')),
                         snapshot.description && e('div', { className: 'faust-card__body' }, snapshot.description),
                         // One button family; the delete stands apart at the left end (V 4.8)
-                        e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-1)', marginTop: 'var(--sp-1)' } },
+                        e('div', { style: { display: 'flex', gap: 'var(--sp-2)', marginTop: 'var(--sp-1)' } },
                           e('button', {
                             className: 'faust-btn faust-btn--sm faust-btn--danger',
                             style: { marginRight: 'auto' },
@@ -5041,7 +5096,8 @@ ${contextPrompt}`;
           (() => {
             const target = Number(project.targets && project.targets.totalWords) || 0;
             const [wordNum, wordNoun] = countParts(totalWords, 'sana');
-            const percent = target > 0 ? Math.min(100, Math.floor((totalWords / target) * 100)) : 0;
+            // The bar's fill is the exact share (0,4 % of a goal still shows, as a sliver: .faust-progress--goal)
+            const percent = target > 0 ? Math.min(100, (totalWords / target) * 100) : 0;
             return e('div', { className: 'faust-panel__head', style: { flexWrap: 'wrap', rowGap: 'var(--sp-1)', paddingTop: 'var(--sp-2)', paddingBottom: 'var(--sp-2)' } },
               target > 0
                 ? e('button', {
@@ -5063,13 +5119,14 @@ ${contextPrompt}`;
                 title: 'Kätke sivupalkki (' + shortcut('CmdOrCtrl+1') + ')',
                 onClick: () => setSidebarCollapsed(true)
               }, icons.panelLeft({ size: 14 })),
+              // The goal bar belongs to the readout above it; the chapter count follows (M C.3's order of readouts)
               e('div', { style: { flexBasis: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
-                e('span', { className: 'faust-meta' }, count(project.structure.length, 'luku')),
                 target > 0 && e('div', {
-                  className: 'faust-progress faust-progress--goal' + (totalWords >= target ? ' is-complete' : ''),
+                  className: 'faust-progress faust-progress--goal' + (totalWords >= target ? ' is-complete' : '') + (totalWords > 0 ? '' : ' is-empty'),
                   style: { '--value': percent + '%' },
                   'aria-hidden': true
-                }, e('i'))
+                }, e('i')),
+                e('span', { className: 'faust-meta' }, count(project.structure.length, 'luku'))
               )
             );
           })(),
@@ -5293,7 +5350,8 @@ ${contextPrompt}`;
             e('div', { className: 'faust-meta' },
               count(project.structure.length, 'luku') + ' · Avaa luku klikkaamalla, järjestä vetämällä'),
             e('button', {
-              className: 'faust-btn faust-btn--quiet',
+              // flush: its label ends on the grid's right edge, as the title starts on its left edge
+              className: 'faust-btn faust-btn--quiet faust-btn--flush-end',
               style: { marginLeft: 'auto' },
               title: 'Kätke korttinäkymä ja palaa tekstiin',
               onClick: () => setCorkboardEnabled(false)
@@ -5368,7 +5426,7 @@ ${contextPrompt}`;
                   ? e('p', { className: 'faust-card__body faust-clamp-3' },
                       chapter.synopsis || chapter.synopsisAI ||
                         (chapter.content.length > 100 ? chapter.content.substring(0, 100) + '…' : chapter.content))
-                  : e('p', { className: 'faust-meta' }, 'Ei sisältöä'),
+                  : e('p', { className: 'faust-meta' }, 'Ei tiivistelmää'),      // an inline row (M B.16): the body shows the tiivistelmä
 
                 // Card foot: status, words, score
                 e('div', { className: 'faust-card__foot' },
@@ -5495,7 +5553,6 @@ ${contextPrompt}`;
               key: 'magnum-opus',
               sigil: 'stone',
               label: 'Magnum Opus',
-              gloss: isGenerating ? 'kirjoitetaan…' : 'kirjoita luku',
               primary: true,
               // generateChapter returns while an analysis runs, so the stone waits too (V 4.5)
               disabled: !!analysisBusy,
@@ -5780,10 +5837,16 @@ ${contextPrompt}`;
           showFindDialog ? e(Popover, {
             ...findPop.popoverProps,
             anchorRef: formatBarAnchor(findPop.anchorRef),
-            // At the main pane's right edge, so the hit in the text column stays in view (V 4.9)
+            // At the main pane's right edge, so the hit in the text column stays in view (V 4.9); the
+            // hit itself is scrolled clear of the popover (see the effect that marks the matches)
             alignRef: { get current() { return document.querySelector('.faust-editor-area > .faust-editor'); } },
             onClose: closeUnlessAsking(closeFindDialog),
-            width: 440,
+            // Find is a tool of the text: closed, it gives the focus back to the manuscript at its caret,
+            // not to the bar's Etsi button (typing goes on in the text)
+            restoreFocus: () => { if (editorRef.current) editorRef.current.focus(); },
+            className: 'faust-popover--find',
+            // 460 px: the option Myös hahmot, paikat ja juonilangat stays on one line in its column
+            width: 460,
             title: showReplaceDialog ? 'Etsi ja korvaa' : 'Etsi',
             closeLabel: 'Sulje',
             closeTitle: 'Sulje (Esc)',
@@ -6216,7 +6279,8 @@ ${contextPrompt}`;
             // Markdown markers as the main pane does. No dock: nothing is edited here (R-62).
             splitViewType === 'chapter' && refChapter
               ? e('div', { className: 'faust-page', style: { '--ms-size': 18 * (parseInt(editorZoom) / 100) + 'px', '--measure-face': manuscriptFont.face } },
-                  // The same head as the main pane's: the count, the status chip, and 'vain katselu' as a plain chip
+                  // The same head as the main pane's: the count and the status chip, then 'vain katselu' as a plain
+                  // readout (it is not a status, so it is not a chip: one look for one kind of thing, V 0.1 rule 7)
                   e('div', { className: 'faust-page__head' },
                     e('h2', { className: 'faust-chapter-title' }, refChapter.title || 'Nimetön luku'),
                     e('div', { className: 'faust-chapter-meta' },
@@ -6226,7 +6290,7 @@ ${contextPrompt}`;
                         className: 'faust-chip ' + (STATUS_CHIP[normStatus(refChapter.status)] || ''),
                         'aria-label': 'Tila: ' + labelOf('status', normStatus(refChapter.status)).toLowerCase()
                       }, labelOf('status', normStatus(refChapter.status))),
-                      e('span', { className: 'faust-chip faust-chip--plain' }, 'vain katselu')
+                      e('span', { className: 'faust-stat' }, 'vain katselu')
                     )
                   ),
                   e('div', { className: 'faust-page__body' },
@@ -6500,19 +6564,6 @@ ${contextPrompt}`;
             e('div', { className: 'faust-serif', style: { font: 'var(--type-title-pop)' } }, activeChapter.title || 'Nimetön luku'),
             e('div', { className: 'faust-meta', style: { marginBottom: 'var(--sp-3)' } }, 'Luvun tiedot'),
 
-            // Parannusehdotukset: the advice stored by the last Analysoi luku or Pika-arvio, always listed
-            // (R-39, MV-66), right under the heading, so it is in view when the tab opens after an analysis
-            activeChapter.aiQuality && Array.isArray(activeChapter.aiQuality.suggestions) && activeChapter.aiQuality.suggestions.length > 0 &&
-            e('div', { className: 'faust-callout faust-callout--hint', style: { marginBottom: 'var(--sp-4)' } },
-              icons.idea({ size: 16, className: 'faust-callout__icon' }),
-              e('div', { className: 'faust-callout__title' }, 'Parannusehdotukset'),
-              e('ul', { className: 'faust-callout__body', style: { margin: 0, paddingLeft: 'var(--sp-4)' } },
-                ...activeChapter.aiQuality.suggestions.map((suggestion, idx) =>
-                  e('li', { key: idx }, String(suggestion))
-                )
-              )
-            ),
-
             // Status
             e('div', { className: 'faust-field' },
               e('label', { className: 'faust-field__label', htmlFor: 'inspector-chapter-status' }, 'Tila'),
@@ -6633,6 +6684,20 @@ ${contextPrompt}`;
             }, 'Kaikki luvun tiedot…')
           ),
 
+          // Parannusehdotukset: the advice stored by the last Analysoi luku or Pika-arvio, a section of its own after
+          // Kaikki luvun tiedot… (R-39, MV-66: same content, always listed, no disclosure), so the chapter's fields
+          // come first and the advice never pushes them below the fold
+          inspectorTab === 'chapter' && activeChapter && activeChapter.aiQuality &&
+            Array.isArray(activeChapter.aiQuality.suggestions) && activeChapter.aiQuality.suggestions.length > 0 &&
+          e('section', { className: 'faust-section' },
+            e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Parannusehdotukset')),
+            e('ul', { className: 'faust-serif', style: { margin: 0, paddingLeft: 'var(--sp-4)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+              ...activeChapter.aiQuality.suggestions.map((suggestion, idx) =>
+                e('li', { key: idx }, String(suggestion))
+              )
+            )
+          ),
+
           // PROJECT TAB
           inspectorTab === 'project' && e('section', { className: 'faust-section' },
             e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Projektin tiedot')),
@@ -6655,12 +6720,28 @@ ${contextPrompt}`;
           inspectorTab === 'project' && e('section', { className: 'faust-section' },
             e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Tavoitteet')),
 
-            // Manuscript goal
+            // Manuscript goal: the label above, its bar, then the count and the share (M C.8 row 14's words), drawn
+            // as the session goal below is (one look for one kind of thing). No-break spaces keep 80 000 sanaa whole.
             (() => {
               const target = (project.targets && Number(project.targets.totalWords)) || 0;
-              return e('div', { className: 'faust-meta' },
-                `Käsikirjoituksen tavoite: ${totalWords.toLocaleString('fi-FI')} / ${target.toLocaleString('fi-FI')} sanaa` +
-                (target > 0 ? ` (${Math.round(totalWords / target * 100)} %)` : ''));
+              const share = target > 0 ? Math.min(100, (totalWords / target) * 100) : 0;
+              const nb = (text) => text.replace(/ /g, '\u00A0');
+              return e('div', null,
+                e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-2)' } }, 'Käsikirjoituksen tavoite'),
+                target > 0 && e('div', {
+                  className: 'faust-progress faust-progress--goal' + (totalWords >= target ? ' is-complete' : '') + (totalWords > 0 ? '' : ' is-empty'),
+                  style: { '--value': share + '%' },
+                  role: 'progressbar',
+                  'aria-label': 'Käsikirjoituksen tavoite',
+                  'aria-valuemin': 0,
+                  'aria-valuemax': 100,
+                  'aria-valuenow': Math.round(share)
+                }, e('i')),
+                e('div', { className: 'faust-kv', style: { marginTop: 'var(--sp-1)' } },
+                  e('span', null, nb(`${totalWords.toLocaleString('fi-FI')} / ${target.toLocaleString('fi-FI')} sanaa`)),
+                  target > 0 ? e('span', null, nb(`${Math.round(share)} %`)) : null
+                )
+              );
             })(),
 
             // Session goal
@@ -6674,7 +6755,7 @@ ${contextPrompt}`;
 
                 // Progress bar
                 e('div', {
-                  className: 'faust-progress faust-progress--goal' + (reached ? ' is-complete' : ''),
+                  className: 'faust-progress faust-progress--goal' + (reached ? ' is-complete' : '') + (Number(progress.written) > 0 ? '' : ' is-empty'),
                   style: { '--value': progress.percentage + '%' },
                   role: 'progressbar',
                   'aria-label': 'Kirjoituskerran tavoite',
@@ -6710,8 +6791,9 @@ ${contextPrompt}`;
                   )
                 ),
                 e('div', { className: 'faust-field__row' },
+                  // flush: the quiet button's label ends on the field's right edge
                   e('button', {
-                    className: 'faust-btn faust-btn--sm faust-btn--quiet',
+                    className: 'faust-btn faust-btn--sm faust-btn--quiet faust-btn--flush-end',
                     title: 'Aloita kirjoituskerran sanalaskenta alusta',
                     onClick: resetSession
                   }, 'Nollaa sanalaskuri')
@@ -6822,8 +6904,9 @@ ${contextPrompt}`;
               ),
 
               // Current mode info
+              // Standing as a help line it ends with a full stop, as every help line of the tab (the tooltip keeps M's form)
               modeTips[project.ai.currentMode] && e('div', { className: 'faust-meta', style: { marginTop: 'var(--sp-2)' } },
-                modeTips[project.ai.currentMode])
+                modeTips[project.ai.currentMode] + '.')
             );
           })(),
 
@@ -6860,7 +6943,8 @@ ${contextPrompt}`;
               // Cost estimation (no model line until I-02 puts the model badge first in the box, R-17)
               e('div', { className: 'faust-card faust-card--compact', style: { marginBottom: 'var(--sp-3)' } },
                 e('div', { className: 'faust-card__title' }, 'Kustannusarvio'),
-                e('div', { className: 'faust-meta' }, `Lukuja: ${project.structure.length}`),
+                // A count is a key-value row, as in Tekoälyn kustannukset below
+                e('div', { className: 'faust-kv' }, e('span', null, 'Lukuja:'), e('span', null, project.structure.length.toLocaleString('fi-FI'))),
                 e('div', { className: 'faust-meta' },
                   aiSource && aiSource.provider === 'cherry'
                     ? 'Hinta riippuu Cherry Studiossa valitusta mallista.'
@@ -7036,12 +7120,12 @@ ${contextPrompt}`;
                       : 'Tekoälyn kirjoittama' + (from.mode ? ` · työtapa: ${labelOf('mode', from.mode).toLowerCase()}` : '');
                   const rating = version.userRating || 0;
 
-                  return e('div', { key: version.id, className: 'faust-card faust-card--compact' + (isCurrent ? ' is-selected' : '') },
+                  return e('div', { key: version.id, className: 'faust-card faust-card--compact', 'aria-current': isCurrent ? 'true' : undefined },
                     e('div', { className: 'faust-card__title' }, `Versio ${versionNo}${isCurrent ? ' (nykyinen)' : ''}`),
                     dateLine && e('div', { className: 'faust-meta' }, dateLine),
                     e('div', { className: 'faust-meta' }, origin),
                     e('div', { className: 'faust-meta' },
-                      count(version.wordCount || 0, 'sana') +
+                      count(versionWords(version), 'sana') +
                       (version.cost > 0 ? ` · ${formatCostFi(version.cost)}` : '')),
                     version.userFeedback && e('div', { className: 'faust-meta' }, `Oma kommentti: ”${version.userFeedback}”`),
 
@@ -7358,14 +7442,15 @@ ${contextPrompt}`;
               e('div', { className: 'faust-panel__title' }, icons.star8({ size: 14 }), 'Liminal Engine'),
               e('div', { className: 'faust-meta' }, 'Tekoälyavustaja')
             ),
-            // The right column's one head recipe (V 6.2): the same 24px panel button as Tietopaneeli's,
-            // with the toggle's wording; the focus goes to the manuscript when it was in the panel
+            // The right column's one head recipe (V 6.2): the same 24px button as Tietopaneeli's, with the
+            // toggle's wording; its face is the close icon (menu-visual entry 57), since panelRight is the
+            // Tietopaneeli toggle's own face. The focus goes to the manuscript when it was in the panel.
             e('button', {
               className: 'faust-btn faust-btn--icon faust-btn--sm',
               onClick: () => closePanelKeepingFocus('.faust-aipanel', () => setAiAssistantOpen(false)),
               'aria-label': 'Kätke Liminal Engine (' + shortcut('CmdOrCtrl+Shift+K') + ')',
               title: 'Kätke Liminal Engine (' + shortcut('CmdOrCtrl+Shift+K') + ')'
-            }, icons.panelRight({ size: 14 }))
+            }, icons.close({ size: 14 }))
           ),
 
           // Model selector dropdown
@@ -7486,9 +7571,10 @@ ${contextPrompt}`;
             )
           ) : null,
 
-          // Input area: the message field has the foot's whole width on its own line (the docked panel
-          // is 360 px at its narrowest), dictation and Lähetä stand together at the end of the line under it
+          // Input area: one composer, as the keskustelu's (V 0.1 rule 7): the field takes the line and
+          // dictation and Lähetä stand at its right end; the hint line is under it
           e('div', { key: 'input', className: 'faust-panel__foot' },
+            e('div', { className: 'faust-composer' },
             e('input', {
               className: 'faust-input',
               type: 'text',
@@ -7503,8 +7589,6 @@ ${contextPrompt}`;
               placeholder: textSelection ? 'Kerro, miten valittua tekstiä muutetaan…' : 'Kirjoita viesti…',
               disabled: aiChatProcessing
             }),
-            // The field's actions together at its right end (V 4.2 .faust-field__row)
-            e('div', { className: 'faust-field__row', style: { alignItems: 'center', marginTop: 'var(--sp-2)' } },
               // Pressed while it listens, the button stops listening (V 4.1). A stopped recognition may
               // never answer, so the button goes back to rest at once; a late answer still fills the field.
               voiceInputAvailable ? e(VoiceButton, {
@@ -7790,6 +7874,8 @@ ${contextPrompt}`;
         icon: icons.sol({ size: 20 }),
         sub: stepLine,
         size: 'lg',
+        // Its steps change the content in place: the panel keeps its top, so title and step line do not jump
+        className: 'faust-dialog--steady',
         busy: characterBuilderStep === 3 || characterBuilderStep === 5,
         onClose: () => cancelCharacterBuilder(),
         footerStart: characterBuilderStep === 2 || characterBuilderStep === 4
@@ -8163,14 +8249,9 @@ ${contextPrompt}`;
         title: 'Luvun versiot – ' + chapterName,
         size: 'lg',
         dismissOnScrim: true,
-        onClose: () => setShowVersionHistory(false),
-        // M C.11 row 18: Sulje, as in Versioiden vertailu opened from here
-        footer: e('button', {
-          type: 'button',
-          className: 'faust-btn faust-btn--lg',
-          title: 'Sulje (Esc)',
-          onClick: () => setShowVersionHistory(false)
-        }, 'Sulje')
+        // A view: the header's close button (Sulje (Esc)) is its one close control, and it has no footer
+        // (R-69, menu-visual entry 88), as Aikajana and the list windows
+        onClose: () => setShowVersionHistory(false)
       },
             versionList.length > 0 ?
               e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' } },
@@ -8178,13 +8259,12 @@ ${contextPrompt}`;
                   const isCurrent = !!currentKey && version.id === currentKey;
                   const n = versionNo(version.id);
                   const origin = originOf(version.generatedFrom);
-                  const words = typeof version.wordCount === 'number'
-                    ? version.wordCount
-                    : (version.content || '').split(/\s+/).filter(Boolean).length;
+                  const words = versionWords(version);
 
+                  // The current version is a plain card: its Nykyinen chip says it (the selected state is for a choice)
                   return e('div', {
                     key: version.id,
-                    className: 'faust-card' + (isCurrent ? ' is-selected' : ''),
+                    className: 'faust-card',
                     'aria-current': isCurrent ? 'true' : undefined
                   },
                     e('div', { className: 'faust-card__head' },
@@ -8205,18 +8285,21 @@ ${contextPrompt}`;
                         label: 'Oma arvio',
                         value: version.userRating || 0,
                         onChange: (star) => rateVersion(version.id, star, version.userFeedback || null)
-                      }),
+                      })
+                    ),
+
+                    // The comment, then its action on the same line: Muokkaa kommenttia… after the comment it edits,
+                    // Lisää kommentti… alone on the content edge (label in the application's meta, the comment in the author's face)
+                    e('div', { style: { display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', columnGap: 'var(--sp-2)' } },
+                      version.userFeedback ? e('div', { style: { minWidth: 0 } },
+                        e('span', { className: 'faust-meta' }, 'Oma kommentti: '),
+                        e('span', { className: 'faust-quote' }, '”' + version.userFeedback + '”')) : null,
                       e('button', {
                         type: 'button',
-                        className: 'faust-btn faust-btn--quiet faust-btn--sm',
+                        className: 'faust-btn faust-btn--quiet faust-btn--sm' + (version.userFeedback ? '' : ' faust-btn--flush-start'),
                         onClick: () => editComment(version)
                       }, version.userFeedback ? 'Muokkaa kommenttia…' : 'Lisää kommentti…')
                     ),
-
-                    // Label in the application's meta, the author's comment in the author's face
-                    version.userFeedback ? e('div', null,
-                      e('span', { className: 'faust-meta' }, 'Oma kommentti: '),
-                      e('span', { className: 'faust-quote' }, '”' + version.userFeedback + '”')) : null,
 
                     !isCurrent ? e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', marginTop: 'var(--sp-1)' } },
                       e('button', {
@@ -8377,7 +8460,7 @@ ${contextPrompt}`;
       const compContent = (compVersion && compVersion.content) || '';
       const currentContent = (activeChapter && activeChapter.content) || '';
       const currentWords = currentContent.split(/\s+/).filter(Boolean).length;
-      const compWords = compContent.split(/\s+/).filter(Boolean).length;
+      const compWords = versionWords(compVersion || { content: compContent });
       const wordDelta = currentWords - compWords;
       const chapterName = (activeChapter && activeChapter.title) || 'Nimetön luku';
       const compNo = String(comparisonVersionId).replace(/\D/g, '') || String(comparisonVersionId);
@@ -8560,7 +8643,10 @@ ${contextPrompt}`;
           ]),
           profileSection('Roolit', [
             rowGroup('roolit', null, [
-              ensemble.storyFit && ensemble.storyFit.narrativeRole ? kvRow('Rooli tarinassa', label(ensemble.storyFit.narrativeRole)) : null,
+              // The list card's Rooli tarinassa (basicInfo.role) when the builder's storyFit is missing: the profile
+              // never shows less than the card that opens it
+              (ensemble.storyFit && ensemble.storyFit.narrativeRole) || pick('role')
+                ? kvRow('Rooli tarinassa', label((ensemble.storyFit && ensemble.storyFit.narrativeRole) || pick('role'))) : null,
               ensemble.groupDynamics && ensemble.groupDynamics.roleInGroup ? kvRow('Rooli ryhmässä', label(ensemble.groupDynamics.roleInGroup)) : null,
               kvRow('MBTI ja enneagrammi', [psychology.mbti, psychology.enneagram].filter((v) => !isEmpty(v)).join(' · '))
             ]),
@@ -8577,10 +8663,11 @@ ${contextPrompt}`;
             icons.sol({ size: 40, className: 'faust-empty__icon' }),
             e('div', { className: 'faust-empty__title' }, 'Ei vielä hahmoja.'),
             e('div', { className: 'faust-empty__hint' }, hasCastPlan ? 'Luo ensimmäinen valitsemalla + Uusi hahmo…' : 'Aloita valitsemalla Suunnittele hahmot…'))
-        : e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 'var(--sp-3)' } },
+        : e('div', { className: 'faust-listgrid' },
             characters.map((char, idx) => {
               const role = (char.basicInfo && char.basicInfo.role) || char.role || '';
               const archetype = archetypeOf(char);
+              const description = (char.basicInfo && char.basicInfo.description) || char.description || '';
               return e('button', {
                 key: idx,
                 type: 'button',
@@ -8591,6 +8678,7 @@ ${contextPrompt}`;
                 }
               },
                 e('span', { className: 'faust-card__title' }, nameOf(char)),
+                description && e('span', { className: 'faust-card__body faust-clamp-2' }, String(description)),
                 role && e('span', { className: 'faust-meta' }, 'Rooli tarinassa: ' + label(role)),
                 archetype && e('span', { className: 'faust-meta' }, 'Arkkityyppi: ' + label(archetype))
               );
@@ -8602,6 +8690,9 @@ ${contextPrompt}`;
         icon: icons.sol({ size: 20 }),
         sub: isProfile ? 'Hahmon profiili' : (characters.length > 0 ? count(characters.length, 'hahmo') : null),
         size: 'lg',
+        // The list and a profile share the window: it keeps its top, so the title and the close button
+        // stay put when a card or ← Kaikki hahmot is pressed
+        className: 'faust-dialog--steady',
         dismissOnScrim: true,
         onClose: closeCharacterSheet,
         actions: !isProfile && e('button', {
@@ -8621,7 +8712,7 @@ ${contextPrompt}`;
           ? e('div', null,
               e('div', { style: { marginBottom: 'var(--sp-4)' } },
                 // The quiet button's padding hangs outside the content edge, so its arrow stands on it
-                e('button', { className: 'faust-btn faust-btn--quiet', style: { marginLeft: 'calc(-1 * var(--sp-3) - var(--bw))' }, onClick: showCharacterList },
+                e('button', { className: 'faust-btn faust-btn--quiet faust-btn--flush-start', onClick: showCharacterList },
                   icons.arrowLeft({ size: 14 }), 'Kaikki hahmot')),
               e('div', null, ...profileSections(selectedCharacter)))
           : listBody
@@ -8655,7 +8746,7 @@ ${contextPrompt}`;
                   icons.terra({ size: 40, className: 'faust-empty__icon' }),
                   e('div', { className: 'faust-empty__title' }, 'Ei vielä paikkoja.'),
                   e('div', { className: 'faust-empty__hint' }, 'Paikat ovat tarinan tapahtumapaikkoja.'))
-              : e('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 'var(--sp-3)' } },
+              : e('div', { className: 'faust-listgrid' },
                   locationEntries.map(([storedKey, loc]) =>
                     e('button', {
                       key: storedKey,
@@ -8668,6 +8759,8 @@ ${contextPrompt}`;
                       }
                     },
                       e('span', { className: 'faust-card__title' }, loc.name || 'Nimetön paikka'),
+                      // The author's own description first, as on the thread and character cards
+                      loc.description && e('span', { className: 'faust-card__body faust-clamp-2' }, String(loc.description)),
                       typeof loc.firstMentioned === 'number' && Number.isFinite(loc.firstMentioned) &&
                         e('span', { className: 'faust-meta' }, `Ensimmäinen maininta: luku ${loc.firstMentioned + 1}`),
                       Array.isArray(loc.appearances) && loc.appearances.length > 0 &&
@@ -8719,12 +8812,14 @@ ${contextPrompt}`;
                   icons.lemniscate({ size: 40, className: 'faust-empty__icon' }),
                   e('div', { className: 'faust-empty__title' }, 'Ei vielä juonilankoja.'),
                   e('div', { className: 'faust-empty__hint' }, 'Juonilanka on juoni, jota seurataan luvusta toiseen.'))
-              : e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' } },
+              : e('div', { className: 'faust-listgrid' },
                   threads.map((thread, idx) =>
                     e('button', {
                       key: thread.id || idx,
                       type: 'button',
-                      className: 'faust-card faust-card--click',
+                      // The thread's colour of Aikajana as the card's stripe, so list and timeline match
+                      className: 'faust-card faust-card--click faust-card--stripe',
+                      style: { '--stripe': THREAD_HUES[idx % THREAD_HUES.length] },
                       onClick: () => {
                         setSelectedThread(thread);
                         setThreadFormMode('edit');
@@ -8735,7 +8830,7 @@ ${contextPrompt}`;
                         e('span', { className: 'faust-card__title' }, thread.name || 'Nimetön juonilanka'),
                         thread.status && e('span', { className: threadChip(thread.status) }, labelOf('threadStatus', thread.status))
                       ),
-                      thread.description && e('span', { className: 'faust-card__body faust-clamp-3' }, thread.description),
+                      thread.description && e('span', { className: 'faust-card__body faust-clamp-2' }, thread.description),
                       thread.type && e('span', { className: 'faust-meta' }, 'Tyyppi: ' + labelOf('threadType', thread.type).toLowerCase())
                     )
                   )
@@ -8771,7 +8866,7 @@ ${contextPrompt}`;
       const chapters = project.structure || [];
       const threads = project.plotThreads || [];
       const lastIndex = Math.max(chapters.length - 1, 0);
-      const threadHues = ['var(--thread-1)', 'var(--thread-2)', 'var(--thread-3)', 'var(--thread-4)', 'var(--thread-5)', 'var(--thread-6)'];
+      const threadHues = THREAD_HUES;
       // A chapter position as the bars have always read it (the source of the bars is a later fix), kept inside the strip
       const chapterPosition = (value, fallback) => (
         typeof value === 'number' && Number.isFinite(value)
@@ -8792,7 +8887,8 @@ ${contextPrompt}`;
             chapters.length > 0 ? e('div', { className: 'faust-timeline' },
               // One grid for the chapters and the threads, so a bar starts and ends under its chapters
               e('div', { className: 'faust-timeline__grid', style: { '--n': String(chapters.length) } },
-                e('div', { className: 'faust-section__title', style: { gridColumn: '1 / -1' } }, 'Luvut'),
+                // The chapter row's label stands in the name column, so the column reads as a header column
+                e('div', { className: 'faust-timeline__name faust-timeline__name--head', style: { gridColumn: '1', gridRow: '1' } }, 'Luvut'),
 
                 chapters.map((chapter, idx) => {
                   const words = (chapter.content || '').split(/\s+/).filter(Boolean).length;
@@ -8803,7 +8899,7 @@ ${contextPrompt}`;
                     key: chapter.id || idx,
                     type: 'button',
                     className: 'faust-card faust-card--compact faust-card--click' + (isActive ? ' is-selected' : ''),
-                    style: { gridColumn: String(idx + 2), alignSelf: 'stretch' },
+                    style: { gridColumn: String(idx + 2), gridRow: '1', alignSelf: 'stretch' },
                     title: 'Avaa luku',
                     'aria-current': isActive ? 'true' : undefined,
                     onClick: () => {
@@ -8812,8 +8908,9 @@ ${contextPrompt}`;
                     }
                   },
                     e('span', { className: 'faust-meta' }, `Luku ${idx + 1}`),
-                    // The chapter's title is the author's words: serif, as the thread names beside it
-                    e('span', {
+                    // The chapter's title is the author's words: serif, as the thread names beside it. A title that
+                    // only repeats the number line (Luku 4) is not shown twice.
+                    (chapter.title || '').trim() !== `Luku ${idx + 1}` && e('span', {
                       className: 'faust-card__title faust-card__title--author',
                       style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
                     }, chapter.title || 'Nimetön luku'),
@@ -8942,12 +9039,15 @@ ${contextPrompt}`;
         sub: 'Muistiinpanot, linkit ja muu taustamateriaali',
         size: 'lg',
         dismissOnScrim: true,
+        // A view opens on its panel, as Hahmot, Paikat, Juonilangat and Aikajana do (V 4.8): its first
+        // field belongs to a note
+        initialFocus: 'panel',
         onClose: closeResearch
       },
             // The three create actions are the body's toolbar row, so the title and its line keep the
-            // header's width; the dialog opens with the focus on the first of them, not in a note
+            // header's width
             e('div', { className: 'faust-dialog__toolbar' },
-              e('button', { type: 'button', className: 'faust-btn', 'data-autofocus': true, onClick: addNote }, '+ Muistiinpano…'),
+              e('button', { type: 'button', className: 'faust-btn', onClick: addNote }, '+ Muistiinpano…'),
               e('button', { type: 'button', className: 'faust-btn', onClick: addLink }, '+ Linkki…'),
               e('button', {
                 type: 'button',
@@ -9078,6 +9178,8 @@ ${contextPrompt}`;
         // M C.14 row 19, with the comma Finnish puts before 'ennen kuin'
         sub: 'Tekoäly ehdottaa tekstiä. Mitään ei lisätä lukuun, ennen kuin hyväksyt ehdotuksen.',
         size: 'lg',
+        // Its tabs change the content in place: the panel keeps its top, so the tab row does not jump
+        className: 'faust-dialog--steady',
         busy: continuingWriting,
         onClose: closeWriting,
         footer: continuePreview

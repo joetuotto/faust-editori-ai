@@ -415,7 +415,7 @@
           ),
 
           section('Perustiedot',
-            field(ID + '-name', 'Nimi *', e('input', {
+            field(ID + '-name', 'Nimi', e('input', {
               id: ID + '-name',
               type: 'text',
               className: 'faust-input faust-input--author',
@@ -423,6 +423,8 @@
               onChange: (ev) => handleInputChange('name', ev.target.value),
               disabled: isViewMode,
               placeholder: 'Esim. Sankarin matka, Romanttinen juonilanka',
+              // The one required field: said by its error (Nimi puuttuu.), not by a mark (M B.6)
+              'aria-required': true,
               ...invalid(ID + '-name', errors.name)
             }), errors.name, true),
 

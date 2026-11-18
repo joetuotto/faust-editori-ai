@@ -175,14 +175,16 @@ export function AIProviderSettings({ onProviderChange }) {
     // Two radios, one per line: the option names of M A.3 stay whole in the 288px column
     e('div', { className: 'faust-check-group faust-check-group--column', role: 'radiogroup', 'aria-label': 'Tekoälyn lähde' },
       SOURCES.map(([value, label]) => e('label', { key: value, className: 'faust-check' },
-        e('input', {
-          type: 'radio',
-          name: sourceName,
-          value,
-          checked: config.provider === value,
-          disabled: config.providerFromEnv,
-          onChange: () => changeProvider(value)
-        }),
+        // The round wrapper carries the focus ring (the native radio paints any ring as a square)
+        e('span', { className: 'faust-radio' },
+          e('input', {
+            type: 'radio',
+            name: sourceName,
+            value,
+            checked: config.provider === value,
+            disabled: config.providerFromEnv,
+            onChange: () => changeProvider(value)
+          })),
         label))
     ),
 

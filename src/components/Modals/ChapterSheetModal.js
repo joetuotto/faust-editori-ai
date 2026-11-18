@@ -331,7 +331,8 @@
     const firstError = ['title', 'location', 'synopsis', 'goals', 'conflicts', 'outcome', 'emotionalArc', 'notes']
       .map(key => errors[key]).find(Boolean);
 
-    const input = (id, key, placeholder) => e('input', {
+    // extra: more attributes (the one required field: aria-required; its error says it, not a mark, M B.6)
+    const input = (id, key, placeholder, extra) => e('input', {
       id,
       type: 'text',
       className: 'faust-input faust-input--author',
@@ -339,6 +340,7 @@
       onChange: (ev) => handleInputChange(key, ev.target.value),
       disabled: isViewMode,
       placeholder,
+      ...extra,
       ...invalid(id, errors[key])
     });
 
@@ -413,7 +415,7 @@
           section('Perustiedot',
             // One column grid for the form: both rows split in halves, so the field edges line up
             fieldRow('repeat(2, minmax(0, 1fr))', [
-              field(ID + '-title', 'Otsikko *', input(ID + '-title', 'title', 'Luvun otsikko'), errors.title, true),
+              field(ID + '-title', 'Otsikko', input(ID + '-title', 'title', 'Luvun otsikko', { 'aria-required': true }), errors.title, true),
               field(ID + '-status', 'Tila', select(ID + '-status', 'status', CHAPTER_STATUS))
             ]),
             fieldRow('repeat(2, minmax(0, 1fr))', [

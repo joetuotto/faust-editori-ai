@@ -37,7 +37,8 @@ export const SIGILS = {
   sol:        { d: circle(12, 12, 8.5), f: circle(12, 12, 1.6) },                             // character
   luna:       { d: 'M20.5 14A8.5 8.5 0 1 1 10 3.5a6.6 6.6 0 0 0 10.5 10.5z' },                 // timeline
   terra:      { d: circle(12, 15.5, 6.5) + 'M12 9V2M9 5.5h6' },                               // location
-  lemniscate: { d: 'M12 12c-1.8-3-3.2-5-5-5a5 5 0 0 0 0 10c1.8 0 3.2-2 5-5zm0 0c1.8 3 3.2 5 5 5a5 5 0 0 0 0-10c-1.8 0-3.2 2-5 5z' }, // plot thread
+  // plot thread: one continuous figure of eight whose strokes cross in the middle (two touching rings read as 'oo')
+  lemniscate: { d: 'M12 12C10 8.6 8.6 7.5 6.5 7.5a4.5 4.5 0 0 0 0 9c2.1 0 3.5-1.1 5.5-4.5s3.4-4.5 5.5-4.5a4.5 4.5 0 0 1 0 9c-2.1 0-3.5-1.1-5.5-4.5z' },
   salt:       { d: circle(12, 12, 8.5) + 'M3.5 12h17' },                                      // story folder (corpus)
   trigon:     { d: 'M12 2.5l9.5 17.5h-19zM12 10.5l3.5 6.5h-7z' },                             // research folder (Tutkimuskansio): a triangle within a triangle
   hexagon:    { d: 'M12 2.5l8.2 4.75v9.5L12 21.5l-8.2-4.75v-9.5z' },                          // chapter (luku)
@@ -96,7 +97,7 @@ export const GLYPHS = {
   image: { d: rect(3, 4, 18, 16, 2) + circle(8.5, 9.5, 1.5) + 'M21 15l-5-5-9 10' },
   // manuscript tools
   bookmark: { d: 'M7 3h10v18l-5-4-5 4z' },
-  bookmarkAdd: { d: 'M7 3h10v18l-5-4-5 4zM12 7v6M9 10h6' },
+  bookmarkAdd: { d: 'M4 4h9v17l-4.5-4L4 21zM18.5 3v7M15 6.5h7' },   // the plus beside the bookmark, so it never reads as a second bookmark
   quote: { d: 'M5 5v14M10 7h10M10 12h10M10 17h6' },
   list: { d: dot(4.5, 6) + dot(4.5, 12) + dot(4.5, 18) + 'M9 6h11M9 12h11M9 18h11' },
   listOrdered: { d: 'M4 5l1.5-1v4M4 11.5h2.5L4 14.5h2.5M10 6h10M10 13h10M10 19h10M4 18h2.5v3H4' },

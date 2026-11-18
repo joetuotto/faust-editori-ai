@@ -35,9 +35,10 @@
 [hidden] { display: none !important; }      /* the recipes set display; the live dialogs are closed with the hidden attribute */
 .tn-top { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: var(--sp-5); padding: var(--sp-2) var(--sp-5); background: var(--surface-panel); border-bottom: var(--bw) solid var(--rule); }
 .tn-top h1 { font: var(--type-title-panel); letter-spacing: 0; white-space: nowrap; }
-.tn-nav { display: flex; flex-wrap: wrap; gap: var(--sp-half) var(--sp-3); font: var(--type-meta); min-width: 0; }
-.tn-nav a { color: var(--text-2); text-decoration: none; }
+.tn-nav { display: flex; flex-wrap: nowrap; gap: var(--sp-3); font: var(--type-meta); min-width: 0; overflow-x: auto; scrollbar-width: none; }      /* one row, as the app's header row: never wraps, scrolls sideways */
+.tn-nav a { flex: none; padding: var(--sp-1) 0; color: var(--text-2); text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; }
 .tn-nav a:hover { color: var(--text); }
+.tn-nav a[aria-current="true"] { color: var(--text); border-bottom-color: var(--accent-line); }      /* the section in view: the selected tab's underline (V 4.3) */
 .tn-main { max-width: 1280px; margin: 0 auto; padding: 0 var(--sp-5) var(--sp-8); }
 .tn-section { padding: var(--sp-6) 0 var(--sp-5); border-top: var(--bw) solid var(--rule); scroll-margin-top: 56px; }
 .tn-section:first-child { border-top: 0; }
@@ -867,7 +868,7 @@ Nyt: 13 450 sanaa</span></div>
 <!-- ======================= Icons ======================= -->
 <section class="tn-section" id="kuvakkeet" data-title="Kuvakkeet">
   <h2>Kuvakkeet</h2>
-  <p class="tn-lead">15 sigiliä ja 77 työkalukuvaketta (src/components/icons.js). Sigili on kultaa siellä, missä se on säädin tai otsikko; työkalukuvake on tekstinsä värinen. Viivan paksuus pysyy ruudulla samana koosta riippumatta.</p>
+  <p class="tn-lead"><span id="tn-sigil-count">17</span> sigiliä ja <span id="tn-glyph-count">77</span> työkalukuvaketta (src/components/icons.js). Sigili on kultaa siellä, missä se on säädin tai otsikko; työkalukuvake on tekstinsä värinen. Viivan paksuus pysyy ruudulla samana koosta riippumatta.</p>
   <div class="tn-h3">Sigilit 40</div><div class="tn-icons tn-icons--sigil" data-sheet="sigils" data-size="40"></div>
   <div class="tn-h3">Sigilit 20</div><div class="tn-icons tn-icons--sigil" data-sheet="sigils" data-size="20"></div>
   <div class="tn-h3">Sigilit 14</div><div class="tn-icons tn-icons--sigil" data-sheet="sigils" data-size="14"></div>
@@ -920,6 +921,9 @@ const root = document.documentElement;
 // Icons: every <i data-icon> placeholder becomes the svg the icon module renders through React
 // (one hidden root, then each svg is moved to its place, so child selectors see the svg itself).
 const sheets = { sigils: Object.keys(SIGILS), glyphs: Object.keys(GLYPHS) };
+// The lead text counts what the sheets draw
+document.getElementById('tn-sigil-count').textContent = String(sheets.sigils.length);
+document.getElementById('tn-glyph-count').textContent = String(sheets.glyphs.length);
 for (const grid of document.querySelectorAll('[data-sheet]')) {
   for (const name of sheets[grid.dataset.sheet]) {
     const cell = document.createElement('span');
@@ -989,11 +993,35 @@ for (const option of document.querySelectorAll('[data-theme-opt]')) option.addEv
 setTheme(root.getAttribute('data-theme'));
 
 // Section links
-document.getElementById('tn-nav').append(...[...document.querySelectorAll('.tn-section')].map(section => {
+const navLinks = [...document.querySelectorAll('.tn-section')].map(section => {
   const link = document.createElement('a'); link.href = '#' + section.id; link.textContent = section.dataset.title;
   link.addEventListener('click', (event) => { event.preventDefault(); section.scrollIntoView(); });
   return link;
-}));
+});
+document.getElementById('tn-nav').append(...navLinks);
+// The section in view carries aria-current (the link nearest the band under the sticky bar), and its
+// link is scrolled into the one-row nav
+const markCurrent = () => {
+  const band = document.querySelector('.tn-top').getBoundingClientRect().bottom + 16;      // a section scrolled to by its link stands 56px down (scroll-margin-top)
+  let current = navLinks[0];
+  for (const link of navLinks) {
+    const section = document.getElementById(link.getAttribute('href').slice(1));
+    if (section && section.getBoundingClientRect().top <= band) current = link;
+  }
+  // At the end of the page the last section is the one in view, though its top cannot reach the band
+  if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) current = navLinks[navLinks.length - 1];
+  for (const link of navLinks) {
+    if (link === current) {
+      if (link.getAttribute('aria-current') !== 'true') {
+        link.setAttribute('aria-current', 'true');
+        link.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      }
+    } else link.removeAttribute('aria-current');
+  }
+};
+window.addEventListener('scroll', markCurrent, { passive: true });
+window.addEventListener('resize', markCurrent);
+markCurrent();
 
 // The real notification host and the alert shim
 ReactDOM.createRoot(document.getElementById('tn-toasts')).render(e(ToastHost));

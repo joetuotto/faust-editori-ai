@@ -185,7 +185,7 @@ export function IconButton({ icon, label, title, size, danger, pressed, classNam
  * tooltip is the Finnish text, latin the second line of the tooltip; busy shows the spinner;
  * tooltipOff keeps the tooltip away while the tile's own result popover stands where it would show.
  */
-export function SigilButton({ sigil, label, gloss, primary, busy = false, tooltip, latin, tooltipOff = false, caption = true, size, className, disabled, ...props }) {
+export function SigilButton({ sigil, label, primary, busy = false, tooltip, latin, tooltipOff = false, caption = true, size, className, disabled, ...props }) {
   const draw = icons[sigil];
   const button = e('button', {
     type: 'button',
@@ -196,9 +196,8 @@ export function SigilButton({ sigil, label, gloss, primary, busy = false, toolti
     'aria-busy': busy || undefined
   },
     busy ? e('span', { className: 'faust-spinner' }) : draw ? draw({ size: 20 }) : null,
-    // A kept name carries its Finnish gloss on the caption's second line (M A.1, B.15: Magnum Opus / kirjoita luku)
-    caption && e('span', { className: cx('faust-sigil-btn__caption', gloss && 'faust-sigil-btn__caption--glossed') }, label,
-      gloss ? e('span', { className: 'faust-sigil-btn__gloss' }, gloss) : null)
+    // One line: the command's menu name (R-58; the gloss of Magnum Opus is in its tooltip and on the Tekoäly tab, MV-60)
+    caption && e('span', { className: 'faust-sigil-btn__caption' }, label)
   );
   return tooltip || latin ? e(Tooltip, { text: tooltip, title: latin, off: tooltipOff }, button) : button;
 }
@@ -657,7 +656,8 @@ export function scrimPress(ev, dismiss) {
 
 /**
  * The shared dialog: scrim and panel in the layer host, Esc through the layer stack (onClose),
- * focus moved in (data-autofocus, else the first field, else the panel) and returned on close,
+ * focus moved in (data-autofocus, else the first field, else the panel; initialFocus 'panel': the panel,
+ * as a view whose first field belongs to one of its items) and returned on close,
  * Tab kept inside, the background inert, stacked by the order of opening. A press on the scrim
  * closes it only with dismissOnScrim (views, never forms). No Enter handler and no "discard
  * changes?" question of its own. bodyMode: 'flush' | 'fixed'. Render it only while it is open,
@@ -668,7 +668,7 @@ export function Dialog(props) {
 }
 
 function DialogFrame({ title, sub, icon, size = 'md', width, actions, bodyMode, onClose, dismissOnScrim = false,
-  footer, footerStart, busy = false, closeTitle = 'Sulje (Esc)', className, children }) {
+  footer, footerStart, busy = false, closeTitle = 'Sulje (Esc)', className, initialFocus, children }) {
   const scrimRef = useRef(null);
   const panelRef = useRef(null);
   const titleId = useId();
@@ -692,7 +692,8 @@ function DialogFrame({ title, sub, icon, size = 'md', width, actions, bodyMode, 
   useEffect(() => {
     const previous = document.activeElement;
     const panel = panelRef.current;
-    const target = panel && (panel.querySelector('[data-autofocus]') || panel.querySelector(FIELDS) || panel);
+    const target = panel && (initialFocus === 'panel' ? panel
+      : panel.querySelector('[data-autofocus]') || panel.querySelector(FIELDS) || panel);
     if (target && target.focus) target.focus();
     if (scrimRef.current && previous) restoreOf.set(scrimRef.current, previous);
     const release = holdBackground(scrimRef.current);

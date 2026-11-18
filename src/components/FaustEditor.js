@@ -260,9 +260,15 @@ function installTextareaFacade(view) {
     });
   };
 
-  // Scroll a document position into the middle of the editor
-  el.scrollToPos = (pos) => {
-    view.dispatch({ effects: EditorView.scrollIntoView(clamp(pos, docLength()), { y: 'center' }) });
+  // Scroll a document position into the middle of the editor; with topMargin (px), to that distance
+  // under the editor's top edge instead (a hit kept clear of a popover lying over the pane's upper part)
+  el.scrollToPos = (pos, topMargin) => {
+    const target = clamp(pos, docLength());
+    view.dispatch({
+      effects: EditorView.scrollIntoView(target, typeof topMargin === 'number'
+        ? { y: 'start', yMargin: topMargin }
+        : { y: 'center' })
+    });
   };
 
   el.centerCursor = () => el.scrollToPos(view.state.selection.main.head);
