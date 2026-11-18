@@ -40,13 +40,15 @@ const STOPPED_NOTE = 'Pysäytetty. Teksti on leikattu viimeiseen kokonaiseen vir
 const CUT_NOTE = 'Vastaus katkesi pituusrajaan. Teksti on leikattu viimeiseen kokonaiseen virkkeeseen.';
 const RESERVED_TAG = /<\/?teksti/i;
 
-const overBudgetText = (built) => (
-  `Teksti on liian pitkä tälle mallille: noin ${built.totalTokens} tokenia, tilaa ${built.budgetTokens}. Lyhennä valintaa tai vaihda mallia.`
-);
+// Token numbers are grouped like every other count (5 200); the formatter is taken when the text is built
+const overBudgetText = (built) => {
+  const { formatCount } = require('../format.fi.js');
+  return `Teksti on liian pitkä tälle mallille: noin ${formatCount(built.totalTokens)} tokenia, tilaa ${formatCount(built.budgetTokens)}. Lyhennä valintaa tai vaihda mallia.`;
+};
 const repairedNote = (count) => (
   count === 1
-    ? '1 suojattu merkintä puuttui vastauksesta ja palautettiin paikalleen.'
-    : `${count} suojattua merkintää puuttui vastauksesta ja ne palautettiin paikalleen.`
+    ? '1 suojattu kohta puuttui vastauksesta, ja se palautettiin paikalleen.'
+    : `${count} suojattua kohtaa puuttui vastauksesta, ja ne palautettiin paikalleen.`
 );
 
 /**

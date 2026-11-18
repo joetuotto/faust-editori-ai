@@ -1025,7 +1025,7 @@ describe('budget', () => {
     // Excluded is not "did not fit"
     expect(built.dropped).toEqual([]);
     expect(describeParts(built).dropped).toBe('');
-    expect(describeParts(built).line).toBe('Lähetetään: valinta 85 · ympäröivä teksti 307 · kirjan ydin 78 · vältettävät sanat 59 · Tarinakansio 81 · oma ohje 9');
+    expect(describeParts(built).line).toBe('Lähetetään: valinta 85 · ympäröivä teksti 307 · käsikirjoituksen ydin 78 · vältettävät sanat 59 · Tarinakansio 81 · oma ohje 9');
 
     // An excluded before or after is not searched for mentions: Satama is only there
     const project = makeProject();
@@ -1267,7 +1267,7 @@ describe('parts and describeParts', () => {
     expect(full.parts.map(item => [item.id, item.where, item.label])).toEqual([
       ['task', 'system', 'tehtävän säännöt'],
       ['style', 'system', 'tyyliohje'],
-      ['brief', 'system', 'kirjan ydin'],
+      ['brief', 'system', 'käsikirjoituksen ydin'],
       ['avoid', 'system', 'vältettävät sanat'],
       ['codexAlways', 'system', 'Tarinakansio: aina mukana'],
       ['summaries', 'user', 'tiivistelmät 1, 3'],
@@ -1342,7 +1342,7 @@ describe('parts and describeParts', () => {
 
   test('the row line of the fixture', () => {
     const row = describeParts(buildFixture());
-    expect(row.line).toBe('Lähetetään: valinta 85 · ympäröivä teksti 787 · tyyliohje 64 · kirjan ydin 78 · vältettävät sanat 59 · Tarinakansio 164 · tiivistelmät 1, 3 89 · oma ohje 9');
+    expect(row.line).toBe('Lähetetään: valinta 85 · ympäröivä teksti 787 · tyyliohje 64 · käsikirjoituksen ydin 78 · vältettävät sanat 59 · Tarinakansio 164 · tiivistelmät 1, 3 89 · oma ohje 9');
     expect(row.total).toBe(`noin 680 / 4${NBSP}500 tokenia`);
     expect(row.dropped).toBe('');
 
@@ -1360,7 +1360,7 @@ describe('parts and describeParts', () => {
   test('dropped line: "Ei mahtunut: tiivistelmät, teksti jälkeen (osa)"', () => {
     const row = describeParts(buildAt(676));
     expect(row.dropped).toBe('Ei mahtunut: tiivistelmät, teksti jälkeen (osa)');
-    expect(row.line).toBe('Lähetetään: valinta 85 · ympäröivä teksti 556 · tyyliohje 64 · kirjan ydin 78 · vältettävät sanat 59 · Tarinakansio 164 · oma ohje 9');
+    expect(row.line).toBe('Lähetetään: valinta 85 · ympäröivä teksti 556 · tyyliohje 64 · käsikirjoituksen ydin 78 · vältettävät sanat 59 · Tarinakansio 164 · oma ohje 9');
     expect(row.total).toBe('noin 494 / 507 tokenia');
 
     expect(describeParts(buildAt(876)).dropped).toBe('');
@@ -1368,15 +1368,15 @@ describe('parts and describeParts', () => {
     expect(describeParts(buildAt(536)).dropped).toBe('Ei mahtunut: tiivistelmät, Tarinakansio: mainitut, teksti ennen (osa), teksti jälkeen');
   });
 
-  test('a nonfiction project says Kirjan kansio in labels and in the row', () => {
+  test('a nonfiction project says Käsikirjoituksen kansio in labels and in the row', () => {
     const project = makeProject({ genre: 'nonfiction' });
     const built = buildFixture({ project });
-    expect(part(built, 'codexAlways').label).toBe('Kirjan kansio: aina mukana');
-    expect(part(built, 'codexMentioned').label).toBe('Kirjan kansio: mainitut');
-    expect(part(built, 'codexManual').label).toBe('Kirjan kansio: käsin lisätyt');
-    expect(describeParts(built, 'Kirjan kansio').line).toContain(' · Kirjan kansio 164 · ');
-    expect(describeParts(built, 'Kirjan kansio').line).not.toContain('Tarinakansio');
-    expect(describeParts(buildAt(536, { project }), 'Kirjan kansio').dropped).toContain('Kirjan kansio: mainitut');
+    expect(part(built, 'codexAlways').label).toBe('Käsikirjoituksen kansio: aina mukana');
+    expect(part(built, 'codexMentioned').label).toBe('Käsikirjoituksen kansio: mainitut');
+    expect(part(built, 'codexManual').label).toBe('Käsikirjoituksen kansio: käsin lisätyt');
+    expect(describeParts(built, 'Käsikirjoituksen kansio').line).toContain(' · Käsikirjoituksen kansio 164 · ');
+    expect(describeParts(built, 'Käsikirjoituksen kansio').line).not.toContain('Tarinakansio');
+    expect(describeParts(buildAt(536, { project }), 'Käsikirjoituksen kansio').dropped).toContain('Käsikirjoituksen kansio: mainitut');
     // The tags the model reads do not change with the project kind
     expect(built.system).toContain('<tarinakansio>');
     // The default folder name of the row is Tarinakansio

@@ -249,7 +249,7 @@ describe('promptMessage', () => {
   test('promptMessage returns the Finnish text for every code and fills in the numbers', () => {
     expect(promptMessage('changed')).toBe('Teksti muuttui pyynnön aikana. Ehdotuksia ei tehty. Lähetä ohje uudelleen.');
     expect(promptMessage('no-paragraph')).toBe('Valitse teksti tai siirrä kohdistin kappaleeseen.');
-    expect(promptMessage('reserved-tag')).toBe('Valinnassa on merkintä <teksti>, jota pikamuokkaus käyttää itse. Poista se valinnasta.');
+    expect(promptMessage('reserved-tag')).toBe('Valinnassa on <teksti>-tagi, jota pikamuokkaus käyttää itse. Poista se valinnasta.');
     expect(promptMessage('no-changes')).toBe('Malli ei ehdottanut muutoksia.');
     expect(promptMessage('conflict')).toBe('Kohdassa on jo käsittelemätön ehdotus. Käsittele se ensin.');
     expect(promptMessage('no-sentence')).toBe('Pysäytetty ennen ensimmäistä kokonaista virkettä.');

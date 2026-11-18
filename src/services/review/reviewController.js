@@ -30,15 +30,15 @@ const NOTICES = Object.freeze({
   'not-located': 'Ehdotusta ei voi näyttää, koska kohtaa ei löytynyt tekstistä.',
   approximate: 'Sijainti on likimääräinen, joten ehdotusta ei voi näyttää muutoksena. Tee muutos käsin.',
   'text-changed': 'Teksti on muuttunut tarkistuksen jälkeen. Aja tarkistus uudelleen.',
-  protected: 'Ehdotusta ei voi näyttää muutoksena, koska se osuisi TODO-merkintään tai alleviivaukseen. Tee muutos käsin.',
+  protected: 'Ehdotusta ei voi näyttää muutoksena, koska se osuisi muistutukseen tai alleviivaukseen. Tee muutos käsin.',
   same: 'Ehdotus ei muuta tekstiä.',
   proposeFailed: 'Ehdotusta ei voitu avata. Kohdassa on jo käsittelemätön ehdotus tai teksti on muuttunut.'
 });
 
 const CLEAR_TEXT = Object.freeze({
   title: 'Tyhjennetäänkö havainnot?',
-  message: (label) => `Tarkistuksen ”${label}” kaikki havainnot tästä luvusta poistetaan, myös käsitellyt. Tätä ei voi kumota.`,
-  confirm: 'Tyhjennä',
+  message: (label) => `Tarkistuksen ”${label}” kaikki havainnot tästä luvusta poistetaan, myös käsitellyt. Poistoa ei voi kumota.`,
+  confirm: 'Tyhjennä havainnot',
   cancel: 'Peruuta'
 });
 
@@ -159,7 +159,7 @@ function createReviewController(deps) {
   const languageOf = (project) => (project && typeof project.language === 'string' && project.language ? project.language : 'fi');
   const folderOf = (project) => {
     if (typeof given.folderName === 'function') return given.folderName(project);
-    return typeof given.projectType === 'function' && given.projectType(project) === 'nonfiction' ? 'Kirjan kansio' : 'Tarinakansio';
+    return typeof given.projectType === 'function' && given.projectType(project) === 'nonfiction' ? 'Käsikirjoituksen kansio' : 'Tarinakansio';
   };
   const noAIMessage = () => (given.context && given.context.noAIMessage) || NO_AI_MESSAGE;
   const isBlocked = (project, chapterId, chapter) => !!(chapter && chapter.noAI === true)

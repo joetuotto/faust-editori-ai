@@ -1136,7 +1136,7 @@ describe('running a model check', () => {
     expect(h.ai.request).not.toHaveBeenCalled();
     expect(h.chapter().reviewRuns.continuity).toMatchObject({
       outcome: 'blocked',
-      message: 'Ei vertailtavaa: Tarinakansiossa ei ole tähän tekstiin liittyviä merkintöjä eikä aiemmilla luvuilla ole tiivistelmiä.'
+      message: 'Ei vertailtavaa: Tarinakansiossa ei ole tähän tekstiin liittyviä kohteita eikä aiemmilla luvuilla ole tiivistelmiä.'
     });
     h.render();
     expect(h.view().lastRun).toMatchObject({ kind: 'error', lines: [h.chapter().reviewRuns.continuity.message] });
@@ -1146,7 +1146,7 @@ describe('running a model check', () => {
     nonfiction.controller.selectCheck(check('continuity'));
     nonfiction.controller.run();
     await settle();
-    expect(nonfiction.chapter().reviewRuns.continuity.message).toContain('Kirjan kansiossa ei ole');
+    expect(nonfiction.chapter().reviewRuns.continuity.message).toContain('Käsikirjoituksen kansiossa ei ole');
   });
 
   test('without a context builder the plain layout is used', async () => {
@@ -1533,7 +1533,7 @@ describe('showing a fix', () => {
     refused(plain.id);
 
     expect(notices).toEqual([
-      'Ehdotusta ei voi näyttää muutoksena, koska se osuisi TODO-merkintään tai alleviivaukseen. Tee muutos käsin.',
+      'Ehdotusta ei voi näyttää muutoksena, koska se osuisi muistutukseen tai alleviivaukseen. Tee muutos käsin.',
       'Sijainti on likimääräinen, joten ehdotusta ei voi näyttää muutoksena. Tee muutos käsin.',
       'Ehdotus ei muuta tekstiä.',
       'Ehdotusta ei voi näyttää, koska kohtaa ei löytynyt tekstistä.',
@@ -1715,8 +1715,8 @@ describe('the session', () => {
     await expect(h.controller.clearCheck()).resolves.toBe(false);
     expect(h.askConfirm).toHaveBeenCalledWith(
       'Tyhjennetäänkö havainnot?',
-      'Tarkistuksen ”Täytesanat” kaikki havainnot tästä luvusta poistetaan, myös käsitellyt. Tätä ei voi kumota.',
-      'Tyhjennä',
+      'Tarkistuksen ”Täytesanat” kaikki havainnot tästä luvusta poistetaan, myös käsitellyt. Poistoa ei voi kumota.',
+      'Tyhjennä havainnot',
       'Peruuta'
     );
     expect(h.counters.updateChapter).toBe(writes);

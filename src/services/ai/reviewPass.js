@@ -484,10 +484,10 @@ function judgeBatch(result, parsed) {
   }
   if (given.refused) return verdict('failed', 'refusal', 'Malli kieltäytyi tehtävästä.');
   if (given.promptTruncated) {
-    return verdict('failed', 'prompt-truncated', 'Malli ei nähnyt koko tekstiä. Pienennä kontekstia tai tarkista mallin ikkunan koko asetuksista.');
+    return verdict('failed', 'prompt-truncated', 'Malli ei nähnyt koko tekstiä. Pienennä kontekstia tai tarkista mallin ikkunan koko tietopaneelin Tekoäly-välilehdeltä.');
   }
   if (format === 'empty' && given.truncated && given.sawThinking) {
-    return verdict('failed', 'reasoning-exhausted', 'Mallin päättely käytti koko vastausrajan. Suurenna mallin päättelyvaraa asetuksista.');
+    return verdict('failed', 'reasoning-exhausted', 'Mallin päättely käytti koko vastausrajan. Suurenna mallin päättelyvaraa tietopaneelin Tekoäly-välilehdellä.');
   }
   if (format === 'empty') return verdict('failed', 'empty', 'Malli palautti tyhjän vastauksen.');
   if (format === 'unparsed') {
@@ -873,10 +873,10 @@ function fixChanges(raw, finding, deps) {
 // The run
 // ---------------------------------------------------------------------------
 
-const OVER_BUDGET_MESSAGE = 'Teksti ei mahdu mallin ikkunaan. Pienennä kontekstia tai suurenna mallin ikkunaa asetuksista.';
+const OVER_BUDGET_MESSAGE = 'Teksti ei mahdu mallin ikkunaan. Pienennä kontekstia tai suurenna mallin ikkunaa tietopaneelin Tekoäly-välilehdellä.';
 const UNEXPECTED_MESSAGE = 'Tarkistuspyyntö epäonnistui odottamatta.';
 
-const nothingToCompare = (folderName) => `Ei vertailtavaa: ${folderName === 'Kirjan kansio' ? 'Kirjan kansiossa' : 'Tarinakansiossa'} ei ole tähän tekstiin liittyviä merkintöjä eikä aiemmilla luvuilla ole tiivistelmiä.`;
+const nothingToCompare = (folderName) => `Ei vertailtavaa: ${folderName === 'Käsikirjoituksen kansio' ? 'Käsikirjoituksen kansiossa' : 'Tarinakansiossa'} ei ole tähän tekstiin liittyviä kohteita eikä aiemmilla luvuilla ole tiivistelmiä.`;
 
 function defaultRunId() {
   const random = Math.floor(Math.random() * 36 ** 4).toString(36).padStart(4, '0');
@@ -894,7 +894,7 @@ const unexpected = (error) => (error && error.message ? `${UNEXPECTED_MESSAGE} (
  * @param {string} params.text raw chapter text when the run starts
  * @param {{from: number, to: number}|null} params.range raw offsets; null = the whole chapter
  * @param {string} [params.note] the "Tahallista / huomioi" text
- * @param {string} [params.folderName] 'Tarinakansio' or 'Kirjan kansio'
+ * @param {string} [params.folderName] 'Tarinakansio' or 'Käsikirjoituksen kansio'
  * @param {(task: object) => object} params.build the context builder bound to project, chapter and role
  * @param {(request: {system, messages, maxTokens, meta}) => {result: Promise<object>, cancel: Function}} params.request
  * @param {{chapterId?: string}} [params.meta]

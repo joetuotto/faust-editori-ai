@@ -124,7 +124,18 @@ const RETIRED_WORDINGS = [
   'odottavat ehdotukset',
   'odottavaa ehdotusta',
   'Tekoäly on kytketty pois',
-  'Tekoäly on pois päältä'
+  'Tekoäly on pois päältä',
+  // impl/reconcile.md R-37 (stage I-00): the menu spec's names win over these
+  'Claude Assistentti',
+  'AI-avustaja',
+  '(Cmd+,)',
+  'napsautus',
+  'Piilota mallin',
+  'Malli ajattelee',
+  'Malli ajatteli',
+  'Malli kirjoittaa…',
+  'Kirjan kansio',
+  'Kirjan ydin'
 ];
 
 // contracts.md section 2.2: names that a later stage adds to an existing file and that a module of a P task
@@ -1428,6 +1439,29 @@ describe('the gates fail on the mistakes they are for', () => {
       'src/d.js:4 odottavat ehdotukset'
     ]);
     expect(retiredWordings([{ file: 'src/e.js', text: '' }])).toEqual([]);
+  });
+
+  test('the wordings of stage I-00 are found in strings and in comments, in any letter case', () => {
+    const files = [
+      { file: 'src/a.js', text: "// Opens the AI-avustaja panel\nconst a = 'Avaa asetukset (Cmd+,) ja valitse malli.';\n" },
+      { file: 'src/b.js', text: "/** @param folderName 'Tarinakansio' or 'Kirjan kansio' */\nconst b = 'KIRJAN YDIN';\n" },
+      { file: 'src/c.js', text: "const c = '⌘-napsautus avaa';\nconst d = 'Piilota mallin vastaus';\nconst e = 'Malli kirjoittaa… 22 merkkiä';\n" },
+      { file: 'src/d.js', text: "const f = 'Malli ajattelee…';\nconst g = 'Malli ajatteli pitkään.';\nconst h = 'Claude Assistentti';\n" },
+      // The words that replaced them are not hits, and an ellipsis-less "Malli kirjoittaa" is not either
+      { file: 'src/e.js', text: "const i = 'Tekoäly kirjoittaa… 22 merkkiä';\nconst j = 'Käsikirjoituksen kansio';\nconst k = 'Malli kirjoittaa vastausta';\n" }
+    ];
+    expect(retiredWordings(files)).toEqual([
+      'src/a.js:1 AI-avustaja',
+      'src/a.js:2 (Cmd+,)',
+      'src/b.js:1 Kirjan kansio',
+      'src/b.js:2 Kirjan ydin',
+      'src/c.js:1 napsautus',
+      'src/c.js:2 Piilota mallin',
+      'src/c.js:3 Malli kirjoittaa…',
+      'src/d.js:1 Malli ajattelee',
+      'src/d.js:2 Malli ajatteli',
+      'src/d.js:3 Claude Assistentti'
+    ]);
   });
 
   test('the text rules read app.js, the main process files and src and utils, and no ._ file', () => {

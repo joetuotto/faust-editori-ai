@@ -65,7 +65,7 @@ function projectKind(project) {
 
 /** The visible name of the section. */
 function folderName(project) {
-  return projectKind(project) === 'nonfiction' ? 'Kirjan kansio' : 'Tarinakansio';
+  return projectKind(project) === 'nonfiction' ? 'Käsikirjoituksen kansio' : 'Tarinakansio';
 }
 
 /** The entry types offered in this project. */
@@ -394,15 +394,15 @@ const LEGACY_LABELS = {
   threadType: {
     main_plot: 'Pääjuoni',
     subplot: 'Sivujuoni',
-    character_arc: 'Hahmon kehitys',
+    character_arc: 'Hahmon kehityskaari',
     theme: 'Teema',
-    mystery: 'Mysteeri',
-    romance: 'Romanssi'
+    mystery: 'Arvoitus',
+    romance: 'Rakkausjuoni'
   },
   threadStatus: {
     planned: 'Suunniteltu',
-    active: 'Aktiivinen',
-    developing: 'Kehittyy',
+    active: 'Avoin',
+    developing: 'Kehittyvä',
     resolved: 'Ratkaistu',
     abandoned: 'Hylätty'
   }
@@ -466,7 +466,7 @@ function locationLines(record) {
     labelled('Tyyppi', enumLabel('locationType', record.type)),
     labelled('Tunnelma', enumLabel('atmosphere', record.atmosphere)),
     labelled('Näkö', senses.visual),
-    labelled('Ääni', senses.auditory),
+    labelled('Kuulo', senses.auditory),
     labelled('Haju', senses.olfactory),
     labelled('Tunto', senses.tactile),
     labelled('Historia', record.historicalContext),

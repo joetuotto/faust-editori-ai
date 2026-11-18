@@ -1725,7 +1725,7 @@ describe('judging', () => {
     expect(judge(answer(FINDINGS_TEXT, { promptTruncated: true }))).toEqual({
       status: 'failed',
       reason: 'prompt-truncated',
-      message: 'Malli ei nähnyt koko tekstiä. Pienennä kontekstia tai tarkista mallin ikkunan koko asetuksista.',
+      message: 'Malli ei nähnyt koko tekstiä. Pienennä kontekstia tai tarkista mallin ikkunan koko tietopaneelin Tekoäly-välilehdeltä.',
       fatal: false
     });
   });
@@ -1734,7 +1734,7 @@ describe('judging', () => {
     expect(judge(answer('', { truncated: true, sawThinking: true }))).toEqual({
       status: 'failed',
       reason: 'reasoning-exhausted',
-      message: 'Mallin päättely käytti koko vastausrajan. Suurenna mallin päättelyvaraa asetuksista.',
+      message: 'Mallin päättely käytti koko vastausrajan. Suurenna mallin päättelyvaraa tietopaneelin Tekoäly-välilehdellä.',
       fatal: false
     });
     // Without thinking, or without the cut, it is just an empty answer
@@ -2592,9 +2592,9 @@ describe('the run', () => {
     expect(result.failed).toEqual([{
       index: 0,
       reason: 'over-budget',
-      message: 'Teksti ei mahdu mallin ikkunaan. Pienennä kontekstia tai suurenna mallin ikkunaa asetuksista.'
+      message: 'Teksti ei mahdu mallin ikkunaan. Pienennä kontekstia tai suurenna mallin ikkunaa tietopaneelin Tekoäly-välilehdellä.'
     }]);
-    expect(result.message).toBe('Teksti ei mahdu mallin ikkunaan. Pienennä kontekstia tai suurenna mallin ikkunaa asetuksista.');
+    expect(result.message).toBe('Teksti ei mahdu mallin ikkunaan. Pienennä kontekstia tai suurenna mallin ikkunaa tietopaneelin Tekoäly-välilehdellä.');
   });
 
   test('continuity without any source is blocked with the "Ei vertailtavaa" message', async () => {
@@ -2608,13 +2608,13 @@ describe('the run', () => {
       done: 1,
       failed: [],
       drafts: [],
-      message: 'Ei vertailtavaa: Tarinakansiossa ei ole tähän tekstiin liittyviä merkintöjä eikä aiemmilla luvuilla ole tiivistelmiä.'
+      message: 'Ei vertailtavaa: Tarinakansiossa ei ole tähän tekstiin liittyviä kohteita eikä aiemmilla luvuilla ole tiivistelmiä.'
     });
 
     const nonfiction = await startRun({
-      check: check('continuity'), text: RECORDED_TEXTS.continuity, build: fakeBuild(), request, folderName: 'Kirjan kansio'
+      check: check('continuity'), text: RECORDED_TEXTS.continuity, build: fakeBuild(), request, folderName: 'Käsikirjoituksen kansio'
     }).done;
-    expect(nonfiction.message).toBe('Ei vertailtavaa: Kirjan kansiossa ei ole tähän tekstiin liittyviä merkintöjä eikä aiemmilla luvuilla ole tiivistelmiä.');
+    expect(nonfiction.message).toBe('Ei vertailtavaa: Käsikirjoituksen kansiossa ei ole tähän tekstiin liittyviä kohteita eikä aiemmilla luvuilla ole tiivistelmiä.');
     expect(request).not.toHaveBeenCalled();
   });
 

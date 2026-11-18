@@ -492,7 +492,7 @@ function buildContext({
   if (wanted.has('style') && style) whole('style', 'system', 'tyyliohje', style);
 
   const brief = asText(project.brief).trim();
-  if (wanted.has('brief') && brief) whole('brief', 'system', 'kirjan ydin', brief);
+  if (wanted.has('brief') && brief) whole('brief', 'system', 'käsikirjoituksen ydin', brief);
 
   const avoid = avoidItems(project.avoidWords);
   if (wanted.has('avoid') && avoid.length > 0) {

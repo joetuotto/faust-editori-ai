@@ -888,10 +888,10 @@ describe('run records', () => {
     expect(describe1({ outcome: 'failed', found: 0, message: null }).lines).toEqual(['Tarkistus epäonnistui 16.11.2026 klo 19.02.']);
 
     // A blocked run shows only its message
-    const blocked = describe1({ outcome: 'blocked', found: 0, batches: 0, message: 'Ei vertailtavaa: Tarinakansiossa ei ole tähän tekstiin liittyviä merkintöjä eikä aiemmilla luvuilla ole tiivistelmiä.' });
+    const blocked = describe1({ outcome: 'blocked', found: 0, batches: 0, message: 'Ei vertailtavaa: Tarinakansiossa ei ole tähän tekstiin liittyviä kohteita eikä aiemmilla luvuilla ole tiivistelmiä.' });
     expect(blocked).toEqual({
       kind: 'error',
-      lines: ['Ei vertailtavaa: Tarinakansiossa ei ole tähän tekstiin liittyviä merkintöjä eikä aiemmilla luvuilla ole tiivistelmiä.']
+      lines: ['Ei vertailtavaa: Tarinakansiossa ei ole tähän tekstiin liittyviä kohteita eikä aiemmilla luvuilla ole tiivistelmiä.']
     });
     for (const outcome of ['partial', 'failed', 'stopped', 'blocked']) {
       expect(hasNoFindingsClaim(describe1({ outcome, found: 0, message: 'Virhe.' }, { stale: true }).lines)).toBe(false);

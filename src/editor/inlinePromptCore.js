@@ -62,22 +62,22 @@ function createInlinePromptKit(cm, options = {}) {
     return target && typeof target.handle === 'function' ? target : null;
   };
 
+  // Role tokens only (styles/faust-tokens.css): no colour, no font name, no pixel font size.
+  // The binding block of styles/faust-components.css outranks these rules; layout numbers stay here.
   const theme = EditorView.theme({
     '.cm-tooltip.cm-faust-prompt': {
       width: 'min(520px, 90vw)',
       boxSizing: 'border-box',
       padding: '10px 12px',
-      background: 'var(--paper)',
+      background: 'var(--surface-raised)',
       color: 'var(--text)',
-      border: '1px solid var(--border-color)',
+      border: '1px solid var(--border)',
       borderRadius: '4px',
-      fontFamily: "'IBM Plex Mono', monospace",
-      fontSize: '11px',
-      lineHeight: '1.5',
+      font: 'var(--type-meta)',
       outline: 'none'
     },
     '.cm-faust-prompt [hidden]': { display: 'none !important' },
-    '.cm-faust-prompt.cm-faust-prompt-busy': { borderColor: 'var(--bronze)' },
+    '.cm-faust-prompt.cm-faust-prompt-busy': { borderColor: 'var(--accent-line)' },
     '.cm-faust-prompt-field': {
       display: 'block',
       width: '100%',
@@ -87,26 +87,25 @@ function createInlinePromptKit(cm, options = {}) {
       resize: 'none',
       background: 'transparent',
       color: 'var(--text)',
-      border: '1px solid var(--border-color)',
+      border: '1px solid var(--border)',
       borderRadius: '3px',
-      font: 'inherit',
-      fontSize: '13px'
+      font: 'var(--type-input)'
     },
-    '.cm-faust-prompt-field:focus': { outline: 'none', borderColor: 'var(--bronze)' },
+    '.cm-faust-prompt-field:focus': { outline: 'none', borderColor: 'var(--accent-line)' },
     '.cm-faust-prompt-field[aria-invalid="true"]': { borderColor: 'var(--error)' },
     '.cm-faust-prompt-field::placeholder': { color: 'var(--text-3)' },
     '.cm-faust-prompt button, .cm-faust-prompt select, .cm-faust-prompt input': {
       font: 'inherit',
       color: 'var(--text)',
       background: 'transparent',
-      border: '1px solid var(--border-color)',
+      border: '1px solid var(--border)',
       borderRadius: '3px',
       padding: '3px 8px'
     },
     '.cm-faust-prompt button': { cursor: 'pointer' },
-    '.cm-faust-prompt button:hover': { borderColor: 'var(--bronze)' },
-    '.cm-faust-prompt button:disabled': { color: 'var(--text-3)', cursor: 'default', borderColor: 'var(--border-color)' },
-    '.cm-faust-prompt button.cm-faust-prompt-primary': { borderColor: 'var(--bronze)', color: 'var(--sigil)' },
+    '.cm-faust-prompt button:hover': { borderColor: 'var(--accent-line)' },
+    '.cm-faust-prompt button:disabled': { color: 'var(--text-3)', cursor: 'default', borderColor: 'var(--border)' },
+    '.cm-faust-prompt button.cm-faust-prompt-primary': { borderColor: 'var(--accent-line)', color: 'var(--accent-text)' },
     '.cm-faust-prompt button.cm-faust-prompt-link': {
       border: 'none',
       padding: '0',
@@ -133,9 +132,9 @@ function createInlinePromptKit(cm, options = {}) {
       margin: '6px 0',
       padding: '6px 8px',
       color: 'var(--text-2)',
-      border: '1px solid var(--border-color)',
+      border: '1px solid var(--border)',
       borderRadius: '3px',
-      fontSize: '13px'
+      font: 'var(--type-serif)'
     },
     '.cm-faust-prompt-foot': {
       display: 'flex',

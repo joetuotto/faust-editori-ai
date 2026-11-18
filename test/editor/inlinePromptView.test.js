@@ -289,7 +289,7 @@ describe('the field and Enter', () => {
     prompt.role('detail-toggle').focus();
     prompt.click('detail-toggle');
     expect(document.activeElement).toBe(prompt.role('detail-toggle'));
-    expect(document.activeElement.textContent).toBe('Piilota mallin vastaus');
+    expect(document.activeElement.textContent).toBe('Kätke mallin vastaus');
   });
 
   test('a redrawn chip keeps the focus on the same chip', () => {
@@ -351,7 +351,7 @@ describe('edit mode, idle', () => {
     expect(prompt.view.field.rows).toBe(2);
     expect(prompt.role('model').textContent).toBe('Malli: deepseek-v4.1-flash');
     expect(prompt.role('send').textContent).toBe('Lähetä');
-    expect(prompt.role('keys').textContent).toBe('↩ lähettää · Esc sulkee');
+    expect(prompt.role('keys').textContent).toBe('Enter lähettää · Esc sulkee');
 
     expect(mount({ kind: 'paragraph' }).view.field.placeholder).toBe('Miten kappaletta muokataan?');
   });
@@ -455,7 +455,7 @@ describe('write mode', () => {
     expect(prompt.view.field.placeholder).toBe('Mitä seuraavaksi?');
     expect(prompt.role('hint').textContent).toBe('Suunta on valinnainen. Tyhjä kenttä jatkaa tekstiä luontevasti.');
     expect(prompt.role('send').textContent).toBe('Kirjoita');
-    expect(prompt.role('keys').textContent).toBe('↩ kirjoittaa · Esc sulkee');
+    expect(prompt.role('keys').textContent).toBe('Enter kirjoittaa · Esc sulkee');
     expect(prompt.role('chips')).toBeNull();
 
     const length = prompt.role('length');
@@ -493,7 +493,7 @@ describe('sending', () => {
     prompt.apply({ type: 'delta', preview: 'Åke käveli – hitaasti.' });
     expect(prompt.role('preview')).toBe(preview);   // the text changes in place
     expect(preview.textContent).toBe('Åke käveli – hitaasti.');
-    expect(prompt.role('status').textContent).toBe('Malli kirjoittaa… 22 merkkiä');
+    expect(prompt.role('status').textContent).toBe('Tekoäly kirjoittaa… 22 merkkiä');
   });
 });
 
@@ -572,9 +572,9 @@ describe('result', () => {
     expect(note.textContent).toBe('Vuorosanojen ehdotuksia: 2. Käy ne läpi yksitellen.');
     expect(prompt.role('summary').compareDocumentPosition(note) & window.Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    prompt.apply({ type: 'attempt', index: 0, changeCount: 7, note: '1 suojattu merkintä puuttui vastauksesta ja palautettiin paikalleen.' });
+    prompt.apply({ type: 'attempt', index: 0, changeCount: 7, note: '1 suojattu kohta puuttui vastauksesta, ja se palautettiin paikalleen.' });
     expect(prompt.role('note').textContent).toBe(
-      '1 suojattu merkintä puuttui vastauksesta ja palautettiin paikalleen.\nVuorosanojen ehdotuksia: 2. Käy ne läpi yksitellen.'
+      '1 suojattu kohta puuttui vastauksesta, ja se palautettiin paikalleen.\nVuorosanojen ehdotuksia: 2. Käy ne läpi yksitellen.'
     );
   });
 
@@ -615,7 +615,7 @@ describe('result', () => {
     typed.apply({ type: 'models', models: [], otherModel: null }, { type: 'picker', open: true });
     const input = typed.role('model-picker');
     expect(input.tagName).toBe('INPUT');
-    expect(input.getAttribute('placeholder')).toBe('Mallin tunniste');
+    expect(input.getAttribute('placeholder')).toBe('Mallin tunnus');
     typed.click('run-model');                       // nothing typed: nothing to run
     input.value = '  claude-fable-5  ';
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -645,7 +645,7 @@ describe('error and blocked', () => {
     expect(prompt.role('detail')).toBeNull();
     expect(prompt.role('detail-toggle').textContent).toBe('Näytä mallin vastaus');
     prompt.click('detail-toggle');
-    expect(prompt.role('detail-toggle').textContent).toBe('Piilota mallin vastaus');
+    expect(prompt.role('detail-toggle').textContent).toBe('Kätke mallin vastaus');
     expect(prompt.role('detail').textContent).toBe(detail.slice(0, 400));
     prompt.click('detail-toggle');
     expect(prompt.role('detail')).toBeNull();
@@ -690,5 +690,27 @@ describe('error and blocked', () => {
     prompt.click('close');
     prompt.key(prompt.role('close'), 'Escape');
     expect(prompt.intents).toEqual([{ type: 'close', reason: 'button' }, { type: 'close', reason: 'escape' }]);
+  });
+
+  test('the Sulje button of result, error and blocked names Esc in its tooltip', () => {
+    // Esc closes the prompt too, so each of the three Sulje buttons says so
+    const closeOf = (prompt) => {
+      const close = prompt.role('close');
+      return [close.textContent, close.getAttribute('title')];
+    };
+    const result = mount({ attempts: [attempt(1)] });
+    expect(closeOf(result)).toEqual(['Sulje', 'Sulje (Esc)']);
+
+    const failed = mount();
+    failed.apply({ type: 'send', instruction: 'x' }, { type: 'fail', error: { code: 'empty', message: 'Ei ehdotusta: malli palautti tyhjän tekstin.', detail: '' } });
+    expect(closeOf(failed)).toEqual(['Sulje', 'Sulje (Esc)']);
+
+    const blocked = mount();
+    blocked.apply({ type: 'block', code: 'noAI', message: 'Tämä luku on merkitty ”Ei tekoälylle”. Mitään ei lähetetä.' });
+    expect(closeOf(blocked)).toEqual(['Sulje', 'Sulje (Esc)']);
+    // Only these three phases draw a Sulje button
+    expect(result.roles('close')).toHaveLength(1);
+    expect(failed.roles('close')).toHaveLength(1);
+    expect(blocked.roles('close')).toHaveLength(1);
   });
 });

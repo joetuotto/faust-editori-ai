@@ -71,7 +71,7 @@ function reasonText(code, detail, tag = CLIENT_CONSTANTS.EDIT_TAG) {
     case 'max_tokens':
       return 'Ei ehdotusta: vastaus katkesi kesken, koska vastausraja täyttyi.';
     case 'reasoning_exhausted':
-      return 'Ei ehdotusta: mallin päättely käytti koko vastausrajan. Suurenna mallin päättelyvaraa asetuksista (Cmd+,).';
+      return 'Ei ehdotusta: mallin päättely käytti koko vastausrajan. Suurenna mallin päättelyvaraa tietopaneelin Tekoäly-välilehdellä.';
     case 'refusal':
       return 'Ei ehdotusta: malli kieltäytyi tehtävästä.' + (detail ? ` ${detail}` : '');
     case 'missing_tag':
@@ -81,7 +81,7 @@ function reasonText(code, detail, tag = CLIENT_CONSTANTS.EDIT_TAG) {
     case 'cancelled':
       return 'Pyyntö pysäytettiin.';
     case 'prompt_truncated':
-      return 'Ei ehdotusta: malli ei nähnyt koko kehotetta. Pienennä kontekstia tai tarkista mallin ikkunan koko asetuksista (Cmd+,).';
+      return 'Ei ehdotusta: malli ei nähnyt koko kehotetta. Pienennä kontekstia tai tarkista mallin ikkunan koko tietopaneelin Tekoäly-välilehdeltä.';
     case 'stop_reason':
       return `Ei ehdotusta: vastaus päättyi odottamatta (syy: ${detail || 'tuntematon'}).`;
     case 'error':

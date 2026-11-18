@@ -2,6 +2,16 @@ const { createBlockView } = require('../../src/editor/pendingInsertView');
 
 const base = { status: 'done', text: 'Sumu nousi järveltä.', note: null, modelName: 'kimi-k2', attempt: 0, attemptCount: 1 };
 
+// The accept hint follows the platform of the window, with the test termHighlightCore.js uses
+const onMac = () => /Mac|iPhone|iPad|iPod/.test(window.navigator.platform || '');
+const HINT_MAC = '⌘↩ hyväksyy';
+const HINT_OTHER = 'Ctrl+Enter hyväksyy';
+const platformHint = () => (onMac() ? HINT_MAC : HINT_OTHER);
+
+function setPlatform(value) {
+  Object.defineProperty(window.navigator, 'platform', { value, configurable: true });
+}
+
 function mount(view) {
   const intents = [];
   const block = createBlockView(document, { onIntent: intent => intents.push(intent) });
@@ -12,7 +22,11 @@ function mount(view) {
   return { block, intents, find, click };
 }
 
-afterEach(() => { document.body.innerHTML = ''; });
+afterEach(() => {
+  document.body.innerHTML = '';
+  // Back to jsdom's own platform string
+  delete window.navigator.platform;
+});
 
 test('streaming shows Odotetaan mallia… and then the text; Pysäytä asks to stop', () => {
   const { block, intents, find, click } = mount({ ...base, status: 'streaming', text: '' });
@@ -37,7 +51,7 @@ test('done shows Hyväksy, Uusi yritys and Hylkää and each sends its intent', 
     .toEqual(['Hyväksy', 'Uusi yritys', 'Hylkää']);
   expect(find('block-stop')).toBeNull();
   expect(find('block-note')).toBeNull();
-  expect(find('block-hint').textContent).toBe('⌘↩ hyväksyy');
+  expect(find('block-hint').textContent).toBe(platformHint());
   // One attempt: nothing to switch between
   expect(find('block-prev')).toBeNull();
   expect(find('block-label')).toBeNull();
@@ -55,7 +69,7 @@ test('stopped shows the same buttons and the note', () => {
     .toEqual(['Hyväksy', 'Uusi yritys', 'Hylkää']);
   expect(find('block-note').textContent).toBe(noteText);
   expect(find('block-text').textContent).toBe('Sumu nousi järveltä.');
-  expect(find('block-hint').textContent).toBe('⌘↩ hyväksyy');
+  expect(find('block-hint').textContent).toBe(platformHint());
 
   // The note leaves with the next attempt that has none
   block.render({ ...base, status: 'stopped', note: null });
@@ -182,6 +196,30 @@ test('after destroy the block no longer holds events back', () => {
   block.destroy();
   find('block-text').dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
   expect(seen).toEqual(['mouseup']);
+});
+
+test('the accept hint is ⌘↩ hyväksyy on macOS and Ctrl+Enter hyväksyy elsewhere', () => {
+  // The variant of the platform the tests run on (jsdom reports an empty platform: not macOS)
+  const here = mount(base);
+  expect(here.find('block-hint').textContent).toBe(onMac() ? HINT_MAC : HINT_OTHER);
+  document.body.innerHTML = '';
+
+  setPlatform('MacIntel');
+  expect(mount(base).find('block-hint').textContent).toBe(HINT_MAC);
+  document.body.innerHTML = '';
+
+  setPlatform('Win32');
+  expect(mount(base).find('block-hint').textContent).toBe(HINT_OTHER);
+  document.body.innerHTML = '';
+
+  setPlatform('Linux x86_64');
+  const { block, find } = mount({ ...base, status: 'stopped', note: 'Pysäytetty.' });
+  expect(find('block-hint').textContent).toBe(HINT_OTHER);
+  // A streaming block has no hint; the hint comes back with the finished one
+  block.render({ ...base, status: 'streaming', text: 'Sumu' });
+  expect(find('block-hint')).toBeNull();
+  block.render(base);
+  expect(find('block-hint').textContent).toBe(HINT_OTHER);
 });
 
 test('the header names the model and says the text is not in the manuscript yet', () => {

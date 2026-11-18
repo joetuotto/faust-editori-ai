@@ -207,7 +207,7 @@ function createVoikko(overrides = {}) {
         stdoutBytes += data.length;
         if (stdoutBytes > MAX_STDOUT_BYTES) {
           kill();
-          finish(new Error('output too large'));
+          finish(new Error('tuloste on liian suuri'));
           return;
         }
         stdout.push(data);

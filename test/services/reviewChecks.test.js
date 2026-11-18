@@ -48,9 +48,9 @@ describe('the built-in checks', () => {
     }
     expect(Object.isFrozen(BUILTIN_CHECKS)).toBe(true);
 
-    expect(byId('avoid-words').description).toBe('Näyttää kohdat, joissa käytät projektin vältettävien sanojen listan sanoja. Toimii ilman mallia.');
-    expect(byId('long-sentences').description).toBe('Näyttää virkkeet, joissa on enemmän sanoja kuin asettamasi raja. Toimii ilman mallia.');
-    expect(byId('typography-questions').description).toBe('Näyttää rivit, joista ohjelma ei voi päätellä, onko kyseessä luettelo vai vuorosana. Toimii ilman mallia.');
+    expect(byId('avoid-words').description).toBe('Tarkistus näyttää kohdat, joissa käytät projektin vältettävien sanojen listan sanoja. Se toimii ilman mallia.');
+    expect(byId('long-sentences').description).toBe('Tarkistus näyttää virkkeet, joissa on enemmän sanoja kuin asettamasi raja. Se toimii ilman mallia.');
+    expect(byId('typography-questions').description).toBe('Tarkistus näyttää rivit, joista ohjelma ei voi päätellä, onko kyseessä luettelo vai vuorosana. Se toimii ilman mallia.');
     expect(byId('cliche').description).toBe('Malli etsii kuluneet kielikuvat ja valmiit fraasit.');
     expect(byId('reading-feedback').description).toBe('Malli lukee koko luvun ja kertoo, mikä toimii ja mikä huolettaa, tärkein ensin. Ei arvosanaa.');
   });
@@ -281,17 +281,17 @@ describe('own checks', () => {
 });
 
 describe('describeCheck', () => {
-  test('describeCheck names Kirjan kansio for a nonfiction folder name', () => {
+  test('describeCheck names Käsikirjoituksen kansio for a nonfiction folder name', () => {
     const continuity = byId('continuity');
     expect(describeCheck(continuity)).toBe('Malli vertaa lukua Tarinakansioon ja aiempien lukujen tiivistelmiin. Havainto lainaa molemmat kohdat.');
     expect(describeCheck(continuity, 'Tarinakansio')).toBe(describeCheck(continuity));
-    expect(describeCheck(continuity, 'Kirjan kansio')).toBe('Malli vertaa lukua Kirjan kansioon ja aiempien lukujen tiivistelmiin. Havainto lainaa molemmat kohdat.');
+    expect(describeCheck(continuity, 'Käsikirjoituksen kansio')).toBe('Malli vertaa lukua Käsikirjoituksen kansioon ja aiempien lukujen tiivistelmiin. Havainto lainaa molemmat kohdat.');
     // The stored description is the fiction wording
     expect(continuity.description).toBe(describeCheck(continuity));
   });
 
   test('describeCheck gives the description of a built-in check and the cut instruction of an own check', () => {
-    expect(describeCheck(byId('filler'), 'Kirjan kansio')).toBe('Malli etsii sanat, jotka voi poistaa merkityksen muuttumatta.');
+    expect(describeCheck(byId('filler'), 'Käsikirjoituksen kansio')).toBe('Malli etsii sanat, jotka voi poistaa merkityksen muuttumatta.');
 
     const [short] = normalizeCustomChecks([OWN[1]]);
     expect(describeCheck(short)).toBe('Etsi kohdat, joissa aikamuoto vaihtuu ilman syytä.');

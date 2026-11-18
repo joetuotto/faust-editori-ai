@@ -26,6 +26,8 @@ const ISOLATED_EVENTS = [
 ];
 
 const INVALID_TEXT = 'Kirjoita ohje tai valitse pikavalinta.';
+// Esc closes the prompt too, so the close button's tooltip names the key
+const CLOSE_TITLE = 'Sulje (Esc)';
 const MIN_ROWS = 2;
 const MAX_ROWS = 6;
 const DETAIL_CHARS = 400;
@@ -84,7 +86,7 @@ function createPromptView(doc, options = {}) {
   const hasText = () => field.value.trim() !== '';
   const fiNumber = (value) => Number(value || 0).toLocaleString('fi-FI');
   const sendingStatus = (current) => (
-    current.waiting ? 'Odotetaan mallia…' : `Malli kirjoittaa… ${fiNumber(current.preview.length)} merkkiä`
+    current.waiting ? 'Odotetaan mallia…' : `Tekoäly kirjoittaa… ${fiNumber(current.preview.length)} merkkiä`
   );
 
   function resizeField() {
@@ -154,7 +156,7 @@ function createPromptView(doc, options = {}) {
     const select = make('select', { 'data-role': 'length' },
       ...LENGTH_OPTIONS.map(([value, label]) => make('option', { value }, label)));
     select.value = current.length;
-    return make('label', { class: 'cm-faust-prompt-length' }, make('span', {}, 'Pituus'), select);
+    return make('label', { class: 'cm-faust-prompt-length' }, make('span', {}, 'Pituus:'), select);
   }
 
   function pickerNode(current) {
@@ -168,7 +170,7 @@ function createPromptView(doc, options = {}) {
       node.appendChild(make('label', {}, make('span', {}, 'Malli'), select));
     } else {
       // No list (Claude direct): the author types the model id
-      const input = make('input', { type: 'text', 'data-role': 'model-picker', placeholder: 'Mallin tunniste', 'aria-label': 'Malli' });
+      const input = make('input', { type: 'text', 'data-role': 'model-picker', placeholder: 'Mallin tunnus', 'aria-label': 'Malli' });
       input.value = pickerChoice != null ? pickerChoice : current.otherModel || '';
       node.appendChild(input);
     }
@@ -199,7 +201,7 @@ function createPromptView(doc, options = {}) {
     if (model) foot.appendChild(model);
     foot.appendChild(button('send', current.mode === 'write' ? 'Kirjoita' : 'Lähetä', { class: 'cm-faust-prompt-primary' }));
     foot.appendChild(make('span', { class: 'cm-faust-prompt-keys', 'data-role': 'keys' },
-      current.mode === 'write' ? '↩ kirjoittaa · Esc sulkee' : '↩ lähettää · Esc sulkee'));
+      current.mode === 'write' ? 'Enter kirjoittaa · Esc sulkee' : 'Enter lähettää · Esc sulkee'));
   }
 
   function fillSending(current) {
@@ -252,7 +254,7 @@ function createPromptView(doc, options = {}) {
     body.appendChild(actions);
     if (current.pickerOpen) body.appendChild(pickerNode(current));
 
-    foot.appendChild(button('close', 'Sulje'));
+    foot.appendChild(button('close', 'Sulje', { title: CLOSE_TITLE }));
   }
 
   function fillError(current) {
@@ -264,7 +266,7 @@ function createPromptView(doc, options = {}) {
     // The reason texts already begin with "Ei ehdotusta:", so the message is shown as it is
     head.appendChild(make('div', { class: 'cm-faust-prompt-error', 'data-role': 'error', role: 'alert' }, error.message || ''));
     if (error.detail) {
-      head.appendChild(button('detail-toggle', detailOpen ? 'Piilota mallin vastaus' : 'Näytä mallin vastaus', {
+      head.appendChild(button('detail-toggle', detailOpen ? 'Kätke mallin vastaus' : 'Näytä mallin vastaus', {
         class: 'cm-faust-prompt-link',
         'aria-expanded': detailOpen ? 'true' : 'false'
       }));
@@ -281,13 +283,13 @@ function createPromptView(doc, options = {}) {
     body.appendChild(actions);
     if (current.pickerOpen) body.appendChild(pickerNode(current));
 
-    foot.appendChild(button('close', 'Sulje'));
+    foot.appendChild(button('close', 'Sulje', { title: CLOSE_TITLE }));
   }
 
   function fillBlocked(current) {
     const message = current.blocked ? current.blocked.message : '';
     head.appendChild(make('div', { class: 'cm-faust-prompt-blocked', 'data-role': 'blocked', role: 'alert' }, message || ''));
-    foot.appendChild(button('close', 'Sulje'));
+    foot.appendChild(button('close', 'Sulje', { title: CLOSE_TITLE }));
   }
 
   function fillSections(current) {

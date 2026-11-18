@@ -580,14 +580,9 @@ const resumePoint = (line) => ({ index: line.index, text: line.prefix + line.tex
 function blockedMessage(built) {
   if (built.blocked === 'noAI') return BLOCKED_NO_AI;
   if (built.blocked) return BLOCKED_OTHER;
+  // Token numbers go through the shared formatter, taken when the text is built
+  const { formatCount } = require('../format.fi.js');
   return `Erä ei mahdu mallin ikkunaan: noin ${formatCount(built.totalTokens)} tokenia, tilaa ${formatCount(built.budgetTokens)}.`;
-}
-
-// STUB(src/services/format.fi.js#formatCount): replaced at I-06
-function formatCount(n) {
-  const value = typeof n === 'number' ? n : Number.NaN;
-  if (!Number.isFinite(value) || value < 0) return '0';
-  return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
 }
 
 /**
@@ -1126,11 +1121,11 @@ function modelNote(modelId, notes) {
   const tested = models.find(model => model.id === modelId)
     || models.find(model => modelId && shortModelId(model.id) === shortModelId(modelId));
   if (!tested) {
-    return { kind: 'untested', text: `Tätä mallia ei ole kokeiltu suomen oikoluvussa. Tarkista jokainen ehdotus.${nonePassed}` };
+    return { kind: 'untested', text: `Tätä mallia ei ole kokeiltu suomen kielenhuollossa. Tarkista jokainen ehdotus.${nonePassed}` };
   }
 
   const wrong = tested.wrong === 1 ? '1 väärän korjauksen' : `${tested.wrong} väärää korjausta`;
-  const sentence = `Mallikokeessa ${fiDate(data.testedAt)} tämä malli korjasi ${tested.fixed}/${tested.planted} istutetusta kielivirheestä, teki ${wrong} ja kirjoitti uusiksi ${tested.rewritten}/${tested.paragraphs} kappaletta.`;
+  const sentence = `Mallikokeessa ${fiDate(data.testedAt)} tämä malli korjasi ${tested.fixed} / ${tested.planted} istutetusta kielivirheestä, teki ${wrong} ja kirjoitti uusiksi ${tested.rewritten} / ${tested.paragraphs} kappaletta.`;
   const notOwnText = data.ownText === false ? ' Koeaineisto oli kokeeseen kirjoitettua tekstiä, ei omaa käsikirjoitustasi.' : '';
 
   if (meetsProofreadThreshold(tested)) return { kind: 'recommended', text: sentence + notOwnText };

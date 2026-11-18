@@ -93,10 +93,10 @@ describe('shape', () => {
     });
   });
 
-  test('folderName: Tarinakansio and Kirjan kansio', () => {
+  test('folderName: Tarinakansio and Käsikirjoituksen kansio', () => {
     expect(folderName({ genre: 'fiction' })).toBe('Tarinakansio');
     expect(folderName(undefined)).toBe('Tarinakansio');
-    expect(folderName({ genre: 'nonfiction' })).toBe('Kirjan kansio');
+    expect(folderName({ genre: 'nonfiction' })).toBe('Käsikirjoituksen kansio');
   });
 
   test('createEntry defaults: state mentioned, empty lists, type by project kind', () => {
@@ -715,7 +715,7 @@ describe('migration', () => {
         'Tyyppi: Kaupunki',
         'Tunnelma: Jännittävä',
         'Näkö: Harmaita kattoja.',
-        'Ääni: Lokkien huutoa.',
+        'Kuulo: Lokkien huutoa.',
         'Haju: Tervaa.',
         'Tunto: Karheaa kiveä.',
         'Historia: Paloi 1827.',
@@ -758,15 +758,15 @@ describe('migration', () => {
     const THREAD_TYPES = {
       main_plot: 'Pääjuoni',
       subplot: 'Sivujuoni',
-      character_arc: 'Hahmon kehitys',
+      character_arc: 'Hahmon kehityskaari',
       theme: 'Teema',
-      mystery: 'Mysteeri',
-      romance: 'Romanssi'
+      mystery: 'Arvoitus',
+      romance: 'Rakkausjuoni'
     };
     const THREAD_STATUS = {
       planned: 'Suunniteltu',
-      active: 'Aktiivinen',
-      developing: 'Kehittyy',
+      active: 'Avoin',
+      developing: 'Kehittyvä',
       resolved: 'Ratkaistu',
       abandoned: 'Hylätty'
     };
@@ -815,7 +815,7 @@ describe('migration', () => {
     expect(result.entries[0]).toMatchObject({
       type: 'juonilanka',
       name: 'Kadonnut kirje',
-      description: 'Tyyppi: Sivujuoni\nTila: Aktiivinen',
+      description: 'Tyyppi: Sivujuoni\nTila: Avoin',
       source: { key: 'plotThreads:thread-1' }
     });
     expect(result.entries[1]).toMatchObject({

@@ -86,15 +86,15 @@ test('an inflected form of an entry\'s name is marked with cm-faust-mention and 
   ]);
 
   // The tooltip names the entry, its type and state, and how to open it (jsdom is not macOS)
-  expect(mentions[1].getAttribute('title')).toBe('Mari · hahmo · Kun mainitaan. Ctrl-napsautus avaa merkinnän.');
-  expect(mentions[0].getAttribute('title')).toBe('Satama · paikka · Aina mukana. Ctrl-napsautus avaa merkinnän.');
+  expect(mentions[1].getAttribute('title')).toBe('Mari · hahmo · Kun mainitaan. Ctrl-klikkaus avaa kohteen.');
+  expect(mentions[0].getAttribute('title')).toBe('Satama · paikka · Aina mukana. Ctrl-klikkaus avaa kohteen.');
   expect(texts(editor, 'cm-faust-avoid')).toEqual([]);
 });
 
 test('the tooltip names the Cmd key on macOS', () => {
   setPlatform('MacIntel');
   const editor = mount({ avoid: [], codex: CODEX });
-  expect(marked(editor, 'cm-faust-mention')[1].getAttribute('title')).toBe('Mari · hahmo · Kun mainitaan. ⌘-napsautus avaa merkinnän.');
+  expect(marked(editor, 'cm-faust-mention')[1].getAttribute('title')).toBe('Mari · hahmo · Kun mainitaan. ⌘-klikkaus avaa kohteen.');
 });
 
 test('setTermHighlightConfig replaces the marks and does not change the document', () => {
@@ -306,11 +306,12 @@ test('the theme has the two rules of the highlight', () => {
   });
 
   expect(baseTheme).toHaveBeenCalledTimes(1);
+  // Role tokens only (VF-11): an avoid-word is a dashed line without a fill, a mention a dotted line
   expect(baseTheme).toHaveBeenCalledWith({
-    '.cm-faust-avoid': { backgroundColor: 'rgba(196, 92, 60, 0.20)', borderRadius: '2px' },
+    '.cm-faust-avoid': { textDecoration: 'underline dashed var(--hl-avoid-line)' },
     '.cm-faust-mention': {
       textDecoration: 'underline dotted',
-      textDecorationColor: 'var(--text-3, rgba(128,128,128,0.8))',
+      textDecorationColor: 'var(--border-control)',
       textUnderlineOffset: '3px'
     }
   });

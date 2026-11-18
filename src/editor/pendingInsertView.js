@@ -24,8 +24,17 @@ const TEXT = {
   reject: 'Hylkää',
   previous: 'Edellinen yritys',
   next: 'Seuraava yritys',
-  hint: '⌘↩ hyväksyy'
+  // The accept key by platform: Cmd+Enter on macOS, Ctrl+Enter elsewhere
+  hint: (doc) => (isMac(doc) ? '⌘↩ hyväksyy' : 'Ctrl+Enter hyväksyy')
 };
+
+// The same test as termHighlightCore.js: the platform is asked from the window
+// of the document the block is drawn in, so this file needs no global
+function isMac(doc) {
+  const ownerWindow = doc ? doc.defaultView : null;
+  const platform = ownerWindow && ownerWindow.navigator ? ownerWindow.navigator.platform : '';
+  return /Mac|iPhone|iPad|iPod/.test(platform || '');
+}
 
 /**
  * @param {Document} doc
@@ -95,7 +104,7 @@ function createBlockView(doc, options = {}) {
     };
 
     made.hint = element('span', 'block-hint', 'cm-faust-block-hint');
-    made.hint.textContent = TEXT.hint;
+    made.hint.textContent = TEXT.hint(doc);
     bar.appendChild(made.hint);
     return made;
   }

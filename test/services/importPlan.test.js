@@ -384,7 +384,7 @@ describe('counts and sentences', () => {
     const lines = noticeLines(source, buildRows(source));
 
     expect(lines).toEqual([
-      { kind: 'scrivener', text: 'Tämä näyttää Scrivener-projektilta (.scriv). FAUST ei lue projektitiedostoa suoraan. Tuo Scrivenerin synkronointikansio (Sync with External Folder) tai käännä kirja .docx-tiedostoksi ja valitse Tiedosto → Tuo tekstiä.' },
+      { kind: 'scrivener', text: 'Tämä näyttää Scrivener-projektilta (.scriv). FAUST ei lue projektitiedostoa suoraan. Tuo Scrivenerin synkronointikansio (Sync with External Folder) tai käännä käsikirjoitus .docx-tiedostoksi ja valitse Tiedosto → Tuo tekstiä.' },
       { kind: 'rtf', text: 'Kansiossa on 2 RTF-tiedostoa, joita FAUST ei tuo. Valitse Scrivenerin synkronointiasetuksista muodoksi pelkkä teksti (Plain Text) ja synkronoi uudelleen.' },
       { kind: 'cloud', text: '3 tiedostoa on vain iCloudissa, eikä niitä voitu lukea. Lataa kansio Finderissa tälle koneelle ja tuo uudelleen.' },
       { kind: 'subfolders', text: 'Alikansioita ei luettu: Notes, Trashed Files.' },

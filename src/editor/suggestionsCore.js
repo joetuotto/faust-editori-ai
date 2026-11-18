@@ -28,44 +28,43 @@ const TEXT_ACTIONS = new Set(['propose', 'restore', 'blockStart']);
 // Reducer actions that only a document change can carry
 const CHANGE_ACTIONS = new Set(['accepted', 'blockAccepted', 'map', 'rebase']);
 
-const tint = (token, share) => `color-mix(in srgb, var(${token}, currentColor) ${share}%, transparent)`;
-const ACCENT = 'var(--sugg-current, var(--sigil, var(--bronze, currentColor)))';
-const MONO = "'IBM Plex Mono', monospace";
-const SMALL_PRINT = { fontFamily: MONO, fontSize: '11px', color: 'var(--text-3, inherit)' };
+// Role tokens only (styles/faust-tokens.css): no colour, no font name, no pixel font size here.
+// The binding block of styles/faust-components.css outranks these rules and draws the look
+// (the gold bar of the block, the ground of the suggestion under review).
+const ACCENT = 'var(--sugg-current)';
+const SMALL_PRINT = { font: 'var(--type-meta)', color: 'var(--text-3)' };
 
-// Colours come from the design tokens only; the --sugg-* tokens can override each one
 const THEME = {
   '.cm-faust-sugg-del': {
     textDecoration: 'line-through',
-    backgroundColor: `var(--sugg-del-bg, ${tint('--error', 14)})`,
-    color: 'var(--sugg-del-text, var(--text-3, inherit))'
+    backgroundColor: 'var(--sugg-del-bg)',
+    color: 'var(--sugg-del-text)'
   },
   '.cm-faust-sugg-ins': {
     whiteSpace: 'pre-wrap',
-    backgroundColor: `var(--sugg-ins-bg, ${tint('--success', 18)})`,
-    borderBottom: `1px solid var(--sugg-ins-line, ${tint('--success', 70)})`
+    backgroundColor: 'var(--sugg-ins-bg)',
+    borderBottom: '1px solid var(--sugg-ins-line)'
   },
   '.cm-faust-sugg-new': {
     whiteSpace: 'pre-wrap',
-    borderBottom: `1px dotted var(--sugg-ins-line, ${tint('--success', 70)})`
+    borderBottom: '1px dotted var(--sugg-ins-line)'
   },
   '.cm-faust-sugg-orig': { borderBottom: `1px dotted ${ACCENT}` },
   '.cm-faust-sugg-point': { color: ACCENT },
   '.cm-faust-sugg-break': { textDecoration: 'line-through' },
-  '.cm-faust-sugg-current': { outline: `1px solid ${ACCENT}`, borderRadius: '2px' },
-  '.cm-faust-target': { backgroundColor: `var(--target-bg, ${tint('--gold', 22)})` },
+  '.cm-faust-sugg-current': { borderRadius: '2px' },
+  '.cm-faust-target': { backgroundColor: 'var(--target-bg)' },
   '.cm-faust-block': {
-    margin: '0.4em 0',
+    margin: '0',
     padding: '0.5em 0.8em',
-    backgroundColor: 'var(--sugg-block-bg, var(--bg-2, var(--bg-secondary, transparent)))',
-    borderLeft: '2px solid var(--bronze, currentColor)',
-    color: 'var(--text-2, inherit)'
+    backgroundColor: 'var(--sugg-block-bg)',
+    color: 'var(--text-2)'
   },
   '.cm-faust-block.cm-faust-sugg-current': { borderLeftColor: ACCENT },
   '.cm-faust-block-head': SMALL_PRINT,
   '.cm-faust-block-note': SMALL_PRINT,
   '.cm-faust-block-text': { whiteSpace: 'pre-wrap', margin: '0.3em 0' },
-  '.cm-faust-block-text[data-placeholder]': { color: 'var(--text-3, inherit)' },
+  '.cm-faust-block-text[data-placeholder]': { color: 'var(--text-3)' },
   '.cm-faust-block-bar': {
     ...SMALL_PRINT,
     display: 'flex',
@@ -75,16 +74,15 @@ const THEME = {
     marginTop: '0.4em'
   },
   '.cm-faust-block-button': {
-    fontFamily: MONO,
-    fontSize: '11px',
+    font: 'var(--type-meta)',
     padding: '2px 8px',
     cursor: 'pointer',
     color: 'inherit',
     background: 'transparent',
-    border: '1px solid var(--border-color, currentColor)',
+    border: '1px solid var(--border)',
     borderRadius: '3px'
   },
-  '.cm-faust-block-button:disabled': { opacity: '0.4', cursor: 'default' }
+  '.cm-faust-block-button:disabled': { cursor: 'default' }
 };
 
 function createSuggestionKit(cm) {

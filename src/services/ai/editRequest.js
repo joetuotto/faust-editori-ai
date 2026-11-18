@@ -175,7 +175,7 @@ function promptMessage(code, vars = {}) {
     case 'too-long':
       return `Valinta on liian pitkä pikamuokkaukseen (${fiNumber(values.chars)} merkkiä, enintään ${fiNumber(values.max)}). Valitse lyhyempi kohta.`;
     case 'reserved-tag':
-      return 'Valinnassa on merkintä <teksti>, jota pikamuokkaus käyttää itse. Poista se valinnasta.';
+      return 'Valinnassa on <teksti>-tagi, jota pikamuokkaus käyttää itse. Poista se valinnasta.';
     case 'no-changes':
       return 'Malli ei ehdottanut muutoksia.';
     case 'conflict':

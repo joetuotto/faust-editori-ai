@@ -669,7 +669,7 @@ describe('open', () => {
       h.quick.open();
       expect(h.prompt.blocked).toEqual({
         code: 'reserved-tag',
-        message: 'Valinnassa on merkintä <teksti>, jota pikamuokkaus käyttää itse. Poista se valinnasta.'
+        message: 'Valinnassa on <teksti>-tagi, jota pikamuokkaus käyttää itse. Poista se valinnasta.'
       });
     }
   });
@@ -1017,7 +1017,8 @@ describe('edit result', () => {
     expect(h.prompt.phase).toBe('error');
     expect(h.prompt.error).toEqual({
       code: 'over-budget',
-      message: 'Teksti on liian pitkä tälle mallille: noin 5200 tokenia, tilaa 3900. Lyhennä valintaa tai vaihda mallia.',
+      // The token numbers are grouped with a no-break space, like every count
+      message: 'Teksti on liian pitkä tälle mallille: noin 5\u00A0200 tokenia, tilaa 3\u00A0900. Lyhennä valintaa tai vaihda mallia.',
       detail: ''
     });
     // The instruction stays in the field
@@ -1177,7 +1178,7 @@ describe('edit result', () => {
     one.send({ type: 'submit', instruction: 'Tiivistä' });
     one.lastCall.accept('Tarkista tämä kohta.');   // the model dropped ⟦1⟧
     await flush();
-    expect(one.prompt.attempts[0].note).toBe('1 suojattu merkintä puuttui vastauksesta ja palautettiin paikalleen.');
+    expect(one.prompt.attempts[0].note).toBe('1 suojattu kohta puuttui vastauksesta, ja se palautettiin paikalleen.');
     // The note is back in the proposed text: accepting everything keeps it in the manuscript
     for (const id of one.editor.pending.map((item) => item.id).reverse()) one.editor.accept(id);
     expect(one.editor.value).toBe('Alku. Tarkista tämä kohta. [TODO: vuosi] Loppu.');
@@ -1187,7 +1188,7 @@ describe('edit result', () => {
     two.send({ type: 'submit', instruction: 'Tiivistä' });
     two.lastCall.accept('Tarkista huolella.');
     await flush();
-    expect(two.prompt.attempts[0].note).toBe('2 suojattua merkintää puuttui vastauksesta ja ne palautettiin paikalleen.');
+    expect(two.prompt.attempts[0].note).toBe('2 suojattua kohtaa puuttui vastauksesta, ja ne palautettiin paikalleen.');
   });
 });
 
@@ -2348,7 +2349,7 @@ describe('write at cursor', () => {
     expect(over.prompt).toMatchObject({
       phase: 'idle',
       draft: 'Sumu',
-      note: 'Teksti on liian pitkä tälle mallille: noin 9000 tokenia, tilaa 4000. Lyhennä valintaa tai vaihda mallia.'
+      note: 'Teksti on liian pitkä tälle mallille: noin 9\u00A0000 tokenia, tilaa 4\u00A0000. Lyhennä valintaa tai vaihda mallia.'
     });
 
     const blocked = writer();

@@ -84,7 +84,7 @@ function validateRequest(req, constants = AI_CONSTANTS) {
 
   if (!isPlainObject(req)) return bad('pyyntö puuttuu');
 
-  if (typeof req.id !== 'string' || !ID_PATTERN.test(req.id)) return bad('tunniste puuttuu tai on virheellinen');
+  if (typeof req.id !== 'string' || !ID_PATTERN.test(req.id)) return bad('tunnus puuttuu tai on virheellinen');
 
   const list = req.messages;
   if (!Array.isArray(list) || list.length < 1 || list.length > constants.MAX_MESSAGES) {
@@ -111,7 +111,7 @@ function validateRequest(req, constants = AI_CONSTANTS) {
   const system = typeof req.system === 'string' ? req.system : '';
 
   if (req.model !== undefined && req.model !== null && (typeof req.model !== 'string' || req.model.length > 200)) {
-    return bad('mallin tunniste on virheellinen');
+    return bad('mallin tunnus on virheellinen');
   }
   const model = typeof req.model === 'string' ? req.model : '';
 
@@ -153,12 +153,12 @@ function resolveModel(cfg, requested) {
   if (cfg && cfg.provider === 'cherry') {
     if (typeof requested === 'string' && requested.includes(':')) return requested;
     if (cfg.model) return cfg.model;
-    throw codedError('no_model', 'Mallia ei ole valittu. Avaa asetukset (Cmd+,) ja valitse malli.');
+    throw codedError('no_model', 'Mallia ei ole valittu. Valitse malli tietopaneelin Tekoäly-välilehdellä.');
   }
 
   if (typeof requested === 'string' && requested !== '' && !requested.includes(':')) return requested;
   if (cfg && cfg.anthropicModel) return cfg.anthropicModel;
-  throw codedError('no_model', 'Claude-mallia ei ole asetettu. Avaa asetukset (Cmd+,) ja kirjoita mallin tunniste.');
+  throw codedError('no_model', 'Claude-mallia ei ole valittu. Valitse malli tietopaneelin Tekoäly-välilehdellä.');
 }
 
 /** Window, reasoning headroom and system handling of one model, defaults filled in. */
@@ -374,8 +374,8 @@ function classifyAIError(error, cfg, context = {}) {
 
   if (status === 401 || status === 403) {
     return result('auth', cherry
-      ? 'Cherry Studion yhdyskäytävä hylkäsi avaimen. Kopioi avain Cherry Studiosta (Settings → API Gateway → API Key) ja tallenna se FAUSTin asetuksiin.'
-      : 'Anthropic hylkäsi API-avaimen. Tarkista avain asetuksista (Cmd+,).');
+      ? 'Cherry Studio hylkäsi API-avaimen. Kopioi avain Cherry Studiosta (Settings → API Gateway → API Key) ja tallenna se tietopaneelin Tekoäly-välilehdellä.'
+      : 'Claude hylkäsi API-avaimen. Tarkista avain tietopaneelin Tekoäly-välilehdeltä.');
   }
 
   // The SDK's own timeout runs until the response headers, which the gateway
@@ -394,25 +394,25 @@ function classifyAIError(error, cfg, context = {}) {
     || (status === null && !(error instanceof APIError) && /connect|ECONNREFUSED|fetch failed|network/i.test(rawMessage));
   if (connection) {
     return result('unreachable', cherry
-      ? `Cherry Studion yhdyskäytävään ei saada yhteyttä (${config.gatewayUrl}). Varmista, että Cherry Studio on käynnissä ja API Gateway on päällä.`
-      : 'Anthropicin palveluun ei saada yhteyttä. Tarkista verkkoyhteys.');
+      ? `Cherry Studioon ei saada yhteyttä (${config.gatewayUrl}). Varmista, että Cherry Studio on käynnissä ja sen API Gateway päällä.`
+      : 'Clauden palveluun ei saada yhteyttä. Tarkista verkkoyhteys.');
   }
 
   const named = model ? `Mallia ”${model}”` : 'Mallia';
 
-  if (status === 404) return result('model_not_found', `${named} ei löytynyt. Tarkista malli asetuksista (Cmd+,).`);
+  if (status === 404) return result('model_not_found', `${named} ei löytynyt. Tarkista malli tietopaneelin Tekoäly-välilehdeltä.`);
 
   if (status === 413 || (status === 400 && AI_CONSTANTS.CONTEXT_OVERFLOW_PATTERNS.some(says))) {
     return result('too_long', 'Pyyntö on liian pitkä tälle mallille. Lyhennä valintaa tai pienennä kontekstia.');
   }
 
   if (status === 400 && AI_CONSTANTS.SYSTEM_REJECTED_PATTERNS.some(says)) {
-    return result('system_rejected', 'Malli hylkäsi järjestelmäviestin. Valitse mallin asetuksista ”Lähetä ohjeet käyttäjäviestinä” ja yritä uudelleen.');
+    return result('system_rejected', 'Malli hylkäsi järjestelmäviestin. Valitse tietopaneelin Tekoäly-välilehden mallin asetuksista ”Lähetä ohjeet käyttäjäviestinä” ja yritä uudelleen.');
   }
 
   // The gateway answers an unknown or unprefixed model id with 400, not 404
   if (status === 400 && says(AI_CONSTANTS.MODEL_UNAVAILABLE_PATTERN)) {
-    return result('model_not_found', `${named} ei löydy Cherry Studion yhdyskäytävästä. Valitse malli uudelleen asetuksista (Cmd+,).`);
+    return result('model_not_found', `${named} ei löydy Cherry Studiosta. Valitse malli uudelleen tietopaneelin Tekoäly-välilehdellä.`);
   }
 
   if (status === 400 || status === 422) return result('bad_request', `Palvelin hylkäsi pyynnön: ${serverMessage}`);
@@ -625,7 +625,7 @@ function createRequestTable(deps = {}) {
     const refusal = typeof refuse === 'function' ? refuse(value) : null;
     if (typeof refusal === 'string' && refusal !== '') return coded('protected', refusal);
 
-    if (entries.has(value.id)) return coded('duplicate_id', INVALID_PREFIX + 'tunniste on jo käytössä');
+    if (entries.has(value.id)) return coded('duplicate_id', INVALID_PREFIX + 'tunnus on jo käytössä');
     if (entries.size >= constants.MAX_ACTIVE_REQUESTS) return coded('busy', BUSY_MESSAGE);
 
     let cfg = null;

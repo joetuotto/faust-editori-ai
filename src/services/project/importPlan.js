@@ -172,7 +172,7 @@ function noticeLines(source, rows) {
   const add = (kind, text) => lines.push({ kind, text });
 
   if (report.scrivenerProject) {
-    add('scrivener', 'Tämä näyttää Scrivener-projektilta (.scriv). FAUST ei lue projektitiedostoa suoraan. Tuo Scrivenerin synkronointikansio (Sync with External Folder) tai käännä kirja .docx-tiedostoksi ja valitse Tiedosto → Tuo tekstiä.');
+    add('scrivener', 'Tämä näyttää Scrivener-projektilta (.scriv). FAUST ei lue projektitiedostoa suoraan. Tuo Scrivenerin synkronointikansio (Sync with External Folder) tai käännä käsikirjoitus .docx-tiedostoksi ja valitse Tiedosto → Tuo tekstiä.');
   }
 
   const rtf = list(report.rtfFiles).length;

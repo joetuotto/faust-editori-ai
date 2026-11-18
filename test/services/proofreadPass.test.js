@@ -1541,14 +1541,14 @@ describe('summary and the model caveat', () => {
 
     expect(modelNote('p:hyvä', notes)).toEqual({
       kind: 'recommended',
-      text: 'Mallikokeessa 6.11.2026 tämä malli korjasi 49/52 istutetusta kielivirheestä, teki 2 väärää korjausta ja kirjoitti uusiksi 0/28 kappaletta.'
+      text: 'Mallikokeessa 6.11.2026 tämä malli korjasi 49 / 52 istutetusta kielivirheestä, teki 2 väärää korjausta ja kirjoitti uusiksi 0 / 28 kappaletta.'
     });
     expect(modelNote('p:heikko', notes)).toEqual({
       kind: 'weak',
-      text: 'Mallikokeessa 6.11.2026 tämä malli korjasi 20/52 istutetusta kielivirheestä, teki 5 väärää korjausta ja kirjoitti uusiksi 3/28 kappaletta. Se ei täyttänyt rajaa: tarkista jokainen ehdotus.'
+      text: 'Mallikokeessa 6.11.2026 tämä malli korjasi 20 / 52 istutetusta kielivirheestä, teki 5 väärää korjausta ja kirjoitti uusiksi 3 / 28 kappaletta. Se ei täyttänyt rajaa: tarkista jokainen ehdotus.'
     });
     expect(modelNote('p:tuntematon', notes))
-      .toEqual({ kind: 'untested', text: 'Tätä mallia ei ole kokeiltu suomen oikoluvussa. Tarkista jokainen ehdotus.' });
+      .toEqual({ kind: 'untested', text: 'Tätä mallia ei ole kokeiltu suomen kielenhuollossa. Tarkista jokainen ehdotus.' });
     expect(modelNote(undefined, notes).kind).toBe('untested');
 
     // One wrong correction is written in the singular
@@ -1559,22 +1559,22 @@ describe('summary and the model caveat', () => {
     // The test was run and nothing passed: both the weak and the untested text say so
     const nonePass = { testedAt: '2026-11-16', ownText: true, models: [notes.models[1]] };
     expect(modelNote('p:heikko', nonePass).text)
-      .toBe('Mallikokeessa 16.11.2026 tämä malli korjasi 20/52 istutetusta kielivirheestä, teki 5 väärää korjausta ja kirjoitti uusiksi 3/28 kappaletta. Se ei täyttänyt rajaa: tarkista jokainen ehdotus. Yksikään kokeiltu malli ei täyttänyt rajaa.');
+      .toBe('Mallikokeessa 16.11.2026 tämä malli korjasi 20 / 52 istutetusta kielivirheestä, teki 5 väärää korjausta ja kirjoitti uusiksi 3 / 28 kappaletta. Se ei täyttänyt rajaa: tarkista jokainen ehdotus. Yksikään kokeiltu malli ei täyttänyt rajaa.');
     expect(modelNote('p:muu', nonePass).text)
-      .toBe('Tätä mallia ei ole kokeiltu suomen oikoluvussa. Tarkista jokainen ehdotus. Yksikään kokeiltu malli ei täyttänyt rajaa.');
+      .toBe('Tätä mallia ei ole kokeiltu suomen kielenhuollossa. Tarkista jokainen ehdotus. Yksikään kokeiltu malli ei täyttänyt rajaa.');
   });
 
   test('modelNote says when the trial text was not the author\'s own', () => {
     const recommended = modelNote(proofreadModelNotes.models[0].id, proofreadModelNotes);
     expect(recommended).toEqual({
       kind: 'recommended',
-      text: 'Mallikokeessa 16.11.2026 tämä malli korjasi 51/52 istutetusta kielivirheestä, teki 1 väärän korjauksen ja kirjoitti uusiksi 0/28 kappaletta. Koeaineisto oli kokeeseen kirjoitettua tekstiä, ei omaa käsikirjoitustasi.'
+      text: 'Mallikokeessa 16.11.2026 tämä malli korjasi 51 / 52 istutetusta kielivirheestä, teki 1 väärän korjauksen ja kirjoitti uusiksi 0 / 28 kappaletta. Koeaineisto oli kokeeseen kirjoitettua tekstiä, ei omaa käsikirjoitustasi.'
     });
     const weakNotes = { testedAt: '2026-11-16', ownText: false, models: [{ id: 'm', label: 'm', planted: 52, fixed: 10, wrong: 0, paragraphs: 28, rewritten: 0 }] };
     expect(modelNote('m', weakNotes).text.endsWith('Yksikään kokeiltu malli ei täyttänyt rajaa. Koeaineisto oli kokeeseen kirjoitettua tekstiä, ei omaa käsikirjoitustasi.')).toBe(true);
     // The untested and not-run texts say nothing about the trial text; own text adds nothing
-    expect(modelNote('muu', proofreadModelNotes).text).toBe('Tätä mallia ei ole kokeiltu suomen oikoluvussa. Tarkista jokainen ehdotus.');
-    expect(modelNote(proofreadModelNotes.models[0].id, { ...proofreadModelNotes, ownText: true }).text.endsWith('0/28 kappaletta.')).toBe(true);
+    expect(modelNote('muu', proofreadModelNotes).text).toBe('Tätä mallia ei ole kokeiltu suomen kielenhuollossa. Tarkista jokainen ehdotus.');
+    expect(modelNote(proofreadModelNotes.models[0].id, { ...proofreadModelNotes, ownText: true }).text.endsWith('0 / 28 kappaletta.')).toBe(true);
   });
 
   test('every model of the notes file passes meetsProofreadThreshold and the first one is the recommended model', () => {

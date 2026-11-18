@@ -319,7 +319,7 @@ describe('validateRequest', () => {
   });
 
   test('rejects a missing, empty or over-long id and an id with other characters', () => {
-    const message = 'tunniste puuttuu tai on virheellinen';
+    const message = 'tunnus puuttuu tai on virheellinen';
     expect(validateRequest(request({ id: undefined }))).toEqual({ ok: false, message });
     expect(validateRequest(request({ id: '' }))).toEqual({ ok: false, message });
     expect(validateRequest(request({ id: 'a'.repeat(65) }))).toEqual({ ok: false, message });
@@ -363,8 +363,8 @@ describe('validateRequest', () => {
   test('rejects a system text or a model id that is not text', () => {
     expect(validateRequest(request({ system: 12 }))).toEqual({ ok: false, message: 'ohjeet eivät ole tekstiä' });
     expect(validateRequest(request({ system: null })).value.system).toBe('');
-    expect(validateRequest(request({ model: 12 }))).toEqual({ ok: false, message: 'mallin tunniste on virheellinen' });
-    expect(validateRequest(request({ model: 'm'.repeat(201) }))).toEqual({ ok: false, message: 'mallin tunniste on virheellinen' });
+    expect(validateRequest(request({ model: 12 }))).toEqual({ ok: false, message: 'mallin tunnus on virheellinen' });
+    expect(validateRequest(request({ model: 'm'.repeat(201) }))).toEqual({ ok: false, message: 'mallin tunnus on virheellinen' });
     expect(validateRequest(request({ model: null })).value.model).toBe('');
     expect(validateRequest(request({ model: GATEWAY_MODEL })).value.model).toBe(GATEWAY_MODEL);
   });
@@ -472,7 +472,7 @@ describe('resolveModel', () => {
       thrown = error;
     }
     expect(thrown.code).toBe('no_model');
-    expect(thrown.message).toBe('Mallia ei ole valittu. Avaa asetukset (Cmd+,) ja valitse malli.');
+    expect(thrown.message).toBe('Mallia ei ole valittu. Valitse malli tietopaneelin Tekoäly-välilehdellä.');
   });
 
   test('anthropic uses the requested id', () => {
@@ -493,7 +493,7 @@ describe('resolveModel', () => {
       thrown = error;
     }
     expect(thrown.code).toBe('no_model');
-    expect(thrown.message).toBe('Claude-mallia ei ole asetettu. Avaa asetukset (Cmd+,) ja kirjoita mallin tunniste.');
+    expect(thrown.message).toBe('Claude-mallia ei ole valittu. Valitse malli tietopaneelin Tekoäly-välilehdellä.');
   });
 });
 
@@ -776,7 +776,7 @@ describe('createThinkFilter', () => {
 // ---------------------------------------------------------------------------
 
 describe('classifyAIError', () => {
-  const GATEWAY_AUTH = 'Cherry Studion yhdyskäytävä hylkäsi avaimen. Kopioi avain Cherry Studiosta (Settings → API Gateway → API Key) ja tallenna se FAUSTin asetuksiin.';
+  const GATEWAY_AUTH = 'Cherry Studio hylkäsi API-avaimen. Kopioi avain Cherry Studiosta (Settings → API Gateway → API Key) ja tallenna se tietopaneelin Tekoäly-välilehdellä.';
 
   test('401 and 403 give `auth` with the gateway text in cherry mode and the Anthropic text in anthropic mode', () => {
     // The gateway answers a bad key with 403 and this body, not with the Anthropic envelope
@@ -784,7 +784,7 @@ describe('classifyAIError', () => {
     expect(classifyAIError(apiError(401, envelope('authentication_error', 'invalid x-api-key')), cherryCfg()))
       .toEqual({ code: 'auth', message: GATEWAY_AUTH, status: 401 });
 
-    const anthropic = 'Anthropic hylkäsi API-avaimen. Tarkista avain asetuksista (Cmd+,).';
+    const anthropic = 'Claude hylkäsi API-avaimen. Tarkista avain tietopaneelin Tekoäly-välilehdeltä.';
     expect(classifyAIError(apiError(401, envelope('authentication_error', 'invalid x-api-key')), anthropicCfg()))
       .toEqual({ code: 'auth', message: anthropic, status: 401 });
     expect(classifyAIError(apiError(403, envelope('permission_error', 'forbidden')), anthropicCfg()))
@@ -798,12 +798,12 @@ describe('classifyAIError', () => {
     const error = new APIConnectionError({ message: 'Connection error.', cause: new Error('fetch failed') });
     expect(classifyAIError(error, cherryCfg())).toEqual({
       code: 'unreachable',
-      message: 'Cherry Studion yhdyskäytävään ei saada yhteyttä (http://127.0.0.1:23333). Varmista, että Cherry Studio on käynnissä ja API Gateway on päällä.',
+      message: 'Cherry Studioon ei saada yhteyttä (http://127.0.0.1:23333). Varmista, että Cherry Studio on käynnissä ja sen API Gateway päällä.',
       status: null
     });
     expect(classifyAIError(error, anthropicCfg())).toEqual({
       code: 'unreachable',
-      message: 'Anthropicin palveluun ei saada yhteyttä. Tarkista verkkoyhteys.',
+      message: 'Clauden palveluun ei saada yhteyttä. Tarkista verkkoyhteys.',
       status: null
     });
     // A network failure that did not come through the SDK
@@ -814,7 +814,7 @@ describe('classifyAIError', () => {
     const error = apiError(404, envelope('not_found_error', 'model: claude-vanha'));
     expect(classifyAIError(error, anthropicCfg(), { model: 'claude-vanha' })).toEqual({
       code: 'model_not_found',
-      message: 'Mallia ”claude-vanha” ei löytynyt. Tarkista malli asetuksista (Cmd+,).',
+      message: 'Mallia ”claude-vanha” ei löytynyt. Tarkista malli tietopaneelin Tekoäly-välilehdeltä.',
       status: 404
     });
   });
@@ -835,7 +835,7 @@ describe('classifyAIError', () => {
   });
 
   test('a 400 about the system role gives `system_rejected` with the hint', () => {
-    const message = 'Malli hylkäsi järjestelmäviestin. Valitse mallin asetuksista ”Lähetä ohjeet käyttäjäviestinä” ja yritä uudelleen.';
+    const message = 'Malli hylkäsi järjestelmäviestin. Valitse tietopaneelin Tekoäly-välilehden mallin asetuksista ”Lähetä ohjeet käyttäjäviestinä” ja yritä uudelleen.';
     expect(classifyAIError(apiError(400, envelope('invalid_request_error', 'System role is not supported by this model')), cherryCfg()))
       .toEqual({ code: 'system_rejected', message, status: 400 });
     expect(classifyAIError(apiError(400, envelope('invalid_request_error', 'This template does not support a system message')), cherryCfg()).code)
@@ -846,7 +846,7 @@ describe('classifyAIError', () => {
     const missing = apiError(400, envelope('invalid_request_error', 'Model "c91f:poistettu" is not available through the API gateway'));
     expect(classifyAIError(missing, cherryCfg(), { model: 'c91f:poistettu' })).toEqual({
       code: 'model_not_found',
-      message: 'Mallia ”c91f:poistettu” ei löydy Cherry Studion yhdyskäytävästä. Valitse malli uudelleen asetuksista (Cmd+,).',
+      message: 'Mallia ”c91f:poistettu” ei löydy Cherry Studiosta. Valitse malli uudelleen tietopaneelin Tekoäly-välilehdellä.',
       status: 400
     });
 
@@ -1205,7 +1205,7 @@ describe('createRequestTable', () => {
     expect(refused.ok).toBe(false);
     expect(refused.id).toBe('r1');
     expect(refused.stopReason).toBe('error');
-    expect(refused.error).toEqual({ code: 'duplicate_id', message: 'Virheellinen tekoälypyyntö: tunniste on jo käytössä', status: null });
+    expect(refused.error).toEqual({ code: 'duplicate_id', message: 'Virheellinen tekoälypyyntö: tunnus on jo käytössä', status: null });
     expect(client.calls).toHaveLength(1);
     // The refusal did not disturb the running request
     expect(table.size()).toBe(1);
@@ -1313,21 +1313,21 @@ describe('createRequestTable', () => {
     const result = await table.start(request({ model: 'c91f:poistettu' }), () => {});
 
     expect(result.error.code).toBe('model_not_found');
-    expect(result.error.message).toBe('Mallia ”c91f:poistettu” ei löydy Cherry Studion yhdyskäytävästä. Valitse malli uudelleen asetuksista (Cmd+,).');
+    expect(result.error.message).toBe('Mallia ”c91f:poistettu” ei löydy Cherry Studiosta. Valitse malli uudelleen tietopaneelin Tekoäly-välilehdellä.');
     expect(JSON.stringify(result)).not.toContain(TEST_KEY);
   });
 
   test('start never rejects, also when getClient throws', async () => {
     const coded = setup({
       getClient: () => {
-        throw codedError('no_key', 'Cherry Studion yhdyskäytävän avain puuttuu. Avaa asetukset (Cmd+,) ja tallenna avain.');
+        throw codedError('no_key', 'Cherry Studion API-avain puuttuu. Lisää se tietopaneelin Tekoäly-välilehdellä.');
       }
     });
     const noKey = await coded.table.start(request(), () => {});
     expect(noKey.ok).toBe(false);
     expect(noKey.error).toEqual({
       code: 'no_key',
-      message: 'Cherry Studion yhdyskäytävän avain puuttuu. Avaa asetukset (Cmd+,) ja tallenna avain.',
+      message: 'Cherry Studion API-avain puuttuu. Lisää se tietopaneelin Tekoäly-välilehdellä.',
       status: null
     });
     expect(noKey.provider).toBe('cherry');

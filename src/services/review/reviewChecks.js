@@ -24,7 +24,7 @@ const BUILTIN_CHECKS = Object.freeze([
     types: BOTH,
     builtin: true,
     label: 'Vältettävät sanat',
-    description: 'Näyttää kohdat, joissa käytät projektin vältettävien sanojen listan sanoja. Toimii ilman mallia.'
+    description: 'Tarkistus näyttää kohdat, joissa käytät projektin vältettävien sanojen listan sanoja. Se toimii ilman mallia.'
   },
   {
     id: 'long-sentences',
@@ -32,7 +32,7 @@ const BUILTIN_CHECKS = Object.freeze([
     types: BOTH,
     builtin: true,
     label: 'Pitkät virkkeet',
-    description: 'Näyttää virkkeet, joissa on enemmän sanoja kuin asettamasi raja. Toimii ilman mallia.'
+    description: 'Tarkistus näyttää virkkeet, joissa on enemmän sanoja kuin asettamasi raja. Se toimii ilman mallia.'
   },
   {
     id: 'typography-questions',
@@ -40,7 +40,7 @@ const BUILTIN_CHECKS = Object.freeze([
     types: BOTH,
     builtin: true,
     label: 'Typografian kysymykset',
-    description: 'Näyttää rivit, joista ohjelma ei voi päätellä, onko kyseessä luettelo vai vuorosana. Toimii ilman mallia.'
+    description: 'Tarkistus näyttää rivit, joista ohjelma ei voi päätellä, onko kyseessä luettelo vai vuorosana. Se toimii ilman mallia.'
   },
   {
     id: 'filler',
@@ -235,7 +235,7 @@ function findCheck(id, customChecks = []) {
 function describeCheck(check, folderName = 'Tarinakansio') {
   if (!check) return '';
   if (check.kind === 'continuity') {
-    return CONTINUITY_DESCRIPTION(folderName === 'Kirjan kansio' ? 'Kirjan kansioon' : 'Tarinakansioon');
+    return CONTINUITY_DESCRIPTION(folderName === 'Käsikirjoituksen kansio' ? 'Käsikirjoituksen kansioon' : 'Tarinakansioon');
   }
   if (check.builtin === false) return shortInstruction(check.instruction);
   return asText(check.description);

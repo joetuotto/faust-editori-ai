@@ -423,7 +423,7 @@ describe('analyze and grammar', () => {
   test('output over 32 MB kills the child and rejects', async () => {
     const big = 'C: sana\n'.repeat(Math.ceil((32 * 1024 * 1024 + 10) / 8));
     const { voikko, calls } = installed({ spell: () => ({ stdout: big }) });
-    await expect(voikko.analyze(['sana'])).rejects.toThrow('output too large');
+    await expect(voikko.analyze(['sana'])).rejects.toThrow('tuloste on liian suuri');
     expect(calls[calls.length - 1].child.killed).toBe(true);
   });
 

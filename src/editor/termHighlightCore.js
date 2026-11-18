@@ -1,7 +1,7 @@
 /**
  * Term highlight for the manuscript editor (editor core)
  *
- * Tints the words of the avoid list and underlines the mentions of
+ * Marks the words of the avoid list and underlines the mentions of
  * Tarinakansio entries. Both lists change while the editor is open, so the
  * compiled lists live in a state field that an effect replaces: no
  * compartment is needed and the document is never touched. An effects-only
@@ -22,8 +22,8 @@ const AVOID_CLASS = 'cm-faust-avoid';
 const MENTION_CLASS = 'cm-faust-mention';
 const ENTRY_ATTRIBUTE = 'data-codex-id';
 
-const HINT_MAC = '⌘-napsautus avaa merkinnän.';
-const HINT_OTHER = 'Ctrl-napsautus avaa merkinnän.';
+const HINT_MAC = '⌘-klikkaus avaa kohteen.';
+const HINT_OTHER = 'Ctrl-klikkaus avaa kohteen.';
 
 // Cmd on macOS, Ctrl elsewhere. The platform is asked from the window the
 // editor lives in, so this file touches the DOM only through the view.
@@ -136,12 +136,13 @@ function createTermHighlightKit(cm) {
     }
   }, { decorations: plugin => plugin.decorations });
 
-  // Final colours come from the design tokens
+  // Role tokens only (styles/faust-tokens.css). An avoid-word is a dashed line, never a fill;
+  // the binding block of styles/faust-components.css outranks these rules.
   const theme = EditorView.baseTheme({
-    [`.${AVOID_CLASS}`]: { backgroundColor: 'rgba(196, 92, 60, 0.20)', borderRadius: '2px' },
+    [`.${AVOID_CLASS}`]: { textDecoration: 'underline dashed var(--hl-avoid-line)' },
     [`.${MENTION_CLASS}`]: {
       textDecoration: 'underline dotted',
-      textDecorationColor: 'var(--text-3, rgba(128,128,128,0.8))',
+      textDecorationColor: 'var(--border-control)',
       textUnderlineOffset: '3px'
     }
   });

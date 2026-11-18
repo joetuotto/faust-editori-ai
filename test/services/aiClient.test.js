@@ -274,7 +274,7 @@ describe('judgeEdit', () => {
   test('rejects max_tokens with empty text as reasoning_exhausted when thinking was seen, as max_tokens when not', () => {
     const exhausted = judge({ stopReason: 'max_tokens', text: ' \n', sawThinking: true });
     expect(exhausted.reason).toBe('reasoning_exhausted');
-    expect(exhausted.reasonText).toBe('Ei ehdotusta: mallin päättely käytti koko vastausrajan. Suurenna mallin päättelyvaraa asetuksista (Cmd+,).');
+    expect(exhausted.reasonText).toBe('Ei ehdotusta: mallin päättely käytti koko vastausrajan. Suurenna mallin päättelyvaraa tietopaneelin Tekoäly-välilehdellä.');
 
     expect(judge({ stopReason: 'max_tokens', text: '', sawThinking: false }).reason).toBe('max_tokens');
     // Thinking was seen but some text arrived: an ordinary cut
@@ -324,7 +324,7 @@ describe('judgeEdit', () => {
   });
 
   test('rejects an error result and carries the error message', () => {
-    const message = 'Cherry Studion yhdyskäytävään ei saada yhteyttä (http://127.0.0.1:23333). Varmista, että Cherry Studio on käynnissä ja API Gateway on päällä.';
+    const message = 'Cherry Studioon ei saada yhteyttä (http://127.0.0.1:23333). Varmista, että Cherry Studio on käynnissä ja sen API Gateway päällä.';
     const verdict = judge({ ok: false, stopReason: 'error', text: '<teksti>Osa ehti tulla.</teksti>', error: { code: 'unreachable', message, status: null } });
     expect(verdict.accepted).toBe(false);
     expect(verdict.reason).toBe('error');
@@ -354,7 +354,7 @@ describe('judgeEdit', () => {
     const verdict = judge({ promptTruncated: true });
     expect(verdict.accepted).toBe(false);
     expect(verdict.reason).toBe('prompt_truncated');
-    expect(verdict.reasonText).toBe('Ei ehdotusta: malli ei nähnyt koko kehotetta. Pienennä kontekstia tai tarkista mallin ikkunan koko asetuksista (Cmd+,).');
+    expect(verdict.reasonText).toBe('Ei ehdotusta: malli ei nähnyt koko kehotetta. Pienennä kontekstia tai tarkista mallin ikkunan koko tietopaneelin Tekoäly-välilehdeltä.');
     expect(verdict.inner).toBeNull();
   });
 
@@ -846,7 +846,7 @@ describe('createAIClient', () => {
 
   test('an error result of the main process is passed on with its code and message', async () => {
     const context = setup();
-    const error = { code: 'model_not_found', message: 'Mallia ”c91f:poistettu” ei löydy Cherry Studion yhdyskäytävästä. Valitse malli uudelleen asetuksista (Cmd+,).', status: 400 };
+    const error = { code: 'model_not_found', message: 'Mallia ”c91f:poistettu” ei löydy Cherry Studiosta. Valitse malli uudelleen tietopaneelin Tekoäly-välilehdellä.', status: 400 };
     const result = await roundTrip(context, {}, { ok: false, stopReason: 'error', text: '', error });
 
     expect(result.ok).toBe(false);
@@ -1582,7 +1582,7 @@ describe('createAIClient', () => {
     expect(result.retried).toBe(true);
     expect(result.accepted).toBe(false);
     expect(result.reason).toBe('reasoning_exhausted');
-    expect(result.reasonText).toBe('Ei ehdotusta: mallin päättely käytti koko vastausrajan. Suurenna mallin päättelyvaraa asetuksista (Cmd+,).');
+    expect(result.reasonText).toBe('Ei ehdotusta: mallin päättely käytti koko vastausrajan. Suurenna mallin päättelyvaraa tietopaneelin Tekoäly-välilehdellä.');
     expect(context.rows).toHaveLength(1);
     expect(context.rows[0]).toMatchObject({ requests: 2, outcome: 'no_suggestion', reason: 'reasoning_exhausted', tokensOut: 3000 });
   });
@@ -1703,7 +1703,7 @@ describe('createAIClient', () => {
       .mockImplementationOnce(async () => {
         throw new Error('ipc rikki');
       })
-      .mockImplementationOnce(async () => ({ success: false, error: 'Cherry Studion yhdyskäytävän avain puuttuu.' }))
+      .mockImplementationOnce(async () => ({ success: false, error: 'Cherry Studion API-avain puuttuu.' }))
       .mockImplementationOnce(async () => ({ success: true, models: 'rikki' }));
 
     expect(await context.client.listModels()).toEqual([]);
