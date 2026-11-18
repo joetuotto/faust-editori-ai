@@ -7,9 +7,9 @@
  *  - faust-simple-layout.css stays in place. Every shell rule here is written on a NEW
  *    class name or on a data attribute that only migrated markup carries (.faust-page,
  *    .faust-panel, [data-state], .faust-statusbar ...), so an unmigrated region keeps the
- *    layout it has today. The rules that touch today's markup are the focus-mode rule of
- *    section 15 (meant for old and new markup alike) and section 16, "Legacy bridge",
- *    where each rule names what it overrides and when it is deleted.
+ *    layout it has today. The rule that touches today's markup is the focus-mode rule of
+ *    section 15 (meant for old and new markup alike). The legacy bridge (section 16) that
+ *    reached into inline-styled markup was deleted in the clean-up (XR-15).
  *    Precondition, done in the same commit (foundation step F2): the block
  *    "IMPROVED HOVER EFFECTS" of faust-simple-layout.css (global button lift, brightness
  *    filters, half-opacity disabled, cream focus glow) is deleted and its vignette takes
@@ -31,7 +31,7 @@
  * Sections: 1 native chrome | 2 type roles | 3 buttons | 4 fields | 5 tabs | 6 cards, chips,
  * rows, sections | 7 progress, spinner, empty | 8 notification, callout | 9 dialog |
  * 10 popover, menu, tooltip | 11 marks, diff, result | 12 dock, suggestion bar, inline prompt |
- * 13 findings, tree, import | 14 editor (CodeMirror) | 15 shell and chat | 16 legacy bridge
+ * 13 findings, tree, import | 14 editor (CodeMirror) | 15 shell and chat
  */
 
 /* ============ 1 Native chrome: scrollbars, selection, native controls ============ */
@@ -1188,7 +1188,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:is([data-role="block-prev"], [data-role="block-next"])::before,
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:is([data-role="attempt-prev"], [data-role="attempt-next"], [data-role="delete-prompt"])::before { content: ""; display: block; width: 14px; height: 14px; margin: auto; background: currentColor; -webkit-mask: var(--glyph) center / contain no-repeat; mask: var(--glyph) center / contain no-repeat; }
 
-/* I-05: the Pikamuokkaus prompt on its own, without the bridges L1 and S4, and its context row */
+/* I-05: the Pikamuokkaus prompt on its own, and its context row */
 /* The editor's tooltip host in the layer host (tooltips({ parent }) of FaustEditor.js; CodeMirror
    creates it with the first tooltip, which is the prompt). CodeMirror gives it the editor's theme
    classes (ͼ…), so the editor root's rules (display: flex and position: relative, both !important,
@@ -1197,8 +1197,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
    A marked layout rule: !important only to beat CodeMirror's own !important. */
 .faust-layer > [class^="ͼ"] { position: absolute !important; top: 0; left: 0; width: 0; height: 0; display: block !important; pointer-events: none; }
 .faust-layer > [class^="ͼ"] > .cm-tooltip { pointer-events: auto; }
-/* The prompt's buttons carry no faust- class, so the bridge's inset veil (L1) lay over their own hover
-   fill and only S4 gave a disabled chip its look: the prompt draws both itself, press included. */
+/* The prompt's buttons carry no faust- class: the prompt draws their hover, press and disabled
+   looks itself (no bridge rule reaches them since XR-15). */
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:not(:where(.cm-faust-prompt-context *)) { box-shadow: none; }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button:not(:where(.cm-faust-prompt-context *, .cm-faust-prompt-link)):not(:disabled):active { background: var(--fill-active); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-primary:not(:disabled):active { background: var(--accent-active); border-color: var(--accent-active); }
@@ -1359,12 +1359,6 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-composer > :is(.faust-input, .faust-textarea) { flex: 1 1 auto; min-width: 0; width: auto; }
 
 /* ---- Editor pane ---- */
-/* A box of the page in the text's column, classic scrollbars included. (The progress box and the
-   stored AI suggestions that stood in the page head are the busy notification and the Luku tab's
-   Parannusehdotukset since XR-8; nothing in app.js uses .faust-page-row now, XR-15 removes it.) */
-.faust-page-row { display: block; box-sizing: border-box; flex: none; width: 100%; max-width: min(calc(100% - 2 * (var(--page-gutter) + var(--scrollbar-w))), var(--measure)); margin-inline: auto; }
-/* A row whose content has no bound (the stored AI suggestions) is a closed disclosure; open, it scrolls inside itself and never takes more than a quarter of the window from the manuscript. */
-.faust-page-row--bounded { flex: 0 1 auto; min-height: var(--h-sm); max-height: min(180px, 25vh); overflow-y: auto; overscroll-behavior: contain; }
 .faust-editor-area:has(> .faust-editor-split) .faust-page { --page-pad-top: 24px; }
 /* While a notification is shown, the page keeps the 48px top margin V 4.7 counts on ("a one-line
    notification fits the page's 48px top margin"), also where a low window (V 6.6) or split view gives it
@@ -1439,10 +1433,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 @media (max-width: 1119px) { .faust-statusbar [data-priority="3"] { display: none; } }
 
 /* ---- Focus mode: the page alone ---- */
-/* CSS hides only what has no state of its own: the format bar, the meta row, the sigil bar
-   and the launcher. Panels and the chat window follow their state, which toggleFocusMode()
+/* CSS hides only what has no state of its own: the format bar, the meta row and the sigil
+   bar. Panels and the chat window follow their state, which toggleFocusMode()
    closes on entry and restores on exit; a panel command given in focus mode leaves it first. */
-.faust-focus-mode :is(.faust-formatbar, .faust-chapter-meta, .faust-sigilbar, .faust-fab) { display: none !important; }
+.faust-focus-mode :is(.faust-formatbar, .faust-chapter-meta, .faust-sigilbar) { display: none !important; }
 .faust-focus-mode .faust-page { --page-pad-top: var(--sp-8); }
 .faust-focus-mode .faust-chapter-title { color: var(--text-2); }
 .faust-focus-drag { position: fixed; inset: 0 0 auto 0; height: 28px; z-index: var(--z-sticky); -webkit-app-region: drag; }
@@ -1450,20 +1444,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-focus-exit.faust-btn.is-idle { opacity: 0; }                 /* set after 2 s without pointer movement */
 .faust-focus-exit.faust-btn:is(:hover, :focus-visible) { opacity: 1; }
 
-/* ---- The one permitted launcher, and the chat window above it ---- */
-.faust-fab {
-  position: fixed; right: calc(var(--right-col-w) + var(--sp-4)); bottom: calc(var(--footer-h) + var(--sp-4)); z-index: var(--z-dock);
-  width: 36px; height: 36px; display: grid; place-items: center; padding: 0;
-  background: var(--surface-raised); color: var(--accent-line);
-  border: var(--bw) solid var(--border); border-radius: 50%; box-shadow: var(--shadow-2); cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), right var(--dur-slow) var(--ease-std);
-}
-.faust-fab:hover { border-color: var(--border-control); background-image: linear-gradient(var(--fill-hover), var(--fill-hover)); }
-.faust-fab:active { background-image: linear-gradient(var(--fill-active), var(--fill-active)); }
-.faust-fab[aria-expanded="true"] { background-image: linear-gradient(var(--fill-active), var(--fill-active)); }
-
-/* Chat window. These rules replace styles/claude-chat.css (its link is removed in the
-   same commit); the class names are the ones ClaudeChat.js already uses. The Liminal Engine
+/* ---- The chat window ---- */
+/* These rules replaced styles/claude-chat.css (deleted in XR-15); the class names are the
+   ones ClaudeChat.js uses. The Liminal Engine
    conversation uses the same message classes (.chat-message.user / .assistant / .error,
    .message-role, .streaming-indicator), so there is one conversation look. */
 .claude-chat-container {
@@ -1510,43 +1493,3 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* Lähetä is a word button (faust-btn faust-btn--primary, busy through aria-busy): only its height
    is the input row's */
 .send-btn { flex: none; height: var(--h-lg); }
-
-/* ============ 16 Legacy bridge ============
- * The only rules that reach into today's inline-styled markup. Each one names the inline
- * style or stylesheet rule it overrides and the condition for deleting it. Attribute
- * selectors match the serialised inline style that React writes (checked in Chromium:
- * `color: '#000'` serialises as "color: rgb(0, 0, 0)", a var() is kept as written).
- * Apart from the marked layout rules above (annotation strip, editor body height, focus
- * mode), this is the only place with !important.
- */
-
-/* L1  Hover and press for buttons that still set their background inline (a stylesheet
-       background cannot beat it): an inset veil over the fill, under the label. Replaces
-       the deleted global lift. Under the veil a label in --text-3 steps up, as in the
-       recipes. Delete when no button without a faust- class is left. */
-button:not([class*="faust-"]) { transition: box-shadow var(--dur-fast) var(--ease-out); }
-button:not([class*="faust-"]):hover:not(:disabled)  { box-shadow: inset 0 0 0 100vmax var(--fill-hover); }
-button:not([class*="faust-"]):active:not(:disabled) { box-shadow: inset 0 0 0 100vmax var(--fill-active); }
-button:not([class*="faust-"]):is(:hover, :active):not(:disabled):is([style^="color: var(--text-3)"], [style*="; color: var(--text-3)"]) { color: var(--text-2) !important; }
-
-/* S3  Field edges and focus for fields that still carry inline styles: the inline
-       `border: 1px solid var(--border-color)` is a hairline, a field edge needs 3:1; three
-       fields set outline:'none' inline. The chapter title (a bare field) and inline
-       validation borders are left alone. Delete when every field has a faust- class. */
-:is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):not([class*="faust-"]):not(.faust-editor-content > input):not([style*="255, 68, 68"]):not([style*="--error"]):not([aria-invalid="true"]) { border-color: var(--border-control) !important; }
-:is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):not([class*="faust-"]):not(.faust-editor-content > input):focus-visible { outline: var(--bw-strong) solid var(--focus-ring) !important; outline-offset: 0; border-color: var(--focus-ring) !important; }
-.faust-editor-content > input:focus-visible { border-bottom-color: var(--accent-line) !important; }
-
-/* S4  Disabled buttons were dimmed twice (global opacity .5 on an inline grey: 1.7:1).
-       One legible, shaped look. A button that is disabled because it is working carries
-       aria-busy and is left alone (F7 adds aria-busy to the voice button, whose listening
-       state is its inline colour). The sigil tiles are .faust-sigil-btn and keep their own look.
-       Delete when all buttons use faust-btn. */
-button:disabled:not([aria-busy="true"]):not([class*="faust-"]) {
-  opacity: 1 !important;
-  background-color: var(--fill-subtle) !important; background-image: none !important;
-  border-color: var(--rule) !important; border-image: none !important;
-  color: var(--text-disabled) !important;
-  box-shadow: none !important; text-shadow: none !important; cursor: default !important;
-}
-button[aria-busy="true"]:disabled:not([class*="faust-"]) { opacity: 1 !important; cursor: progress !important; }

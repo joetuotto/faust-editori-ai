@@ -22,8 +22,8 @@
 .faust-header {
   height: 52px;
   flex-shrink: 0;
-  background: var(--bg-primary, #141210);
-  border-bottom: 1px solid var(--border-color, rgba(255,255,255,0.1));
+  background: var(--surface-page);
+  border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
   -webkit-user-select: none;
 }
@@ -41,15 +41,15 @@
   flex: 1;
   display: flex;
   overflow: hidden;
-  background: var(--bg-primary, #141210);
+  background: var(--surface-page);
 }
 
 /* Left sidebar - fixed width */
 .faust-sidebar {
   width: 220px;
   flex-shrink: 0;
-  background: var(--bg-secondary, #100F0D);
-  border-right: 1px solid var(--border-color, rgba(255,255,255,0.05));
+  background: var(--surface-panel);
+  border-right: 1px solid var(--border);
   overflow-y: auto;
   -webkit-app-region: no-drag;
   -webkit-user-select: text;
@@ -64,8 +64,8 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--paper, #1C1917);
-  color: var(--ink, #F0E9E1);
+  background: var(--surface-paper);
+  color: var(--ink);
   position: relative;
 
   /* Vignette: drawn once, by ::before, in the theme's own colour */
@@ -112,10 +112,6 @@
   overflow: hidden;
 }
 
-.faust-editor-split .faust-editor-content {
-  padding: 24px;
-}
-
 /* Right column: Tietopaneeli and the Liminal Engine are side panels of the shared shell
    (faust-components.css, ":is(.faust-sidebar, .faust-inspector, .faust-aipanel)[data-state]") */
 
@@ -142,52 +138,8 @@
 .faust-footer {
   height: 28px;
   flex-shrink: 0;
-  background: var(--bg-secondary, #100F0D);
-  border-top: 1px solid var(--border-color, rgba(255,255,255,0.1));
-}
-
-/* Responsive - hide sidebar on small screens */
-@media (max-width: 768px) {
-  .faust-sidebar {
-    width: 180px;
-  }
-
-  .faust-editor-content {
-    padding: 40px 24px;
-  }
-}
-
-/* Voice AI Assistant Animations */
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(1.05);
-    opacity: 0.9;
-  }
-}
-
-/* AI Loading Spinner */
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  background: var(--surface-panel);
+  border-top: 1px solid var(--border);
 }
 
 /* Layout verified and working! */

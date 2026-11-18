@@ -7,12 +7,7 @@
  *   notify(kind, text, { detail, action, duration })   kind: 'success' | 'info' | 'warning' | 'error' | 'busy'
  *     returns { update(patch), close() }; action is { label, onClick }
  *   ToastHost                                          mounted once at the root, next to the shared dialogs
- *   installAlertShim()                                 window.alert -> notify, so the 71 legacy calls stop
- *                                                      producing native boxes on the first day
- * A native alert stays until it is dismissed, and some legacy alerts carry the only copy of a
- * result (a score with suggestions, a synopsis, comparison numbers). So: a shimmed message with
- * more than one line stays until closed, whatever its kind; its kind is read from its first line
- * only; and a notification that stays until closed is never pushed out by a newer one.
+ * A notification that stays until closed (duration 0) is never pushed out by a newer one.
  *
  * Part 2, controls: Button, IconButton, SigilButton, Field, Tabs, Segmented, Chip, Row, Section,
  *   Progress, Spinner, EmptyState, Callout, Rating, VoiceButton, DiffView (+ coalesceDiff).
@@ -40,7 +35,7 @@ const listeners = new Set();
 const emit = () => listeners.forEach(fn => fn(items));
 
 // A fourth notification pushes out the oldest TIMED one. One that stays until closed (an error,
-// a running task, a legacy message with content) is never evicted: a persistent newcomer is
+// a running task, a message shown with duration 0) is never evicted: a persistent newcomer is
 // shown beside the others, a timed newcomer waits until one of them is closed.
 function admit(item) {
   const next = [...items, item];
@@ -79,30 +74,6 @@ export function notify(kind, text, options = {}) {
   const close = () => remove(id);
   const update = (patch) => { items = items.map(t => (t.id === id ? { ...t, ...patch } : t)); emit(); };
   return { close, update };
-}
-
-// Interim classifier for messages that still arrive through the alert shim: order matters
-// ("epäonnistui" contains "onnistui", "johdonmukaisuusvirheitä" contains "virhe").
-export function inferKind(message) {
-  const s = String(message);
-  if (/^\s*\u2705/.test(s)) return 'success';                 // the check-mark emoji of legacy messages
-  if (/^\s*\u26A0/.test(s)) return 'warning';                 // the warning sign
-  if (/epäonnistui|virhe|ei voitu|ei löydy|ei käytettävissä|ei ole käytettävissä|failed|error/i.test(s)) return 'error';
-  if (/valitse ensin|ei valittua|syötä|anna |et voi|ei ole valmi|eivät ole valmi|ei ole ladattu|on tyhjä|jäi kesken|ei ole kelvollinen|ei ole faust/i.test(s)) return 'warning';
-  if (/valmis!|tallennettu|luotu|onnistui|lisätty|palautettu/i.test(s)) return 'success';
-  return 'info';
-}
-
-export function installAlertShim() {
-  window.alert = (message) => {
-    const raw = String(message);
-    const lines = raw.replace(/^[\s\u2705\u26A0\uFE0F\u2713\u2717]+/, '').split('\n');   // leading marks: the two emoji, a tick, a cross
-    const detail = lines.slice(1).join('\n').trim();
-    // The kind comes from the mark and the first line only: the rest is content, and a synopsis
-    // may well contain the word "virhe". A message with content stays until it is closed.
-    const kind = inferKind(raw.split('\n')[0]);
-    notify(kind, lines[0], { detail: detail || undefined, duration: detail ? 0 : undefined });
-  };
 }
 
 const ICON = { success: 'success', info: 'info', warning: 'warning', error: 'error' };
@@ -1052,7 +1023,7 @@ export function Tooltip({ title, text, kbd, off = false, children }) {
 
 if (typeof window !== 'undefined') {
   window.FaustUI = Object.assign(window.FaustUI || {}, {
-    notify, inferKind, installAlertShim, ToastHost,
+    notify, ToastHost,
     Button, IconButton, SigilButton, Field, Tabs, Segmented, Chip, Row, Section, Progress, Spinner,
     EmptyState, Callout, Rating, VoiceButton, DiffView, coalesceDiff,
     layerStack, holdLayer, returnFocus, scrimPress, Dialog, Popover, usePopover, Tooltip

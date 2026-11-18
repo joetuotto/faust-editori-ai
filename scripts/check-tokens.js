@@ -36,7 +36,7 @@ const walk = (dir, exts, out = []) => {
 const noComments = (t, css) => css ? t.replace(/\/\*[\s\S]*?\*\//g, '') : t;
 const TOKEN_FILES = ['faust-tokens.css', 'faust-components.css'].map(f => path.join(CSS, f)).filter(fs.existsSync);
 const files = [path.join(ROOT, 'app.js'), ...walk(path.join(ROOT, 'src'), ['.js', '.jsx', '.css']), ...walk(path.join(ROOT, 'styles'), ['.css'])]
-  .filter(fs.existsSync).filter(f => !f.endsWith('faust-theme.css'));          // the legacy theme file is superseded and deleted in clean-up
+  .filter(fs.existsSync).filter(f => !f.endsWith('faust-theme.css'));          // the legacy theme file (emptied in XR-15, still linked by index.html)
 
 // 1. undefined custom properties. Declarations count from the token and component files, from the
 //    legacy theme file while it still exists, and from names the JS sets inline ('--fe-pad-top': ...).
@@ -82,7 +82,7 @@ for (const f of files) {
 }
 // the component stylesheet itself must be clean
 for (const f of TOKEN_FILES.filter(f => f.endsWith('faust-components.css'))) {
-  const n = (noComments(fs.readFileSync(f, 'utf8'), true).replace(/\[style[^\]]*\]/g, '').match(RULES.colourLiteral) || []).length;   // attribute selectors of the bridge quote serialised styles
+  const n = (noComments(fs.readFileSync(f, 'utf8'), true).replace(/\[style[^\]]*\]/g, '').match(RULES.colourLiteral) || []).length;   // an attribute selector quoting a serialised style is not a colour
   if (n) (counts[path.basename(f)] = {}).colourLiteral = n;
 }
 

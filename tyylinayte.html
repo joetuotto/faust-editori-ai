@@ -23,7 +23,6 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:;">
 <title>FAUST – Tyylinäyte</title>
 <script>document.documentElement.setAttribute('data-theme', location.hash.slice(1) === 'DEIS' ? 'DEIS' : 'NOX');</script>
-<link rel="stylesheet" href="./styles/faust-theme.css">
 <link rel="stylesheet" href="./styles/faust-tokens.css">
 <link rel="stylesheet" href="./styles/faust-simple-layout.css">
 <link rel="stylesheet" href="./styles/faust-components.css">
@@ -62,7 +61,7 @@
 .tn-box > .tn-cap:first-child { display: block; margin-bottom: var(--sp-2); }
 .tn-w220 { width: 220px; } .tn-w320 { width: 320px; } .tn-w440 { width: 440px; }
 /* layers that are position: fixed in the app are laid out in the flow here */
-.tn-static :is(.faust-popover, .faust-tooltip, .claude-chat-container, .faust-fab, .faust-focus-exit.faust-btn, .faust-toast-host) { position: relative; inset: auto; transform: none; animation: none; }
+.tn-static :is(.faust-popover, .faust-tooltip, .claude-chat-container, .faust-focus-exit.faust-btn, .faust-toast-host) { position: relative; inset: auto; transform: none; animation: none; }
 .tn-static .faust-tooltip { width: fit-content; }
 .tn-static .faust-toast-host { width: 440px; }
 .tn-static .faust-toast { animation: none; }
@@ -464,9 +463,9 @@
 <!-- ======================= 8 Notification and callout ======================= -->
 <section class="tn-section tn-static" id="ilmoitukset" data-title="Ilmoitukset">
   <h2>Ilmoitus ja huomautus</h2>
-  <p class="tn-lead">Ilmoitus korvaa natiivit alert-ikkunat. Laji näkyy kuvakkeen muodosta ja sanamuodosta, ei väristä yksin. Painikkeet näyttävät oikean ilmoituksen sivun yläreunassa (ui.js: notify ja alert-sovitin).</p>
+  <p class="tn-lead">Ilmoitus korvaa natiivit alert-ikkunat. Laji näkyy kuvakkeen muodosta ja sanamuodosta, ei väristä yksin. Painikkeet näyttävät oikean ilmoituksen sivun yläreunassa (ui.js: notify).</p>
   <div class="tn-row">
-    <button class="faust-btn" data-notify="success">Onnistui (4 s)</button><button class="faust-btn" data-notify="info">Tieto (4 s)</button><button class="faust-btn" data-notify="warning">Huomio (8 s)</button><button class="faust-btn" data-notify="error">Virhe (pysyy)</button><button class="faust-btn" data-notify="busy">Käynnissä</button><button class="faust-btn" data-notify="alert1">alert('Testi')</button><button class="faust-btn" data-notify="alert2">kaksirivinen alert</button>
+    <button class="faust-btn" data-notify="success">Onnistui (4 s)</button><button class="faust-btn" data-notify="info">Tieto (4 s)</button><button class="faust-btn" data-notify="warning">Huomio (8 s)</button><button class="faust-btn" data-notify="error">Virhe (pysyy)</button><button class="faust-btn" data-notify="busy">Käynnissä</button>
   </div>
   <div class="tn-cols tn-cols--2" style="margin-top: var(--sp-4)">
     <div class="tn-stack">
@@ -979,8 +978,6 @@ Nyt: 13 450 sanaa</span></div>
       <div class="faust-panel__foot"><span class="faust-meta">⇧⌘K tai Esc kätkee paneelin · Enter lähettää</span></div>
     </div></div>
     <div class="tn-stack">
-      <span class="tn-cap">.faust-fab: lepo ja avattu</span>
-      <div class="tn-row"><button class="faust-fab" aria-label="Avaa erillinen keskustelu"><i data-icon="star8" data-size="16"></i></button><button class="faust-fab" aria-label="Keskustelu on auki" aria-expanded="true"><i data-icon="star8" data-size="16"></i></button></div>
       <span class="tn-cap">.faust-focus-exit.faust-btn</span>
       <button class="faust-btn faust-btn--quiet faust-focus-exit">Poistu keskittymistilasta</button>
     </div>
@@ -1094,25 +1091,7 @@ Nyt: 13 450 sanaa</span></div>
     <footer class="faust-footer faust-statusbar"><span class="faust-statusbar__start">Saapuminen</span><span class="faust-statusbar__end"><span class="faust-savestate" data-state="saved"><span class="faust-dot"></span>Tallennettu</span><span class="faust-stat"><b>186</b> sanaa</span><span class="faust-stat">yhteensä <b>326</b> sanaa</span><span data-priority="3">esimerkki.faust</span></span></footer>
     <div class="faust-focus-drag" id="tn-drag" hidden></div>
     <button class="faust-btn faust-btn--quiet faust-focus-exit" id="tn-exit" hidden>Poistu keskittymistilasta</button>
-    <button class="faust-fab" aria-label="Avaa erillinen keskustelu"><i data-icon="star8" data-size="16"></i></button>
   </div></div>
-</section>
-
-<!-- ======================= 16 Legacy bridge ======================= -->
-<section class="tn-section" id="silta" data-title="Silta">
-  <h2>Vanhan merkkauksen silta (osio 16)</h2>
-  <p class="tn-lead">Tämän päivän inline-tyylitetty merkkaus sellaisena kuin React sen kirjoittaa. Sillan säännöt L1, S3 ja S4 antavat sille luettavat värit ja tilat, kunnes alue siirtyy luokkiin.</p>
-  <div class="tn-row"><span class="tn-cap tn-cap--w">L1, S4</span>
-    <button style="background: transparent; border: 1px solid var(--border-color); color: var(--text); padding: 4px 12px; border-radius: 4px; font-family: &quot;IBM Plex Mono&quot;; font-size: 12px;">Avaa</button>
-    <button disabled style="background: var(--bronze); border: none; color: rgb(0, 0, 0); padding: 8px 16px; border-radius: 4px; font-family: &quot;IBM Plex Mono&quot;; font-size: 12px; opacity: 0.5;">Ei käytössä</button>
-    <button disabled aria-busy="true" style="background: rgb(255, 68, 68); border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 12px;">ääni</button>
-    <button style="background: transparent; border: none; color: var(--text-3); padding: 4px 8px; font-family: &quot;IBM Plex Mono&quot;; font-size: 11px;">text-3 nousee osoitettaessa</button>
-  </div>
-  <div class="tn-row"><span class="tn-cap tn-cap--w">S3</span>
-    <input type="text" value="vanha kenttä" style="padding: 8px 10px; background: var(--bg-2); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text); font-family: &quot;IBM Plex Mono&quot;; font-size: 13px;">
-    <select style="padding: 6px 8px; background: var(--bg-2); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text); font-family: &quot;IBM Plex Mono&quot;; font-size: 12px;"><option>vanha valinta</option></select>
-    <input type="text" value="virhe" aria-invalid="true" style="padding: 8px 10px; background: var(--bg-2); border: 1px solid var(--error); border-radius: 4px; color: var(--text); font-family: &quot;IBM Plex Mono&quot;; font-size: 13px;">
-  </div>
 </section>
 
 <!-- ======================= Icons ======================= -->
@@ -1154,7 +1133,7 @@ Nyt: 13 450 sanaa</span></div>
 
 <script type="module">
 import { Icon, SIGILS, GLYPHS } from './src/components/icons.js';
-import { ToastHost, notify, installAlertShim } from './src/components/ui.js';
+import { ToastHost, notify } from './src/components/ui.js';
 
 const e = React.createElement;
 const root = document.documentElement;
@@ -1284,17 +1263,14 @@ window.addEventListener('resize', markCurrent);
 measureTop();
 markCurrent();
 
-// The real notification host and the alert shim
+// The real notification host
 ReactDOM.createRoot(document.getElementById('tn-toasts')).render(e(ToastHost));
-installAlertShim();
 const SHOW = {
   success: () => notify('success', 'Projekti tallennettu', { detail: '~/Kirjat/esimerkki.faust' }),
   info: () => notify('info', 'Kaikki muutokset on tallennettu'),
   warning: () => notify('warning', 'Valitse ensin tekstistä kohta, jonka haluat kirjoittaa uudelleen'),
   error: () => notify('error', 'Vienti epäonnistui', { detail: 'Tiedostoon ei voitu kirjoittaa.', action: { label: 'Yritä uudelleen', onClick: () => {} } }),
-  busy: () => { const task = notify('busy', 'Tekoäly kirjoittaa lukua…'); let value = 0; const timer = setInterval(() => { value += 10; task.update({ progress: value }); if (value >= 100) { clearInterval(timer); task.close(); notify('success', 'Luku on valmis'); } }, 400); },
-  alert1: () => window.alert('Testi'),
-  alert2: () => window.alert('Vertailu: "Ennen editointia"\n\nTilannekuva: 12 000 sanaa\nNyt: 13 450 sanaa')
+  busy: () => { const task = notify('busy', 'Tekoäly kirjoittaa lukua…'); let value = 0; const timer = setInterval(() => { value += 10; task.update({ progress: value }); if (value >= 100) { clearInterval(timer); task.close(); notify('success', 'Luku on valmis'); } }, 400); }
 };
 for (const button of document.querySelectorAll('[data-notify]')) button.addEventListener('click', SHOW[button.dataset.notify]);
 
