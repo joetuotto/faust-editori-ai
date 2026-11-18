@@ -16,7 +16,10 @@
  */
 
 const CONTEXT_CHARS = 16;
+// Characters of old plus new text that one call of the word diff may get in a rebase
 const REBASE_DIFF_LIMIT = 200000;
+// Over that limit the lines are aligned first: at most this many lines put in or taken out
+const LINE_EDIT_LIMIT = 2000;
 
 const VIEW_MODES = ['changes', 'original', 'new'];
 
@@ -237,11 +240,129 @@ function isEditScript(changes, a, b) {
   return built + a.slice(pos) === b;
 }
 
+// Lines with their line break; the last one without
+function linesOf(text) {
+  const lines = [];
+  let start = 0;
+  while (start < text.length) {
+    const lineBreak = text.indexOf('\n', start);
+    const end = lineBreak === -1 ? text.length : lineBreak + 1;
+    lines.push({ text: text.slice(start, end), start });
+    start = end;
+  }
+  return lines;
+}
+
+/**
+ * Myers' greedy O(ND) alignment of two lists of lines, at most `cap` lines put
+ * in or taken out. The blocks that differ, as [aFrom, aTo, bFrom, bTo] in line
+ * indexes, or null over the cap.
+ */
+function alignLines(a, b, cap) {
+  let pre = 0;
+  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
+  let suf = 0;
+  while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
+  const N = a.length - pre - suf;
+  const M = b.length - pre - suf;
+  if (N === 0 && M === 0) return [];
+  if (N === 0 || M === 0) return [[pre, pre + N, pre, pre + M]];
+
+  const max = Math.min(N + M, cap);
+  const offset = max + 1;
+  const v = new Int32Array(2 * max + 3);
+  const trace = [];
+  let found = -1;
+  outer:
+  for (let d = 0; d <= max; d++) {
+    // The state after round d - 1, entries k = -d-1 .. d+1, for going back
+    trace.push(v.slice(offset - d - 1, offset + d + 2));
+    for (let k = -d; k <= d; k += 2) {
+      let x = (k === -d || (k !== d && v[offset + k - 1] < v[offset + k + 1])) ? v[offset + k + 1] : v[offset + k - 1] + 1;
+      let y = x - k;
+      while (x < N && y < M && a[pre + x] === b[pre + y]) { x++; y++; }
+      v[offset + k] = x;
+      if (x >= N && y >= M) { found = d; break outer; }
+    }
+  }
+  if (found === -1) return null;
+
+  // Back from (N, M): the equal runs [x, y, length] of every round
+  const runs = [];
+  let x = N;
+  let y = M;
+  for (let d = found; d > 0; d--) {
+    const prev = trace[d];
+    const at = (k) => prev[k + d + 1];
+    const k = x - y;
+    const down = k === -d || (k !== d && at(k - 1) < at(k + 1));
+    const prevK = down ? k + 1 : k - 1;
+    const prevX = at(prevK);
+    const prevY = prevX - prevK;
+    const midX = down ? prevX : prevX + 1;
+    const midY = down ? prevY + 1 : prevY;
+    if (x > midX) runs.push([midX, midY, x - midX]);
+    x = prevX;
+    y = prevY;
+  }
+  if (x > 0) runs.push([0, 0, x]);
+  runs.reverse();
+
+  const blocks = [];
+  let ax = 0;
+  let by = 0;
+  for (const [rx, ry, length] of runs) {
+    if (rx > ax || ry > by) blocks.push([pre + ax, pre + rx, pre + by, pre + ry]);
+    ax = rx + length;
+    by = ry + length;
+  }
+  if (ax < N || by < M) blocks.push([pre + ax, pre + N, pre + by, pre + M]);
+  return blocks;
+}
+
+/**
+ * The edit script of a region too large for one call of the word diff (the
+ * undo of "Hyväksy kaikki" in a long chapter): whole lines are aligned first,
+ * then the word diff runs inside each block of lines that differs and is
+ * within REBASE_DIFF_LIMIT. A larger block stays one replacement. With as many
+ * lines on both sides and too many to align, line i is compared with line i.
+ * Null when the lines cannot be aligned at all.
+ */
+function lineAlignedScript(oldPart, newPart, diff) {
+  const linesA = linesOf(oldPart);
+  const linesB = linesOf(newPart);
+  let blocks = alignLines(linesA.map(line => line.text), linesB.map(line => line.text), LINE_EDIT_LIMIT);
+  if (!blocks && linesA.length === linesB.length) {
+    blocks = [];
+    linesA.forEach((line, i) => { if (line.text !== linesB[i].text) blocks.push([i, i + 1, i, i + 1]); });
+  }
+  if (!blocks) return null;
+
+  const startA = (i) => (i < linesA.length ? linesA[i].start : oldPart.length);
+  const startB = (i) => (i < linesB.length ? linesB[i].start : newPart.length);
+  const script = [];
+  for (const [a0, a1, b0, b1] of blocks) {
+    const from = startA(a0);
+    const to = startA(a1);
+    const before = oldPart.slice(from, to);
+    const after = newPart.slice(startB(b0), startB(b1));
+    let fine = null;
+    if (before.length + after.length <= REBASE_DIFF_LIMIT) {
+      try { fine = diff(before, after); } catch { fine = null; }
+      if (!isEditScript(fine, before, after)) fine = null;
+    }
+    if (fine) fine.forEach(change => script.push({ from: change.from + from, to: change.to + from, insert: change.insert }));
+    else script.push({ from, to, insert: after });
+  }
+  return script;
+}
+
 /**
  * How newText is reached from oldText: `coarse` is the one range between the
  * first and the last difference, `fineMap` the word-level mapping inside it
- * (only when something tracked lies there, a diff function was given and the
- * region is small enough).
+ * (only when something tracked lies there and a diff function was given). A
+ * region larger than REBASE_DIFF_LIMIT is aligned by lines first, so the word
+ * diff only sees the blocks that changed.
  */
 function planRebase(oldText, newText, diff, somethingTouched) {
   const coarse = singleChange(oldText, newText);
@@ -250,11 +371,15 @@ function planRebase(oldText, newText, diff, somethingTouched) {
   let fineMap = null;
 
   const size = (coarse.to - coarse.from) + coarse.insert.length;
-  if (typeof diff === 'function' && size <= REBASE_DIFF_LIMIT && somethingTouched(coarseMap)) {
+  if (typeof diff === 'function' && somethingTouched(coarseMap)) {
     const oldPart = oldText.slice(coarse.from, coarse.to);
     let script = null;
     // A throwing diff must not break the editor's state update: fall back to the coarse range
-    try { script = diff(oldPart, coarse.insert); } catch { script = null; }
+    if (size <= REBASE_DIFF_LIMIT) {
+      try { script = diff(oldPart, coarse.insert); } catch { script = null; }
+    } else {
+      script = lineAlignedScript(oldPart, coarse.insert, diff);
+    }
     if (isEditScript(script, oldPart, coarse.insert)) {
       fine = script.map(change => ({
         from: change.from + coarse.from,
@@ -602,6 +727,15 @@ function isCurrent(items, block, id) {
 function noticeFor(state, kind, count) {
   const showing = state.notice && state.notice.kind === kind ? state.notice.count : 0;
   return { kind, count: showing + count };
+}
+
+// A "dropped" notice less the suggestions that came back since (an undo of the edit that dropped
+// them): null when none of them is gone any more, so the notification does not outlive its truth
+function countOff(notice, broughtBack) {
+  const reason = !notice ? null : notice.kind === 'dropped-edit' ? 'edited' : notice.kind === 'dropped-external' ? 'external' : null;
+  const back = reason ? broughtBack[reason] || 0 : 0;
+  if (!back) return notice;
+  return notice.count > back ? { kind: notice.kind, count: notice.count - back } : null;
 }
 
 // --- The insert block -------------------------------------------------------
@@ -1061,6 +1195,7 @@ function reduceRebase(state, action) {
   const free = (from, to) => !pendingNow.some(p => touches(from, to, p.from, p.to)) &&
     !(blockPending() && touches(from, to, block.pos, block.pos));
   const pushedAside = (entry) => entry.reason === 'edited' || entry.reason === 'external';
+  const broughtBack = { edited: 0, external: 0 };
 
   items = items.map((item, index) => {
     const before = state.items[index];
@@ -1073,6 +1208,7 @@ function reduceRebase(state, action) {
     if (!touched && placed === item) return item;
     if (!pushedAside(before) || !stillMatches(newText, placed) || !free(placed.from, placed.to)) return placed;
     const { reason, ...rest } = placed;
+    broughtBack[before.reason] += 1;
     const restored = { ...rest, state: 'pending' };
     pendingNow.push(restored);
     restoredIds.push(item.id);
@@ -1089,6 +1225,7 @@ function reduceRebase(state, action) {
       stillMatches(newText, { from: block.pos, to: block.pos, original: '', context: block.context }) &&
       !pendingNow.some(p => touches(block.pos, block.pos, p.from, p.to))) {
     const { reason, ...rest } = block;
+    broughtBack[reason] += 1;
     block = { ...rest, state: 'pending' };
     restoredIds.push(block.id);
   }
@@ -1104,8 +1241,10 @@ function reduceRebase(state, action) {
   let currentId = state.currentId;
   if (!isCurrent(items, block, currentId)) currentId = currentFrom(items, block, plan.coarseMap.mapPos(plan.coarse.from, -1));
 
-  const patch = { items, block, ranges, currentId };
-  if (droppedIds.length) patch.notice = noticeFor(state, 'dropped-external', droppedIds.length);
+  // What this change brought back is no longer gone: the notice that said so counts it off (C-L7)
+  const notice = countOff(state.notice, broughtBack);
+  const patch = { items, block, ranges, currentId, notice };
+  if (droppedIds.length) patch.notice = noticeFor({ notice }, 'dropped-external', droppedIds.length);
 
   return changed(state, patch, droppedIds.length
     ? { type: 'dropped', ids: droppedIds, reason: 'external', restored: restoredIds }

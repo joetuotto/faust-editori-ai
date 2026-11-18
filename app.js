@@ -17,13 +17,13 @@ import { BookBriefFields, ChapterNoAIField, useNoAIGuard } from './src/component
 import { normalizeContextFields, MESSAGES } from './src/services/ai/contextBuilder.js';
 import { modelLabel } from './src/services/format.fi.js';
 // failureReason: the reason in '<Toiminto> epäonnistui: <syy>.'; asIsNotice: a stop, the switch and
-// the wire guard shown as they are (R-21); bookRunPlan: Magnum Opus without "Ei tekoälylle" chapters
-import { failureReason, asIsNotice, bookRunPlan } from './src/services/ai/oldPaths.js';
+// the wire guard shown as they are (R-21); bookRunPlan: Magnum Opus without "Ei tekoälylle" chapters;
+// sentTarget / placeSentText: an old path's result goes back to the text it was made for (R-18, R-19)
+import { failureReason, asIsNotice, bookRunPlan, sentTarget, placeSentText } from './src/services/ai/oldPaths.js';
 // The suggestion layer, the undo history from the first keystroke and the usage log (stage I-03)
 import { SuggestionBar } from './src/components/SuggestionBar.js';
 import { AiUsageLogSection } from './src/components/AiUsageLogSection.js';
 import { createSuggestionController } from './src/services/suggestions/suggestionController.js';
-import { relocateTarget } from './src/editor/suggestionModel.js';
 import { CommandManager } from './src/utils/CommandManager.js';
 import { wordDiff, changeRatio, diffSegments, changeStats } from './src/editor/wordDiff.js';
 import { appendRow as appendAiLogRow, createLog as createAiLog, decisionRow } from './src/services/ai/usageLog.js';
@@ -840,7 +840,8 @@ function FAUSTApp() {
   if (!suggestionsRef.current) suggestionsRef.current = createSuggestionController({ wordDiff, rawDiff: (a, b) => wordDiff(a, b, { raw: true }), changeRatio });
   const projectEpochRef = useRef(0);
   const [projectEpoch, setProjectEpoch] = useState(0);
-  // What the old paths SENT to the model ({ chapterId, text, start, end }), so their result goes back there
+  // What the old paths SENT to the model (sentTarget: chapter, text, offsets, project epoch), stored
+  // together with the result it answers, so that result goes back there and nowhere else
   const oldPathTargetRef = useRef({ voice: null, rewrite: null, liminal: null });
 
   // AI Modules refs
@@ -1741,9 +1742,10 @@ function FAUSTApp() {
 
   // The word comparison of the voice edit and Versioiden vertailu: wordDiff.js, the tested one (BUG-20, R-20)
   const computeTextDiff = (oldText, newText) => diffSegments(oldText || '', newText || '');
-  // Lisätty 12 · Poistettu 5 · Sanamäärä +7 (M C.5 row 42, C.11 row 25): words added and removed, and the count's change
-  const diffCounts = (oldText, newText, delta) => {
-    const stats = changeStats(oldText || '', newText || '');
+  // Lisätty 12 · Poistettu 5 · Sanamäärä +7 (M C.5 row 42, C.11 row 25), all three from one count of the
+  // words (changeStats of the two texts), so that Lisätty minus Poistettu is always the Sanamäärä
+  const diffCounts = (stats) => {
+    const delta = stats.revisedWords - stats.originalWords;
     return e('span', { className: 'faust-num' },
       e('span', { className: 'faust-diff__count faust-diff__count--ins faust-diff__count--named' }, 'Lisätty ' + stats.addedWords.toLocaleString('fi-FI')), ' · ',
       e('span', { className: 'faust-diff__count faust-diff__count--del faust-diff__count--named' }, 'Poistettu ' + stats.removedWords.toLocaleString('fi-FI')), ' · ',
@@ -2123,6 +2125,9 @@ function FAUSTApp() {
     getAIClient().cancelAll();
     projectEpochRef.current += 1; setProjectEpoch(projectEpochRef.current);
     suggestionsRef.current.reset();
+    // The old paths' results on screen (voice, Liminal Engine, Kirjoita tekoälyn kanssa) and their targets
+    oldPathTargetRef.current = { voice: null, rewrite: null, liminal: null };
+    setVoiceDiffView(null); setAiSuggestion(null); setContinuePreview('');
     setProject(data);
     setCurrentFilePath(filePath || null);
     setActiveChapterId(data.structure[0]?.id || 'chapter-1');
@@ -3814,6 +3819,8 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
       return;
     }
 
+    // A new voice edit replaces the comparison of the previous one
+    setVoiceDiffView(null);
     try {
       voiceOwnerRef.current = 'editor';
       setVoiceState('listening');
@@ -3838,10 +3845,13 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         }
 
         // Send to AI; the result goes back to what was sent, wherever it stands then
-        oldPathTargetRef.current.voice = { chapterId: activeChapter.id, text: textSelection.text, start: textSelection.start, end: textSelection.end };
+        const target = sentTarget(activeChapter.id, textSelection, projectEpochRef.current);
         const diffResult = await editByVoice(textSelection.text, result.transcript);
 
         if (diffResult) {
+          // A result for a project that is no longer open is not shown (rule 14)
+          if (target.epoch !== projectEpochRef.current) return;
+          oldPathTargetRef.current.voice = target;
           setVoiceDiffView(diffResult);
         } else {
           // editByVoice left the button in its error state: back to idle as after any error
@@ -3859,13 +3869,14 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     }
   };
 
-  // The text an old path sent is found again: at its stored place, else at its one occurrence (5.7)
+  // The text an old path sent is found again: at its stored place, else at its one occurrence (5.7);
+  // never in another chapter or another project
   const OLD_PATH_CHANGED = 'Teksti on muuttunut ehdotuksen luomisen jälkeen. Muutosta ei tehty.';
   const placeOldPathText = (target, revised) => {
     const liveText = editorRef.current ? editorRef.current.value : activeChapter.content;
-    const place = target && target.chapterId === activeChapter.id ? relocateTarget(liveText, target) : null;
-    if (!place) { notify('warning', OLD_PATH_CHANGED); return null; }
-    return liveText.slice(0, place.from) + revised + liveText.slice(place.to);
+    const placed = placeSentText(liveText, target, { chapterId: activeChapter.id, epoch: projectEpochRef.current }, revised);
+    if (placed === null) notify('warning', OLD_PATH_CHANGED);
+    return placed;
   };
 
   // Accept voice edit: the ehdotus replaces the text that was sent, not the selection of the moment
@@ -3899,6 +3910,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     setContinuePreview('');
 
     try {
+      const epoch = projectEpochRef.current;
       const result = await hybridFlowRef.current.continueFromText(
         activeChapterIndex,
         activeChapter.content,
@@ -3907,6 +3919,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
           mode: project.ai.currentMode
         }
       );
+      if (epoch !== projectEpochRef.current) return;   // another project is open now (rule 14)
 
       if (result.success) {
         setContinuePreview(result.continuation);
@@ -3974,6 +3987,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     setContinuePreview('');
 
     try {
+      const epoch = projectEpochRef.current;
       const result = await hybridFlowRef.current.expandOutline(
         activeChapterIndex,
         hybridInput,
@@ -3983,6 +3997,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
           mode: project.ai.currentMode
         }
       );
+      if (epoch !== projectEpochRef.current) return;   // another project is open now (rule 14)
 
       if (result.success) {
         setContinuePreview(result.content);
@@ -4013,14 +4028,16 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     setContinuePreview('');
 
     try {
-      oldPathTargetRef.current.rewrite = { chapterId: activeChapter.id, text: textSelection.text, start: textSelection.start, end: textSelection.end };
+      const target = sentTarget(activeChapter.id, textSelection, projectEpochRef.current);
       const result = await hybridFlowRef.current.rewriteSection(
         textSelection.text,
         hybridInput,
         { mode: project.ai.currentMode }
       );
+      if (target.epoch !== projectEpochRef.current) return;   // another project is open now (rule 14)
 
       if (result.success) {
+        oldPathTargetRef.current.rewrite = target;
         setContinuePreview(result.rewritten);
         console.log('[HybridFlow] Section rewritten');
       } else {
@@ -4049,6 +4066,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     setContinuePreview('');
 
     try {
+      const epoch = projectEpochRef.current;
       const length = hybridTargetWords <= 600 ? 'short' : hybridTargetWords >= 1500 ? 'long' : 'medium';
       const result = await hybridFlowRef.current.generateScene(
         activeChapterIndex,
@@ -4059,6 +4077,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
           mode: project.ai.currentMode
         }
       );
+      if (epoch !== projectEpochRef.current) return;   // another project is open now (rule 14)
 
       if (result.success) {
         setContinuePreview(result.scene);
@@ -4309,7 +4328,9 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     const userMessage = aiChatInput.trim();
     // In a chapter marked "Ei tekoälylle" the message goes without the selection
     const selectedText = chapterNoAI ? '' : (textSelection?.text || '');
-    if (selectedText) oldPathTargetRef.current.liminal = { chapterId: activeChapter.id, text: textSelection.text, start: textSelection.start, end: textSelection.end };
+    // What is sent with the message; the ehdotus shown for an earlier selection goes, as this one replaces it
+    const target = selectedText ? sentTarget(activeChapter.id, textSelection, projectEpochRef.current) : null;
+    if (target) setAiSuggestion(null);
 
     // Add user message to chat
     setAiChatMessages(prev => [...prev, { role: 'user', content: userMessage, selectedText }]);
@@ -4366,8 +4387,9 @@ ${contextPrompt}`;
           console.log('[Chat Memory] Saved important message');
         }
 
-        // If there was selected text, show as suggestion
-        if (selectedText) {
+        // If there was selected text, show as suggestion (not in a project opened meanwhile, rule 14)
+        if (target && target.epoch === projectEpochRef.current) {
+          oldPathTargetRef.current.liminal = target;
           setAiSuggestion({
             original: selectedText,
             revised: responseText,
@@ -6209,24 +6231,32 @@ ${contextPrompt}`;
 
             // Voice comparison (after a voice edit has produced an ehdotus): the floating result block
             const voiceCard = voiceDiffView ? (() => {
-              const origWords = (voiceDiffView.original || '').split(/\s+/).filter(Boolean).length;
-              const newWords = (voiceDiffView.revised || '').split(/\s+/).filter(Boolean).length;
-              const delta = newWords - origWords;
+              // The column heads and the counts read one count of the words
+              const stats = changeStats(voiceDiffView.original || '', voiceDiffView.revised || '');
 
               return e('div', { className: 'faust-result faust-result--floating' },
                 e('div', { className: 'faust-result__head' },
                   e('span', { className: 'faust-label' }, 'Ehdotus'),
-                  diffCounts(voiceDiffView.original, voiceDiffView.revised, delta)
+                  diffCounts(stats)
                 ),
                 e('div', { className: 'faust-result__context' }, `Puhuttu ohje: ”${voiceDiffView.instruction}”`),
+                // The legend of M C.11 row 28, worded for the two columns of this comparison (R-20)
+                e('div', { className: 'faust-meta faust-diff__legend' },
+                  e('ins', { className: 'faust-mark faust-mark--ins' }, 'Vihreä'), ': on ehdotuksessa, mutta ei alkuperäisessä tekstissä. ',
+                  e('del', { className: 'faust-mark faust-mark--del' }, 'Punainen yliviivattu'), ': on alkuperäisessä tekstissä, mutta ei ehdotuksessa.'),
                 // The word comparison in the shared renderer (R-87): the old text with its deletions
                 // (del.faust-mark--del), the ehdotus with its insertions (ins.faust-mark--ins)
                 e('div', { className: 'faust-result__body' },
                   e(DiffView, {
                     mode: 'split',
                     pieces: computeTextDiff(voiceDiffView.original, voiceDiffView.revised),
-                    before: e('span', null, 'Alkuperäinen · ' + count(origWords, 'sana')),
-                    after: e('span', null, 'Ehdotus · ' + count(newWords, 'sana'))
+                    // The heads as in Versioiden vertailu: the name in the interface face, the count beside it
+                    before: e(React.Fragment, null,
+                      e('span', { className: 'faust-ui' }, 'Alkuperäinen'),
+                      e('span', { className: 'faust-diff__count' }, count(stats.originalWords, 'sana'))),
+                    after: e(React.Fragment, null,
+                      e('span', { className: 'faust-ui' }, 'Ehdotus'),
+                      e('span', { className: 'faust-diff__count' }, count(stats.revisedWords, 'sana')))
                   })
                 ),
                 e('div', { className: 'faust-result__actions' },
@@ -8450,9 +8480,10 @@ ${contextPrompt}`;
       const compVersion = ((activeChapter && activeChapter.versions) || []).find(v => v.id === comparisonVersionId);
       const compContent = (compVersion && compVersion.content) || '';
       const currentContent = (activeChapter && activeChapter.content) || '';
+      // The heads count as Luvun versiot does (one count with the list); the line under the title
+      // counts the words of the comparison, so Lisätty minus Poistettu is its Sanamäärä
       const currentWords = currentContent.split(/\s+/).filter(Boolean).length;
       const compWords = versionWords(compVersion || { content: compContent });
-      const wordDelta = currentWords - compWords;
       const chapterName = (activeChapter && activeChapter.title) || 'Nimetön luku';
       const compNo = String(comparisonVersionId).replace(/\D/g, '') || String(comparisonVersionId);
       const compDate = compVersion ? new Date(compVersion.timestamp) : null;
@@ -8476,7 +8507,7 @@ ${contextPrompt}`;
       return e(Dialog, {
         title: 'Versioiden vertailu – ' + chapterName,
         // Lisätty 12 · Poistettu 5 · Sanamäärä +7 (M C.11 row 25, BUG-20)
-        sub: diffCounts(compContent, currentContent, wordDelta),
+        sub: diffCounts(changeStats(compContent, currentContent)),
         size: 'xl',
         // Two columns of the word comparison (R-20): the version with its deletions, the text with its insertions
         bodyMode: 'flush',

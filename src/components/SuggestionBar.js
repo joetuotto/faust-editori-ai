@@ -173,11 +173,15 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor }) 
   const accept = () => { if (!controller.acceptCurrent()) controller.step(1); };
   const reject = () => { if (!controller.rejectCurrent()) controller.step(1); };
   const dialogue = info.dialoguePending > 0;
+  // Only dialogue suggestions left: a bulk accept would take none of them (M B.8: a reason, not a dead click)
+  const onlyDialogue = dialogue && info.dialoguePending >= pending;
   const choose = (run) => () => { more.close(); run(); };
 
+  // Every item starts with the slot of the view items' check, so all labels share one left edge (V 4.9)
+  const slot = () => e('span', { className: 'faust-menu__slot', 'aria-hidden': true });
   const menuItem = (label, title, onClick) => e('button', {
     type: 'button', className: 'faust-menu__item', role: 'menuitem', title, onMouseDown: keep, onClick
-  }, label);
+  }, slot(), label);
 
   const menu = more.open && e(Popover, {
     ...more.popoverProps,
@@ -200,7 +204,7 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor }) 
       onMouseDown: keep,
       onClick: choose(() => controller.setView(view.mode))
     },
-      info.viewMode === view.mode ? icons.check({ size: 14 }) : e('span', { className: 'faust-menu__slot', 'aria-hidden': true }),
+      info.viewMode === view.mode ? icons.check({ size: 14 }) : slot(),
       view.label
     )),
     info.elsewhere.length > 0 && e('div', { className: 'faust-menu__sep', role: 'separator' }),
@@ -260,9 +264,12 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor }) 
         type: 'button',
         className: 'faust-btn faust-btn--quiet faust-btn--sm faust-suggestbar__all',
         'aria-label': 'Hyväksy kaikki',
-        title: dialogue
-          ? 'Hyväksy tämän luvun ehdotukset, paitsi vuorosanojen. Yksi kumoaminen palauttaa ne.'
-          : 'Hyväksy kaikki tämän luvun ehdotukset. Yksi kumoaminen palauttaa ne.',
+        disabled: onlyDialogue,
+        title: onlyDialogue
+          ? 'Käy vuorosanojen ehdotukset läpi yksitellen.'
+          : dialogue
+            ? 'Hyväksy tämän luvun ehdotukset, paitsi vuorosanojen. Yksi kumoaminen palauttaa ne.'
+            : 'Hyväksy kaikki tämän luvun ehdotukset. Yksi kumoaminen palauttaa ne.',
         onMouseDown: keep,
         onClick: () => controller.acceptAll()
       },

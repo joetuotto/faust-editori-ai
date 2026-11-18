@@ -850,6 +850,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-diff__count--named::before { content: none; }
 /* Versioiden vertailu: the one legend line above the two columns (M C.11 row 28) */
 .faust-diff__legend { padding: var(--sp-3) var(--dialog-pad) 0; }
+/* The voice comparison's legend: under the spoken instruction, on the card's own inset */
+.faust-result .faust-diff__legend { padding: var(--sp-2) var(--sp-4) 0; }
+/* A long unbroken word wraps inside its column, as it did in the prose columns the renderer replaced */
+.faust-diff__col { overflow-wrap: break-word; }
 /* end I-03 */
 
 /* ============ 13 Finding list, story tree, import preview ============ */

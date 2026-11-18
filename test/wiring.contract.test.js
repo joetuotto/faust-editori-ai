@@ -72,7 +72,7 @@ const MODULES = {
   'src/services/project/importPlan.js': ['buildRows', 'hasOrderNumbers', 'applyStripNumbers', 'moveRow', 'renameRow', 'setRowIncluded', 'setAllIncluded', 'resetOrder', 'isReordered', 'summarizeRows', 'summaryLine', 'importButtonLabel', 'rowExcerpt', 'targetHints', 'noticeLines', 'isBlankProject', 'buildSelection', 'buildChapterDocs', 'applyImport', 'replaceBlockedReason'],
   'src/services/project/snapshots.js': ['buildSnapshot', 'addAutoSnapshot', 'pruneBulkSnapshots'],
   // I-02 review: what the old AI paths of app.js share
-  'src/services/ai/oldPaths.js': ['failureReason', 'asIsNotice', 'bookRunPlan'],
+  'src/services/ai/oldPaths.js': ['failureReason', 'asIsNotice', 'bookRunPlan', 'sentTarget', 'placeSentText'],
   // contracts.md 2.2: existing files that a stage extended (I-01, I-03)
   'utils/manuscript.js': ['decodeText', 'splitIntoChapters', 'importDocument'],
   'src/editor/textTools.js': ['WORD_CHAR', 'TODO_PATTERN_SOURCE', 'UNDERLINE_PATTERN_SOURCE', 'continueList', 'buildSearchPattern', 'countWords'],

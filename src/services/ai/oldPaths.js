@@ -4,14 +4,17 @@
  * Kept out of the component so that Jest reads it: the reason in
  * '<Toiminto> epäonnistui: <syy>.', the sentences that are shown as they are
  * instead of a failure (a stop, the "Tekoäly pois" switch, the "Ei tekoälylle"
- * wire guard), and the plan of a whole-book run of Magnum Opus that leaves the
- * chapters marked "Ei tekoälylle" out.
+ * wire guard), the plan of a whole-book run of Magnum Opus that leaves the
+ * chapters marked "Ei tekoälylle" out, and the guard that sends a result of
+ * voice editing, the Hybrid rewrite or the Liminal Engine back to the text it
+ * was made for (contracts.md 10.2 and 11.2 C, rule 14).
  *
  * Pure functions, no DOM (test/services/oldPaths.test.js).
  */
 
 const { AI_OFF_SENTENCE } = require('../format.fi.js');
 const { reasonText } = require('./aiClient.js');
+const { relocateTarget } = require('../../editor/suggestionModel.js');
 
 /**
  * The reason in '<Toiminto> epäonnistui: <syy>.' (menu spec B.12): one trailing
@@ -87,4 +90,30 @@ function bookRunPlan(project) {
   return { runs, written, skipped, lent };
 }
 
-module.exports = { failureReason, asIsNotice, bookRunPlan };
+/**
+ * What an old path sent to the model: the chapter, the selected text and its
+ * offsets, and the project epoch (contracts.md 4.4). The caller keeps it with
+ * the result that answers it, never before the answer: a newer request must not
+ * re-point an older result that is still on screen. Null without a selection.
+ * @returns {{ chapterId, text: string, start: number, end: number, epoch }|null}
+ */
+function sentTarget(chapterId, selection, epoch) {
+  if (!selection || typeof selection.text !== 'string' || selection.text === '') return null;
+  return { chapterId, text: selection.text, start: selection.start, end: selection.end, epoch };
+}
+
+/**
+ * The chapter text with `revised` in place of the text that was sent, or null
+ * when the result cannot go back: it belongs to another project or another
+ * chapter, or the sent text stands neither at its stored offsets nor exactly
+ * once elsewhere (relocateTarget). `here` is { chapterId, epoch } of the open chapter.
+ */
+function placeSentText(liveText, target, here, revised) {
+  if (!target || !here || target.epoch !== here.epoch || target.chapterId !== here.chapterId) return null;
+  const text = String(liveText == null ? '' : liveText);
+  const place = relocateTarget(text, target);
+  if (!place) return null;
+  return text.slice(0, place.from) + String(revised == null ? '' : revised) + text.slice(place.to);
+}
+
+module.exports = { failureReason, asIsNotice, bookRunPlan, sentTarget, placeSentText };

@@ -501,6 +501,31 @@ describe('rebaseSuggestions', () => {
     kept.forEach(item => expect(newText.slice(item.from, item.to)).toBe(item.original));
   });
 
+  test('a region above REBASE_DIFF_LIMIT is aligned by lines first: the word diff sees only the lines that changed', () => {
+    const line = (i) => `Rivi ${i}: lumi satoi hiljaa kadulle.\n`;
+    const lines = Array.from({ length: 6000 }, (_, i) => line(i));
+    const oldText = lines.join('');
+    const next = lines.slice();
+    next[0] = 'Ensimmäinen rivi muuttui.\n';
+    next[3000] = line(3000).replace('lumi', 'vesi');
+    next.splice(5999, 1, 'Viimeinen rivi muuttui.\n', 'Ja yksi uusi rivi.\n');
+    const newText = next.join('');
+    const word = (i, w, insert) => {
+      const from = oldText.indexOf(line(i)) + line(i).indexOf(w);
+      return { from, to: from + w.length, insert, original: w };
+    };
+    const list = M.createSuggestions(oldText, [word(2000, 'hiljaa', 'äänettömästi'), word(3000, 'lumi', 'räntä'), word(4500, 'kadulle', 'torille')], { groupId: 'g1' }).items;
+    const diff = jest.fn(wordDiff);
+    const { kept, dropped } = M.rebaseSuggestions(list, oldText, newText, diff);
+
+    expect(M.singleChange(oldText, newText).to - M.singleChange(oldText, newText).from).toBeGreaterThan(M.REBASE_DIFF_LIMIT / 2);
+    expect(diff).toHaveBeenCalled();
+    diff.mock.calls.forEach(([a, b]) => expect(a.length + b.length).toBeLessThan(200));
+    expect(dropped.map(item => item.original)).toEqual(['lumi']);
+    expect(kept.map(item => item.original)).toEqual(['hiljaa', 'kadulle']);
+    kept.forEach(item => expect(newText.slice(item.from, item.to)).toBe(item.original));
+  });
+
   test('rejected suggestions are kept and mapped', () => {
     const list = items().map(item => ({ ...item, state: 'rejected', reason: 'user' }));
     const next = SAMPLE.replace('mennyt', 'mennyt enää');

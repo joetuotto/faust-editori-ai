@@ -4,6 +4,7 @@ const state = require('@codemirror/state');
 const view = require('@codemirror/view');
 const { createSuggestionKit } = require('../../src/editor/suggestionsCore');
 const M = require('../../src/editor/suggestionModel');
+const { wordDiff: realWordDiff } = require('../../src/editor/wordDiff');
 
 const kit = createSuggestionKit({ ...state, ...view });
 const External = state.Annotation.define();
@@ -493,6 +494,63 @@ describe('edits while suggestions are pending', () => {
     expect(M.singleChange(text(), UNDO_TEXT)).toEqual({ from: 60, to: 65, insert: ' varjon mukaa' });
     external(v, UNDO_TEXT);
     expect(el.getSuggestions().pending.map(item => [item.id, item.from, item.to])).toEqual(proposed);
+    expect(el.getSuggestions().rejected).toEqual([]);
+  });
+
+  test('the notice of a dropped suggestion counts off what the undo brings back, and goes when all are back (C-L7)', () => {
+    const { v, el } = mount();
+    el.proposeChanges(FOUR, { meta: META });
+    const typing = (pos) => {
+      const tr = v.state.update({ changes: { from: pos, insert: 'X' }, userEvent: 'input.type' });
+      v.dispatch(tr);
+      return tr;
+    };
+    const intoMennyt = typing(SAMPLE.indexOf('mennyt') + 2);
+    const intoSanoi = typing(SAMPLE.indexOf('sanoi') + 2);
+    expect(el.getSuggestions().notice).toEqual({ kind: 'dropped-edit', count: 2 });
+
+    // The undo of the second typing brings "sanoi" back: one is still gone
+    v.dispatch({ changes: intoSanoi.changes.invert(intoSanoi.startState.doc), annotations: External.of(true) });
+    expect(el.getSuggestions().pending.map(item => item.original)).toContain('sanoi');
+    expect(el.getSuggestions().notice).toEqual({ kind: 'dropped-edit', count: 1 });
+
+    // The undo of the first: nothing is gone any more, and the notification has nothing to say
+    v.dispatch({ changes: intoMennyt.changes.invert(intoMennyt.startState.doc), annotations: External.of(true) });
+    expect(el.getSuggestions().pending).toHaveLength(4);
+    expect(el.getSuggestions().notice).toBeNull();
+  });
+
+  test('the undo and redo of a bulk accept in a chapter beyond REBASE_DIFF_LIMIT keep the dialogue suggestions pending', () => {
+    // About 130 000 characters: the undo, mirrored as one range from the first change to the last, is
+    // larger than one word diff may take. Identical paragraphs are the hardest case for the alignment.
+    const paragraph = '– Tule jo, hän sanoi. Lumi satoi hiljaa kadulle, ja ikkunoissa paloi valo. Aino käveli torin poikki eikä katsonut taakseen.\n\n';
+    const doc = paragraph.repeat(1000);
+    const { v, el, text } = mount(doc, { diff: (a, b) => realWordDiff(a, b, { raw: true }) });
+    const changes = [];
+    for (let at = doc.indexOf('hiljaa'), k = 0; at !== -1; at = doc.indexOf('hiljaa', at + 1), k++) {
+      if (k % 4 !== 0) continue;
+      const dialogue = (k / 4) % 5 === 0;
+      changes.push({ from: at, to: at + 6, insert: 'äänettömästi', original: 'hiljaa', ...(dialogue ? { meta: { ...META, dialogue: true } } : {}) });
+    }
+    el.proposeChanges(changes, { meta: META });
+    expect(el.getSuggestions().pending).toHaveLength(250);
+
+    expect(el.acceptGroup()).toBe(200);
+    const accepted = text();
+    const dialogueIds = () => el.getSuggestions().pending.filter(item => item.meta && item.meta.dialogue).map(item => item.id).sort();
+    const left = dialogueIds();
+    expect(left).toHaveLength(50);
+    const size = (doc.length - 2 * paragraph.length) + (accepted.length - 2 * paragraph.length);
+    expect(size).toBeGreaterThan(M.REBASE_DIFF_LIMIT);
+
+    external(v, doc);                                   // Kumoa
+    expect(dialogueIds()).toEqual(left);
+    expect(el.getSuggestions().rejected).toEqual([]);
+    expect(el.getSuggestions().notice).toBeNull();
+    el.getSuggestions().pending.forEach(item => expect(M.stillMatches(doc, item)).toBe(true));
+
+    external(v, accepted);                              // Tee uudelleen
+    expect(dialogueIds()).toEqual(left);
     expect(el.getSuggestions().rejected).toEqual([]);
   });
 
