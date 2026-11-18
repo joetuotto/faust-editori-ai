@@ -128,7 +128,12 @@ class CommandManager {
  * Update chapter content
  */
 class UpdateContentCommand {
-  constructor(setProject, chapterId, oldContent, newContent) {
+  /**
+   * meta (memory only, never saved): { noMerge: true, source?, suggestions?: { ids, items } }. With
+   * noMerge the step is its own undo step: an accepted suggestion or any other AI write never joins
+   * the typing around it, and undoing it restores exactly oldContent (contracts.md 1.1).
+   */
+  constructor(setProject, chapterId, oldContent, newContent, meta = null) {
     this.name = 'Update Content';
     this.setProject = setProject;
     this.chapterId = chapterId;
@@ -144,6 +149,10 @@ class UpdateContentCommand {
     this.startedAt = Date.now();
     this.lastChangeAt = this.startedAt;
     this.endsRun = this.kind === 'insert' && UpdateContentCommand.endsWithLineBreak(oldContent, newContent);
+
+    this.meta = meta || null;
+    this.noMerge = !!(this.meta && this.meta.noMerge);
+    if (this.noMerge) { this.kind = 'edit'; this.endsRun = false; }
   }
 
   // True when the keystroke added a line break: a new paragraph starts a new undo step
@@ -161,6 +170,7 @@ class UpdateContentCommand {
    */
   mergeWith(next) {
     if (!(next instanceof UpdateContentCommand)) return false;
+    if (this.noMerge || next.noMerge) return false;
     if (next.chapterId !== this.chapterId) return false;
     if (this.kind === 'edit' || next.kind !== this.kind) return false;
     if (this.endsRun) return false;

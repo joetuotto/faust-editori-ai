@@ -10,8 +10,8 @@
  * unit-tested (test/editor/wordDiff.test.js).
  */
 
-// STUB(src/editor/textTools.js#WORD_CHAR): replaced at I-03
-const WORD_CHAR = require('./textTools.js').WORD_CHAR || /[\p{L}\p{N}\p{M}'’]/u;
+// One definition of a word for the editor and the diff (report 4.2)
+const { WORD_CHAR } = require('./textTools.js');
 const { splitSentences } = require('./sentences.js');
 
 const SPACE_CHAR = /\s/u;

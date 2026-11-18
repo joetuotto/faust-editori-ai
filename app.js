@@ -19,6 +19,16 @@ import { modelLabel } from './src/services/format.fi.js';
 // failureReason: the reason in '<Toiminto> epäonnistui: <syy>.'; asIsNotice: a stop, the switch and
 // the wire guard shown as they are (R-21); bookRunPlan: Magnum Opus without "Ei tekoälylle" chapters
 import { failureReason, asIsNotice, bookRunPlan } from './src/services/ai/oldPaths.js';
+// The suggestion layer, the undo history from the first keystroke and the usage log (stage I-03)
+import { SuggestionBar } from './src/components/SuggestionBar.js';
+import { AiUsageLogSection } from './src/components/AiUsageLogSection.js';
+import { createSuggestionController } from './src/services/suggestions/suggestionController.js';
+import { relocateTarget } from './src/editor/suggestionModel.js';
+import { CommandManager } from './src/utils/CommandManager.js';
+import { wordDiff, changeRatio, diffSegments, changeStats } from './src/editor/wordDiff.js';
+import { appendRow as appendAiLogRow, createLog as createAiLog, decisionRow } from './src/services/ai/usageLog.js';
+import { addAutoSnapshot } from './src/services/project/snapshots.js';
+import { getSettingsStore } from './src/services/settingsStore.js';
 import {
   TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog, CollectionDialog,
   shortcut, shortcutKeys, count, countParts
@@ -36,7 +46,7 @@ import { Icon, icons } from './src/components/icons.js';
 // (Dialog, layerStack), Tietopaneeli's tab row and the version stars (Tabs, Rating)
 import {
   ToastHost, notify,
-  Popover, usePopover, SigilButton, Tooltip, VoiceButton, Dialog, layerStack, Tabs, Rating
+  Popover, usePopover, SigilButton, Tooltip, VoiceButton, Dialog, layerStack, Tabs, Rating, DiffView
 } from './src/components/ui.js';
 
 const { createElement: e, useState, useEffect, useLayoutEffect, useRef } = React;
@@ -334,6 +344,7 @@ const createDefaultProject = () => ({
   avoidWords: [],
   codex: [],
   codexLegacyHandled: [],
+  aiLog: createAiLog(new Date().toISOString()),   // Tekoälyn käyttö (contracts.md 1.3)
 
   // Bookmarks - quick navigation points
   bookmarks: [],  // [{id, chapterId, position, name, color, created}]
@@ -777,6 +788,7 @@ function FAUSTApp() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [textPrompt, setTextPrompt] = useState(null); // open text question, see askText
   const [confirmRequest, setConfirmRequest] = useState(null); // open yes/no question, see askConfirm
+  const [suggestionInfo, setSuggestionInfo] = useState(null); // the suggestion bar's BarInfo (stage I-03)
   const [showReplaceDialog, setShowReplaceDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [replaceTerm, setReplaceTerm] = useState('');
@@ -820,8 +832,18 @@ function FAUSTApp() {
   const builderOpenRef = useRef(false);
   builderOpenRef.current = showCharacterBuilder;
 
-  // AI Modules refs
+  // The undo history exists from the first keystroke; the suggestion controller keeps the chapters'
+  // suggestions; the project epoch ties both, the editor and the usage log to the open project (contracts 4.4)
   const commandManagerRef = useRef(null);
+  if (!commandManagerRef.current) commandManagerRef.current = new CommandManager();
+  const suggestionsRef = useRef(null);
+  if (!suggestionsRef.current) suggestionsRef.current = createSuggestionController({ wordDiff, rawDiff: (a, b) => wordDiff(a, b, { raw: true }), changeRatio });
+  const projectEpochRef = useRef(0);
+  const [projectEpoch, setProjectEpoch] = useState(0);
+  // What the old paths SENT to the model ({ chapterId, text, start, end }), so their result goes back there
+  const oldPathTargetRef = useRef({ voice: null, rewrite: null, liminal: null });
+
+  // AI Modules refs
   const batchProcessorRef = useRef(null);
   const bookRunRef = useRef(false);             // a whole-book run is under way: the processor reads bookRunPlan(project).lent
   const costOptimizerRef = useRef(null);
@@ -897,10 +919,14 @@ function FAUSTApp() {
   }, [project.plotThreads]);
 
   // The one AI client: its settings are read at start (window.faustAI for DevTools checks)
+  // A usage row reaches only the project its request started in (the scope is the project epoch)
   useEffect(() => {
     const ai = getAIClient();
     window.faustAI = ai;
     ai.refreshConfig();
+    ai.setScopeSource(() => projectEpochRef.current);
+    ai.setUsageSink(appendAiLog);
+    return () => { ai.setUsageSink(null); ai.setScopeSource(null); };
   }, []);
 
   // The tekoälyn lähde once at start-up (AIProviderSettings reports later changes)
@@ -1012,6 +1038,7 @@ function FAUSTApp() {
         setShowFindDialog(true);
         setShowReplaceDialog(true);
         break;
+      case 'suggestion': suggestionsRef.current.menuCommand(arg); break;
 
       // Format
       case 'format-bold': formatBold(); break;
@@ -1093,7 +1120,8 @@ function FAUSTApp() {
   }, []);
 
   // NEW: Update chapter content using Command Pattern
-  const updateChapterContent = (newContent, skipHistory = false) => {
+  // meta (memory only): { noMerge: true, suggestions? } makes an AI write its own undo step (contracts 1.1)
+  const updateChapterContent = (newContent, skipHistory = false, meta = null) => {
     if (!activeChapter) return;
 
     // Use the live content, not the rendered state: two keystrokes can arrive
@@ -1112,7 +1140,8 @@ function FAUSTApp() {
         setProject,
         activeChapter.id,
         oldContent,
-        newContent
+        newContent,
+        meta
       );
       commandManagerRef.current.execute(command);
     } else {
@@ -1467,6 +1496,20 @@ function FAUSTApp() {
     setTextPrompt({ title, defaultValue, placeholder, confirmLabel, resolve });
   });
 
+  // The suggestion controller sees this render's chapter, editor and project (stage I-03)
+  suggestionsRef.current.bind({
+    getEditor: () => editorRef.current,
+    activeChapterId: activeChapter ? activeChapter.id : null,
+    chapters: project.structure,
+    setInfo: setSuggestionInfo,
+    reportPending: (count) => window.electronAPI?.setPendingSuggestions?.(count),
+    logDecision: (fields) => appendAiLog(decisionRow(fields)),
+    askConfirm: (t, m, c, x) => askConfirm(t, m, c, x, { danger: true }),
+    getSetting: (key, fallback) => getSettingsStore().get(key, fallback),
+    setSetting: (key, value) => { getSettingsStore().set(key, value); },
+    takeSnapshot: (chapterId, reason) => takeAutoSnapshot(reason)
+  });
+
   // Undo/Redo. In an ordinary text field (titles, notes, search) the field's
   // own undo applies; everywhere else the project history does.
   const runHistory = (direction) => {
@@ -1488,8 +1531,10 @@ function FAUSTApp() {
       setActiveChapterId(step.chapterId);
     }
 
+    // A redo removes the suggestions it accepts again; an undo of an accept brings them back
+    suggestionsRef.current.beforeHistory(direction, step);
     const done = direction === 'undo' ? manager.undo() : manager.redo();
-    if (done) setUnsavedChanges(true);
+    if (done) { setUnsavedChanges(true); suggestionsRef.current.afterHistory(direction, step); }
   };
 
   const undo = () => runHistory('undo');
@@ -1694,53 +1739,15 @@ function FAUSTApp() {
     setShowBookmarksPanel(false);
   };
 
-  // Simple diff algorithm for text comparison
-  const computeTextDiff = (oldText, newText) => {
-    const oldWords = (oldText || '').split(/(\s+)/);
-    const newWords = (newText || '').split(/(\s+)/);
-    const result = [];
-
-    let oldIdx = 0;
-    let newIdx = 0;
-
-    while (oldIdx < oldWords.length || newIdx < newWords.length) {
-      if (oldIdx >= oldWords.length) {
-        // Added words
-        result.push({ type: 'added', text: newWords[newIdx] });
-        newIdx++;
-      } else if (newIdx >= newWords.length) {
-        // Removed words
-        result.push({ type: 'removed', text: oldWords[oldIdx] });
-        oldIdx++;
-      } else if (oldWords[oldIdx] === newWords[newIdx]) {
-        // Same
-        result.push({ type: 'same', text: newWords[newIdx] });
-        oldIdx++;
-        newIdx++;
-      } else {
-        // Find if old word appears later in new
-        const foundInNew = newWords.slice(newIdx + 1, newIdx + 10).indexOf(oldWords[oldIdx]);
-        const foundInOld = oldWords.slice(oldIdx + 1, oldIdx + 10).indexOf(newWords[newIdx]);
-
-        if (foundInNew !== -1 && (foundInOld === -1 || foundInNew < foundInOld)) {
-          // New words were added
-          result.push({ type: 'added', text: newWords[newIdx] });
-          newIdx++;
-        } else if (foundInOld !== -1) {
-          // Old word was removed
-          result.push({ type: 'removed', text: oldWords[oldIdx] });
-          oldIdx++;
-        } else {
-          // Changed
-          result.push({ type: 'removed', text: oldWords[oldIdx] });
-          result.push({ type: 'added', text: newWords[newIdx] });
-          oldIdx++;
-          newIdx++;
-        }
-      }
-    }
-
-    return result;
+  // The word comparison of the voice edit and Versioiden vertailu: wordDiff.js, the tested one (BUG-20, R-20)
+  const computeTextDiff = (oldText, newText) => diffSegments(oldText || '', newText || '');
+  // Lisätty 12 · Poistettu 5 · Sanamäärä +7 (M C.5 row 42, C.11 row 25): words added and removed, and the count's change
+  const diffCounts = (oldText, newText, delta) => {
+    const stats = changeStats(oldText || '', newText || '');
+    return e('span', { className: 'faust-num' },
+      e('span', { className: 'faust-diff__count faust-diff__count--ins faust-diff__count--named' }, 'Lisätty ' + stats.addedWords.toLocaleString('fi-FI')), ' · ',
+      e('span', { className: 'faust-diff__count faust-diff__count--del faust-diff__count--named' }, 'Poistettu ' + stats.removedWords.toLocaleString('fi-FI')), ' · ',
+      e('span', { className: 'faust-diff__count' }, 'Sanamäärä ' + (delta > 0 ? '+' : delta < 0 ? '−' : '±') + Math.abs(delta).toLocaleString('fi-FI')));
   };
 
   // Snapshot functions (project-level named versions)
@@ -1764,6 +1771,14 @@ function FAUSTApp() {
     setUnsavedChanges(true);
     console.log('[Snapshots] Created:', snapshotData.name);
     return snapshotData;
+  };
+
+  // Before a bulk accept (the suggestion controller asks): one automatic tilannekuva of that name, three kept
+  const takeAutoSnapshot = (name) => {
+    const now = new Date();
+    setProject(prev => addAutoSnapshot(prev, { name, description: 'Automaattinen tilannekuva. Näistä säilytetään kolme uusinta.', now, auto: 'bulk' }).project);
+    setUnsavedChanges(true);
+    return 'snapshot-' + now.getTime();
   };
 
   const deleteSnapshot = (snapshotId) => {
@@ -1922,17 +1937,17 @@ function FAUSTApp() {
   };
 
   // Change any chapter's text through the undo history
-  const setChapterText = (chapterId, oldContent, newContent) => {
+  const setChapterText = (chapterId, oldContent, newContent, meta = null) => {
     if (oldContent === newContent) return;
 
     if (chapterId === activeChapter?.id) {
-      updateChapterContent(newContent);
+      updateChapterContent(newContent, false, meta);
       return;
     }
 
     if (commandManagerRef.current && window.UpdateContentCommand) {
       commandManagerRef.current.execute(
-        new window.UpdateContentCommand(setProject, chapterId, oldContent, newContent)
+        new window.UpdateContentCommand(setProject, chapterId, oldContent, newContent, meta)
       );
     } else {
       setProject(prev => ({
@@ -2074,6 +2089,13 @@ function FAUSTApp() {
   // Project files
   // ---------------------------------------------------------------------
 
+  // One row of Tekoälyn käyttö: requests from the client, decisions from the suggestion controller
+  const appendAiLog = (row) => {
+    if (!row) return;
+    setProject(prev => ({ ...prev, aiLog: appendAiLogRow(prev.aiLog, row, new Date().toISOString()) }));
+    setUnsavedChanges(true);
+  };
+
   // Make sure a loaded file has everything the UI expects.
   // Returns null if the data is not a FAUST project.
   const normalizeProject = (data) => {
@@ -2096,8 +2118,11 @@ function FAUSTApp() {
 
   // Replace the open project (New, Open, Recent, recovery)
   const openProject = (data, filePath) => {
-    // A request of the previous project must not answer into this one
+    // A request of the previous project must not answer into this one; its suggestions, its editor
+    // and its usage rows stay with it (the project epoch, contracts.md 4.4)
     getAIClient().cancelAll();
+    projectEpochRef.current += 1; setProjectEpoch(projectEpochRef.current);
+    suggestionsRef.current.reset();
     setProject(data);
     setCurrentFilePath(filePath || null);
     setActiveChapterId(data.structure[0]?.id || 'chapter-1');
@@ -2169,6 +2194,7 @@ function FAUSTApp() {
   // Something is about to replace the open project: offer to save first.
   // Returns true if it is fine to go on.
   const confirmLeavingProject = async () => {
+    if (!(await suggestionsRef.current.confirmDiscard())) return false;
     if (!unsavedChanges) return true;
 
     const choice = await window.electronAPI.confirmUnsavedChanges();
@@ -3811,7 +3837,8 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
           if (!confirmed) return;
         }
 
-        // Send to AI
+        // Send to AI; the result goes back to what was sent, wherever it stands then
+        oldPathTargetRef.current.voice = { chapterId: activeChapter.id, text: textSelection.text, start: textSelection.start, end: textSelection.end };
         const diffResult = await editByVoice(textSelection.text, result.transcript);
 
         if (diffResult) {
@@ -3832,18 +3859,22 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     }
   };
 
-  // Accept voice edit
+  // The text an old path sent is found again: at its stored place, else at its one occurrence (5.7)
+  const OLD_PATH_CHANGED = 'Teksti on muuttunut ehdotuksen luomisen jälkeen. Muutosta ei tehty.';
+  const placeOldPathText = (target, revised) => {
+    const liveText = editorRef.current ? editorRef.current.value : activeChapter.content;
+    const place = target && target.chapterId === activeChapter.id ? relocateTarget(liveText, target) : null;
+    if (!place) { notify('warning', OLD_PATH_CHANGED); return null; }
+    return liveText.slice(0, place.from) + revised + liveText.slice(place.to);
+  };
+
+  // Accept voice edit: the ehdotus replaces the text that was sent, not the selection of the moment
   const acceptVoiceEdit = () => {
-    // Without a selection there is no range to replace (the button is disabled then)
-    if (!voiceDiffView || !textSelection) return;
+    if (!voiceDiffView) return;
+    const newContent = placeOldPathText(oldPathTargetRef.current.voice, voiceDiffView.revised);
+    if (newContent === null) return;
 
-    // Replace selected text with AI-generated text
-    const content = activeChapter.content;
-    const before = content.substring(0, textSelection.start);
-    const after = content.substring(textSelection.end);
-    const newContent = before + voiceDiffView.revised + after;
-
-    updateChapterContent(newContent);
+    updateChapterContent(newContent, false, { noMerge: true });
 
     // Clear diff view and selection
     setVoiceDiffView(null);
@@ -3902,7 +3933,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
 
     const base = chapterText(activeChapter);
     const newContent = base.trim() ? base + '\n\n' + continuePreview : continuePreview;
-    updateChapterContent(newContent);
+    updateChapterContent(newContent, false, { noMerge: true });
 
     setContinuePreview('');
     setShowContinueDialog(false);
@@ -3982,6 +4013,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     setContinuePreview('');
 
     try {
+      oldPathTargetRef.current.rewrite = { chapterId: activeChapter.id, text: textSelection.text, start: textSelection.start, end: textSelection.end };
       const result = await hybridFlowRef.current.rewriteSection(
         textSelection.text,
         hybridInput,
@@ -4046,16 +4078,13 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     }
   };
 
-  // Accept rewrite (replaces selected text)
+  // Accept rewrite: replaces the text that was sent for rewriting
   const acceptRewrite = () => {
-    if (!continuePreview || !textSelection || !activeChapter) return;
+    if (!continuePreview || !activeChapter) return;
+    const newContent = placeOldPathText(oldPathTargetRef.current.rewrite, continuePreview);
+    if (newContent === null) return;
 
-    const content = activeChapter.content;
-    const before = content.substring(0, textSelection.start);
-    const after = content.substring(textSelection.end);
-    const newContent = before + continuePreview + after;
-
-    updateChapterContent(newContent);
+    updateChapterContent(newContent, false, { noMerge: true });
     setContinuePreview('');
     setShowContinueDialog(false);
     setTextSelection(null);
@@ -4076,7 +4105,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     ))) return;
 
     // For expand/scene, replace entire chapter content
-    updateChapterContent(continuePreview);
+    updateChapterContent(continuePreview, false, { noMerge: true });
     setContinuePreview('');
     setShowContinueDialog(false);
     setHybridInput('');
@@ -4280,6 +4309,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     const userMessage = aiChatInput.trim();
     // In a chapter marked "Ei tekoälylle" the message goes without the selection
     const selectedText = chapterNoAI ? '' : (textSelection?.text || '');
+    if (selectedText) oldPathTargetRef.current.liminal = { chapterId: activeChapter.id, text: textSelection.text, start: textSelection.start, end: textSelection.end };
 
     // Add user message to chat
     setAiChatMessages(prev => [...prev, { role: 'user', content: userMessage, selectedText }]);
@@ -4402,28 +4432,14 @@ ${contextPrompt}`;
     }
   };
 
-  // AI Assistant - Apply suggestion
+  // AI Assistant - Korvaa valittu teksti: the answer replaces the selection that was sent (BUG-6, R-18)
   const applyAiSuggestion = () => {
-    if (!aiSuggestion || !textSelection) return;
-
-    const textarea = document.getElementById('chapter-content-editor');
-    if (!textarea) return;
-
-    const content = activeChapter.content;
-    const newContent = content.substring(0, textSelection.start) +
-                       aiSuggestion.revised +
-                       content.substring(textSelection.end);
-
-    setProject(prev => ({
-      ...prev,
-      structure: prev.structure.map(ch =>
-        ch.id === activeChapter.id ? { ...ch, content: newContent } : ch
-      )
-    }));
-
+    if (!aiSuggestion) return;
+    const newContent = placeOldPathText(oldPathTargetRef.current.liminal, aiSuggestion.revised);
+    if (newContent === null) return;
+    updateChapterContent(newContent, false, { noMerge: true });
     setAiSuggestion({ ...aiSuggestion, applied: true });
     setTextSelection(null);
-    setUnsavedChanges(true);
   };
 
   // Load chat memory on mount
@@ -4489,7 +4505,6 @@ ${contextPrompt}`;
       try {
         // Load all AI module scripts
         const modules = [
-          { name: 'CommandManager', src: './src/utils/CommandManager.js' },
           { name: 'BatchProcessor', src: './src/services/ai/BatchProcessor.js' },
           { name: 'CostOptimizer', src: './src/services/ai/CostOptimizer.js' },
           { name: 'StoryContinuityTracker', src: './src/services/ai/StoryContinuityTracker.js' },
@@ -4523,12 +4538,6 @@ ${contextPrompt}`;
         // Wait a bit for modules to be available globally
         setTimeout(() => {
           try {
-            // Initialize CommandManager FIRST (used by other systems)
-            if (window.CommandManager) {
-              commandManagerRef.current = new window.CommandManager();
-              console.log('[CommandManager] Initialized');
-            }
-
             // Initialize modules
             if (window.CostOptimizer) {
               costOptimizerRef.current = new window.CostOptimizer(project);
@@ -4814,8 +4823,8 @@ ${contextPrompt}`;
 
   // The bottom dock of the page (R-62) holds one occupant: the voice result card, then the suggestion
   // bar while suggestions are pending, then the voice bar, then the suggestion bar's other states.
-  const dockSuggestionsFirst = false; // I-03: !!suggestionInfo && suggestionInfo.pending > 0
-  const dockSuggestionBar = null;     // I-03: e(SuggestionBar, { info: suggestionInfo, controller: suggestionsRef.current, onOpenChapter: setActiveChapterId, focusEditor: () => editorRef.current && editorRef.current.focus() })
+  const dockSuggestionsFirst = !!suggestionInfo && suggestionInfo.pending > 0;
+  const dockSuggestionBar = e(SuggestionBar, { info: suggestionInfo, controller: suggestionsRef.current, onOpenChapter: setActiveChapterId, focusEditor: () => editorRef.current && editorRef.current.focus() });
 
   return e('div', {
     className: (focusMode ? 'faust-app faust-focus-mode' : 'faust-app') + (isFullScreen ? ' is-fullscreen' : ''),
@@ -4862,8 +4871,7 @@ ${contextPrompt}`;
       e(ImportPreviewDialog, {
         source: importSource,
         project,
-        // I-03 adds pendingSuggestions
-        getReplaceBlockedReason: () => replaceBlockedReason({ activeRequests: getAIClient().activeCount() }),
+        getReplaceBlockedReason: () => replaceBlockedReason({ pendingSuggestions: suggestionsRef.current.pendingTotal(), activeRequests: getAIClient().activeCount() }),
         onPickFolder: (request) => beginImport('folder', request, { inPreview: true }),
         onDone: finishImport,
         pickError: importPickError
@@ -5906,10 +5914,12 @@ ${contextPrompt}`;
             // editorRef gets a textarea-compatible element. Remounted per chapter
             // so every chapter starts with its own cursor and scroll position.
             e(FaustEditor, {
-              key: activeChapter.id,
+              // A new project always gets a new editor, also when its first chapter has the same id (contracts 4.4)
+              key: `${projectEpoch}:${activeChapter.id}`,
               ref: editorRef,
               value: activeChapter.content,
-              onChange: (text) => updateChapterContent(text),
+              onChange: (text, meta) => updateChapterContent(text, false, meta),
+              ...suggestionsRef.current.editorProps(activeChapter.id),
               onMouseUp: handleTextSelection,
               onKeyUp: handleTextSelection,
               typewriterMode: typewriterMode, // the editor keeps the cursor line centered
@@ -6199,58 +6209,25 @@ ${contextPrompt}`;
 
             // Voice comparison (after a voice edit has produced an ehdotus): the floating result block
             const voiceCard = voiceDiffView ? (() => {
-              const diffResult = computeTextDiff(voiceDiffView.original, voiceDiffView.revised);
               const origWords = (voiceDiffView.original || '').split(/\s+/).filter(Boolean).length;
               const newWords = (voiceDiffView.revised || '').split(/\s+/).filter(Boolean).length;
               const delta = newWords - origWords;
-              // One column of the comparison: the old text keeps its deletions, the new text its insertions.
-              // Adjacent pieces of one kind are one run, also across the spaces between them.
-              // Until the word comparison of I-03 (R-20) both columns are plain text, as in Versioiden
-              // vertailu (menu-visual entry 71): the marks of today's computeTextDiff are wrong after one
-              // inserted word. I-03 wraps the 'removed' runs in del.faust-mark--del and the 'added' runs
-              // in ins.faust-mark--ins.
-              const columnRuns = (leaveOut) => {
-                const pieces = diffResult.filter(piece => piece.type !== leaveOut);
-                const runs = [];
-                pieces.forEach((piece, idx) => {
-                  const last = runs[runs.length - 1];
-                  const next = pieces[idx + 1];
-                  if (last && last.type !== 'same' && piece.type === 'same' && !piece.text.trim() && next && next.type === last.type) {
-                    last.text += piece.text;
-                  } else if (last && last.type === piece.type) {
-                    last.text += piece.text;
-                  } else {
-                    runs.push({ type: piece.type, text: piece.text });
-                  }
-                });
-                return runs;
-              };
-              // The comparison is not modal: accept only while the selection is still the compared text
-              const selectionChanged = !textSelection || textSelection.text !== voiceDiffView.original;
 
               return e('div', { className: 'faust-result faust-result--floating' },
                 e('div', { className: 'faust-result__head' },
                   e('span', { className: 'faust-label' }, 'Ehdotus'),
-                  e('span', { className: 'faust-diff__count' },
-                    'Sanamäärä ' + (delta > 0 ? '+' : delta < 0 ? '−' : '') + Math.abs(delta).toLocaleString('fi-FI'))
+                  diffCounts(voiceDiffView.original, voiceDiffView.revised, delta)
                 ),
                 e('div', { className: 'faust-result__context' }, `Puhuttu ohje: ”${voiceDiffView.instruction}”`),
+                // The word comparison in the shared renderer (R-87): the old text with its deletions
+                // (del.faust-mark--del), the ehdotus with its insertions (ins.faust-mark--ins)
                 e('div', { className: 'faust-result__body' },
-                  e('div', { className: 'faust-diff faust-diff--split' },
-                    e('div', { className: 'faust-diff__col' },
-                      e('div', { className: 'faust-diff__colhead' }, e('span', null, 'Alkuperäinen · ' + count(origWords, 'sana'))),
-                      e('div', { className: 'faust-prose' },
-                        ...columnRuns('added').map((run, idx) => e('span', { key: idx }, run.text))
-                      )
-                    ),
-                    e('div', { className: 'faust-diff__rule' }),
-                    e('div', { className: 'faust-diff__col' },
-                      e('div', { className: 'faust-diff__colhead' }, e('span', null, 'Ehdotus · ' + count(newWords, 'sana'))),
-                      e('div', { className: 'faust-prose' },
-                        ...columnRuns('removed').map((run, idx) => e('span', { key: idx }, run.text))
-                      )
-                    )
-                  )
+                  e(DiffView, {
+                    mode: 'split',
+                    pieces: computeTextDiff(voiceDiffView.original, voiceDiffView.revised),
+                    before: e('span', null, 'Alkuperäinen · ' + count(origWords, 'sana')),
+                    after: e('span', null, 'Ehdotus · ' + count(newWords, 'sana'))
+                  })
                 ),
                 e('div', { className: 'faust-result__actions' },
                   e('button', {
@@ -6261,9 +6238,7 @@ ${contextPrompt}`;
                   e('button', {
                     type: 'button',
                     className: 'faust-btn faust-btn--primary',
-                    onClick: acceptVoiceEdit,
-                    disabled: selectionChanged,
-                    title: selectionChanged ? 'Valinta on muuttunut. Tee muokkaus uudelleen.' : undefined
+                    onClick: acceptVoiceEdit
                   }, 'Korvaa valittu teksti')
                 )
               );
@@ -7575,8 +7550,7 @@ ${contextPrompt}`;
                 className: 'faust-btn faust-btn--quiet',
                 onClick: () => setAiSuggestion(null)
               }, 'Hylkää'),
-              // BUG-6: enabled at I-03 (reconcile R-18)
-              false && e('button', {
+              e('button', {
                 className: 'faust-btn faust-btn--primary',
                 onClick: applyAiSuggestion
               }, 'Korvaa valittu teksti')
@@ -8466,7 +8440,9 @@ ${contextPrompt}`;
           ),
 
           // Ohjeet tekoälylle: Käsikirjoituksen ydin and Tyyliohje (Vältettävät sanat from I-07 on)
-          e(BookBriefFields, { project, activeChapter, onChange: patchProject, showAvoidWords: false })
+          e(BookBriefFields, { project, activeChapter, onChange: patchProject, showAvoidWords: false }),
+          // Tekoälyn käyttö: the usage log and its export, also with "Tekoäly pois" (MF-64)
+          e(AiUsageLogSection, { log: project.aiLog, projectTitle: project.title, chapters: project.structure })
     )),
 
     // Version Comparison Dialog. It opens over Luvun versiot, which stays open under it (W7).
@@ -8499,11 +8475,10 @@ ${contextPrompt}`;
       // Opened over Luvun versiot, it is the later dialog and stands above it (the stack's order)
       return e(Dialog, {
         title: 'Versioiden vertailu – ' + chapterName,
-        // A signed difference (M C.11 row 25): +7, −5, ±0
-        sub: e('span', { className: 'faust-num' }, 'Sanamäärä ' + (wordDelta > 0 ? '+' : wordDelta < 0 ? '−' : '±') + Math.abs(wordDelta).toLocaleString('fi-FI')),
+        // Lisätty 12 · Poistettu 5 · Sanamäärä +7 (M C.11 row 25, BUG-20)
+        sub: diffCounts(compContent, currentContent, wordDelta),
         size: 'xl',
-        // Two columns of plain text (BUG-20 fallback, reconcile R-20): the marks, the counts
-        // Lisätty / Poistettu and the legend come with I-03, which feeds computeTextDiff into this frame.
+        // Two columns of the word comparison (R-20): the version with its deletions, the text with its insertions
         bodyMode: 'flush',
         dismissOnScrim: true,
         onClose: () => setShowVersionComparison(false),
@@ -8524,25 +8499,20 @@ ${contextPrompt}`;
           }, 'Palauta tämä versio…')
         )
       },
-            e('div', { className: 'faust-diff faust-diff--split' },
-              e('div', { className: 'faust-diff__col' },
-                e('div', { className: 'faust-diff__colhead' },
-                  e('span', { className: 'faust-ui' }, 'Versio ' + compNo + (compStamp ? ' · ' + compStamp : '')),
-                  e('span', { className: 'faust-diff__count' }, count(compWords, 'sana'))
-                ),
-                compContent
-                  ? e('div', { className: 'faust-prose' }, compContent)
-                  : e('div', { className: 'faust-meta' }, 'Tyhjä versio')
-              ),
-              e('div', { className: 'faust-diff__rule', 'aria-hidden': 'true' }),
-              e('div', { className: 'faust-diff__col' },
-                e('div', { className: 'faust-diff__colhead' },
-                  e('span', { className: 'faust-ui' }, 'Nykyinen teksti'),
-                  e('span', { className: 'faust-diff__count' }, count(currentWords, 'sana'))
-                ),
-                e('div', { className: 'faust-prose' }, currentContent)
-              )
-            )
+            // The legend, in the marks' own two looks (M C.11 row 28)
+            e('div', { className: 'faust-meta faust-diff__legend' },
+              e('ins', { className: 'faust-mark faust-mark--ins' }, 'Vihreä'), ': on nykyisessä tekstissä, mutta ei versiossa ' + compNo + '. ',
+              e('del', { className: 'faust-mark faust-mark--del' }, 'Punainen yliviivattu'), ': on versiossa ' + compNo + ', mutta ei nykyisessä tekstissä.'),
+            e(DiffView, {
+              mode: 'split',
+              pieces: computeTextDiff(compContent, currentContent),
+              before: e(React.Fragment, null,
+                e('span', { className: 'faust-ui' }, 'Versio ' + compNo + (compStamp ? ' · ' + compStamp : '')),
+                e('span', { className: 'faust-diff__count' }, compContent ? count(compWords, 'sana') : 'Tyhjä versio')),
+              after: e(React.Fragment, null,
+                e('span', { className: 'faust-ui' }, 'Nykyinen teksti – erot korostettu'),
+                e('span', { className: 'faust-diff__count' }, count(currentWords, 'sana')))
+            })
       );
     })()),
 
@@ -9411,7 +9381,7 @@ ${contextPrompt}`;
           const base = liveContentRef.current.chapterId === activeChapter.id
             ? liveContentRef.current.content
             : (activeChapter.content || '');
-          updateChapterContent(base + (base.trim() ? '\n\n' : '') + text);
+          updateChapterContent(base + (base.trim() ? '\n\n' : '') + text, false, { noMerge: true });
         }
       }
     })),

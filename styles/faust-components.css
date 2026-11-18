@@ -843,6 +843,15 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-inline-prompt[aria-disabled="true"] { border-color: var(--rule); box-shadow: none; }
 .faust-inline-prompt[aria-disabled="true"] :is(.faust-inline-prompt__sigil, .faust-inline-prompt__input) { color: var(--text-disabled); }
 
+/* I-03: the suggestion bar's dialogue note, the named comparison counters, the comparison legend */
+/* The sentence about the dialogue suggestions a bulk accept leaves: above the bar, in the dock (VF-18) */
+.faust-suggestbar__note { max-width: 100%; margin-bottom: var(--sp-1); padding: var(--sp-half) var(--sp-3); background: var(--surface-raised); color: var(--text-2); border: var(--bw) solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow-2); font: var(--type-meta); text-align: center; }
+/* A counter that carries its word (Lisätty 12, Poistettu 5: M C.5 row 42, C.11 row 25, MV-68) keeps its colour, not a sign */
+.faust-diff__count--named::before { content: none; }
+/* Versioiden vertailu: the one legend line above the two columns (M C.11 row 28) */
+.faust-diff__legend { padding: var(--sp-3) var(--dialog-pad) 0; }
+/* end I-03 */
+
 /* ============ 13 Finding list, story tree, import preview ============ */
 .faust-findings { display: flex; flex-direction: column; gap: var(--sp-half); }
 /* A finding is a div with role="button" and tabindex="0": it holds buttons (its actions), so it cannot be one. */

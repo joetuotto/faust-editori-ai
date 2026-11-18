@@ -48,3 +48,6 @@ npm-debug.log*
 # Ad-hoc test files (may contain API keys)
 test-*.js
 FAUST-TEST-REPORT.md
+
+# The author's own trial paragraphs for test/services/step0.test.js (manuscript text, stage I-03)
+test/fixtures/step0/private/

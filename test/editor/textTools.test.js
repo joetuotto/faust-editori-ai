@@ -2,6 +2,7 @@
  * @jest-environment node
  */
 const {
+  WORD_CHAR,
   countWords,
   countCharacters,
   countProjectWords,
@@ -232,5 +233,20 @@ describe('wordAt', () => {
   test('finds the word around a position', () => {
     expect(wordAt('yksi kaksi', 6)).toEqual([5, 10]);
     expect(wordAt('yksi  kaksi', 5)).toEqual([5, 5]);
+  });
+
+  test('a decomposed ä (a + combining dots) does not end the word', () => {
+    // 'pää' written as p, a, U+0308, a, U+0308: five code units
+    const decomposed = 'pa\u0308a\u0308 on';
+    expect(decomposed.normalize('NFC')).toBe('pää on');
+    expect(wordAt(decomposed, 1)).toEqual([0, 5]);
+    expect(wordAt(decomposed, 4)).toEqual([0, 5]);
+  });
+});
+
+describe('WORD_CHAR', () => {
+  test('is exported: letters, digits, combining marks and apostrophes are word characters', () => {
+    for (const ch of ['a', 'ä', 'Å', '7', '\u0308', "'", '’']) expect(WORD_CHAR.test(ch)).toBe(true);
+    for (const ch of [' ', '-', '–', '”', '.', '_', '\n']) expect(WORD_CHAR.test(ch)).toBe(false);
   });
 });

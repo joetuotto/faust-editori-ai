@@ -73,8 +73,10 @@ const MODULES = {
   'src/services/project/snapshots.js': ['buildSnapshot', 'addAutoSnapshot', 'pruneBulkSnapshots'],
   // I-02 review: what the old AI paths of app.js share
   'src/services/ai/oldPaths.js': ['failureReason', 'asIsNotice', 'bookRunPlan'],
-  // contracts.md 2.2: existing files that a stage extended (I-01)
-  'utils/manuscript.js': ['decodeText', 'splitIntoChapters', 'importDocument']
+  // contracts.md 2.2: existing files that a stage extended (I-01, I-03)
+  'utils/manuscript.js': ['decodeText', 'splitIntoChapters', 'importDocument'],
+  'src/editor/textTools.js': ['WORD_CHAR', 'TODO_PATTERN_SOURCE', 'UNDERLINE_PATTERN_SOURCE', 'continueList', 'buildSearchPattern', 'countWords'],
+  'src/utils/CommandManager.js': ['CommandManager', 'UpdateContentCommand']
 };
 
 // The editor cores: the factory is called with CodeMirror and must return these names.
@@ -146,9 +148,7 @@ const RETIRED_WORDINGS = [
 // already asks for (with a fallback of its own), so the require is not a mistake yet. A row goes as soon as
 // the name exists: the stage that adds the name deletes the row and lists the name in MODULES (a case fails
 // on a stale row).
-const PENDING_EXPORTS = {
-  'src/editor/textTools.js': ['WORD_CHAR'] // src/editor/wordDiff.js
-};
+const PENDING_EXPORTS = {};
 
 // Relative requires that may be absent or cannot be loaded under Jest (an optional module behind try/catch,
 // a main-process module that uses Electron at load): requiring file → the require paths as written.

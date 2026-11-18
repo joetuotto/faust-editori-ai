@@ -9,7 +9,14 @@
  * An edit result is { text, selStart, selEnd }, or null when nothing changes.
  */
 
-const WORD_CHAR = /[\p{L}\p{N}'’]/u;
+// Letters, digits, combining marks (a decomposed ä is a + U+0308) and apostrophes
+const WORD_CHAR = /[\p{L}\p{N}\p{M}'’]/u;
+
+// The note and underline patterns of the manuscript, as regular-expression sources. The editor builds
+// its two decorations from these (FaustEditor.js); the modules with a copy of their own are kept in
+// step by test/editor/patterns.parity.test.js.
+const TODO_PATTERN_SOURCE = '\\[TODO:[^\\]\\n]*\\]';
+const UNDERLINE_PATTERN_SOURCE = '<u>([^<\\n]+)<\\/u>';
 
 // ---------------------------------------------------------------------------
 // Counting
@@ -327,6 +334,9 @@ function replaceAllMatches(text, term, replacement, options) {
 }
 
 module.exports = {
+  WORD_CHAR,
+  TODO_PATTERN_SOURCE,
+  UNDERLINE_PATTERN_SOURCE,
   countWords,
   countCharacters,
   countProjectWords,

@@ -234,7 +234,18 @@ export const SHORTCUT_GROUPS = [
 // Keys that live only in the text and have no menu item, shown under the heading 'Tekstissä'.
 // Same row shape; the flag 'typed' marks a typed sequence (its first word is one keycap, the
 // rest follows as text). The feature stages add their groups here.
-export const EDITOR_SHORTCUT_GROUPS = [];
+export const EDITOR_SHORTCUT_GROUPS = [
+  // The suggestion keys: live in the editor only while a suggestion or a finished block is pending (I-03)
+  {
+    title: 'Ehdotukset',
+    items: [
+      ['Hyväksy ehdotus', 'CmdOrCtrl+Enter'],
+      ['Hylkää ehdotus', 'CmdOrCtrl+Shift+Backspace'],
+      ['Seuraava ehdotus', 'CmdOrCtrl+Alt+Down'],
+      ['Edellinen ehdotus', 'CmdOrCtrl+Alt+Up']
+    ]
+  }
+];
 
 const shortcutRow = ([label, keys, flag]) => {
   if (flag === 'typed') {

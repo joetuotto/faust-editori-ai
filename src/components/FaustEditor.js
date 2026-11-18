@@ -19,6 +19,17 @@
  * the element has natively. Extra members: replaceRange(), scrollToPos(),
  * centerCursor(), setHighlights(), clearHighlights(), faustView.
  *
+ * The suggestion layer (src/editor/suggestions.js, stage I-03) adds, except in a read-only editor:
+ * captureSelection(), captureRange(), getRange(), setRangeHighlight(), releaseRange(),
+ * proposeChanges(), removeSuggestions(), acceptSuggestion(), rejectSuggestion(), acceptGroup(),
+ * rejectGroup(), restoreRejected(), stepSuggestion(), getSuggestions(), setSuggestionView(),
+ * clearSuggestionNotice(), revealPos(), flushQueuedSuggestions(), and the insert block's
+ * startInsertBlock(), appendInsertBlock(), finishInsertBlock(), retryInsertBlock(),
+ * showInsertBlockAttempt(), acceptInsertBlock(), rejectInsertBlock(), getInsertBlock().
+ * Nothing a model proposes is document text before it is accepted: onChange(text, meta) carries the
+ * accept's undo meta, and the props suggestionSeed / onSuggestionsChange connect the editor to the
+ * suggestion controller (contracts.md 4.1).
+ *
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
  */
 
@@ -31,7 +42,13 @@ import { standardKeymap, insertNewline } from '@codemirror/commands';
 import { Language, defineLanguageFacet, syntaxHighlighting, HighlightStyle } from '@codemirror/language';
 import { parser as markdownParser, Strikethrough } from '@lezer/markdown';
 import { tags } from '@lezer/highlight';
-import { continueList } from '../editor/textTools.js';
+import { continueList, TODO_PATTERN_SOURCE, UNDERLINE_PATTERN_SOURCE } from '../editor/textTools.js';
+import {
+  suggestionExtension, installSuggestionFacade,
+  readSuggestionMeta, suggestionEvents, suggestionSnapshot, suggestionState
+} from '../editor/suggestions.js';
+import { wordDiff } from '../editor/wordDiff.js';
+import { modelLabel } from '../services/format.fi.js';
 
 const { createElement: e, useRef, useLayoutEffect, forwardRef } = React;
 
@@ -104,6 +121,7 @@ const highlightField = StateField.define({
 });
 
 // --- Markers Markdown has no syntax for: <u>underline</u> and [TODO: notes] ---
+// The two patterns come from textTools.js, the one source that the modules' own copies are tested against
 
 const underlineMark = Decoration.mark({ class: 'cm-faust-underline' });
 const tagMark = Decoration.mark({ class: 'cm-faust-tag' });
@@ -117,7 +135,7 @@ function decoratorPlugin(decorator) {
 }
 
 const underlinePlugin = decoratorPlugin(new MatchDecorator({
-  regexp: /<u>([^<\n]+)<\/u>/g,
+  regexp: new RegExp(UNDERLINE_PATTERN_SOURCE, 'g'),
   decorate: (add, from, to) => {
     add(from, from + 3, tagMark);
     add(from + 3, to - 4, underlineMark);
@@ -126,9 +144,31 @@ const underlinePlugin = decoratorPlugin(new MatchDecorator({
 }));
 
 const todoPlugin = decoratorPlugin(new MatchDecorator({
-  regexp: /\[TODO:[^\]\n]*\]/g,
+  regexp: new RegExp(TODO_PATTERN_SOURCE, 'g'),
   decoration: todoMark
 }));
+
+// --- The settled flash: text an accept has just put in fades from the strong insertion tint (VF-12) ---
+// Outside the suggestion core on purpose: it is a look, not a state of the suggestions.
+
+const setSettled = StateEffect.define();
+const settledMark = Decoration.mark({ class: 'faust-mark faust-mark--settled' });
+const SETTLE_MS = 1200;
+
+const settledField = StateField.define({
+  create: () => Decoration.none,
+  update(value, transaction) {
+    let next = value.map(transaction.changes);
+    for (const effect of transaction.effects) {
+      if (effect.is(setSettled)) next = Decoration.set(effect.value.map(range => settledMark.range(range.from, range.to)), true);
+    }
+    return next;
+  },
+  provide: field => EditorView.decorations.from(field)
+});
+
+const reducedMotion = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // --- Scene break: a line that holds only * * *, *** or --- is set centred and dimmed ---
 
@@ -213,8 +253,9 @@ const normalizeNewlines = (text) => (text || '').replace(/\r\n?/g, '\n');
 
 const clamp = (n, max) => Math.max(0, Math.min(Number.isFinite(n) ? n : 0, max));
 
-// Give the scroll element the textarea members the app relies on
-function installTextareaFacade(view) {
+// Give the scroll element the textarea members the app relies on; withSuggestions adds the members
+// of the suggestion layer (not in a read-only editor)
+function installTextareaFacade(view, withSuggestions) {
   const el = view.scrollDOM;
   const docLength = () => view.state.doc.length;
 
@@ -279,6 +320,7 @@ function installTextareaFacade(view) {
   };
   el.clearHighlights = () => el.setHighlights([], -1);
 
+  if (withSuggestions) installSuggestionFacade(view, el);
   el.faustView = view;
   return el;
 }
@@ -300,8 +342,13 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
     onKeyUp,
     onClick,
     // A reference text that cannot be edited (the second pane, a preview). Read once, when the
-    // editor is created: change it by remounting with a new key.
+    // editor is created: change it by remounting with a new key. A read-only editor has no
+    // suggestion layer and sends no suggestion event.
     readOnly = false,
+    // From the suggestion controller (controller.editorProps(chapterId)): the chapter's stored
+    // suggestions when the editor mounts, and every change of them
+    suggestionSeed,
+    onSuggestionsChange,
     // The text's accessible name; a read-only text is never spell-checked
     label = 'Käsikirjoitus'
   } = props;
@@ -309,12 +356,15 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
   const hostRef = useRef(null);
   const viewRef = useRef(null);
   const onChangeRef = useRef(onChange);
+  const onSuggestionsRef = useRef(onSuggestionsChange);
   const typewriterRef = useRef(!!typewriterMode);
   // Texts this editor has reported through onChange and not yet seen come back as `value`
   const pendingRef = useRef([]);
   const centerFrameRef = useRef(0);
+  const settleTimerRef = useRef(0);
 
   onChangeRef.current = onChange;
+  onSuggestionsRef.current = onSuggestionsChange;
   typewriterRef.current = !!typewriterMode;
 
   // Create the editor once per mount (the parent remounts it per chapter with `key`)
@@ -329,10 +379,28 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
       });
     };
 
+    // The text that was just put in by an accept flashes once (skipped under reduced motion)
+    const settle = (update) => {
+      const view = update.view;
+      if (reducedMotion() || view.state.doc !== update.state.doc) return;
+      const ranges = [];
+      update.changes.iterChangedRanges((fromA, toA, fromB, toB) => { if (toB > fromB) ranges.push({ from: fromB, to: toB }); });
+      if (!ranges.length) return;
+      clearTimeout(settleTimerRef.current);
+      view.dispatch({ effects: setSettled.of(ranges) });
+      settleTimerRef.current = setTimeout(() => {
+        if (viewRef.current === view) view.dispatch({ effects: setSettled.of([]) });
+      }, SETTLE_MS);
+    };
+
+    const doc = normalizeNewlines(value);
+    // The chapter's suggestions as the controller kept them, already moved onto this text
+    const seed = !readOnly && suggestionSeed ? suggestionSeed(doc) : null;
+
     const view = new EditorView({
       parent: hostRef.current,
       state: EditorState.create({
-        doc: normalizeNewlines(value),
+        doc,
         // Writing aids go inside the three readOnly spreads below, never outside them: a read-only
         // editor keeps only the Markdown, the marks, the scene breaks, the tooltips and the theme.
         extensions: [
@@ -346,7 +414,10 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
           proseMarkdown,
           syntaxHighlighting(proseHighlight),
           highlightField,
-          ...(readOnly ? [] : []),      // suggestion and review marks go here
+          ...(readOnly ? [] : [         // suggestion and review marks go here
+            suggestionExtension({ external: External, diff: (a, b) => wordDiff(a, b, { raw: true }), seed: seed && seed.state, modelLabel }),
+            settledField
+          ]),
           underlinePlugin,
           todoPlugin,
           ...(readOnly ? [] : []),      // story-folder mentions and the inline prompt go here
@@ -362,11 +433,22 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
           EditorView.updateListener.of((update) => {
             const external = update.transactions.some(tr => tr.annotation(External));
 
+            // onChange first: the undo step of an accept exists before the controller logs it
             if (update.docChanged && !external) {
               const text = update.state.doc.toString();
               pendingRef.current.push(text);
               if (pendingRef.current.length > 20) pendingRef.current.shift();
-              if (onChangeRef.current) onChangeRef.current(text);
+              if (onChangeRef.current) onChangeRef.current(text, readSuggestionMeta(update));
+            }
+
+            if (!readOnly) {
+              const events = suggestionEvents(update);
+              if (events.length && onSuggestionsRef.current) {
+                for (const event of events) onSuggestionsRef.current(suggestionSnapshot(update.view.state), event);
+              }
+              // Last: the flush may dispatch a nested update, whose snapshot is the newer one
+              if (update.docChanged) update.view.scrollDOM.flushQueuedSuggestions(external);
+              if (events.some(event => event.type === 'accepted')) settle(update);
             }
 
             if (typewriterRef.current && update.view.hasFocus && (update.docChanged || update.selectionSet)) {
@@ -378,9 +460,26 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
     });
 
     viewRef.current = view;
-    setRef(ref, installTextareaFacade(view));
+    setRef(ref, installTextareaFacade(view, !readOnly));
+
+    if (!readOnly) {
+      // Undo and redo of a step in this chapter show where the text changed
+      if (seed && seed.revealPos != null) {
+        const at = clamp(seed.revealPos, view.state.doc.length);
+        view.dispatch({ selection: { anchor: at }, effects: EditorView.scrollIntoView(at, { y: 'center' }) });
+      }
+      // Always once, so the bar shows this chapter's state (restored suggestions, a notice, or nothing)
+      if (onSuggestionsRef.current) onSuggestionsRef.current(suggestionSnapshot(view.state), { type: 'seeded' });
+    }
 
     return () => {
+      // The controller keeps what is still pending in this chapter until it is opened again
+      if (!readOnly && onSuggestionsRef.current) {
+        onSuggestionsRef.current(suggestionSnapshot(view.state), {
+          type: 'unmount', docText: view.state.doc.toString(), state: suggestionState(view.state)
+        });
+      }
+      clearTimeout(settleTimerRef.current);
       cancelAnimationFrame(centerFrameRef.current);
       setRef(ref, null);
       viewRef.current = null;
@@ -398,6 +497,8 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
 
     if (incoming === current) {
       pendingRef.current = [];
+      // A proposal waiting for this text (undo of an accept) is applied now
+      if (typeof view.scrollDOM.flushQueuedSuggestions === 'function') view.scrollDOM.flushQueuedSuggestions(true);
       return;
     }
 

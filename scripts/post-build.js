@@ -17,7 +17,6 @@ const CRITICAL_FILES = [
   { src: 'src/utils/constants.js', dst: 'dist/src/utils/constants.js' },
   { src: 'src/utils/annotationTypes.js', dst: 'dist/src/utils/annotationTypes.js' },
   { src: 'src/utils/voiceInput.js', dst: 'dist/src/utils/voiceInput.js' },
-  { src: 'src/utils/CommandManager.js', dst: 'dist/src/utils/CommandManager.js' },
   { src: 'src/services/ai/AIProviderRouter.js', dst: 'dist/src/services/ai/AIProviderRouter.js' },
   { src: 'src/services/ai/CharacterGenerator.js', dst: 'dist/src/services/ai/CharacterGenerator.js' },
   { src: 'src/services/story/ComplexityAnalyzer.js', dst: 'dist/src/services/story/ComplexityAnalyzer.js' },

@@ -361,6 +361,9 @@ let mainWindow;
 // Unsaved-changes state reported by the renderer. Guards window close and quit.
 let rendererDirty = false;
 let quitRequested = false;
+// Pending AI suggestions reported by the renderer. They do not survive a restart, so closing asks first.
+let pendingSuggestions = 0;
+let discardSuggestionsOnClose = false;
 
 // Send to the renderer if the window still exists (on macOS the app outlives its window)
 function sendToRenderer(channel, ...args) {
@@ -385,6 +388,8 @@ const aiRequests = createRequestTable({
 
 function createWindow() {
   rendererDirty = false;
+  pendingSuggestions = 0;
+  discardSuggestionsOnClose = false;
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -490,9 +495,32 @@ const UNSAVED_DIALOG = {
   cancelId: 2
 };
 
+// Pending suggestions live in memory only: the question comes before the unsaved-changes one (R-24)
+const pendingSuggestionsDialog = (count) => ({
+  type: 'warning',
+  message: count === 1
+    ? 'Käsikirjoituksessa on 1 käsittelemätön ehdotus.'
+    : `Käsikirjoituksessa on ${count} käsittelemätöntä ehdotusta.`,
+  detail: 'Ehdotukset eivät säily sovelluksen sulkemisen yli. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.',
+  buttons: ['Palaa ehdotuksiin', 'Sulje ja hylkää ehdotukset'],
+  defaultId: 0,
+  cancelId: 0
+});
+
 // Ask before a window with unsaved changes closes (also covers Cmd+Q)
 function attachCloseGuard(win) {
   win.on('close', (event) => {
+    // "Palaa ehdotuksiin" stops the close before any save question; after "Sulje ja hylkää ehdotukset"
+    // the unsaved-changes flow runs as before, and the close that follows a save does not ask again
+    if (pendingSuggestions > 0 && !discardSuggestionsOnClose) {
+      const answer = dialog.showMessageBoxSync(win, pendingSuggestionsDialog(pendingSuggestions));
+      if (answer === 0) {
+        event.preventDefault();
+        quitRequested = false;
+        return;
+      }
+      discardSuggestionsOnClose = true;
+    }
     if (!rendererDirty) return;
 
     event.preventDefault();
@@ -513,6 +541,7 @@ function attachCloseGuard(win) {
       });
     } else {
       quitRequested = false;
+      discardSuggestionsOnClose = false;
     }
   });
 
@@ -529,6 +558,11 @@ app.on('before-quit', () => {
 
 ipcMain.on('project:set-dirty', (_event, dirty) => {
   rendererDirty = !!dirty;
+});
+
+ipcMain.on('suggestions:set-pending', (_event, count) => {
+  pendingSuggestions = Math.max(0, Number(count) || 0);
+  if (pendingSuggestions === 0) discardSuggestionsOnClose = false;
 });
 
 // The renderer reports its theme at start and on every switch. Only the two names are accepted.
@@ -558,6 +592,7 @@ ipcMain.on('project:close-confirmed', () => {
 
 ipcMain.on('project:close-cancelled', () => {
   quitRequested = false;
+  discardSuggestionsOnClose = false;
 });
 
 // Save / Don't save / Cancel, for New and Open in the renderer
@@ -639,7 +674,23 @@ function createMenu() {
         item('Etsi…', 'show-find', 'CmdOrCtrl+F'),
         item('Etsi seuraava', 'find-next', 'CmdOrCtrl+G'),
         item('Etsi edellinen', 'find-previous', 'CmdOrCtrl+Shift+G'),
-        item('Etsi ja korvaa…', 'show-find-replace', 'CmdOrCtrl+Alt+F')
+        item('Etsi ja korvaa…', 'show-find-replace', 'CmdOrCtrl+Alt+F'),
+        separator,
+        // The review keys live in the editor while something is pending; here without accelerators (R-5)
+        {
+          label: 'Ehdotukset',
+          submenu: [
+            item('Hyväksy ehdotus', 'suggestion', undefined, 'accept'),
+            item('Hylkää ehdotus', 'suggestion', undefined, 'reject'),
+            separator,
+            item('Seuraava ehdotus', 'suggestion', undefined, 'next'),
+            item('Edellinen ehdotus', 'suggestion', undefined, 'previous'),
+            separator,
+            item('Hyväksy kaikki ehdotukset', 'suggestion', undefined, 'accept-all'),
+            item('Hylkää kaikki ehdotukset', 'suggestion', undefined, 'reject-all'),
+            item('Palauta hylätyt ehdotukset', 'suggestion', undefined, 'restore')
+          ]
+        }
       ]
     },
 
