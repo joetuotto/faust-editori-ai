@@ -226,6 +226,18 @@ describe('Tekoäly ▸ in the context menu of the manuscript (stage I-05, R-8)',
     expect(aiSubmenu(rightClick({ x: 1, y: 1 }))).toBeNull();
   });
 
+  test('a right click on a word that was not selected gets the submenu for that word (I-05 review)', () => {
+    // The renderer reported before macOS selected the word under the pointer
+    report({ x: 30, y: 40, hasSelection: false, actions: ACTIONS });
+    const template = rightClick({ x: 30, y: 40, selectionText: 'juna' });
+    expect(aiSubmenu(template)).not.toBeNull();
+    aiSubmenu(template).submenu.find(item => item.label === 'Tiivistä').click();
+    expect(win().sent).toEqual([['menu-action', 'ai-action', 'tighten']]);
+    // Empty space selects nothing: no submenu
+    report({ x: 30, y: 40, hasSelection: false, actions: ACTIONS });
+    expect(aiSubmenu(rightClick({ x: 30, y: 40, selectionText: '' }))).toBeNull();
+  });
+
   test('a report older than two seconds is not used', () => {
     const now = Date.now();
     const clock = jest.spyOn(Date, 'now').mockReturnValue(now);

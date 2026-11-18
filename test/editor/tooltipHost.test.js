@@ -108,6 +108,27 @@ describe('the tooltip host of the editor in the layer host (stage I-05)', () => 
     expect(declarationsOf(`${HOST_SELECTOR} > .cm-tooltip`)).toEqual({ 'pointer-events': 'auto' });
   });
 
+  test('the prompt is capped by the room the core writes, scrolls inside itself and keeps its foot in view (I-05 review)', () => {
+    const PROMPT = ':is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt';
+    const block = CSS.slice(CSS.indexOf('/* I-05:'), CSS.indexOf('/* end I-05 */'));
+    expect(block.length).toBeGreaterThan(0);
+    // The cap and the foot are rules of the I-05 block, the property is the one the core writes
+    const core = fs.readFileSync(path.join(__dirname, '../../src/editor/inlinePromptCore.js'), 'utf8');
+    expect(core).toContain("const ROOM_PROPERTY = '--cm-faust-prompt-room';");
+    expect(block).toContain(`${PROMPT} { max-height: var(--cm-faust-prompt-room, none); overflow-y: auto;`);
+    const foot = declarationsOf(`${PROMPT} .cm-faust-prompt-foot`);
+    expect(foot).toMatchObject({ position: 'sticky', bottom: 'calc(-1 * var(--sp-3))', background: 'var(--surface-raised)' });
+    // Its padding stands in for the prompt's own bottom padding (var(--sp-3)), so a prompt that fits looks as before
+    expect(foot['margin-bottom']).toBe('calc(-1 * var(--sp-3))');
+    expect(foot['padding-bottom']).toBe('var(--sp-3)');
+    expect(declarationsOf(`${PROMPT} .cm-faust-prompt-count`)).toEqual({ 'white-space': 'nowrap' });
+    // Typed in, it is above the editor pane's popovers (Etsi) and below the header's menus and the dialogs
+    expect(declarationsOf(`${PROMPT}:focus-within`)).toEqual({ 'z-index': 'calc(var(--z-popover) + 1)' });
+    const tokens = fs.readFileSync(path.join(__dirname, '../../styles/faust-tokens.css'), 'utf8');
+    const z = (name) => Number(new RegExp(`--z-${name}:\\s*(\\d+)`).exec(tokens)[1]);
+    expect(z('popover') + 1).toBeLessThan(z('dropdown'));
+  });
+
   test('the editor still renders its tooltips in the layer host', () => {
     const editor = fs.readFileSync(path.join(__dirname, '../../src/components/FaustEditor.js'), 'utf8');
     expect(editor).toMatch(/tooltips\(\{ parent: document\.querySelector\('\.faust-layer'\) \}\)/);

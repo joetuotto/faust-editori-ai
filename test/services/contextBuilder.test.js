@@ -73,6 +73,19 @@ function buildFixture(extra = {}) {
   });
 }
 
+describe('the instruction part names what it is (I-05 review)', () => {
+  test('a task with an instructionLabel names its instruction part so; the author\'s own instruction is oma ohje', () => {
+    const own = buildFixture();
+    expect(part(own, 'instruction').label).toBe('oma ohje');
+    const action = buildFixture({ task: { id: 'edit', instruction: 'Tiivistä.', instructionLabel: 'ohje' } });
+    expect(part(action, 'instruction').label).toBe('ohje');
+    expect(describeParts(action).line.endsWith(' · ohje 9')).toBe(true);
+    expect(describeParts(action).line).not.toContain('oma ohje');
+    // The text sent does not change with the label
+    expect(sent(action)).toBe(sent(own));
+  });
+});
+
 // The drop-order rows of the spec: a calibrated budget of floor(T × 2.25) characters at 3 characters per token
 function buildAt(tokens, extra = {}) {
   return buildFixture({

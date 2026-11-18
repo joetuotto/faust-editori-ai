@@ -25,7 +25,8 @@
  *   pickerOpen: boolean,
  *   actions: Array<{ id, label, builtin }>,
  *   length: 'sentence' | 'paragraph' | 'long',
- *   canEditParagraph: boolean             // write mode: the cursor line is a paragraph
+ *   canEditParagraph: boolean,            // write mode: the cursor line is a paragraph
+ *   sendBlocked: string | null            // why nothing can be sent (the request does not fit the model)
  * }
  */
 
@@ -71,7 +72,8 @@ function createState(init = {}) {
     pickerOpen: given.pickerOpen === true,
     actions: Array.isArray(given.actions) ? given.actions : [],
     length: LENGTHS.includes(given.length) ? given.length : 'paragraph',
-    canEditParagraph: given.canEditParagraph === true
+    canEditParagraph: given.canEditParagraph === true,
+    sendBlocked: typeof given.sendBlocked === 'string' && given.sendBlocked !== '' ? given.sendBlocked : null
   };
 }
 
@@ -158,6 +160,11 @@ function reduce(state, event) {
 
     case 'note':
       return { ...state, note: event.note || null };
+
+    case 'send-blocked': {
+      const reason = typeof event.reason === 'string' && event.reason !== '' ? event.reason : null;
+      return reason === state.sendBlocked ? state : { ...state, sendBlocked: reason };
+    }
 
     default:
       return state;

@@ -588,7 +588,7 @@ describe('result', () => {
     listed.apply({ type: 'models', models, otherModel: 'p:glm-5.3-flash' }, { type: 'picker', open: true });
     const select = listed.role('model-picker');
     expect(select.tagName).toBe('SELECT');
-    expect(select.closest('label').textContent).toContain('Malli');
+    expect(select.closest('label').textContent).toContain('Malli:');
     expect(Array.from(select.options).map((option) => [option.value, option.textContent])).toEqual([
       ['p:glm-5.3', 'glm-5.3'], ['p:glm-5.3-flash', 'glm-5.3-flash']
     ]);
@@ -712,5 +712,93 @@ describe('error and blocked', () => {
     expect(result.roles('close')).toHaveLength(1);
     expect(failed.roles('close')).toHaveLength(1);
     expect(blocked.roles('close')).toHaveLength(1);
+  });
+});
+
+describe('review fixes (I-05)', () => {
+  const REASON = 'Teksti on liian pitkä tälle mallille: noin 296 tokenia, tilaa 244. Lyhennä valintaa tai vaihda mallia.';
+
+  test('a request that cannot fit the model disables Lähetä and the chips, each saying why', () => {
+    const saved = [{ id: 'user-1', label: 'Säilytä murre', prompt: 'Älä yleiskielistä vuorosanoja.', created: 1 }];
+    const prompt = mount({ actions: chips('fiction', saved) });
+    expect(prompt.role('send').disabled).toBe(false);
+    expect(prompt.role('send').hasAttribute('title')).toBe(false);
+
+    prompt.apply({ type: 'send-blocked', reason: REASON });
+    expect(prompt.role('send').disabled).toBe(true);
+    expect(prompt.role('send').getAttribute('title')).toBe(REASON);
+    for (const chip of prompt.roles('chip')) {
+      expect(chip.disabled).toBe(true);
+      expect(chip.getAttribute('title')).toBe(REASON);
+    }
+    // A disabled control sends nothing; deleting a saved prompt is not sending
+    prompt.click('send');
+    prompt.roles('chip')[0].click();
+    expect(prompt.intents).toEqual([]);
+    expect(prompt.role('delete-prompt').disabled).toBe(false);
+
+    // A build that fits again
+    prompt.apply({ type: 'send-blocked', reason: null });
+    expect(prompt.role('send').disabled).toBe(false);
+    expect(prompt.roles('chip').every((chip) => !chip.disabled)).toBe(true);
+  });
+
+  test('write mode: Kirjoita is disabled the same way', () => {
+    const prompt = mount({ mode: 'write', kind: 'cursor' });
+    prompt.apply({ type: 'send-blocked', reason: REASON });
+    expect(prompt.role('send').textContent).toBe('Kirjoita');
+    expect(prompt.role('send').disabled).toBe(true);
+  });
+
+  test('the change count is one unit of the summary that a line break never parts', () => {
+    const prompt = mount({ attempts: [attempt(1, { changeCount: 2 })] });
+    const count = prompt.role('summary').querySelector('.cm-faust-prompt-count');
+    expect(count.textContent).toBe('2 muutosta');
+    expect(prompt.role('summary').textContent).toBe('Tiivistä · deepseek-v4.1-flash · 2 muutosta');
+    const none = mount({ attempts: [attempt(1, { changeCount: 0 })] });
+    expect(none.role('summary').querySelector('.cm-faust-prompt-count').textContent).toBe('Ei muutoksia');
+    // No count yet: no empty span
+    const unknown = mount({ attempts: [attempt(1, { changeCount: null })] });
+    expect(unknown.role('summary').querySelector('.cm-faust-prompt-count')).toBeNull();
+    expect(unknown.role('summary').textContent).toBe('Tiivistä · deepseek-v4.1-flash');
+  });
+
+  test('the field has its own undo history: steps back and forward, and nothing past its first edit', () => {
+    const prompt = mount();
+    const field = prompt.view.field;
+    expect(typeof field.faustHistory).toBe('function');
+    // Nothing typed: nothing to undo, and nothing changes (the browser's undo is never asked)
+    expect(field.faustHistory('undo')).toBe(false);
+    prompt.type('T');
+    prompt.type('Ti');
+    prompt.type('Tii');
+    expect(prompt.role('save-prompt').disabled).toBe(false);
+    expect(field.faustHistory('undo')).toBe(true);
+    expect(field.value).toBe('Ti');
+    expect(field.faustHistory('redo')).toBe(true);
+    expect(field.value).toBe('Tii');
+    expect(field.faustHistory('redo')).toBe(false);
+    for (let n = 0; n < 3; n += 1) field.faustHistory('undo');
+    expect(field.value).toBe('');
+    expect(prompt.role('save-prompt').disabled).toBe(true);
+    expect(field.faustHistory('undo')).toBe(false);
+    expect(field.value).toBe('');
+    // A new edit drops what could be redone
+    prompt.type('x');
+    expect(field.faustHistory('redo')).toBe(false);
+    // The instruction put back after a stop keeps the steps that led to it
+    prompt.apply({ type: 'send', instruction: 'x' }, { type: 'cancelled' });
+    expect(field.value).toBe('x');
+    expect(field.faustHistory('undo')).toBe(true);
+    expect(field.value).toBe('');
+    // Undo never emits an intent
+    expect(prompt.intents).toEqual([]);
+    prompt.view.destroy();
+    expect(field.faustHistory).toBeUndefined();
+  });
+
+  test('the model picker\'s label ends in a colon (M B.19)', () => {
+    const prompt = mount({ attempts: [attempt(1)], models: [{ id: 'p:glm', name: 'glm' }], pickerOpen: true });
+    expect(prompt.role('model-picker').closest('label').firstChild.textContent).toBe('Malli:');
   });
 });

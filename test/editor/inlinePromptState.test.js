@@ -37,7 +37,8 @@ describe('createState', () => {
       pickerOpen: false,
       actions: [],
       length: 'paragraph',
-      canEditParagraph: false
+      canEditParagraph: false,
+      sendBlocked: null
     });
     expect(createState(null).phase).toBe('idle');
   });
@@ -251,6 +252,23 @@ describe('reduce', () => {
         expect(JSON.parse(JSON.stringify(start))).toEqual(copy);
       }
     }
+  });
+});
+
+describe('send-blocked (I-05 review)', () => {
+  test('send-blocked keeps why nothing can be sent, in every phase, until a build fits again', () => {
+    const reason = 'Teksti on liian pitkä tälle mallille: noin 296 tokenia, tilaa 244. Lyhennä valintaa tai vaihda mallia.';
+    const blocked = reduce(createState(), { type: 'send-blocked', reason });
+    expect(blocked.sendBlocked).toBe(reason);
+    // The same reason again is the same state
+    expect(reduce(blocked, { type: 'send-blocked', reason })).toBe(blocked);
+    // A request and its end leave it alone
+    const failed = reduce(reduce(blocked, { type: 'send', instruction: 'x' }), { type: 'fail', error: { code: 'over-budget', message: reason, detail: '' } });
+    expect(failed.sendBlocked).toBe(reason);
+    expect(reduce(failed, { type: 'send-blocked', reason: null }).sendBlocked).toBeNull();
+    expect(reduce(failed, { type: 'send-blocked', reason: '' }).sendBlocked).toBeNull();
+    expect(createState({ sendBlocked: reason }).sendBlocked).toBe(reason);
+    expect(createState({ sendBlocked: 5 }).sendBlocked).toBeNull();
   });
 });
 

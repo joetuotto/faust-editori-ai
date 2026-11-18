@@ -670,7 +670,9 @@ function buildContext({
   OPTIONAL_PARTS_BEFORE_PAYLOAD.forEach(pushPart);
   if (payloadTag) push('payload', payloadLabel, 'user', payload, payload.length, payload ? 'sent' : 'empty', true);
   pushPart('after');
-  if (instruction) push('instruction', 'oma ohje', 'user', instruction, instruction.length, 'sent', true);
+  // "oma ohje" is what the author wrote; a task sending a rule text of its own names it (editTask's instructionLabel)
+  const instructionLabel = asText(spec.instructionLabel).trim() || 'oma ohje';
+  if (instruction) push('instruction', instructionLabel, 'user', instruction, instruction.length, 'sent', true);
 
   const totalChars = size();
   return {

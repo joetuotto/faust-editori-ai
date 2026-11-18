@@ -881,7 +881,9 @@ function FAUSTApp() {
       getEditor: () => editorRef.current,
       getProject: () => projectRef.current,
       getChapterId: () => liveContentRef.current.chapterId,
-      getController: () => suggestionsRef.current
+      getController: () => suggestionsRef.current,
+      // Deleting a saved prompt asks first; askConfirm is declared further down and called only later
+      askConfirm: (...args) => askConfirm(...args)
     });
   }
   // The wire guard in main learns the text of the chapters marked "Ei tekoälylle"; the file path
@@ -1538,7 +1540,9 @@ function FAUSTApp() {
 
   // Undo/Redo. In an ordinary text field (titles, notes, search) the field's
   // own undo applies; everywhere else the project history does. In the Pikamuokkaus prompt's field
-  // only while an instruction is being written: after a result Cmd+Z undoes the accept just made.
+  // the field's own history (inlinePromptView.js), also when it is empty again; only an empty
+  // Tarkenna… field after a result gives Cmd+Z to the project history, so the accept just made can
+  // be undone (fieldOwnsUndo).
   const runHistory = (direction) => {
     const active = document.activeElement;
     const inManuscript = active && active.closest && active.closest('.cm-content');
@@ -1546,7 +1550,13 @@ function FAUSTApp() {
     const fieldUndo = inPrompt
       ? quickEditRef.current.fieldOwnsUndo()
       : (active && !inManuscript && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA'));
-    if (fieldUndo) { document.execCommand(direction); return; }
+    if (fieldUndo) {
+      // The prompt's field steps through its own history; the browser's undo would reach past it
+      // into the manuscript's editing steps once the field's own were used up
+      if (inPrompt && typeof active.faustHistory === 'function') active.faustHistory(direction);
+      else document.execCommand(direction);
+      return;
+    }
 
     const manager = commandManagerRef.current;
     if (!manager) return;

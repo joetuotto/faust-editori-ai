@@ -39,6 +39,8 @@ const WRITE_LABEL = 'Kirjoita kohdistimeen';
 const STOPPED_NOTE = 'Pysäytetty. Teksti on leikattu viimeiseen kokonaiseen virkkeeseen.';
 const CUT_NOTE = 'Vastaus katkesi pituusrajaan. Teksti on leikattu viimeiseen kokonaiseen virkkeeseen.';
 const RESERVED_TAG = /<\/?teksti/i;
+// The context row's name for the rule text of a built-in quick action ("oma ohje" is what the author wrote)
+const ACTION_INSTRUCTION_LABEL = 'ohje';
 
 // Token numbers are grouped like every other count (5 200); the formatter is taken when the text is built
 const overBudgetText = (built) => {
@@ -54,10 +56,11 @@ const repairedNote = (count) => (
 /**
  * @param {object} deps see the list in the task brief: getView, getEditor, getProject, getChapterId, settings, ai,
  *   modelLabel, text, context, projectKind, controller, ui, and the optional normalizeTypography,
- *   proofreadSelection, reportContext, schedule, now, writeAtCursor
+ *   proofreadSelection, reportContext, schedule, now, writeAtCursor, confirmDelete
+ *   (confirmDelete(savedPrompt) → boolean | Promise<boolean>: asked before a saved prompt is deleted)
  * @returns {{ open(options?: object): boolean, host: { handle(intent: object, view: object): void },
  *             isPromptFocused(): boolean, fieldOwnsUndo(): boolean, blocksMenuAction(action: string): boolean,
- *             cancelAll(): void, reset(): void }}
+ *             contextChanged(): void, contextChecked(built: object): void, cancelAll(): void, reset(): void }}
  */
 function createQuickEdit(deps) {
   const { getView, getEditor, getProject, getChapterId, settings, ai, modelLabel, text, context, projectKind, controller, ui } = deps;
@@ -67,6 +70,7 @@ function createQuickEdit(deps) {
   const schedule = typeof deps.schedule === 'function' ? deps.schedule : (fn) => fn();
   const now = typeof deps.now === 'function' ? deps.now : () => Date.now();
   const writeAtCursor = deps.writeAtCursor === true;
+  const confirmDelete = typeof deps.confirmDelete === 'function' ? deps.confirmDelete : null;
 
   let sessions = [];        // edit sessions of this project, oldest first (memory only)
   let writes = [];          // one record per insert block, for "Uusi yritys"
@@ -89,7 +93,11 @@ function createQuickEdit(deps) {
   const project = () => getProject() || {};
   const chipList = (kind, saved) => actionsFor(kind, saved).map(({ id, label, builtin }) => ({ id, label, builtin }));
   const viewAttempt = ({ id, title, modelName, changeCount, note }) => ({ id, title, modelName, changeCount, note });
-  const titleOf = (instruction) => String(instruction).trim().slice(0, TITLE_CHARS);
+  // A long instruction is cut at a word's end where it can be, and says that it was cut
+  const titleOf = (instruction) => {
+    const whole = String(instruction).trim();
+    return whole.length > TITLE_CHARS ? `${whole.slice(0, TITLE_CHARS).trimEnd()}…` : whole;
+  };
 
   const pendingOf = (editor, groupId) => {
     if (!groupId || !editor || typeof editor.getSuggestions !== 'function') return [];
@@ -356,6 +364,8 @@ function createQuickEdit(deps) {
         groupId: null,
         lastText: null,
         rangeId: p.rangeId,
+        instructionLabel: null,
+        contextRev: 0,
         exclude: undefined,
         include: undefined
       };
@@ -379,13 +389,15 @@ function createQuickEdit(deps) {
       typed: extra,
       // The log gets the author's own words: never the text of a built-in prompt
       log: action.builtin ? extra : instruction,
-      title: action.label
+      title: action.label,
+      // The row names a built-in prompt's rule text "ohje", not the author's own instruction
+      instructionLabel: action.builtin ? ACTION_INSTRUCTION_LABEL : null
     });
   }
 
   /**
    * Steps 1–8 of the edit flow.
-   * run = { kind: 'edit', instruction, typed, log, title, actionId?, overrideModel?, attemptTitle? }
+   * run = { kind: 'edit', instruction, typed, log, title, actionId?, overrideModel?, attemptTitle?, instructionLabel? }
    */
   function runEdit(p, run) {
     const editor = getEditor();
@@ -412,6 +424,7 @@ function createQuickEdit(deps) {
     session.log = run.log;
     session.title = run.title;
     session.actionId = run.actionId || null;
+    session.instructionLabel = run.instructionLabel || null;
     p.last = run;
 
     if (run.actionId === 'proofread' && proofreadSelection) {
@@ -422,12 +435,20 @@ function createQuickEdit(deps) {
       return;
     }
 
+    // A suggestion of something else in the target: a rewrite is proposed whole or not at all,
+    // so the answer could not be shown. Refused before anything is sent.
+    if (foreignPendingIn(editor, range, session)) {
+      failRun(p, run, { code: 'conflict', message: promptMessage('conflict'), detail: '' });
+      return;
+    }
+
     const mask = text.maskSpans(original, { structure: original.includes('\n') });
     const task = editTask({
       instruction: run.instruction,
       target: mask.text,
       placeholderRule: mask.spans.length ? text.placeholderInstruction(current.language) : '',
-      language: current.language
+      language: current.language,
+      instructionLabel: run.instructionLabel || undefined
     });
     const built = context.build({
       task,
@@ -463,7 +484,7 @@ function createQuickEdit(deps) {
     // The base of the attempt this request may bring. It goes with the attempt,
     // not the session: a stopped or failed request must not make "Tarkenna"
     // continue an older attempt as if it were a version of the new text.
-    const base = { original, mask, task, built: session.built };
+    const base = { original, mask, task, built: session.built, contextRev: session.contextRev };
 
     dispatchState(p, { type: 'send', instruction: fieldOf(run), title: run.title });
     sendEdit(p, session, {
@@ -631,8 +652,53 @@ function createQuickEdit(deps) {
     return !['button', 'submit', 'reset', 'checkbox', 'radio', 'range', 'color', 'file', 'image', 'hidden'].includes(type);
   }
 
-  function focusManuscript(editor) {
-    if (!typingElsewhere()) editor.focus();
+  /**
+   * After a result the author reviews in the text. A selection still lying over the target would
+   * be replaced, with the attempt's suggestions, by the first key pressed, so it becomes a caret:
+   * at the target's end, where a letter typed by mistake touches no suggestion and the bar's
+   * current suggestion stays current; when a suggestion lies at that end, at the current
+   * suggestion of this attempt (a caret inside it keeps it current), else at the attempt's first.
+   * An attempt without suggestions leaves the selection as it is (Cmd+K on it shows the attempt
+   * again), and so does a selection the author made elsewhere.
+   */
+  function collapseOverTarget(p, editor) {
+    if (typeof editor.setSelectionRange !== 'function') return;
+    const range = editor.getRange(p.rangeId);
+    if (!range) return;
+    const start = Math.min(editor.selectionStart, editor.selectionEnd);
+    const end = Math.max(editor.selectionStart, editor.selectionEnd);
+    if (start === end || end < range.from || start > range.to) return;
+    const own = (p.session ? pendingOf(editor, p.session.groupId) : [])
+      .filter((item) => item.from >= range.from && item.to <= range.to)
+      .sort((a, b) => a.from - b.from);
+    if (own.length === 0) return;
+    const snapshot = typeof editor.getSuggestions === 'function' ? editor.getSuggestions() : null;
+    const pending = snapshot && Array.isArray(snapshot.pending) ? snapshot.pending : own;
+    let at = range.to;
+    if (pending.some((item) => item.from <= range.to && item.to >= range.to)) {
+      const current = snapshot ? own.find((item) => item.id === snapshot.currentId) : null;
+      at = (current || own[0]).from;
+    }
+    editor.setSelectionRange(at, at);
+  }
+
+  function focusManuscript(p, editor) {
+    if (typingElsewhere()) return;
+    collapseOverTarget(p, editor);
+    editor.focus();
+  }
+
+  // Pending suggestions of something else (not this session's attempt) inside the target
+  function foreignPendingIn(editor, range, session) {
+    if (typeof editor.getSuggestions !== 'function') return false;
+    const snapshot = editor.getSuggestions();
+    const own = session ? session.groupId : null;
+    return (snapshot && Array.isArray(snapshot.pending) ? snapshot.pending : []).some((item) => (
+      item.groupId !== own && (
+        (item.from < range.to && item.to > range.from) ||
+        (item.from === item.to && item.from > range.from && item.from < range.to)
+      )
+    ));
   }
 
   /**
@@ -742,7 +808,7 @@ function createQuickEdit(deps) {
       setState(p, next);
     }
 
-    focusManuscript(editor);
+    focusManuscript(p, editor);
     return true;
   }
 
@@ -768,9 +834,16 @@ function createQuickEdit(deps) {
 
     // The three-message form only while the attempt on screen is a version of
     // the target as it reads now, and with the request that attempt came from
+    // A part switched off or added in the row since that request also makes it a new request
     const base = shown && shown.base ? shown.base : null;
-    const intact = !!base && range.intact && range.text === base.original;
+    const intact = !!base && range.intact && range.text === base.original && base.contextRev === session.contextRev;
     if (intact && base.built && base.mask && base.task && typeof shown.masked === 'string') {
+      if (foreignPendingIn(editor, range, session)) {
+        dispatchState(p, { type: 'send', instruction, title });
+        failWith(p, 'conflict');
+        p.last = { kind: 'refine', instruction };
+        return;
+      }
       const refined = refineMessages(base.built, shown.masked, instruction);
       p.last = { kind: 'refine', instruction };
       dispatchState(p, { type: 'send', instruction, title });
@@ -795,7 +868,8 @@ function createQuickEdit(deps) {
       instruction: `${session.instruction}\nTarkennus: ${instruction}`,
       typed: instruction,
       log: session.log ? `${session.log}\nTarkennus: ${instruction}` : `Tarkennus: ${instruction}`,
-      title
+      title,
+      instructionLabel: session.instructionLabel
     });
   }
 
@@ -817,6 +891,7 @@ function createQuickEdit(deps) {
       title: session.title,
       attemptTitle: modelLabel(modelId),
       overrideModel: modelId,
+      instructionLabel: session.instructionLabel,
       // Nothing was typed for this run: after a stop the field is as it was
       fieldText: p.state.phase === 'error' ? p.state.draft : ''
     });
@@ -874,6 +949,7 @@ function createQuickEdit(deps) {
     const left = pendingOf(editor, session.groupId).length;
     if (left > 0) {
       dispatchState(p, { type: 'note', note: `Vuorosanojen ehdotuksia: ${left}. Käy ne läpi yksitellen.` });
+      collapseOverTarget(p, editor);
       editor.focus();
       return;
     }
@@ -914,6 +990,20 @@ function createQuickEdit(deps) {
     const result = addSavedPrompt(savedPrompts(), promptText, now());
     if (!result.added) return;
     storeSaved(p, result.list);
+  }
+
+  // Deleting a saved prompt asks first (rule 0.6); the list is read again after the answer
+  function deletePrompt(p, id) {
+    const item = savedPrompts().find((entry) => entry && entry.id === id);
+    if (!item) return;
+    const remove = () => storeSaved(p, removeSavedPrompt(savedPrompts(), id));
+    if (!confirmDelete) {
+      remove();
+      return;
+    }
+    Promise.resolve()
+      .then(() => confirmDelete({ id: item.id, label: item.label, prompt: item.prompt }))
+      .then((ok) => { if (ok === true) remove(); }, () => {});
   }
 
   function storeSaved(p, list) {
@@ -1306,12 +1396,18 @@ function createQuickEdit(deps) {
         if (phase === 'result') rejectAll(p);
         return;
 
-      case 'close':
+      case 'close': {
         // Suggestions in the text are left as they are; the session stays for the next Cmd+K.
         // Only a selected target is selected again: a paragraph target was opened
-        // from a bare caret, which is still where the author left it.
+        // from a bare caret, which is still where the author left it. After a result
+        // a selection still over the target gives way to a caret, as when the result came.
+        if (phase === 'result') {
+          const editor = getEditor();
+          if (editor && getView() === p.view) collapseOverTarget(p, editor);
+        }
         closeSelf(phase === 'result' || phase === 'blocked' || p.state.kind !== 'selection' ? 'none' : 'selection');
         return;
+      }
 
       case 'tick':
         onTick(p);
@@ -1322,7 +1418,7 @@ function createQuickEdit(deps) {
         return;
 
       case 'delete-prompt':
-        storeSaved(p, removeSavedPrompt(savedPrompts(), intent.id));
+        deletePrompt(p, intent.id);
         return;
 
       case 'length':
@@ -1356,18 +1452,43 @@ function createQuickEdit(deps) {
     return !!(element && typeof element.closest === 'function' && element.closest('.cm-faust-prompt'));
   }
 
-  // Cmd+Z belongs to the field only while an instruction is being written.
-  // After a result the field is empty, and Cmd+Z must undo the accept just made.
+  // Cmd+Z in the prompt's field undoes what is typed there, never the manuscript: also when the
+  // field is empty again, so a held Cmd+Z stops there instead of undoing text out of sight. One
+  // exception: after a result an empty "Tarkenna…" field leaves Cmd+Z to the project history, so
+  // the accept just made (with the bar's button, say) can be undone.
   function fieldOwnsUndo() {
     if (!prompt || !isPromptFocused()) return false;
     const element = document.activeElement;
-    if (element.tagName !== 'TEXTAREA' || !element.value) return false;
-    return prompt.state.phase === 'idle' || prompt.state.phase === 'error';
+    if (element.tagName !== 'TEXTAREA') return false;
+    const { phase } = prompt.state;
+    if (phase === 'idle' || phase === 'error') return true;
+    return phase === 'result' && element.value !== '';
   }
 
-  // Cmd+B or Lisää → Erikoismerkki must not change the manuscript while an instruction is typed
+  // The formatting and insert commands (Cmd+B, Lisää ▸ Muistutus, Erikoismerkki …) must not
+  // change the manuscript while an instruction is typed
   function blocksMenuAction(action) {
-    return isPromptFocused() && /^(format-|text-|insert-text$)/.test(String(action));
+    return isPromptFocused() && /^(format-|text-|insert-)/.test(String(action));
+  }
+
+  // The context row (stage I-05's setup) switched a part off or added one. The attempt on screen
+  // came from the request before the change, so the next "Tarkenna" is a new request built with
+  // the row's parts, not a continuation of the old one.
+  function contextChanged() {
+    const session = prompt ? prompt.session : null;
+    if (!session) return;
+    session.built = null;
+    session.contextRev += 1;
+  }
+
+  // The row's dry build: a request that cannot fit the model's window cannot be sent, and the
+  // prompt's send controls say why (M B.8). Sending is still refused with the same text.
+  function contextChecked(built) {
+    const p = prompt;
+    if (!p) return;
+    const reason = built && built.overBudget ? overBudgetText(built) : null;
+    if (p.state.sendBlocked === reason) return;
+    dispatchState(p, { type: 'send-blocked', reason });
   }
 
   function cancelAll() {
@@ -1399,7 +1520,7 @@ function createQuickEdit(deps) {
     modelList = null;
   }
 
-  return { open, host: { handle }, isPromptFocused, fieldOwnsUndo, blocksMenuAction, cancelAll, reset };
+  return { open, host: { handle }, isPromptFocused, fieldOwnsUndo, blocksMenuAction, contextChanged, contextChecked, cancelAll, reset };
 }
 
 module.exports = { createQuickEdit };

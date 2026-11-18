@@ -10,11 +10,44 @@
  * The prompt is a tooltip under the end of its target. It holds no positions:
  * the target is a captured range of the suggestion layer (`rangeId`), read
  * from `suggestionField`. When that range disappears, the prompt closes.
+ * It never covers its target: when it opens, the text scrolls to make room
+ * under the target's end; when there is still no room it goes above the
+ * target's start; and it is never taller than the room on its side (it then
+ * scrolls inside itself).
  *
  * What the author does is reported to the host as intents:
  *   host().handle(intent, view)
  * The host is the quick-edit controller (src/services/ai/quickEdit.js).
  */
+
+// Layout numbers of the placement (px): the space kept between the prompt and the target or the
+// window edge, the least room the prompt is ever given, and the height a new prompt is expected to
+// have before one was measured (the idle prompt measured 286 to 308 px in the app) and at most
+const ROOM_GAP = 16;
+const MIN_ROOM = 120;
+const HEIGHT_ESTIMATE = 300;
+const HEIGHT_ESTIMATE_MAX = 480;
+// The band at the bottom of the editor pane where the dock shows the suggestion bar and the voice
+// bar (.faust-dock: a bar of --h-xl, 40 px, inset by --sp-4, 16 px). The room made for a prompt
+// ends above it, so that after a result the bar's buttons are not under the prompt.
+const DOCK_BAND = 56;
+// The custom property the stylesheet caps the prompt's height with (I-05 block of faust-components.css)
+const ROOM_PROPERTY = '--cm-faust-prompt-room';
+
+/**
+ * How far to scroll the text so that a prompt of `height` fits under the target's end:
+ * never further than the text can scroll, nor so far that the target's start leaves the view.
+ * Pure; all values are screen pixels. Returns 0 when there is room already or none can be made.
+ * @param {{ endBottom: number, startTop: number, visibleTop: number, visibleBottom: number,
+ *           height: number, maxScroll: number, gap?: number }} m
+ */
+function scrollForRoom({ endBottom, startTop, visibleTop, visibleBottom, height, maxScroll, gap = ROOM_GAP }) {
+  const need = endBottom + gap + height - visibleBottom;
+  if (!(need > 0)) return 0;
+  const keepStart = startTop - (visibleTop + gap);
+  const delta = Math.floor(Math.min(need, maxScroll, keepStart));
+  return Number.isFinite(delta) && delta > 0 ? delta : 0;
+}
 
 /**
  * @param {{ StateField, StateEffect, EditorView, Decoration, showTooltip, ViewPlugin }} cm
@@ -56,6 +89,61 @@ function createInlinePromptKit(cm, options = {}) {
 
   // The open prompt of each editor: its DOM view, for focus and for closing
   const live = new WeakMap();
+
+  // The height the next prompt is expected to have (positioned() keeps it current)
+  let expectedHeight = HEIGHT_ESTIMATE;
+
+  /**
+   * The prompt's anchor on screen: the target from the top of its first line to the bottom of
+   * its last. Below, the prompt hangs under the target's end; when CodeMirror flips it above,
+   * it stands over the target's start, so a wrapped target is never covered. A caret anchor
+   * (write mode) and a start out of the rendered text give the end's own rectangle.
+   */
+  function spanRect(view, range, pos) {
+    const span = !!range && range.from < range.to;
+    const end = (span && view.coordsAtPos(pos, -1)) || view.coordsAtPos(pos, 1);
+    if (!end || !span) return end;
+    const start = view.coordsAtPos(range.from, 1);
+    if (!start || !(start.top < end.top)) return end;
+    return { left: end.left, right: end.right, top: start.top, bottom: end.bottom };
+  }
+
+  function anchorRect(view, pos) {
+    const value = view.state.field(promptField, false);
+    return spanRect(view, value ? rangeOf(view.state, value.rangeId) : null, pos);
+  }
+
+  /**
+   * Room under the target for a prompt that is about to open, when the text can scroll that far
+   * (never so far that the target's start leaves the view). Done before the prompt exists:
+   * CodeMirror places a new tooltip before it applies a scroll of the same transaction, and then
+   * keeps the side it chose, so a scroll made afterwards would leave the prompt above.
+   */
+  // How far the text should scroll for a prompt of `height` under the range (reads the layout)
+  function roomDelta(view, range, height) {
+    const rect = spanRect(view, range, range.to);
+    if (!rect) return 0;
+    const scroller = view.scrollDOM;
+    const box = scroller.getBoundingClientRect();
+    const win = view.dom.ownerDocument.defaultView;
+    return scrollForRoom({
+      endBottom: rect.bottom,
+      startTop: rect.top,
+      visibleTop: box.top,
+      visibleBottom: (win && win.innerHeight ? Math.min(box.bottom, win.innerHeight) : box.bottom) - DOCK_BAND,
+      height,
+      maxScroll: scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop
+    });
+  }
+
+  function makeRoom(view, range) {
+    try {
+      const delta = roomDelta(view, range, expectedHeight);
+      if (delta > 0) view.scrollDOM.scrollTop += delta;
+    } catch (error) {
+      // The layout cannot be read now (inside an update): the prompt goes where there is room
+    }
+  }
 
   const hostOf = (host) => {
     const target = typeof host === 'function' ? host() : null;
@@ -187,6 +275,24 @@ function createInlinePromptKit(cm, options = {}) {
       const first = view.state.field(promptField, false);
       draw(first && first.ui);
 
+      // A result makes the prompt and its target taller (the marks of the suggestions) and brings
+      // the suggestion bar into the dock: a prompt below its target gets the room again, by the
+      // same rule as when it opened. Above the target it stays where it is.
+      let lastPhase = first && first.ui ? first.ui.phase : null;
+      const roomKey = {};
+      const roomAgain = () => view.requestMeasure({
+        key: roomKey,
+        read(current) {
+          const value = current.state.field(promptField, false);
+          const range = value ? rangeOf(current.state, value.rangeId) : null;
+          if (!range || !promptView.dom.isConnected || promptView.dom.classList.contains('cm-tooltip-above')) return 0;
+          return roomDelta(current, range, promptView.dom.getBoundingClientRect().height);
+        },
+        write(delta, current) {
+          if (delta > 0) current.scrollDOM.scrollTop += delta;
+        }
+      });
+
       return {
         dom: promptView.dom,
         resize: false,
@@ -195,10 +301,28 @@ function createInlinePromptKit(cm, options = {}) {
         mount() {
           promptView.focus();
         },
+        getCoords: (pos) => anchorRect(view, pos),
+        // After CodeMirror has placed it (below, or flipped above): the room on that side caps
+        // the prompt's height, so it never runs past the window and its controls stay reachable
+        positioned(space) {
+          const dom = promptView.dom;
+          if (!dom.isConnected || !space) return;
+          const rect = dom.getBoundingClientRect();
+          const above = dom.classList.contains('cm-tooltip-above');
+          const room = Math.floor(above ? rect.bottom - space.top - ROOM_GAP : space.bottom - rect.top - ROOM_GAP);
+          const value = `${Math.max(MIN_ROOM, Number.isFinite(room) ? room : MIN_ROOM)}px`;
+          if (dom.style.getPropertyValue(ROOM_PROPERTY) !== value) dom.style.setProperty(ROOM_PROPERTY, value);
+          // The whole content, also the part scrolled inside a capped prompt
+          const natural = Math.max(rect.height, dom.scrollHeight || 0);
+          if (natural > 0) expectedHeight = Math.min(HEIGHT_ESTIMATE_MAX, Math.round(natural));
+        },
         update(update) {
           const value = update.state.field(promptField, false);
           if (!value) return;
           draw(value.ui);
+          const phase = value.ui ? value.ui.phase : null;
+          if (phase === 'result' && lastPhase !== 'result') roomAgain();
+          lastPhase = phase;
           // The controller closes the prompt when the last suggestion of the
           // attempt is decided. It may dispatch, and a view cannot be
           // dispatched to during its own update: ask after it.
@@ -312,11 +436,13 @@ function createInlinePromptKit(cm, options = {}) {
     const range = rangeOf(view.state, rangeId);
     const kind = mode === 'write' ? 'write' : 'edit';
     if (!range || (kind === 'edit' && range.from === range.to)) return false;
+    // A new prompt: room under the target first. The same prompt on a new range stays where it is.
+    if (!view.state.field(promptField, false)) makeRoom(view, range);
     view.dispatch({
       effects: [
         setPrompt.of({ mode: kind, rangeId, ui }),
-        // Room for the prompt under the target
-        EditorView.scrollIntoView(range.to, { y: 'nearest', yMargin: 220 })
+        // The target's end in view (it is when the author has just selected it)
+        EditorView.scrollIntoView(range.to, { y: 'nearest', yMargin: ROOM_GAP })
       ]
     });
     return true;
@@ -375,4 +501,4 @@ function createInlinePromptKit(cm, options = {}) {
   return { inlinePrompt, openPrompt, updatePrompt, closePrompt, getPrompt, focusPrompt };
 }
 
-module.exports = { createInlinePromptKit };
+module.exports = { createInlinePromptKit, scrollForRoom };

@@ -39,9 +39,9 @@ function answerTokensFor(targetChars) {
 
 /**
  * The task of a quick edit. `target` is the masked selection.
- * @param {{ instruction: string, target: string, placeholderRule?: string, language?: string }} input
+ * @param {{ instruction: string, target: string, placeholderRule?: string, language?: string, instructionLabel?: string }} input
  */
-function editTask({ instruction, target, placeholderRule, language } = {}) {
+function editTask({ instruction, target, placeholderRule, language, instructionLabel } = {}) {
   const text = typeof target === 'string' ? target : '';
   const order = typeof instruction === 'string' ? instruction.trim() : '';
   if (!text.trim()) throw new TypeError('editTask: target is empty');
@@ -68,7 +68,9 @@ function editTask({ instruction, target, placeholderRule, language } = {}) {
     // Without these the builder's edit profile would send 6 000 and 1 500
     // characters of read-only text around every quick edit
     limits: { before: LIMITS.before, after: LIMITS.after },
-    answerTokens: answerTokensFor(text.length)
+    answerTokens: answerTokensFor(text.length),
+    // The context row's name for the instruction when it is not the author's own (a quick action's rule text)
+    ...(typeof instructionLabel === 'string' && instructionLabel.trim() !== '' ? { instructionLabel: instructionLabel.trim() } : {})
   };
 }
 

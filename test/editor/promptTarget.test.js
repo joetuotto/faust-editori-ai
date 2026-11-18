@@ -37,6 +37,19 @@ describe('resolveEditTarget with a selection', () => {
     expect(show('Sana |[TODO: tarkista] ja <u>tämä</u>| loppu')).toBe('selection: Sana |[TODO: tarkista] ja <u>tämä</u>| loppu');
   });
 
+  test('a selection ending inside a word is extended to the end of the word (I-05 review)', () => {
+    // The model would complete "t" to "tiesi jo." in front of the "iesi jo." left outside
+    expect(show('Hän |odotti vastausta jonka t|iesi jo.')).toBe('selection: Hän |odotti vastausta jonka tiesi| jo.');
+    // A start inside a word goes back to the word's start; letters of any script, digits too
+    expect(show('Åke kä|veli öisin vuon|na 1998.')).toBe('selection: Åke |käveli öisin vuonna| 1998.');
+    expect(show('Vuonna 19|98 hän| lähti.')).toBe('selection: Vuonna |1998 hän| lähti.');
+    // Punctuation, dashes, quotes and markers are word edges: nothing to widen
+    expect(show('Hän sanoi: |”Tule.”| Ja lähti.')).toBe('selection: Hän sanoi: |”Tule.”| Ja lähti.');
+    expect(show('Ylä|-Savo| ja |[TODO: x]|')).toBe('selection: Ylä|-Savo| ja [TODO: x]');
+    // Spaces are cut first: a selection that ends on a space before a word is not widened into it
+    expect(show('Kissa| istui |tässä.')).toBe('selection: Kissa |istui| tässä.');
+  });
+
   test('a selection made backwards gives the same target', () => {
     const text = 'Kissa istui tässä.';
     expect(resolveEditTarget(text, 12, 5, blocks)).toEqual(resolveEditTarget(text, 5, 12, blocks));

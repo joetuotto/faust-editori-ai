@@ -157,7 +157,11 @@ function makeEditor(textValue, selFrom, selTo, hooks) {
     blockError: null,        // set to make startInsertBlock refuse
     ranges,
     focus: jest.fn(),
-    setSelectionRange: jest.fn(),
+    // Like the facade: the selection moves (the editor scrolls it into view)
+    setSelectionRange: jest.fn((start, end) => {
+      editor.selectionStart = start;
+      editor.selectionEnd = end === undefined ? start : end;
+    }),
 
     captureRange: jest.fn(capture),
     captureSelection: jest.fn((options = {}) => {
@@ -824,7 +828,9 @@ describe('edit request', () => {
     typed.quick.open();
     const long = 'Tee tästä kappaleesta selvästi tiiviimpi, mutta säilytä ”sitaatit” – ja Åken ääni.';
     typed.send({ type: 'submit', instruction: `  ${long}  ` });
-    expect(typed.lastCall.opts.meta).toEqual({ action: 'quick-edit', actionLabel: long.slice(0, 40), instruction: long, chapterId: 'chapter-1' });
+    // The title is cut at 40 characters, without the space before the cut, and says it was cut
+    expect(typed.lastCall.opts.meta).toEqual({ action: 'quick-edit', actionLabel: `${long.slice(0, 40)}…`, instruction: long, chapterId: 'chapter-1' });
+    expect(typed.prompt.title).toBe('Tee tästä kappaleesta selvästi tiiviimpi…');
 
     // A saved prompt is the author's own text
     const own = [{ id: 'user-1', label: 'Säilytä murre', prompt: 'Älä yleiskielistä vuorosanoja.', created: 1 }];
@@ -2495,7 +2501,7 @@ describe('what app.js asks', () => {
     }
   };
 
-  test('fieldOwnsUndo is true only with text in the field in idle or error', async () => {
+  test('fieldOwnsUndo: the field undoes its own text in every phase, an empty Tarkenna field after a result leaves Cmd+Z to the project (I-05 review)', async () => {
     const h = harness();
     // No document at all (a test, or before the window exists)
     expect(h.quick.fieldOwnsUndo()).toBe(false);
@@ -2511,7 +2517,8 @@ describe('what app.js asks', () => {
 
     h.quick.open();
     expect(withFocus(typed, () => h.quick.fieldOwnsUndo())).toBe(true);        // idle, text in the field
-    expect(withFocus(empty, () => h.quick.fieldOwnsUndo())).toBe(false);       // nothing typed
+    // Empty again after the author's own Cmd+Z: a held Cmd+Z stops in the field, it never runs on into the manuscript
+    expect(withFocus(empty, () => h.quick.fieldOwnsUndo())).toBe(true);
     expect(withFocus(button, () => h.quick.fieldOwnsUndo())).toBe(false);      // a button of the prompt
     expect(withFocus(manuscript, () => h.quick.fieldOwnsUndo())).toBe(false);  // the focus is in the text
     expect(withFocus(typed, () => h.quick.isPromptFocused())).toBe(true);
@@ -2524,11 +2531,16 @@ describe('what app.js asks', () => {
     await flush();
     expect(withFocus(typed, () => h.quick.fieldOwnsUndo())).toBe(true);        // error, the instruction is in the field
 
+    expect(withFocus(empty, () => h.quick.fieldOwnsUndo())).toBe(true);        // error, the field emptied
+
     h.send({ type: 'retry' });
     h.lastCall.accept(SHORTER);
     await flush();
-    // After a result Cmd+Z must undo the accept the author just made, even with a refinement half typed
-    expect(withFocus(inPrompt({ value: 'vielä' }), () => h.quick.fieldOwnsUndo())).toBe(false);
+    // After a result: a refinement typed in Tarkenna… is undone in the field, the manuscript does not change (X-29)
+    expect(withFocus(inPrompt({ value: 'vielä' }), () => h.quick.fieldOwnsUndo())).toBe(true);
+    // With the field empty Cmd+Z undoes the accept the author just made (contracts 11.4 row 9)
+    expect(withFocus(empty, () => h.quick.fieldOwnsUndo())).toBe(false);
+    expect(withFocus(button, () => h.quick.fieldOwnsUndo())).toBe(false);
   });
 
   test('blocksMenuAction is true for format-bold only while the prompt has focus', () => {
@@ -2541,8 +2553,11 @@ describe('what app.js asks', () => {
       expect(h.quick.blocksMenuAction('format-italic')).toBe(true);
       expect(h.quick.blocksMenuAction('text-uppercase')).toBe(true);
       expect(h.quick.blocksMenuAction('insert-text')).toBe(true);
+      // Lisää ▸ Muistutus wraps the selection in a note: an insert command like the others (I-05 review)
+      expect(h.quick.blocksMenuAction('insert-todo')).toBe(true);
       // Everything else goes through
-      expect(h.quick.blocksMenuAction('insert-text-block')).toBe(false);
+      expect(h.quick.blocksMenuAction('new-chapter')).toBe(false);
+      expect(h.quick.blocksMenuAction('add-bookmark')).toBe(false);
       expect(h.quick.blocksMenuAction('quick-edit')).toBe(false);
       expect(h.quick.blocksMenuAction('undo')).toBe(false);
       expect(h.quick.blocksMenuAction('save')).toBe(false);
@@ -2640,5 +2655,218 @@ describe('texts', () => {
     expect(promptMessage('no-changes')).toBe('Malli ei ehdottanut muutoksia.');
     expect(promptMessage('conflict')).toBe('Kohdassa on jo käsittelemätön ehdotus. Käsittele se ensin.');
     expect(promptMessage('no-sentence')).toBe('Pysäytetty ennen ensimmäistä kokonaista virkettä.');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Review fixes of stage I-05
+// ---------------------------------------------------------------------------
+
+describe('review fixes (I-05)', () => {
+  const ownPending = (h, groupId) => h.editor.pending.filter((item) => item.groupId === groupId).sort((a, b) => a.from - b.from);
+
+  test('after a result the selection over the target becomes a caret at the target\'s end, before the focus', async () => {
+    const h = harness();
+    expect(h.editor.selectionEnd - h.editor.selectionStart).toBe(TARGET.length);
+    await withResult(h, SHORTER);
+
+    // One key pressed now goes into the text after the target: it replaces neither the target
+    // nor its suggestions, and touches none of them
+    const end = 'Alku. '.length + TARGET.length;
+    expect([h.editor.selectionStart, h.editor.selectionEnd]).toEqual([end, end]);
+    expect(ownPending(h, 'g1').every((item) => item.to < end)).toBe(true);
+    expect(h.editor.setSelectionRange.mock.invocationCallOrder[0]).toBeLessThan(h.editor.focus.mock.invocationCallOrder[0]);
+    expect(h.editor.pending).toHaveLength(2);
+  });
+
+  test('with a suggestion at the target\'s end the caret goes to the current suggestion of the attempt, else to its first', async () => {
+    // "käveli" and the last word "rantaa." both change: the end is taken
+    const changed = 'Åke kulki hyvin hitaasti pitkin öistä metsää.';
+    const h = harness();
+    await withResult(h, changed);
+    const [first, second] = ownPending(h, 'g1');
+    expect(second.to).toBe('Alku. '.length + TARGET.length);
+    expect([h.editor.selectionStart, h.editor.selectionEnd]).toEqual([first.from, first.from]);
+
+    // The author selected the target again; the bar's current suggestion is the second one
+    h.editor.selectionStart = 'Alku. '.length;
+    h.editor.selectionEnd = 'Alku. '.length + TARGET.length;
+    h.editor.getSuggestions.mockImplementation(() => ({ pending: h.editor.pending.slice(), rejected: [], currentId: second.id }));
+    h.send({ type: 'close', reason: 'button' });
+    expect([h.editor.selectionStart, h.editor.selectionEnd]).toEqual([second.from, second.from]);
+    expect(h.ui.closePrompt).toHaveBeenCalledWith(h.view, { restore: 'none' });
+  });
+
+  test('close after a result leaves a selection elsewhere, and a result in another field moves nothing', async () => {
+    const h = harness();
+    await withResult(h, SHORTER);
+    h.editor.selectionStart = 0;
+    h.editor.selectionEnd = 'Alku'.length;
+    h.editor.setSelectionRange.mockClear();
+    h.send({ type: 'close', reason: 'button' });
+    expect(h.editor.setSelectionRange).not.toHaveBeenCalled();
+    expect([h.editor.selectionStart, h.editor.selectionEnd]).toEqual([0, 4]);
+
+    // Typing in the notes while the answer came: neither the focus nor the selection move
+    const notes = harness();
+    notes.quick.open();
+    notes.send({ type: 'action', actionId: 'tighten', extra: '' });
+    global.document = { activeElement: { tagName: 'TEXTAREA', closest: () => null }, body: {} };
+    try {
+      notes.lastCall.accept(SHORTER);
+      await flush();
+      expect(notes.editor.setSelectionRange).not.toHaveBeenCalled();
+      expect(notes.editor.focus).not.toHaveBeenCalled();
+    } finally {
+      delete global.document;
+    }
+  });
+
+  test('an attempt without changes leaves the selection, so Cmd+K on it shows the attempt again', async () => {
+    const h = harness();
+    await withResult(h, TARGET);
+    expect(h.editor.setSelectionRange).not.toHaveBeenCalled();
+    expect(h.editor.selectionEnd - h.editor.selectionStart).toBe(TARGET.length);
+  });
+
+  test('a part switched off in the row makes the next Tarkenna a new request built with the row\'s parts', async () => {
+    const h = harness();
+    // Before anything was sent there is nothing to continue: no error
+    h.quick.open();
+    h.quick.contextChanged();
+    h.send({ type: 'action', actionId: 'tighten', extra: '' });
+    h.lastCall.accept(SHORTER);
+    await flush();
+    expect(h.context.build).toHaveBeenCalledTimes(1);
+
+    h.quick.contextChanged();
+    h.send({ type: 'refine', instruction: 'vielä lyhyemmin' });
+    // Built again (the setup's build applies the row's lists), one turn, the refinement in the instruction
+    expect(h.context.build).toHaveBeenCalledTimes(2);
+    expect(h.context.build.mock.calls[1][0].task.instruction).toBe(findAction('tighten', []).prompt + '\nTarkennus: vielä lyhyemmin');
+    expect(h.lastCall.opts.messages).toHaveLength(1);
+    expect(h.prompt).toMatchObject({ phase: 'sending', instruction: 'vielä lyhyemmin' });
+
+    // The answer to that request is refined in three turns again: its request has the row's parts
+    h.lastCall.accept('Åke käveli rantaa.');
+    await flush();
+    h.send({ type: 'refine', instruction: 'lisää hitaasti' });
+    expect(h.context.build).toHaveBeenCalledTimes(2);
+    expect(h.lastCall.opts.messages).toHaveLength(3);
+  });
+
+  test('a dry build that does not fit the model disables sending with the reason, one that fits enables it', () => {
+    const h = harness();
+    // No prompt: nothing to tell
+    h.quick.contextChecked({ overBudget: true, totalTokens: 5200, budgetTokens: 3900 });
+    expect(h.ui.updatePrompt).not.toHaveBeenCalled();
+
+    h.quick.open();
+    expect(h.prompt.sendBlocked).toBeNull();
+    h.quick.contextChecked({ overBudget: true, totalTokens: 5200, budgetTokens: 3900 });
+    expect(h.prompt.sendBlocked).toBe('Teksti on liian pitkä tälle mallille: noin 5 200 tokenia, tilaa 3 900. Lyhennä valintaa tai vaihda mallia.');
+    const updates = h.ui.updatePrompt.mock.calls.length;
+    h.quick.contextChecked({ overBudget: true, totalTokens: 5200, budgetTokens: 3900 });
+    expect(h.ui.updatePrompt.mock.calls.length).toBe(updates);   // the same reason draws nothing
+
+    h.quick.contextChecked({ overBudget: false, totalTokens: 300, budgetTokens: 3900 });
+    expect(h.prompt.sendBlocked).toBeNull();
+  });
+
+  test('a send over a pending suggestion of something else in the target is refused before any request', () => {
+    const h = harness();
+    h.quick.open();
+    // A suggestion of the bar (another group) inside the target, the way an undone accept leaves it
+    h.editor.pending.push({ id: 'x1', groupId: 'muu', from: 'Alku. Åke '.length, to: 'Alku. Åke käveli'.length, insert: 'kulki', original: 'käveli', meta: {} });
+    h.send({ type: 'submit', instruction: 'Tiivistä tämä' });
+    expect(h.ai.requestEdit).not.toHaveBeenCalled();
+    expect(h.context.build).not.toHaveBeenCalled();
+    expect(h.prompt.phase).toBe('error');
+    expect(h.prompt.error).toEqual({ code: 'conflict', message: promptMessage('conflict'), detail: '' });
+    expect(h.prompt.draft).toBe('Tiivistä tämä');
+    h.send({ type: 'action', actionId: 'tighten', extra: '' });
+    expect(h.ai.requestEdit).not.toHaveBeenCalled();
+
+    // Outside the target (in "Loppu.") it is not in the way
+    const outside = harness();
+    outside.quick.open();
+    const end = outside.editor.value.length;
+    outside.editor.pending.push({ id: 'x2', groupId: 'muu', from: end - 6, to: end - 1, insert: 'Lopuksi', original: 'Loppu', meta: {} });
+    outside.send({ type: 'submit', instruction: 'Tiivistä tämä' });
+    expect(outside.ai.requestEdit).toHaveBeenCalledTimes(1);
+  });
+
+  test('a refinement over a suggestion that came from elsewhere meanwhile is refused before any request', async () => {
+    const h = harness();
+    await withResult(h, SHORTER);
+    h.editor.pending.push({ id: 'x1', groupId: 'muu', from: 'Alku. Åke '.length, to: 'Alku. Åke käveli'.length, insert: 'kulki', original: 'käveli', meta: {} });
+    h.send({ type: 'refine', instruction: 'vielä lyhyemmin' });
+    expect(h.ai.requestEdit).toHaveBeenCalledTimes(1);
+    expect(h.prompt).toMatchObject({ phase: 'error', draft: 'vielä lyhyemmin' });
+    expect(h.prompt.error.code).toBe('conflict');
+    // The attempt's own suggestions are no obstacle: without the other one the refinement goes out
+    h.editor.pending = h.editor.pending.filter((item) => item.id !== 'x1');
+    h.send({ type: 'retry' });
+    expect(h.ai.requestEdit).toHaveBeenCalledTimes(2);
+    expect(h.lastCall.opts.messages).toHaveLength(3);
+  });
+
+  test('deleting a saved prompt asks first: Peruuta keeps it, Poista ohje removes it', async () => {
+    const saved = [{ id: 'user-1', label: 'Säilytä murre', prompt: 'Älä yleiskielistä vuorosanoja.', created: 1 }];
+    const confirmDelete = jest.fn(() => Promise.resolve(false));
+    const h = harness({ settings: { savedPrompts: saved }, deps: { confirmDelete } });
+    h.quick.open();
+    h.send({ type: 'delete-prompt', id: 'user-1' });
+    await flush();
+    expect(confirmDelete).toHaveBeenCalledWith({ id: 'user-1', label: 'Säilytä murre', prompt: 'Älä yleiskielistä vuorosanoja.' });
+    expect(h.settings.set).not.toHaveBeenCalled();
+    expect(h.prompt.actions.some((item) => item.id === 'user-1')).toBe(true);
+
+    confirmDelete.mockImplementation(() => Promise.resolve(true));
+    h.send({ type: 'delete-prompt', id: 'user-1' });
+    await flush();
+    expect(h.settings.set).toHaveBeenCalledWith('savedPrompts', []);
+    expect(h.prompt.actions.some((item) => item.id === 'user-1')).toBe(false);
+
+    // An id that is not saved asks nothing
+    h.send({ type: 'delete-prompt', id: 'user-9' });
+    await flush();
+    expect(confirmDelete).toHaveBeenCalledTimes(2);
+  });
+
+  test('a built-in quick action\'s rule text is "ohje" in the row, the author\'s own words stay "oma ohje"', async () => {
+    const h = harness();
+    h.quick.open();
+    h.send({ type: 'action', actionId: 'tighten', extra: '' });
+    expect(h.context.build.mock.calls[0][0].task.instructionLabel).toBe('ohje');
+    h.lastCall.accept(SHORTER);
+    await flush();
+    // A new request that continues the action keeps its name
+    h.quick.contextChanged();
+    h.send({ type: 'refine', instruction: 'vielä' });
+    expect(h.context.build.mock.calls[1][0].task.instructionLabel).toBe('ohje');
+
+    const typed = harness();
+    typed.quick.open();
+    typed.send({ type: 'submit', instruction: 'Tiivistä tämä' });
+    expect(typed.context.build.mock.calls[0][0].task).not.toHaveProperty('instructionLabel');
+
+    const saved = [{ id: 'user-1', label: 'Säilytä murre', prompt: 'Älä yleiskielistä vuorosanoja.', created: 1 }];
+    const own = harness({ settings: { savedPrompts: saved } });
+    own.quick.open();
+    own.send({ type: 'action', actionId: 'user-1', extra: '' });
+    expect(own.context.build.mock.calls[0][0].task).not.toHaveProperty('instructionLabel');
+  });
+
+  test('a title cut after a space keeps no space before the ellipsis', () => {
+    const h = harness();
+    h.quick.open();
+    h.send({ type: 'submit', instruction: 'a'.repeat(39) + ' jatkuu tästä' });
+    expect(h.prompt.title).toBe('a'.repeat(39) + '…');
+    expect(h.lastCall.opts.meta.actionLabel).toBe('a'.repeat(39) + '…');
+    const short = harness();
+    short.quick.open();
+    short.send({ type: 'submit', instruction: '  ' + 'b'.repeat(40) + '  ' });
+    expect(short.prompt.title).toBe('b'.repeat(40));
   });
 });

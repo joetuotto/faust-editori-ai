@@ -1133,6 +1133,20 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* "Mitä malli näkee" (ContextRow, mounted into the prompt's slot) keeps its own classes' look; the
    slot only spaces it from the controls above */
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-context:not(:empty) { margin-top: var(--sp-2); }
+/* Never past the window: after placing the prompt the core writes the room on its side into
+   --cm-faust-prompt-room; a taller prompt (the row's list expanded) scrolls inside itself, and its
+   foot (the model, Lähetä, the keys) stays at the bottom of the view. The foot's padding stands in
+   for the prompt's bottom padding, so the prompt that fits looks as before; it sticks below the
+   padding edge (Chromium keeps a sticky box inside the scroller's padding), so nothing shows under it.
+   Layout only. */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt { max-height: var(--cm-faust-prompt-room, none); overflow-y: auto; overscroll-behavior: contain; }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-foot { position: sticky; bottom: calc(-1 * var(--sp-3)); z-index: 1; margin-bottom: calc(-1 * var(--sp-3)); padding-bottom: var(--sp-3); background: var(--surface-raised); }
+/* The prompt the author is typing in is never under another popover of the editor pane (Etsi stays
+   open beside it, D-L6): while the focus is inside, it stands one step above them; the header's
+   menus and the dialogs stay above it. Back in the text, the prompt is under them again. */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt:focus-within { z-index: calc(var(--z-popover) + 1); }
+/* "2 muutosta" stays on one line: the summary may wrap before it, never inside it */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-count { white-space: nowrap; }
 /* end I-05 */
 
 /* The page: one measure, one left edge, one scroller. The page element (.faust-page) is the

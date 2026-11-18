@@ -61,12 +61,23 @@ describe('takeContext', () => {
     expect(takeContext(flag, params({ x: 404, y: 296 }), 10500)).toBe(flag);
   });
 
+  test('a right click on a word that was not selected: the report said no selection, Electron has the word, the menu is for it (I-05 review)', () => {
+    // macOS selects the word under the pointer after the renderer reported
+    const early = stored({ hasSelection: false });
+    expect(takeContext(early, params({ selectionText: 'juna' }), 10500)).toBe(early);
+    // No word under the pointer (empty space, a blank line): still nothing
+    expect(takeContext(early, params({ selectionText: '' }), 10500)).toBeNull();
+    expect(takeContext(early, params({ selectionText: ' \n ' }), 10500)).toBeNull();
+    // Still only at its own point and only in an editable field
+    expect(takeContext(early, params({ x: 405, selectionText: 'juna' }), 10500)).toBeNull();
+    expect(takeContext(early, params({ isEditable: false, selectionText: 'juna' }), 10500)).toBeNull();
+  });
+
   test('takeContext refuses another point, an old flag, a field without selection and a non-editable target', () => {
     const flag = stored();
     expect(takeContext(flag, params({ x: 405 }), 10500)).toBeNull();
     expect(takeContext(flag, params({ y: 295 }), 10500)).toBeNull();
     expect(takeContext(flag, params(), 12001)).toBeNull();
-    expect(takeContext(stored({ hasSelection: false }), params(), 10500)).toBeNull();
     expect(takeContext(flag, params({ isEditable: false }), 10500)).toBeNull();
     expect(takeContext(flag, params({ selectionText: '   ' }), 10500)).toBeNull();
     expect(takeContext(flag, params({ selectionText: '' }), 10500)).toBeNull();

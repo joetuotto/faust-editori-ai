@@ -96,6 +96,13 @@ describe('editTask', () => {
     expect(() => editTask()).toThrow(TypeError);
   });
 
+  test('editTask carries a label for an instruction that is not the author\'s own, and none otherwise (I-05 review)', () => {
+    expect(editTask({ instruction: 'Tiivistä.', target: 'Teksti.', instructionLabel: ' ohje ' }).instructionLabel).toBe('ohje');
+    expect(editTask({ instruction: 'Tiivistä.', target: 'Teksti.' })).not.toHaveProperty('instructionLabel');
+    expect(editTask({ instruction: 'Tiivistä.', target: 'Teksti.', instructionLabel: '  ' })).not.toHaveProperty('instructionLabel');
+    expect(editTask({ instruction: 'Tiivistä.', target: 'Teksti.', instructionLabel: 7 })).not.toHaveProperty('instructionLabel');
+  });
+
   test('editTask asks for 1 500 characters before and 500 after', () => {
     const task = editTask({ instruction: 'Tiivistä.', target: 'Teksti.' });
     expect(task.limits).toEqual({ before: 1500, after: 500 });

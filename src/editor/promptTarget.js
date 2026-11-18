@@ -2,13 +2,15 @@
  * The target of a quick edit (Cmd+K)
  *
  * Decides which text an instruction applies to: the selection without the
- * whitespace at its ends, or, with a bare cursor, the paragraph under it
- * without its heading, list or quote marker. Pure function. The range is not
- * tracked here: the caller captures it in the editor, which maps it through
- * later changes.
+ * whitespace at its ends and widened to whole words, or, with a bare cursor,
+ * the paragraph under it without its heading, list or quote marker. Pure
+ * function. The range is not tracked here: the caller captures it in the
+ * editor, which maps it through later changes.
  */
 
 const WHITESPACE = /\s/;
+// Letters and digits of any script: a selection edge between two of them lies inside a word
+const WORD_CHAR = /[\p{L}\p{N}\p{M}]/u;
 
 /**
  * @param {string} text the chapter text
@@ -28,7 +30,14 @@ function resolveEditTarget(text, selFrom, selTo, deps) {
     // A model trims its answer, so spaces at the ends would turn into suggestions
     while (from < to && WHITESPACE.test(value[from])) from += 1;
     while (to > from && WHITESPACE.test(value[to - 1])) to -= 1;
-    if (from < to) return { ok: true, from, to, kind: 'selection' };
+    if (from < to) {
+      // An edge inside a word takes the whole word: a model completes the word it was given half
+      // of, and the completion would be put in front of the half that stayed outside
+      const inWord = (pos) => pos > 0 && pos < value.length && WORD_CHAR.test(value[pos - 1]) && WORD_CHAR.test(value[pos]);
+      while (inWord(from)) from -= 1;
+      while (inWord(to)) to += 1;
+      return { ok: true, from, to, kind: 'selection' };
+    }
   }
 
   // Loaded here, not at the top: the module belongs to another package of the same change

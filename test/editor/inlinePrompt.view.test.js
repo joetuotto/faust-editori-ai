@@ -178,8 +178,8 @@ describe.each(layers.map((layer) => [layer.name, layer]))('inline prompt with %s
     expect(document.activeElement).toBe(editor.field());
     expect(editor.kit.getPrompt(editor.view)).toEqual({ mode: 'edit', rangeId, from: FROM, to: TO, ui });
 
-    // Room is made for the prompt under the target
-    const scroll = effects.find((effect) => effect.value && effect.value.yMargin === 220);
+    // The target's end is kept in view (room under it is made before the dispatch, see placement)
+    const scroll = effects.find((effect) => effect.value && effect.value.yMargin === 16);
     expect(scroll).toBeDefined();
     expect(scroll.value.y).toBe('nearest');
     expect(scroll.value.range.head).toBe(TO);
@@ -623,5 +623,147 @@ describe('the core as a module', () => {
       expect(source).not.toMatch(/require\(\s*['"`]@(codemirror|lezer)/);
       expect(source).not.toMatch(/from\s+['"`]@(codemirror|lezer)/);
     }
+  });
+});
+
+describe('placement: the prompt never covers its target and never runs past the window (I-05 review)', () => {
+  const { scrollForRoom } = require('../../src/editor/inlinePromptCore');
+  const rect = (left, top, right, bottom) => ({ left, top, right, bottom, width: right - left, height: bottom - top, x: left, y: top });
+
+  test('scrollForRoom scrolls the target\'s end up until the prompt fits under it, never further than the text or the target\'s start allow', () => {
+    // 1440 × 900: the end line's bottom at 652, a 300 px prompt, the scroller from 60 to 860
+    const base = { endBottom: 652, startTop: 564, visibleTop: 60, visibleBottom: 860, height: 300, maxScroll: 913, gap: 16 };
+    expect(scrollForRoom(base)).toBe(108);                                   // 652 + 16 + 300 - 860
+    expect(scrollForRoom({ ...base, maxScroll: 40 })).toBe(40);              // the end of the document
+    expect(scrollForRoom({ ...base, startTop: 120 })).toBe(44);              // the target's start stays in view (120 - 76)
+    expect(scrollForRoom({ ...base, endBottom: 400 })).toBe(0);              // room enough already
+    expect(scrollForRoom({ ...base, startTop: 70 })).toBe(0);                // a start at the top: nothing to give
+    expect(scrollForRoom({ ...base, maxScroll: 0 })).toBe(0);
+    expect(scrollForRoom({ ...base, height: NaN })).toBe(0);
+  });
+
+  test('the anchor spans the target from its first line to its last, so a prompt flipped above stands over the target\'s start', () => {
+    const layer = layers[0];
+    const editor = setup(layer);
+    editor.openEdit();
+    const tip = cmView.getTooltip(editor.view, editor.tooltips()[0]);
+    expect(typeof tip.getCoords).toBe('function');
+    // Measured in the app: a three-line target, its start at 564, its end line 634 to 652
+    const coords = new Map([[FROM, rect(120, 564, 121, 582)], [TO, rect(800, 634, 801, 652)]]);
+    jest.spyOn(editor.view, 'coordsAtPos').mockImplementation((pos) => coords.get(pos) || null);
+    expect(tip.getCoords(TO)).toEqual({ left: 800, right: 801, top: 564, bottom: 652 });
+    // The start out of the rendered text, or on the end's own line: the end alone
+    coords.delete(FROM);
+    expect(tip.getCoords(TO)).toEqual(rect(800, 634, 801, 652));
+    coords.set(FROM, rect(120, 634, 121, 652));
+    expect(tip.getCoords(TO)).toEqual(rect(800, 634, 801, 652));
+    // The end out of the rendered text: hidden, as before
+    coords.delete(TO);
+    expect(tip.getCoords(TO)).toBeNull();
+    // The prompt is still not resized by CodeMirror (its own content changes; see positioned)
+    expect(tip.resize).toBe(false);
+  });
+
+  test('a write prompt on a caret is anchored at the caret', () => {
+    const layer = layers[0];
+    const editor = setup(layer);
+    const caret = layer.capture(editor.view, TO, TO);
+    editor.kit.openPrompt(editor.view, { mode: 'write', rangeId: caret, ui: createState({ mode: 'write' }) });
+    const tip = cmView.getTooltip(editor.view, editor.tooltips()[0]);
+    jest.spyOn(editor.view, 'coordsAtPos').mockImplementation((pos, side) => (pos === TO && side === 1 ? rect(5, 10, 6, 28) : null));
+    expect(tip.getCoords(TO)).toEqual(rect(5, 10, 6, 28));
+  });
+
+  test('a result makes room again under a prompt below its target, never over one above it', async () => {
+    const layer = layers[0];
+    const editor = setup(layer);
+    const scroller = editor.view.scrollDOM;
+    let top = 0;
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, get: () => top, set: (value) => { top = value; } });
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => 2000 });
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => 800 });
+    jest.spyOn(scroller, 'getBoundingClientRect').mockReturnValue(rect(0, 60, 1440, 700));
+    // The end line low enough that no room is made when the prompt opens (its start at the top)
+    const coords = new Map([[FROM, rect(120, 70, 121, 88)], [TO, rect(800, 400, 801, 418)]]);
+    jest.spyOn(editor.view, 'coordsAtPos').mockImplementation((pos) => coords.get(pos) || null);
+    editor.openEdit();
+    expect(top).toBe(0);                                                     // 418 + 16 + 300 - 644 = 90, but the start may not move
+    coords.set(FROM, rect(120, 300, 121, 318));
+    const tip = cmView.getTooltip(editor.view, editor.tooltips()[0]);
+    jest.spyOn(tip.dom, 'getBoundingClientRect').mockReturnValue(rect(0, 418, 520, 718));
+
+    editor.kit.updatePrompt(editor.view, resultState());
+    await nextFrame();
+    await nextFrame();
+    expect(top).toBe(90);                                                    // 418 + 16 + 300 - 644
+
+    // Above its target: no scroll
+    const above = setup(layer);
+    let aboveTop = 0;
+    Object.defineProperty(above.view.scrollDOM, 'scrollTop', { configurable: true, get: () => aboveTop, set: (value) => { aboveTop = value; } });
+    Object.defineProperty(above.view.scrollDOM, 'scrollHeight', { configurable: true, get: () => 2000 });
+    Object.defineProperty(above.view.scrollDOM, 'clientHeight', { configurable: true, get: () => 800 });
+    jest.spyOn(above.view.scrollDOM, 'getBoundingClientRect').mockReturnValue(rect(0, 60, 1440, 700));
+    jest.spyOn(above.view, 'coordsAtPos').mockImplementation((pos) => (pos === FROM ? rect(120, 70, 121, 88) : pos === TO ? rect(800, 400, 801, 418) : null));
+    above.openEdit();
+    const aboveTip = cmView.getTooltip(above.view, above.tooltips()[0]);
+    aboveTip.dom.classList.add('cm-tooltip-above');
+    above.kit.updatePrompt(above.view, resultState());
+    await nextFrame();
+    await nextFrame();
+    expect(aboveTop).toBe(0);
+  });
+
+  test('positioned caps the prompt by the room on the side it was placed, with a floor', () => {
+    const layer = layers[0];
+    const editor = setup(layer);
+    editor.openEdit();
+    const tip = cmView.getTooltip(editor.view, editor.tooltips()[0]);
+    const space = { left: 0, top: 0, right: 1024, bottom: 640 };
+    const box = jest.spyOn(tip.dom, 'getBoundingClientRect');
+    const room = () => tip.dom.style.getPropertyValue('--cm-faust-prompt-room');
+
+    // Below the target: from its top to the window's bottom, less the gap
+    tip.dom.classList.remove('cm-tooltip-above');
+    box.mockReturnValue(rect(504, 294, 1024, 864));
+    tip.positioned(space);
+    expect(room()).toBe('330px');                                            // 640 - 294 - 16
+    // Above the target: from the window's top to its bottom
+    tip.dom.classList.add('cm-tooltip-above');
+    box.mockReturnValue(rect(504, 40, 1024, 330));
+    tip.positioned(space);
+    expect(room()).toBe('314px');                                            // 330 - 0 - 16
+    // Hardly any room: never less than 120 px
+    box.mockReturnValue(rect(504, 0, 1024, 60));
+    tip.positioned(space);
+    expect(room()).toBe('120px');
+  });
+
+  test('before a new prompt is placed, the text scrolls so that it fits under the target; the same prompt on a new range does not scroll', async () => {
+    const layer = layers[0];
+    const editor = setup(layer);
+    const scroller = editor.view.scrollDOM;
+    let top = 0;
+    Object.defineProperty(scroller, 'scrollTop', { configurable: true, get: () => top, set: (value) => { top = value; } });
+    Object.defineProperty(scroller, 'scrollHeight', { configurable: true, get: () => 2000 });
+    Object.defineProperty(scroller, 'clientHeight', { configurable: true, get: () => 800 });
+    jest.spyOn(scroller, 'getBoundingClientRect').mockReturnValue(rect(0, 60, 1440, 700));
+    const coords = new Map([[FROM, rect(120, 564, 121, 582)], [TO, rect(800, 634, 801, 652)]]);
+    jest.spyOn(editor.view, 'coordsAtPos').mockImplementation((pos) => coords.get(pos) || null);
+    // Synchronously, before the dispatch: CodeMirror places a new tooltip before it scrolls
+    const { rangeId } = editor.openEdit();
+    // 652 + 16 + 300 (the expected height of a prompt not yet measured) - (700 - 56): the scroller
+    // ends above the bottom of jsdom's 768 px window, and the dock's band of 56 px stays clear
+    expect(top).toBe(324);
+    editor.kit.openPrompt(editor.view, { mode: 'edit', rangeId, ui: createState() });
+    expect(top).toBe(324);
+    // Placed: its own height is the next prompt's estimate (at most 480)
+    const tip = cmView.getTooltip(editor.view, editor.tooltips()[0]);
+    jest.spyOn(tip.dom, 'getBoundingClientRect').mockReturnValue(rect(0, 400, 520, 640));
+    tip.positioned({ left: 0, top: 0, right: 1024, bottom: 900 });
+    editor.kit.closePrompt(editor.view);
+    top = 0;
+    editor.openEdit();
+    expect(top).toBe(264);                                                   // 652 + 16 + 240 - 644
   });
 });

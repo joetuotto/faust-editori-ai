@@ -7,6 +7,7 @@
  *       changes, and keeps the parts the author switched off
  *   ContextRow(props)            the one line under an action: what is sent and how big it is
  *   PromptDialog(props)          Näytä kehote: the system and user text exactly as they are sent
+ *   manualChoicesFor(project, built, include)   the Tarinakansio entries "Lisää kohde…" offers
  *   mountContextRow(el, props)   the same row for a host that is not React; returns the unmount
  *
  * The row's numbers are characters; its total is an estimate in tokens against the room the model
@@ -38,26 +39,37 @@ const taskIdOf = (task) => (typeof task === 'string' ? task : isRecord(task) && 
 // working text, the rules and the author's own instruction, which are always sent
 const isPartId = (id) => DROP_ORDER.includes(id);
 
-// What the model reads, as one text (the copy of Näytä kehote and the size of its footer)
-function promptOf(built, promptText, systemAsUser) {
-  if (typeof promptText === 'string') return { system: '', user: promptText };
-  const system = (built && built.system) || '';
-  const user = built && built.messages && built.messages[0] ? built.messages[0].content : '';
+// What the model reads: the system text and the turns (the copy of Näytä kehote and the size of
+// its footer). `sent` is a request whose turns are not the build's own (Tarkenna sends the first
+// request, the model's answer and the refinement).
+function promptOf(built, promptText, systemAsUser, sent) {
+  if (typeof promptText === 'string') return { system: '', turns: [{ role: 'user', content: promptText }] };
+  const source = sent && Array.isArray(sent.messages) && sent.messages.length > 0 ? sent : built;
+  const system = (source && source.system) || '';
+  const turns = source && Array.isArray(source.messages) && source.messages.length > 0
+    ? source.messages.map(turn => ({ role: turn.role === 'assistant' ? 'assistant' : 'user', content: String(turn.content || '') }))
+    : [{ role: 'user', content: '' }];
   // A model set to take its instructions in the user message gets them at its start (utils/aiRequest.js buildParams)
-  return systemAsUser && system ? { system: '', user: system + '\n\n' + user } : { system, user };
+  if (systemAsUser && system) {
+    return { system: '', turns: [{ ...turns[0], content: system + '\n\n' + turns[0].content }, ...turns.slice(1)] };
+  }
+  return { system, turns };
 }
 
+const TURN_LABELS = { user: 'Käyttäjäviesti', assistant: 'Mallin vastaus' };
+
 /** Kehote: what is sent, as it is sent. A view: a press on the scrim closes it. */
-export function PromptDialog({ open, built, promptText, systemAsUser, onClose }) {
+export function PromptDialog({ open, built, promptText, systemAsUser, sent, onClose }) {
   const [copied, setCopied] = useState(false);
   if (!open) return null;
-  const { system, user } = promptOf(built, promptText, systemAsUser);
+  const many = !!(sent && Array.isArray(sent.messages) && sent.messages.length > 0);
+  const { system, turns } = promptOf(built, promptText, systemAsUser, sent);
   // The size of what is shown, which is what is sent (a folded system text adds its blank line)
-  const chars = system.length + user.length;
-  const tokens = built && typeof promptText !== 'string'
+  const chars = system.length + turns.reduce((sum, turn) => sum + turn.content.length, 0);
+  const tokens = built && typeof promptText !== 'string' && !many
     ? built.totalTokens
     : Math.ceil(chars / ((built && built.charsPerToken) || 2.7));
-  const all = system ? system + '\n\n' + user : user;
+  const all = [system, ...turns.map(turn => turn.content)].filter(Boolean).join('\n\n');
   const close = () => { setCopied(false); if (onClose) onClose(); };
   const copy = async () => {
     try {
@@ -84,20 +96,21 @@ export function PromptDialog({ open, built, promptText, systemAsUser, onClose })
       e(Callout, { role: 'info' }, 'Tälle mallille järjestelmäviesti lähetetään käyttäjäviestin alussa.')),
     system && e(Field, { label: 'Järjestelmäviesti' },
       e('textarea', { className: 'faust-textarea', readOnly: true, rows: 8, value: system, spellCheck: false })),
-    e(Field, { label: 'Käyttäjäviesti' },
-      e('textarea', { className: 'faust-textarea', readOnly: true, rows: 12, value: user, spellCheck: false }))
+    turns.map((turn, index) => e(Field, { key: index, label: TURN_LABELS[turn.role] },
+      e('textarea', { className: 'faust-textarea', readOnly: true, rows: turns.length > 1 ? 6 : 12, value: turn.content, spellCheck: false })))
   );
 }
 
 /**
  * The row. Full mode takes `built`; plain mode takes `parts` ([{ label, chars }]) and `note`.
- * exclude / include are the switched-off part ids and the entries added by hand.
+ * exclude / include are the switched-off part ids and the entries added by hand. `sent`
+ * ({ system, messages }) is what a request built from `built` actually sent, when its turns differ.
  */
 export function ContextRow(props) {
   const {
     built, parts, note, folder = 'Tarinakansio', taskId,
     exclude = [], include = [], onExcludeChange, onIncludeChange,
-    manualChoices = [], notice, promptText, systemAsUser
+    manualChoices = [], notice, promptText, systemAsUser, sent
   } = props;
   const [expanded, setExpanded] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
@@ -116,7 +129,7 @@ export function ContextRow(props) {
     className: 'faust-btn faust-btn--quiet faust-btn--sm',
     onClick: () => setShowPrompt(true)
   }, 'Näytä kehote');
-  const dialog = e(PromptDialog, { open: showPrompt, built, promptText, systemAsUser, onClose: () => setShowPrompt(false) });
+  const dialog = e(PromptDialog, { open: showPrompt, built, promptText, systemAsUser, sent, onClose: () => setShowPrompt(false) });
 
   // Plain mode: a description given by the caller (a batch of several requests)
   if (!built) {
@@ -222,7 +235,7 @@ export function ContextRow(props) {
 }
 
 // Entries that can be added by hand: "Vain käsin", and "Kun mainitaan" when not mentioned now
-function manualChoicesFor(project, built, include) {
+export function manualChoicesFor(project, built, include) {
   const entries = project && Array.isArray(project.codex) ? project.codex : [];
   const inBuilt = new Set();
   for (const part of (built && built.parts) || []) {

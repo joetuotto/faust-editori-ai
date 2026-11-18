@@ -12,7 +12,11 @@
  * - Escape cancels a running request or closes the prompt. It never rejects.
  * - The field is one textarea for the whole life of the prompt, so its text,
  *   focus and undo history survive every re-render.
- * - Cmd+Z is left alone: the menu's undo reaches the field by itself.
+ * - The field keeps its own undo history, reached through `field.faustHistory`
+ *   (app.js runHistory calls it for Cmd+Z and Shift+Cmd+Z). The browser's own
+ *   undo is one stack for the whole window: once the field's steps were used
+ *   up it went on into the manuscript's editing steps and changed the text
+ *   out of sight.
  */
 
 const { attemptLabel, changeCountLabel } = require('./inlinePromptState.js');
@@ -30,6 +34,7 @@ const INVALID_TEXT = 'Kirjoita ohje tai valitse pikavalinta.';
 const CLOSE_TITLE = 'Sulje (Esc)';
 const MIN_ROWS = 2;
 const MAX_ROWS = 6;
+const MAX_HISTORY = 200;
 const DETAIL_CHARS = 400;
 
 const LENGTH_OPTIONS = [
@@ -81,6 +86,8 @@ function createPromptView(doc, options = {}) {
   let previewNode = null;
   let statusNode = null;
   let saveButton = null;
+  // The field's own undo and redo: the values before each edit the author made in it
+  const history = { undo: [], redo: [], last: '' };
 
   const fieldShown = (phase) => phase !== 'sending' && phase !== 'blocked';
   const hasText = () => field.value.trim() !== '';
@@ -88,6 +95,27 @@ function createPromptView(doc, options = {}) {
   const sendingStatus = (current) => (
     current.waiting ? 'Odotetaan mallia…' : `Tekoäly kirjoittaa… ${fiNumber(current.preview.length)} merkkiä`
   );
+
+  /**
+   * Undo or redo in the field. False when the field has nothing of its own to undo or redo: then
+   * nothing happens at all (nothing reaches the manuscript).
+   * @param {'undo'|'redo'} direction
+   */
+  function stepHistory(direction) {
+    const from = direction === 'redo' ? history.redo : history.undo;
+    const to = direction === 'redo' ? history.undo : history.redo;
+    if (from.length === 0) return false;
+    to.push(field.value);
+    field.value = from.pop();
+    history.last = field.value;
+    const end = field.value.length;
+    field.setSelectionRange(end, end);
+    if (invalid) setInvalid(false);
+    if (saveButton) saveButton.disabled = !hasText();
+    resizeField();
+    return true;
+  }
+  field.faustHistory = stepHistory;
 
   function resizeField() {
     const lines = field.value.split('\n').length;
@@ -129,11 +157,14 @@ function createPromptView(doc, options = {}) {
       : null;
   }
 
+  // A chip sends at once: while nothing can be sent it is disabled and says why
+  const sendAttrs = (current) => (current.sendBlocked ? { disabled: true, title: current.sendBlocked } : {});
+
   function chipsNode(current) {
     const builtins = current.actions.filter((item) => item.builtin);
     if (builtins.length === 0) return null;
     return make('div', { class: 'cm-faust-prompt-chips', 'data-role': 'chips' },
-      ...builtins.map((item) => button('chip', item.label, { 'data-action': item.id })));
+      ...builtins.map((item) => button('chip', item.label, { 'data-action': item.id, ...sendAttrs(current) })));
   }
 
   function savedNode(current) {
@@ -143,7 +174,7 @@ function createPromptView(doc, options = {}) {
       node.appendChild(make('span', { class: 'cm-faust-prompt-caption' }, 'Omat ohjeet'));
       for (const item of own) {
         node.appendChild(make('span', { class: 'cm-faust-prompt-own' },
-          button('chip', item.label, { 'data-action': item.id }),
+          button('chip', item.label, { 'data-action': item.id, ...sendAttrs(current) }),
           button('delete-prompt', '×', { 'data-id': item.id, title: 'Poista ohje', 'aria-label': 'Poista ohje' })));
       }
     }
@@ -167,7 +198,7 @@ function createPromptView(doc, options = {}) {
         ...models.map((model) => make('option', { value: model.id }, model.name || model.id)));
       const listed = (id) => models.some((model) => model.id === id);
       select.value = listed(pickerChoice) ? pickerChoice : listed(current.otherModel) ? current.otherModel : models[0].id;
-      node.appendChild(make('label', {}, make('span', {}, 'Malli'), select));
+      node.appendChild(make('label', {}, make('span', {}, 'Malli:'), select));
     } else {
       // No list (Claude direct): the author types the model id
       const input = make('input', { type: 'text', 'data-role': 'model-picker', placeholder: 'Mallin tunnus', 'aria-label': 'Malli' });
@@ -199,7 +230,7 @@ function createPromptView(doc, options = {}) {
 
     const model = modelNode(current);
     if (model) foot.appendChild(model);
-    foot.appendChild(button('send', current.mode === 'write' ? 'Kirjoita' : 'Lähetä', { class: 'cm-faust-prompt-primary' }));
+    foot.appendChild(button('send', current.mode === 'write' ? 'Kirjoita' : 'Lähetä', { class: 'cm-faust-prompt-primary', ...sendAttrs(current) }));
     foot.appendChild(make('span', { class: 'cm-faust-prompt-keys', 'data-role': 'keys' },
       current.mode === 'write' ? 'Enter kirjoittaa · Esc sulkee' : 'Enter lähettää · Esc sulkee'));
   }
@@ -233,9 +264,13 @@ function createPromptView(doc, options = {}) {
     head.appendChild(nav);
 
     if (attempt) {
-      // An attempt of "Kokeile toisella mallilla" is titled with the model: say the name once
-      const parts = [attempt.title, attempt.modelName !== attempt.title ? attempt.modelName : '', changeCountLabel(attempt.changeCount)];
-      head.appendChild(make('div', { class: 'cm-faust-prompt-summary', 'data-role': 'summary' }, parts.filter(Boolean).join(' · ')));
+      // An attempt of "Kokeile toisella mallilla" is titled with the model: say the name once.
+      // The count is its own span, so a line break never parts the number from its noun.
+      const names = [attempt.title, attempt.modelName !== attempt.title ? attempt.modelName : ''].filter(Boolean);
+      const count = changeCountLabel(attempt.changeCount);
+      head.appendChild(make('div', { class: 'cm-faust-prompt-summary', 'data-role': 'summary' },
+        names.join(' · ') + (names.length > 0 && count ? ' · ' : ''),
+        count ? make('span', { class: 'cm-faust-prompt-count' }, count) : null));
     }
     const note = noteNode([attempt && attempt.note, current.note]);
     if (note) head.appendChild(note);
@@ -347,6 +382,7 @@ function createPromptView(doc, options = {}) {
       // The typed text stays in the hidden field while a request runs
       if (next.phase !== 'sending') {
         field.value = next.draft || '';
+        history.last = field.value;
         resizeField();
       }
       setInvalid(false);
@@ -446,6 +482,13 @@ function createPromptView(doc, options = {}) {
 
   function onInput(event) {
     if (event.target === field) {
+      // An edit of the author's: the value before it is one step back
+      if (field.value !== history.last) {
+        history.undo.push(history.last);
+        if (history.undo.length > MAX_HISTORY) history.undo.shift();
+        history.redo = [];
+        history.last = field.value;
+      }
       if (invalid) setInvalid(false);
       if (saveButton) saveButton.disabled = !hasText();
       resizeField();
@@ -527,6 +570,7 @@ function createPromptView(doc, options = {}) {
 
   function destroy() {
     for (const type of ISOLATED_EVENTS) dom.removeEventListener(type, listener);
+    delete field.faustHistory;
   }
 
   return { dom, field, contextSlot, render, focus, destroy };

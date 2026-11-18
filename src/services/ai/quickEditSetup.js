@@ -1,9 +1,9 @@
 /**
  * src/services/ai/quickEditSetup.js - the quick edit (Cmd+K) assembled for the app (stage I-05)
  *
- *   setupQuickEdit({ getEditor, getProject, getChapterId, getController, writeAtCursor })
+ *   setupQuickEdit({ getEditor, getProject, getChapterId, getController, writeAtCursor, askConfirm })
  *     → the controller of src/services/ai/quickEdit.js: { open, host, isPromptFocused, fieldOwnsUndo,
- *       blocksMenuAction, cancelAll, reset }
+ *       blocksMenuAction, contextChanged, contextChecked, cancelAll, reset }
  *
  * The controller gets the app's real parts here: the settings store, the one AI client, the text
  * functions, the context session, the suggestion controller and the five functions of the inline
@@ -12,8 +12,9 @@
  * What this file adds is the context row ("Mitä malli näkee") in the prompt: whenever there is a
  * built request for the open prompt (a dry build when the prompt opens, the real one before
  * sending), the row is mounted into the prompt's context slot. The parts the author switches off
- * or adds there go into the next build, and a request whose prompt the model did not see whole
- * puts a notice in the row.
+ * or adds there go into the next build (and make the next "Tarkenna" a new request), a request
+ * whose prompt the model did not see whole puts a notice in the row, a refinement shows its three
+ * turns under "Näytä kehote", and a dry build that does not fit the model disables sending.
  *
  * An ES module bundled by webpack: every CommonJS module is taken with `import`, never `require`.
  */
@@ -31,7 +32,7 @@ import { wordDiff, changeRatio } from '../../editor/wordDiff.js';
 import { trimToSentence } from '../../editor/sentences.js';
 import { splitBlocks, blockAt } from '../../editor/blocks.js';
 import { openPrompt, updatePrompt, closePrompt, getPrompt, focusPrompt } from '../../editor/inlinePrompt.js';
-import { mountContextRow } from '../../components/ContextRow.js';
+import { mountContextRow, manualChoicesFor } from '../../components/ContextRow.js';
 
 const TRUNCATED_NOTICE = 'Malli ei nähnyt koko kehotetta.';
 
@@ -64,9 +65,10 @@ function frameScheduler() {
 
 /**
  * @param {{ getEditor: () => object | null, getProject: () => object, getChapterId: () => string | null,
- *           getController: () => object, writeAtCursor?: boolean }} options
+ *           getController: () => object, writeAtCursor?: boolean,
+ *           askConfirm?: (title: string, message: string, confirmLabel: string, cancelLabel: string, options: object) => Promise<boolean> }} options
  */
-export function setupQuickEdit({ getEditor, getProject, getChapterId, getController, writeAtCursor = false }) {
+export function setupQuickEdit({ getEditor, getProject, getChapterId, getController, writeAtCursor = false, askConfirm = null }) {
   const settings = getSettingsStore();
   const ai = getAIClient();
   const getView = () => {
@@ -79,16 +81,29 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
   // ---------------------------------------------------------------------------
 
   // slot: the element the row lives in; args and built: the last build for this prompt;
-  // exclude (undefined = what the session remembers for the task) and include: the row's lists
-  const row = { slot: null, unmount: null, args: null, built: null, exclude: undefined, include: [], notice: null };
+  // exclude (undefined = what the session remembers for the task) and include: the row's lists;
+  // sent: a request whose turns are not the build's own (a refinement), for Näytä kehote
+  const row = { slot: null, unmount: null, args: null, built: null, exclude: undefined, include: [], notice: null, sent: null };
 
   const taskIdOf = (args) => (args && args.task && typeof args.task.id === 'string' ? args.task.id : 'edit');
   const excludeFor = (args) => (row.exclude !== undefined ? row.exclude : getContextSession().getExclude(taskIdOf(args)));
-  const withRowLists = (args) => ({
-    ...args,
-    exclude: row.exclude !== undefined ? row.exclude : args.exclude,
-    include: row.include.length > 0 ? row.include : args.include
-  });
+  // The row's lists belong to its prompt and its task: a build with no prompt open (an insert
+  // block's retry) or for another task gets the session's own lists
+  const withRowLists = (args) => {
+    if (!row.slot || !row.args || taskIdOf(args) !== taskIdOf(row.args)) return args;
+    return {
+      ...args,
+      exclude: row.exclude !== undefined ? row.exclude : args.exclude,
+      include: row.include.length > 0 ? row.include : args.include
+    };
+  };
+
+  // The author changed the parts: the next build takes them, and so does the next "Tarkenna"
+  const changeLists = (patch) => {
+    Object.assign(row, patch);
+    quickEdit.contextChanged();
+    rebuild();
+  };
 
   function renderRow() {
     if (!row.slot || !row.built || !row.slot.isConnected) return;
@@ -101,10 +116,12 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
       taskId: taskIdOf(args),
       exclude: excludeFor(args),
       include: row.include,
-      onExcludeChange: (ids) => { row.exclude = ids; rebuild(); },
-      onIncludeChange: (ids) => { row.include = ids; rebuild(); },
+      onExcludeChange: (ids) => changeLists({ exclude: ids }),
+      onIncludeChange: (ids) => changeLists({ include: ids }),
+      manualChoices: manualChoicesFor(project, built, row.include),
       notice: row.notice || undefined,
-      systemAsUser
+      systemAsUser: row.sent ? row.sent.systemAsUser : systemAsUser,
+      sent: row.sent || undefined
     });
   }
 
@@ -112,22 +129,37 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
     row.args = args;
     row.built = built;
     row.notice = null;
+    row.sent = null;
     renderRow();
+  }
+
+  // A dry build or a rebuild of the row: the prompt learns whether the request can be sent at
+  // all. A moment later, because a new prompt is only the controller's once its opening returns.
+  function checkSoon(built) {
+    Promise.resolve().then(() => {
+      if (row.built === built) quickEdit.contextChecked(built);
+    });
   }
 
   // The same request again with the row's lists (a part switched off or added in the row)
   function rebuild() {
     if (!row.args) return;
     remember(row.args, getContextSession().build(withRowLists(row.args)));
+    checkSoon(row.built);
   }
 
-  // The row goes with its prompt. Unmounted a moment later: the prompt may close inside a render.
+  // The row goes with its prompt, and so do its lists. Unmounted a moment later: the prompt may
+  // close inside a render.
   function dropRow() {
     const unmount = row.unmount;
     row.slot = null;
     row.unmount = null;
     row.args = null;
     row.built = null;
+    row.exclude = undefined;
+    row.include = [];
+    row.notice = null;
+    row.sent = null;
     if (unmount) setTimeout(unmount, 0);
   }
   function sweepSoon() {
@@ -167,7 +199,10 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
     } catch (error) {
       return;
     }
+    // The prompt's own task: the row's lists apply from here on
+    row.args = args;
     remember(args, getContextSession().build(withRowLists(args)));
+    checkSoon(row.built);
   }
 
   // A new prompt gets a new row; the same prompt pointed at a new range keeps its row
@@ -176,9 +211,6 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
     if (!slot || slot === row.slot) return;
     dropRow();
     row.slot = slot;
-    row.exclude = undefined;
-    row.include = [];
-    row.notice = null;
     dryBuild(view);
   }
 
@@ -213,11 +245,21 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
     noAIMessage: MESSAGES.noAI
   };
 
-  // The client as it is; a result says whether the model saw the whole prompt, which the row shows
+  // The client as it is; a result says whether the model saw the whole prompt, which the row shows.
+  // A request of several turns (a refinement) is what Näytä kehote shows from then on.
   const client = {
     modelFor: (role) => ai.modelFor(role),
     listModels: () => ai.listModels(),
     requestEdit(options) {
+      if (row.slot && options && Array.isArray(options.messages) && options.messages.length > 1) {
+        const model = options.model || ai.modelFor(options.role);
+        row.sent = {
+          system: options.system || '',
+          messages: options.messages,
+          systemAsUser: model ? ai.modelSettings(model).systemAsUser === true : false
+        };
+        renderRow();
+      }
       const handle = ai.requestEdit(options);
       const slot = row.slot;
       const result = Promise.resolve(handle.result).then((value) => {
@@ -249,7 +291,11 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
       if (api && typeof api.reportManuscriptContext === 'function') api.reportManuscriptContext(info);
     },
     schedule: frameScheduler(),
-    writeAtCursor: writeAtCursor === true
+    writeAtCursor: writeAtCursor === true,
+    // Deleting a saved prompt asks first (rule 0.6)
+    confirmDelete: typeof askConfirm === 'function'
+      ? (saved) => askConfirm('Poistetaanko ohje?', `Tallennettu ohje ”${saved.label}” poistetaan.`, 'Poista ohje', 'Peruuta', { danger: true })
+      : null
   });
 
   // The editor's intents go to the controller; a prompt that closed by itself takes its row along

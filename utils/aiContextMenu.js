@@ -39,6 +39,11 @@ function sanitizeContext(info, now) {
  * The stored report, when it belongs to this context-menu event.
  * The point ties the report to the click it came from, so a report can never
  * be used by a later right click in another field.
+ * Electron's selection text decides whether there is a selection: a right click
+ * on a word that was not selected makes macOS select that word after the
+ * renderer has already reported (hasSelection false), and the menu is for that
+ * word, as the spelling items are. The command reads the editor's selection
+ * when the item is chosen.
  * @param {object|null} stored result of sanitizeContext
  * @param {{ x: number, y: number, isEditable: boolean, selectionText: string }} params Electron's context-menu params
  */
@@ -46,7 +51,7 @@ function takeContext(stored, params, now) {
   if (!stored || !params) return null;
   if (!(now - stored.at <= MAX_AGE_MS)) return null;
   if (!(Math.abs(stored.x - params.x) <= MAX_DISTANCE) || !(Math.abs(stored.y - params.y) <= MAX_DISTANCE)) return null;
-  if (!stored.hasSelection || !params.isEditable) return null;
+  if (!params.isEditable) return null;
   if (typeof params.selectionText !== 'string' || params.selectionText.trim() === '') return null;
   return stored;
 }
