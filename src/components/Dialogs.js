@@ -216,6 +216,7 @@ export const SHORTCUT_GROUPS = [
     items: [
       ['Aikajana', 'CmdOrCtrl+Shift+T'],
       ['Tutkimuskansio', 'CmdOrCtrl+Shift+R'],
+      ['Tarinakansio', 'CmdOrCtrl+Shift+J'],
       ['Pysäytä tekoäly', 'CmdOrCtrl+.', 'ai']
     ]
   },
@@ -307,7 +308,9 @@ const PARTITIVE = {
   pyyntö: 'pyyntöä', tähti: 'tähteä', malli: 'mallia', muu: 'muuta',
   ehdotus: 'ehdotusta', havainto: 'havaintoa', kohta: 'kohtaa', rivi: 'riviä',
   muutos: 'muutosta', korjaus: 'korjausta', tiedosto: 'tiedostoa', kohde: 'kohdetta',
-  erä: 'erää', osa: 'osaa', yritys: 'yritystä', kappale: 'kappaletta'
+  erä: 'erää', osa: 'osaa', yritys: 'yritystä', kappale: 'kappaletta',
+  // Tarinakansio's import result (I-07): '3 pelkkää nimeä ohitettiin'
+  pelkkä: 'pelkkää', nimi: 'nimeä'
 };
 
 /**

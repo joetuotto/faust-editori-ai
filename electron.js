@@ -273,7 +273,11 @@ const STOPPED_SENTENCE = CANCELLED_MESSAGE;
 // of the new features live here too and reach the renderer through prefs:get / prefs:changed.
 let uiPrefs = {
   spellCheck: true,
-  aiOff: false
+  aiOff: false,
+  // The two highlights of the manuscript (Näytä menu, stage I-07): Vältettävät sanat and the mentions of
+  // Tarinakansio entries. The editor follows them through prefs:changed.
+  'context.highlightAvoidWords': true,
+  'context.underlineMentions': true
 };
 
 // The two --surface-page values of styles/faust-tokens.css: the window is this colour
@@ -799,6 +803,26 @@ function createMenu() {
         item('Keskittymistila', 'toggle-focus-mode', 'CmdOrCtrl+Shift+F'),
         item('Kirjoituskonetila', 'toggle-typewriter'),
         separator,
+        // The two marks of the manuscript (I-07): local, never inside aiItems; they stay with "Tekoäly pois"
+        {
+          label: 'Korosta vältettävät sanat',
+          type: 'checkbox',
+          checked: uiPrefs['context.highlightAvoidWords'] !== false,
+          click: async (menuItem) => {
+            const saved = await saveUiPrefs({ 'context.highlightAvoidWords': menuItem.checked });
+            if (!saved.success) createMenu();      // the checkbox shows what main holds
+          }
+        },
+        {
+          label: 'Alleviivaa Tarinakansion maininnat',
+          type: 'checkbox',
+          checked: uiPrefs['context.underlineMentions'] !== false,
+          click: async (menuItem) => {
+            const saved = await saveUiPrefs({ 'context.underlineMentions': menuItem.checked });
+            if (!saved.success) createMenu();
+          }
+        },
+        separator,
         item('Lähennä', 'zoom-in', 'CmdOrCtrl+Plus'),
         item('Loitonna', 'zoom-out', 'CmdOrCtrl+-'),
         item('Todellinen koko', 'zoom-reset', 'CmdOrCtrl+0'),
@@ -838,6 +862,8 @@ function createMenu() {
         item('Juonilangat', 'show-threads'),
         item('Aikajana', 'show-timeline', 'CmdOrCtrl+Shift+T'),
         item('Tutkimuskansio', 'show-research', 'CmdOrCtrl+Shift+R'),
+        // The section of the sidebar (I-07); the menu says Tarinakansio in every project, also nonfiction
+        item('Tarinakansio', 'show-codex', 'CmdOrCtrl+Shift+J'),
         separator,
         ...aiItems(
           item('Suunnittele hahmot…', 'show-cast-plan'),

@@ -33,8 +33,11 @@ export function BookBriefFields({ project, activeChapter, onChange, showAvoidWor
   useEffect(() => {
     if (!sameList(parseTermList(draft), avoid)) setDraft(formatTermList(avoid));
   }, [avoid]);
+  // The hits of the whole list in the open chapter (countTerms gives one row per word; notes are skipped)
   const hits = useMemo(
-    () => (showAvoidWords && activeChapter ? countTerms(activeChapter.content || '', avoid) : 0),
+    () => (showAvoidWords && activeChapter
+      ? countTerms(activeChapter.content || '', avoid).reduce((sum, row) => sum + row.count, 0)
+      : 0),
     [showAvoidWords, activeChapter && activeChapter.content, avoid]
   );
 

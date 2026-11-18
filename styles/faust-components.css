@@ -692,6 +692,18 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* Etsi ja korvaa holds two fields, the options, two disclosures and the hit in context: it takes up to
    560px of the room measured under its anchor, so only a long list of earlier searches scrolls */
 .faust-popover--find { max-height: min(560px, var(--popover-max-h, calc(100vh - var(--header-h) - var(--footer-h) - 2 * var(--sp-4)))); }
+/* I-07: the Tarinakansio entry form */
+/* A persistent, non-modal sheet beside the sidebar (VF-40): it stays through presses in the manuscript and
+   in other popovers, under them in the stack, and its left and top come from --left-col-w and --header-h */
+.faust-popover--sheet { z-index: var(--z-dock); max-height: calc(100vh - var(--header-h) - var(--footer-h) - 2 * var(--sp-3)); }
+.faust-popover--sheet:focus { outline: none; }      /* the sheet takes the focus only so that Esc reaches it; its fields show the ring */
+.faust-popover--sheet .faust-popover__body > * + * { margin-top: var(--sp-3); }      /* fields, the warning and the mentions in one rhythm */
+.faust-popover--sheet .faust-check-group--grid { grid-template-columns: 14px max-content minmax(0, 1fr); }
+.faust-codex__mentions { display: flex; flex-direction: column; gap: var(--sp-1); }
+.faust-codex__mentions > .faust-label { margin-top: var(--sp-2); }
+.faust-codex__form { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.faust-codex__delete { margin-right: auto; }      /* the destructive action at the start of the foot (R-69) */
+/* end I-07 */
 
 .faust-menu { --popover-w: max-content; min-width: 200px; padding: var(--sp-1); }
 .faust-menu__item {
@@ -996,6 +1008,24 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* Muut luvut of a long manuscript never takes the tab: the foot scrolls on its own past a third of the panel */
 .faust-langpanel .faust-panel__foot { max-height: 35%; overflow-y: auto; overscroll-behavior: contain; }
 /* end I-06 */
+
+/* I-07: Tarinakansio in the sidebar */
+/* The section title carries salt in gold before the folder's name (V 9.5) */
+.faust-codex .faust-section__title { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.faust-codex .faust-section__title > .faust-icon { color: var(--accent-line); }
+.faust-codex__banner { margin-bottom: var(--sp-2); }
+.faust-codex .faust-callout__actions { grid-column: 1 / -1; flex-direction: column; }      /* the two buttons take the narrow column's width */
+.faust-codex__filter { margin-bottom: var(--sp-2); }
+.faust-codex__grouphead { display: flex; align-items: center; gap: var(--sp-1); margin: var(--sp-2) 0 var(--sp-1); }
+.faust-codex__group:first-child > .faust-codex__grouphead { margin-top: 0; }
+.faust-codex__add { margin-top: var(--sp-2); }
+.faust-codex__copy { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); }
+/* Tarinakansio entry state: four drawn marks (filled, half, ring, struck ring); the label is the title attribute */
+.faust-codex-state { flex: none; box-sizing: border-box; width: 8px; height: 8px; border-radius: 50%; color: var(--text-2); box-shadow: inset 0 0 0 1px currentColor; }
+.faust-codex-state[data-state="always"]    { background: currentColor; color: var(--accent-line); }
+.faust-codex-state[data-state="mentioned"] { background: linear-gradient(90deg, currentColor 50%, transparent 50%); }
+.faust-codex-state[data-state="never"]     { color: var(--text-3); background: linear-gradient(135deg, transparent 43%, currentColor 43% 57%, transparent 57%); }
+/* end I-07 */
 
 /* ============ 14 Editor (CodeMirror) ============
  * Specificity (0,3,0) or more: at least one class more than the CodeMirror theme, which is

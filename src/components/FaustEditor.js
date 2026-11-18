@@ -42,6 +42,12 @@
  * character: onChange reports it with { noMerge: true, source: 'smart-typing' }, so one Cmd+Z right after
  * it gives back exactly what was typed.
  *
+ * Vältettävät sanat and Tarinakansio (src/editor/termHighlight.js, stage I-07): the prop `termHighlights`
+ * ({ avoid, codex }) marks the avoid words (cm-faust-avoid) and underlines the mentions of the entries
+ * (cm-faust-mention); a change of the prop replaces the lists by an effect, never by touching the text, so
+ * undo, onChange and the typewriter centring do not see it. Cmd-click (Ctrl-click elsewhere) on an
+ * underlined name calls `onMentionClick(entryId)`, read through a ref.
+ *
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
  */
 
@@ -62,6 +68,7 @@ import {
 import { wordDiff } from '../editor/wordDiff.js';
 import { inlinePrompt } from '../editor/inlinePrompt.js';
 import { smartTyping, SmartTyping } from '../editor/smartTyping.js';
+import { termHighlight, setTermHighlightConfig } from '../editor/termHighlight.js';
 import { modelLabel } from '../services/format.fi.js';
 
 const { createElement: e, useRef, useLayoutEffect, forwardRef } = React;
@@ -367,6 +374,10 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
     aiHost,
     // Smart typing ({ enabled }): " → ”, ' → ’, -- → – while typing (I-06)
     smartTyping: smartTypingOptions,
+    // Vältettävät sanat and Tarinakansio ({ avoid: string[], codex: Entry[] } or null) and the Cmd-click
+    // on an underlined name (entryId) (I-07)
+    termHighlights,
+    onMentionClick,
     // The text's accessible name; a read-only text is never spell-checked
     label = 'Käsikirjoitus'
   } = props;
@@ -378,6 +389,10 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
   const aiHostRef = useRef(aiHost);
   const typewriterRef = useRef(!!typewriterMode);
   const smartTypingRef = useRef(null);
+  const termHighlightsRef = useRef(termHighlights || null);
+  const onMentionClickRef = useRef(onMentionClick);
+  // The lists the view holds now: a render with the same lists dispatches nothing
+  const appliedTermsRef = useRef(null);
   // Texts this editor has reported through onChange and not yet seen come back as `value`
   const pendingRef = useRef([]);
   const centerFrameRef = useRef(0);
@@ -389,6 +404,9 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
   typewriterRef.current = !!typewriterMode;
   // Read at every typed character, so the switch takes effect without rebuilding the editor
   smartTypingRef.current = smartTypingOptions || null;
+  // The lists the editor starts with (it is created per chapter) and the click handler of this render
+  termHighlightsRef.current = termHighlights || null;
+  onMentionClickRef.current = onMentionClick;
 
   // Create the editor once per mount (the parent remounts it per chapter with `key`)
   useLayoutEffect(() => {
@@ -446,6 +464,9 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
           underlinePlugin,
           todoPlugin,
           ...(readOnly ? [] : [         // story-folder mentions and the inline prompt go here
+            termHighlight(termHighlightsRef.current, {
+              onMentionClick: (id) => onMentionClickRef.current && onMentionClickRef.current(id)
+            }),
             inlinePrompt({ host: () => aiHostRef.current })
           ]),
           placeholderExtension(placeholder || ''),
@@ -489,6 +510,7 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
     });
 
     viewRef.current = view;
+    appliedTermsRef.current = termHighlightsRef.current;
     setRef(ref, installTextareaFacade(view, !readOnly));
 
     if (!readOnly) {
@@ -560,6 +582,16 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
       annotations: External.of(true)
     });
   }, [value]);
+
+  // Vältettävät sanat and the Tarinakansio entries changed (the list was edited, a Näytä toggle): the new
+  // lists replace the old ones by an effect. The document, the selection and the scroll stay as they are.
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    const next = termHighlights || null;
+    if (!view || readOnly || next === appliedTermsRef.current) return;
+    appliedTermsRef.current = next;
+    view.dispatch({ effects: setTermHighlightConfig.of(next) });
+  }, [termHighlights]);
 
   const { paddingTop, paddingBottom, paddingLeft, textAlign, paragraphGap, ...wrapperStyle } = style || {};
 

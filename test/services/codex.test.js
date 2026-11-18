@@ -929,6 +929,26 @@ describe('migration', () => {
     expect(result.handled).not.toContain('plotThreads:thread-0');
   });
 
+  // Tarinakansio's import result (stage I-07) says how many things were already in the folder: what an
+  // empty folder would have taken in, less what was taken now. Two old records of one thing count once.
+  test('what an empty folder would import, less what is imported, counts the things already in the folder (I-07)', () => {
+    const project = {
+      codex: [entry({ id: 'cx-old', type: 'hahmo', name: 'Mari' }), entry({ id: 'cx-sea', type: 'paikka', name: 'Satama' })],
+      characters: [{ id: 'char_1', name: 'Mari', description: 'Sisar.' }, { id: 'char_2', name: 'Pekka', description: 'Veli.' }],
+      locations: [{ id: 'loc_1', name: 'Satama', description: 'Laituri.' }, { id: 'loc_2', name: 'Majakka', description: 'Valo.' }],
+      continuity: { locations: { satama: { name: 'SATAMA', description: 'Sama paikka toisessa tallennuksessa.' } } }
+    };
+    const now = migrateLegacy(project, opts());
+    const empty = migrateLegacy({ ...project, codex: [] }, opts());
+    // Mari and Satama are in the folder (Satama also from a second store): two things, three records
+    expect(now.counts).toEqual({ imported: 2, duplicates: 3, nameOnlySkipped: 0 });
+    expect(empty.counts).toEqual({ imported: 4, duplicates: 1, nameOnlySkipped: 0 });
+    expect(empty.counts.imported - now.counts.imported).toBe(2);
+    // Nothing in the folder: the two records of Satama still make one entry and no "already there"
+    const fresh = { ...project, codex: [] };
+    expect(migrateLegacy({ ...fresh, codex: [] }, opts()).counts.imported - migrateLegacy(fresh, opts()).counts.imported).toBe(0);
+  });
+
   test('a nonfiction project maps characters to henkilo and the rest to termi', () => {
     const project = {
       genre: 'nonfiction',

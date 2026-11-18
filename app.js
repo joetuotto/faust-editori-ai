@@ -42,6 +42,8 @@ import { getContextSession } from './src/services/ai/contextSession.js';
 // The text functions Kielenhuolto and Miksi? work with (lines, masking, batches, diff, sentences), handed
 // to them as one object so the pure modules have no hard-wired paths; the Cmd+K chip takes the same one
 import { TEXT_DEPS as textDeps } from './src/services/language/languageTools.js';
+// Tarinakansio in the sidebar and its research-note copy (stage I-07)
+import { CodexPanel, CopyToCodexButton } from './src/components/CodexPanel.js';
 import {
   TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog, CollectionDialog,
   shortcut, shortcutKeys, count, countParts
@@ -62,7 +64,7 @@ import {
   Popover, usePopover, SigilButton, Tooltip, VoiceButton, Dialog, layerStack, Tabs, Rating, DiffView
 } from './src/components/ui.js';
 
-const { createElement: e, useState, useEffect, useLayoutEffect, useRef } = React;
+const { createElement: e, useState, useEffect, useLayoutEffect, useRef, useMemo } = React;
 
 // Classic scrollbars take room on both sides of the manuscript scroller: their width is
 // measured at start and on window focus and written as --scrollbar-w (0px with overlay bars).
@@ -225,7 +227,9 @@ const LEAVES_FOCUS = [
   'toggle-sidebar', 'toggle-inspector', 'toggle-ai-panel', 'toggle-chat-window', 'toggle-corkboard',
   'toggle-split-view', 'toggle-bookmarks', 'show-snapshots', 'show-settings', 'show-ai-settings',
   // I-06: the four doors of Kielen työkalut
-  'check-typography', 'proofread-chapter', 'voikko-check-chapter', 'voikko-help'
+  'check-typography', 'proofread-chapter', 'voikko-check-chapter', 'voikko-help',
+  // I-07: Tarinakansio opens the sidebar
+  'show-codex'
 ];
 
 // 16.11.2026 klo 14.32
@@ -604,6 +608,13 @@ function FAUSTApp() {
     setProject(prev => ({ ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) }));
     setUnsavedChanges(true);
   };
+  // A Tarinakansio entry's form, from a ⌘-click on its name or from Tutkimuskansio: the sidebar opens
+  // (leaving focus mode first, as every docked panel does)
+  const openCodexEntry = (id) => {
+    if (focusMode) toggleFocusMode();
+    setSidebarCollapsed(false);
+    setCodexUi(s => ({ ...s, openId: id, openTick: s.openTick + 1 }));
+  };
 
   // Delete a place from its form. Places are keyed by their stored name, not the edited one;
   // an entry whose key differs from its name (an old or hand-edited file) is found by the object.
@@ -721,6 +732,8 @@ function FAUSTApp() {
 
   // Project Settings state
   const [showProjectSettings, setShowProjectSettings] = useState(false);
+  // Tarinakansio (I-07): focus asks the section to come into view, openId/openTick open an entry's form
+  const [codexUi, setCodexUi] = useState({ focus: 0, openId: null, openTick: 0 });
 
   // Recent Files state (tracked in localStorage)
   const [recentFiles, setRecentFiles] = useState(() => {
@@ -893,6 +906,9 @@ function FAUSTApp() {
   const [aiOff, , prefsLoaded] = useSetting('aiOff', false);
   // Älykäs kirjoitus (Tietopaneeli ▸ Ulkoasu), in ui-prefs.json
   const [smartTypingOn, setSmartTypingOn] = useSetting('typo.smartTyping', true);
+  // The two marks of the manuscript, switched in Näytä (I-07)
+  const [highlightAvoid] = useSetting('context.highlightAvoidWords', true);
+  const [underlineMentions] = useSetting('context.underlineMentions', true);
   const aiDisabled = !prefsLoaded || aiOff;
   const aiHidden = aiDisabled || focusMode;
   const chapterNoAI = !!(activeChapter && activeChapter.noAI);
@@ -917,6 +933,11 @@ function FAUSTApp() {
   // The wire guard in main learns the text of the chapters marked "Ei tekoälylle"; the file path
   // tells it another project was opened, which is sent at once even when the chapter ids repeat
   useNoAIGuard(project, currentFilePath);
+  // Vältettävät sanat and the Tarinakansio mentions in the manuscript: a new object only when a list or a switch changed
+  const termHighlights = useMemo(() => ({
+    avoid: highlightAvoid ? project.avoidWords : [],
+    codex: underlineMentions ? project.codex : []
+  }), [project.avoidWords, project.codex, highlightAvoid, underlineMentions]);
 
   // A selection belongs to the chapter it was made in: another chapter or project starts without one,
   // so the selected text of a chapter marked "Ei tekoälylle" cannot follow the author elsewhere
@@ -1137,6 +1158,7 @@ function FAUSTApp() {
       case 'show-threads': setShowThreadSheet(true); break;
       case 'show-timeline': setShowTimelineView(prev => !prev); break;
       case 'show-research': setShowResearchFolder(prev => !prev); break;
+      case 'show-codex': setSidebarCollapsed(false); setCodexUi(s => ({ ...s, focus: s.focus + 1 })); break;
       case 'show-cast-plan': openCastPlan(); break;
       case 'show-character-builder': openCharacterBuilder(); break;
       case 'show-version-history': if (activeChapter) setShowVersionHistory(true); break;
@@ -5530,7 +5552,29 @@ ${contextPrompt}`;
                 style: { marginTop: 'var(--sp-2)' },
                 onClick: () => setShowCollectionDialog(true)
               }, '+ Uusi kokoelma…')
-            )
+            ),
+
+            // Tarinakansio (I-07): the last section of the body; an entry's form is a sheet in the layer host.
+            // A new panel for every project, so no draft or open form crosses to the next one
+            e(ErrorBoundary, { label: 'Tarinakansio' },
+              e(CodexPanel, {
+                key: projectEpoch,
+                project,
+                activeChapterId: activeChapter ? activeChapter.id : null,
+                onChange: patchProject,
+                confirm: askConfirm,
+                focusRequest: codexUi.focus,
+                openRequest: { id: codexUi.openId, tick: codexUi.openTick },
+                onShowMentions: (ranges) => {
+                  if (!editorRef.current) return;
+                  // An empty list takes the marks away again, unless Etsi now shows its own hits
+                  if (!ranges.length) { if (!showFindDialog) editorRef.current.clearHighlights(); return; }
+                  editorRef.current.setHighlights(ranges, 0);
+                  editorRef.current.scrollToPos(ranges[0].start);
+                },
+                mentionsEnabled: true,
+                isCurrent: ((epoch) => () => projectEpochRef.current === epoch)(projectEpoch)
+              }))
           ),
 
           // Foot: the five tools, always in view
@@ -6080,6 +6124,9 @@ ${contextPrompt}`;
               aiHost: quickEditRef.current.host,
               // Älykäs kirjoitus: ” ’ – while typing, in a Finnish project only (I-06)
               smartTyping: { enabled: smartTypingOn !== false && (project.language || 'fi') === 'fi' },
+              // Vältettävät sanat and the Tarinakansio mentions; ⌘-click on a name opens its entry (I-07)
+              termHighlights,
+              onMentionClick: openCodexEntry,
               onMouseUp: handleTextSelection,
               onKeyUp: handleTextSelection,
               typewriterMode: typewriterMode, // the editor keeps the cursor line centered
@@ -8652,8 +8699,8 @@ ${contextPrompt}`;
             }
           }),
 
-          // Ohjeet tekoälylle: Käsikirjoituksen ydin and Tyyliohje (Vältettävät sanat from I-07 on)
-          e(BookBriefFields, { project, activeChapter, onChange: patchProject, showAvoidWords: false }),
+          // Ohjeet tekoälylle: Käsikirjoituksen ydin, Tyyliohje and Vältettävät sanat (I-07)
+          e(BookBriefFields, { project, activeChapter, onChange: patchProject, showAvoidWords: true }),
           // Tekoälyn käyttö: the usage log and its export, also with "Tekoäly pois" (MF-64)
           e(AiUsageLogSection, { log: project.aiLog, projectTitle: project.title, chapters: project.structure })
     )),
@@ -9294,6 +9341,13 @@ ${contextPrompt}`;
                       setUnsavedChanges(true);
                     },
                     placeholder: 'Kirjoita muistiinpano…'
+                  }),
+                  // A note into Tarinakansio, as an entry that is never sent until its state is changed (I-07)
+                  item.type === 'note' && e(CopyToCodexButton, {
+                    item,
+                    project,
+                    onChange: patchProject,
+                    onOpen: (id) => { setShowResearchFolder(false); openCodexEntry(id); }
                   }),
 
                   address && e('div', { className: 'faust-meta', style: { overflowWrap: 'anywhere' } },

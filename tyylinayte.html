@@ -596,6 +596,33 @@ Nyt: 13 450 sanaa</span></div>
       <div class="faust-tooltip">Kätke sivupalkki</div>
     </div>
   </div>
+  <!-- I-07: the Tarinakansio entry form (.faust-popover--sheet), a non-modal sheet beside the sidebar -->
+  <div class="tn-h3">Tarinakansion kohde (I-07: .faust-popover--sheet)</div>
+  <div class="tn-row tn-row--top">
+    <div class="faust-popover faust-popover--sheet" role="dialog" aria-label="Mari" style="--popover-w: 380px; max-height: none">
+      <div class="faust-popover__head"><span class="faust-popover__title">Mari</span><button class="faust-btn faust-btn--icon faust-btn--sm" aria-label="Sulje" title="Sulje (Esc)"><i data-icon="close" data-size="14"></i></button></div>
+      <div class="faust-popover__body">
+        <div class="faust-field"><label class="faust-field__label">Tyyppi</label><select class="faust-select faust-select--sm"><option>Hahmo</option><option>Paikka</option><option>Esine</option><option>Käsite</option><option>Juonilanka</option></select></div>
+        <div class="faust-field"><label class="faust-field__label">Nimi</label><input class="faust-input faust-input--sm faust-input--author" value="Mari"></div>
+        <div class="faust-field"><label class="faust-field__label">Aliakset ja sanavartalot</label><input class="faust-input faust-input--sm" value="Marjatta"><div class="faust-field__hint">Pilkulla erotettuna. Osuma lasketaan sanan alusta: Mari löytää myös muodot Maria ja Marin. Jos sanan alku muuttuu taivutettaessa, lisää vartalo: Pekka → Peka (Pekan, Pekalle).</div></div>
+        <div class="faust-field"><label class="faust-field__label">Älä laske näitä</label><input class="faust-input faust-input--sm" value="”Marianne”"><div class="faust-field__hint">Sanat, jotka alkavat samoin mutta tarkoittavat muuta, esimerkiksi Marianne.</div></div>
+        <div class="faust-field"><label class="faust-field__label">Kuvaus (tekoäly lukee tämän)</label><textarea class="faust-textarea faust-textarea--author" rows="3"></textarea></div>
+        <div class="faust-callout faust-callout--warning"><span class="faust-callout__icon"><i data-icon="warning" data-size="16"></i></span><div class="faust-callout__body">Kuvaus on tyhjä, joten kohteesta ei lähetetä mitään.</div></div>
+        <div class="faust-field"><label class="faust-field__label">Lähetys tekoälylle</label><div class="faust-check-group faust-check-group--grid" role="radiogroup" aria-label="Lähetys tekoälylle">
+          <label class="faust-check"><span class="faust-radio"><input type="radio" name="tn-codex"></span><span>Aina mukana</span><span class="faust-check__hint">Lähetetään jokaiseen tehtävään.</span></label>
+          <label class="faust-check"><span class="faust-radio"><input type="radio" name="tn-codex" checked></span><span>Kun mainitaan</span><span class="faust-check__hint">Lähetetään, kun nimi tai alias on lähetettävässä tekstissä.</span></label>
+          <label class="faust-check"><span class="faust-radio"><input type="radio" name="tn-codex"></span><span>Vain käsin</span><span class="faust-check__hint">Lähetetään vain, kun lisäät sen itse Mitä malli näkee -riviltä.</span></label>
+          <label class="faust-check"><span class="faust-radio"><input type="radio" name="tn-codex"></span><span>Ei koskaan</span><span class="faust-check__hint">Ei lähetetä millekään mallille.</span></label>
+        </div></div>
+        <div class="faust-codex__mentions"><div class="faust-meta">Mainintoja: tässä luvussa 3 · koko käsikirjoituksessa 41</div><div class="faust-label">Osuneet muodot</div>
+          <div class="faust-kv"><span class="faust-serif">Mari</span><span class="faust-codex__form">×22<button class="faust-btn faust-btn--quiet faust-btn--sm">Älä laske</button></span></div>
+          <div class="faust-kv"><span class="faust-serif">Marin</span><span class="faust-codex__form">×12<button class="faust-btn faust-btn--quiet faust-btn--sm">Älä laske</button></span></div>
+          <div><button class="faust-btn faust-btn--sm">Näytä tässä luvussa</button></div></div>
+      </div>
+      <div class="faust-popover__foot"><button class="faust-btn faust-btn--sm faust-btn--danger faust-codex__delete">Poista kohde</button><button class="faust-btn faust-btn--sm faust-btn--primary">Valmis</button></div>
+    </div>
+  </div>
+  <!-- end I-07 -->
 </section>
 
 <!-- ======================= 11 Marks, diff, result ======================= -->
@@ -771,6 +798,31 @@ Nyt: 13 450 sanaa</span></div>
     </div></aside>
   </div>
   <!-- end I-06 -->
+  <!-- I-07: Tarinakansio in the sidebar (the banner of old records, groups, drawn state marks, mention counts) -->
+  <div class="tn-h3">Tarinakansio (I-07: .faust-codex, .faust-codex-state)</div>
+  <div class="tn-row tn-row--top">
+    <div class="faust-sidebar" data-state="open" style="height: 640px"><div class="faust-panel"><div class="faust-panel__body" style="mask-image: none; -webkit-mask-image: none">
+      <section class="faust-section faust-codex"><div class="faust-section__head"><div class="faust-section__title" role="heading" aria-level="3"><i data-icon="salt" data-size="14"></i>Tarinakansio</div></div>
+        <div class="faust-codex__banner"><div class="faust-callout faust-callout--info"><span class="faust-callout__icon"><i data-icon="info" data-size="16"></i></span><div class="faust-callout__body"><div>Vanhoissa hahmo-, paikka- ja juonilankatiedoissa on 4 kohdetta, joita ei ole Tarinakansiossa.</div><label class="faust-check"><input type="checkbox">Tuo myös pelkät nimet (1)</label><div class="faust-field__hint">Tuodut kohteet lähetetään vain käsin lisättyinä, kunnes muutat asetusta. Vanhat tiedot säilyvät projektitiedostossa.</div></div><div class="faust-callout__actions"><button class="faust-btn faust-btn--sm faust-btn--block">Tuo Tarinakansioon</button><button class="faust-btn faust-btn--quiet faust-btn--sm faust-btn--block">Ohita</button></div></div></div>
+        <div class="faust-codex__list">
+          <div class="faust-codex__group"><div class="faust-label faust-codex__grouphead">Hahmot<span class="faust-chip faust-chip--count">3</span></div>
+            <button class="faust-row faust-row--author faust-codex__row"><span class="faust-codex-state" data-state="always" role="img" aria-label="Aina mukana" title="Aina mukana"></span><span class="faust-row__text"><span class="faust-row__title">Aino</span></span><span class="faust-chip faust-chip--count">41</span></button>
+            <button class="faust-row faust-row--author faust-codex__row is-selected" aria-current="true"><span class="faust-codex-state" data-state="mentioned" role="img" aria-label="Kun mainitaan" title="Kun mainitaan"></span><span class="faust-row__text"><span class="faust-row__title">Pekka</span></span><span class="faust-chip faust-chip--count">12</span></button>
+            <button class="faust-row faust-row--author faust-codex__row"><span class="faust-codex-state" data-state="manual" role="img" aria-label="Vain käsin" title="Vain käsin"></span><span class="faust-row__text"><span class="faust-row__title">Konduktööri</span></span><span class="faust-chip faust-chip--count">2</span></button></div>
+          <div class="faust-codex__group"><div class="faust-label faust-codex__grouphead">Käsitteet<span class="faust-chip faust-chip--count">1</span></div>
+            <button class="faust-row faust-row--author faust-codex__row"><span class="faust-codex-state" data-state="never" role="img" aria-label="Ei koskaan" title="Ei koskaan"></span><span class="faust-row__text"><span class="faust-row__title">Saaren historia</span></span><span class="faust-chip faust-chip--count">0</span></button></div>
+        </div>
+        <button class="faust-btn faust-btn--block faust-btn--sm faust-codex__add">+ Uusi kohde…</button>
+      </section>
+    </div></div></div>
+    <div class="faust-sidebar" data-state="open" style="height: 260px"><div class="faust-panel"><div class="faust-panel__body" style="mask-image: none; -webkit-mask-image: none">
+      <section class="faust-section faust-codex"><div class="faust-section__head"><div class="faust-section__title" role="heading" aria-level="3"><i data-icon="salt" data-size="14"></i>Käsikirjoituksen kansio</div></div>
+        <div class="faust-codex__list"><div class="faust-empty faust-empty--compact"><div class="faust-empty__title">Ei vielä kohteita.</div><div class="faust-empty__hint">Lisää termi, henkilö tai lähde, jonka tekoälyn pitää tietää.</div></div></div>
+        <button class="faust-btn faust-btn--block faust-btn--sm faust-codex__add">+ Uusi kohde…</button>
+      </section>
+    </div></div></div>
+  </div>
+  <!-- end I-07 -->
 </section>
 
 <!-- ======================= 14 Editor ======================= -->
