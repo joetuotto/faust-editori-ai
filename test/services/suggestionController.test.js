@@ -928,6 +928,51 @@ describe('paste as edits', () => {
     expect(first.getSuggestions().pending.map(item => [item.original, item.insert])).toEqual([['sanoi', 'kuiskasi'], ['oli', 'on']]);
   });
 
+  test('a paste whose chapter closed or changed under the open dialog answers target-changed and proposes nothing (I-04 review)', () => {
+    const { controller, env, open } = setup();
+    const first = open('luku-1');
+    controller.pasteAsEdits(SAMPLE.replace('sanoi', 'kuiskasi'));
+    expect(env.openPasteDialog).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'ok' }));
+
+    // Lisää ▸ Uusi luku (or Korttinäkymä) under the dialog: the editor of the target unmounts
+    const second = open('luku-2');
+    expect(controller.confirmPaste({ source: 'editor' })).toMatchObject({ ok: false, error: 'target-changed' });
+    expect(first.proposeChanges).not.toHaveBeenCalled();
+    expect(second.proposeChanges).not.toHaveBeenCalled();
+    expect(second.getSuggestions().pending).toEqual([]);
+    expect(env.setSetting).not.toHaveBeenCalled();
+    // Used once; and back in the first chapter nothing comes in either
+    expect(controller.confirmPaste({ source: 'editor' })).toBeUndefined();
+    const back = open('luku-1');
+    expect(back.getSuggestions().pending).toEqual([]);
+
+    // Peruuta of a dropped paste says nothing
+    controller.pasteAsEdits(SAMPLE.replace('sanoi', 'kuiskasi'));
+    env.editor.unmount();
+    env.editor = null;
+    expect(controller.confirmPaste(null)).toBeUndefined();
+
+    // Without an unmount (the active chapter moved on): the same answer
+    const again = open('luku-1');
+    controller.pasteAsEdits(SAMPLE.replace('sanoi', 'kuiskasi'));
+    env.activeChapterId = 'luku-3';
+    controller.bind(env);
+    expect(controller.confirmPaste({ source: 'external-ai' })).toMatchObject({ ok: false, error: 'target-changed' });
+    expect(again.proposeChanges).not.toHaveBeenCalled();
+
+    // A new ⌥⌘V after a dropped one starts clean and does not touch the new editor's ranges
+    env.activeChapterId = 'luku-1';
+    const fresh = open('luku-1');
+    controller.pasteAsEdits(SAMPLE.replace('sanoi', 'kuiskasi'));
+    open('luku-2');
+    const third = open('luku-1');
+    controller.pasteAsEdits(SAMPLE.replace('mennyt', 'lähtenyt'));
+    expect(third.releaseRange).not.toHaveBeenCalled();
+    controller.confirmPaste({ source: 'editor' });
+    expect(third.getSuggestions().pending.map(item => [item.original, item.insert])).toEqual([['mennyt,', 'lähtenyt,']]);
+    expect(fresh.proposeChanges).not.toHaveBeenCalled();
+  });
+
   test('confirmPaste(null) releases the captured range and proposes nothing', () => {
     const { controller, env, open } = setup();
     const first = open('luku-1');

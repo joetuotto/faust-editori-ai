@@ -140,9 +140,10 @@ function rebuilds(original, insert, pieces) {
  * are put back in place: a word changed beside a lost note, or inside an underline whose tags were
  * lost, is proposed on its own and the note and the tags stay. Returns those pieces (proposed) and
  * what is set aside (kept): one change per lost note or underline (its two tags together), with any
- * piece that would still take one with it. The change stays whole when its edges cut a note or a tag,
- * when the clipboard still holds a copy of one it lost (which one went cannot be told), when the
- * finest diff is missing or does not rebuild the text, or when nothing in it can go alone.
+ * piece that would still take one with it or that would leave text against a lost note. The change
+ * stays whole when its edges cut a note or a tag, when the clipboard still holds a copy of one it lost
+ * (which one went cannot be told), when it holds nothing but lost notes or tags and their whitespace,
+ * when the finest diff is missing or does not rebuild the text, or when nothing in it can go alone.
  */
 function splitProtected(target, change, isProtected, deps, cutSpans) {
   const whole = { proposed: [], kept: [change] };
@@ -160,8 +161,10 @@ function splitProtected(target, change, isProtected, deps, cutSpans) {
   if (!lost.length) return whole;
 
   // What leaves with each one. A note at the start of a line takes the line breaks and spaces after it
-  // ("[TODO: x]" on a line of its own goes with its blank line); a note inside a line takes the spaces
-  // before it, or after it when those are not in the change ("a [TODO: x] b" reads "a b"). Tags take nothing.
+  // ("[TODO: x]" on a line of its own goes with its blank line), or, when the change ends at the note
+  // (the diff took the breaks before it: "\n\n[TODO: x]"), the breaks before it, so the paragraph above
+  // is never proposed to run into the note; a note inside a line takes the spaces before it, or after it
+  // when those are not in the change ("a [TODO: x] b" reads "a b"). Tags take nothing.
   const removed = [];
   for (const item of lost) {
     let { from, to } = item;
@@ -170,6 +173,9 @@ function splitProtected(target, change, isProtected, deps, cutSpans) {
       const lineStart = from === 0 || target[from - 1] === '\n';
       if (lineStart) {
         while (to < change.to && /\s/.test(target[to])) to += 1;
+        if (to === item.to) {
+          while (from - 1 >= floor && /\s/.test(target[from - 1])) from -= 1;
+        }
       } else if (target[from - 1] === ' ' && from - 1 >= floor) {
         while (from - 1 >= floor && target[from - 1] === ' ') from -= 1;
       } else if (target[from - 1] === ' ') {
@@ -188,6 +194,9 @@ function splitProtected(target, change, isProtected, deps, cutSpans) {
     kept.push(i);
     rest += target[i];
   }
+  // Nothing but lost notes or tags and their whitespace: what the clipboard has in their place
+  // ("a [TODO: x] b" → "a uusi b") could only be put against them, so the change stays whole
+  if (!kept.length) return whole;
 
   const finest = typeof deps.rawDiff === 'function' ? deps.rawDiff : (a, b) => deps.wordDiff(a, b, { raw: true });
   let pieces;
@@ -207,8 +216,25 @@ function splitProtected(target, change, isProtected, deps, cutSpans) {
   // A piece that spans a lost note or tag would still delete it, and one that brings a note or a tag
   // in is the rewritten form of a lost one ([TODO: x] → [TODO: y]): both are set aside with it
   const bringsIn = (piece) => (piece.insert.match(PROTECTED_PATTERN) || []).length > 0;
-  const proposed = placed.filter(piece => !isProtected(piece) && !bringsIn(piece));
-  const stuck = placed.filter(piece => isProtected(piece) || bringsIn(piece));
+  // A piece right at a lost note that would put another character than before against the note, where
+  // whitespace or a line edge stood or another mark ("a uusi[TODO: x] b", "tähän.[TODO: x]",
+  // "[TODO: x]uusi:"), is set aside with that note: the clipboard lost the note, so it says nothing
+  // about the note's neighbours
+  const blank = (ch) => ch === undefined || /\s/.test(ch);
+  const against = (now, was) => !blank(now) && now !== was;
+  const gluedTo = (piece) => lost.find(item => item.note && (
+    (piece.to === item.from &&
+      against(piece.insert ? piece.insert[piece.insert.length - 1] : target[piece.from - 1], target[item.from - 1])) ||
+    (piece.from === item.to &&
+      against(piece.insert ? piece.insert[0] : target[piece.to], target[item.to]))
+  ));
+  const proposed = [];
+  const stuck = [];
+  for (const piece of placed) {
+    const note = gluedTo(piece);
+    if (isProtected(piece) || bringsIn(piece) || note) stuck.push({ piece, note });
+    else proposed.push(piece);
+  }
   if (!proposed.length) return whole;
 
   // One loss per note, and per underline (its opening and closing tag)
@@ -220,8 +246,10 @@ function splitProtected(target, change, isProtected, deps, cutSpans) {
     if (same) same.ranges.push(entry);
     else groups.push({ pair, ranges: [entry] });
   }
-  for (const piece of stuck) {
-    const owner = groups.find(group => group.ranges.some(range => range.from < Math.max(piece.to, piece.from + 1) && range.to > piece.from));
+  for (const { piece, note } of stuck) {
+    const owner = groups.find(group => group.ranges.some(range => (note
+      ? range.item === note
+      : range.from < Math.max(piece.to, piece.from + 1) && range.to > piece.from)));
     if (owner) owner.ranges.push({ from: piece.from, to: piece.to });
   }
 
@@ -317,15 +345,15 @@ function preparePasteEdits(targetText, clipboardText, deps, cutSpans) {
   result.protectedCount = result.protectedChanges.length;
   result.stats.changeCount = result.changes.length;
 
-  if (!result.changes.length) {
-    // Every difference would have deleted a note or a tag, or the diff found none worth proposing
-    return { ...result, status: result.protectedCount ? 'protected-only' : 'identical' };
-  }
+  // The diff found no difference worth proposing
+  if (!result.changes.length && !result.protectedCount) return { ...result, status: 'identical' };
 
+  // Measured also when every difference would have deleted a note or a tag ('protected-only'): an unrelated
+  // text over a passage with a note is one such change, and the author is told that the clipboard is wrong
   const ratio = Number(deps.changeRatio(target, result.revised));
   result.ratio = Number.isFinite(ratio) ? ratio : 0;
   result.warn = result.ratio > PASTE_WARN_RATIO;
-  result.status = 'ok';
+  result.status = result.changes.length ? 'ok' : 'protected-only';
   return result;
 }
 
@@ -403,7 +431,9 @@ function pasteDialogText(request) {
       ? '1 muutos poistaisi muistutuksen tai alleviivauksen. Se jätetään pois.'
       : `${formatCount(protectedCount)} muutosta poistaisi muistutuksen tai alleviivauksen. Ne jätetään pois.`;
   }
-  if (status === 'ok' && request.warn) {
+  // Also over 'protected-only': a wrong clipboard over a passage with a note is set aside whole, and the
+  // warning, not the note, is what the author needs to hear
+  if (request.warn) {
     const pct = Math.round((Number(request.ratio) || 0) * 100);
     text.warning = `Leikepöydän teksti poikkeaa verrattavasta tekstistä paljon: noin ${pct} % sanoista muuttuisi. Tarkista, että leikepöydällä on oikea teksti.`;
   }

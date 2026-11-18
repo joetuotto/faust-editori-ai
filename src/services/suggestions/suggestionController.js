@@ -71,6 +71,7 @@ function createSuggestionController(deps = {}) {
   let propsCache = new Map();     // chapterId → the two functions handed to the editor
   let live = null;                // { chapterId, snapshot } of the mounted editor
   let paste = null;               // the prepared "Liitä muokkauksina" request waiting for its dialog
+                                  // ({ dropped: true } once its editor went: the dialog is still open)
   let bulkSnapshotId = null;      // snapshot taken for the bulk accept that is running
   const blockHandlers = new Set();
   let lastInfo = null;
@@ -295,8 +296,9 @@ function createSuggestionController(deps = {}) {
         if (event.type === 'unmount') {
           storeUnmounted(chapterId, event);
           if (live && live.chapterId === chapterId) live = null;
-          // The target of a paste that was waiting for its dialog went with the editor
-          if (paste && paste.chapterId === chapterId) paste = null;
+          // The target of a paste that was waiting for its dialog went with the editor (a chapter switch or
+          // Korttinäkymä under the open dialog); its answer is told so instead of doing nothing
+          if (paste && paste.chapterId === chapterId) paste = { dropped: true, chapterId };
           publish();
           return;
         }
@@ -589,7 +591,7 @@ function createSuggestionController(deps = {}) {
       const none = { targetWords: 0, clipboardWords: 0, changeCount: 0 };
 
       // A request that never got its answer
-      if (paste && editor) editor.releaseRange(paste.rangeId);
+      if (paste && !paste.dropped && editor) editor.releaseRange(paste.rangeId);
       paste = null;
 
       const target = editor ? editor.captureSelection({ highlight: true, fallback: 'document' }) : null;
@@ -617,14 +619,18 @@ function createSuggestionController(deps = {}) {
       });
     },
 
-    /** The dialog's answer: { source } proposes the changes, null gives the target up. */
+    /**
+     * The dialog's answer: { source } proposes the changes, null gives the target up. A paste whose
+     * target went while the dialog was open (its chapter closed or another one opened) proposes nothing
+     * and answers { ok: false, error: 'target-changed' }, as a target whose text changed does.
+     */
     confirmPaste(choice) {
       const request = paste;
       paste = null;
       if (!request) return undefined;
 
-      const editor = openEditor(request.chapterId);
-      if (!editor) return undefined;
+      const editor = request.dropped ? null : openEditor(request.chapterId);
+      if (!editor) return choice ? failed('target-changed') : undefined;
       if (!choice) {
         editor.releaseRange(request.rangeId);
         return undefined;

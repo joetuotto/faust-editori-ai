@@ -258,10 +258,27 @@ describe('preparePasteEdits', () => {
     expect(result.protectedCount).toBe(2);
     expect(result.protectedChanges).toHaveLength(2);
     expect(result.stats.changeCount).toBe(0);
-    // Nothing to propose: no ratio, no warning
-    expect(result.ratio).toBe(0);
-    expect(result.warn).toBe(false);
-    expect(d.changeRatio).not.toHaveBeenCalled();
+    // Nothing to propose, but the ratio is still measured (stage I-04 review): a clipboard this far
+    // from the target is named, although only notes and tags differ here by the stand-in diff
+    expect(d.changeRatio).toHaveBeenCalledWith(SAMPLE, clipboard);
+    expect(result.ratio).toBe(0.9);
+    expect(result.warn).toBe(true);
+    expect(preparePasteEdits(SAMPLE, clipboard, deps(0.1))).toMatchObject({ status: 'protected-only', ratio: 0.1, warn: false });
+  });
+
+  test('a wrong clipboard over a passage with a note is set aside whole and still warns (I-04 review)', () => {
+    const real = require('../../src/editor/wordDiff');
+    const target = 'Kaupunki oli pienempi kuin hän muisti, ja asema oli siirretty.\n\n[TODO: tarkista junan aikataulu]\n\nKotiin palaaminen ei ollut helppoa kenellekään.';
+    const result = preparePasteEdits(target, 'Torstai', { wordDiff: (a, b, o) => real.wordDiff(a, b, o), changeRatio: real.changeRatio });
+    expect(result.status).toBe('protected-only');
+    expect(result.changes).toEqual([]);
+    expect(result.protectedCount).toBe(1);
+    expect(result.warn).toBe(true);
+    expect(result.ratio).toBeGreaterThan(PASTE_WARN_RATIO);
+    // Identical text measures nothing
+    const same = { wordDiff: jest.fn(() => []), changeRatio: jest.fn(() => 0.9) };
+    expect(preparePasteEdits(target, target, same)).toMatchObject({ status: 'identical', ratio: 0, warn: false });
+    expect(same.changeRatio).not.toHaveBeenCalled();
   });
 
   test('a change without original is checked against the target text', () => {
@@ -366,6 +383,59 @@ describe('a merged change that would delete a note or a tag is taken apart', () 
     expect(after('Sana [TODO: x].', 'Sana.')).toEqual(['protected-only', [], 'Sana [TODO: x].']);
   });
 
+  // I-04 review: the merged diff takes the breaks BEFORE a note on a line of its own ("\n\n[TODO: x]")
+  test('a note on its own line keeps the breaks before it when the diff joins them to it: no paragraph runs into the note', () => {
+    const check = (target, clipboard, changes, accepted) => {
+      const result = preparePasteEdits(target, clipboard, realDeps());
+      expect(result.status).toBe('ok');
+      expect(result.changes.map(change => [change.original, change.insert])).toEqual(changes);
+      expect(result.stats.changeCount).toBe(changes.length);
+      expect(result.protectedCount).toBe(1);
+      expect(applyChanges(target, result.changes)).toBe(accepted);
+    };
+    // A blank line around it, a changed word in the paragraph before
+    expect(real.wordDiff('Eka kappale päättyy tähän.\n\n[TODO: tarkista nimi]\n\nToka kappale alkaa.', 'Eka kappale loppuu tähän.\n\nToka kappale alkaa.')
+      .map(change => change.original)).toContain('\n\n[TODO: tarkista nimi]');
+    check('Eka kappale päättyy tähän.\n\n[TODO: tarkista nimi]\n\nToka kappale alkaa.', 'Eka kappale loppuu tähän.\n\nToka kappale alkaa.',
+      [['päättyy', 'loppuu']], 'Eka kappale loppuu tähän.\n\n[TODO: tarkista nimi]\n\nToka kappale alkaa.');
+    check('Teksti on tässä.\n\n[TODO: x]\n\nLisää tekstiä.', 'Teksti on täällä.\n\nLisää tekstiä.',
+      [['tässä', 'täällä']], 'Teksti on täällä.\n\n[TODO: x]\n\nLisää tekstiä.');
+    // Single line breaks
+    check('Eka rivi.\n[TODO: x]\nToka rivi.', 'Eka lause.\nToka rivi.', [['rivi', 'lause']], 'Eka lause.\n[TODO: x]\nToka rivi.');
+    // The note is the last line of the text, and the edit is far from it
+    check('Eka kappale.\n\nToka kappale tässä.\n\n[TODO: x]', 'Eka kappale!\n\nToka kappale tässä.', [['.', '!']], 'Eka kappale!\n\nToka kappale tässä.\n\n[TODO: x]');
+    check('Eka rivi.\n[TODO: x]', 'Eka lause.', [['rivi', 'lause']], 'Eka lause.\n[TODO: x]');
+    // Only the note's line lost: nothing to propose
+    expect(preparePasteEdits('Eka rivi.\n\n[TODO: x]', 'Eka rivi.', realDeps())).toMatchObject({ status: 'protected-only', changes: [], protectedCount: 1 });
+    expect(preparePasteEdits('Rivi yksi\n[TODO: x] Rivi kaksi', 'Rivi yksi Rivi kaksi', realDeps())).toMatchObject({ status: 'protected-only', changes: [] });
+  });
+
+  test('a word that takes a lost note\'s place is not proposed against the note', () => {
+    const glued = /\S\[TODO|\]\w/;
+    for (const [target, clipboard] of [
+      ['a [TODO: x] b', 'a uusi b'],
+      ['Hän oli täällä [TODO: x]', 'Hän oli täällä eilen'],
+      ['Alku [TODO: x] loppu.', 'Alku keski loppu.'],
+      ['[TODO: x] alku.', 'Uusi alku.'],
+      ['Sana [TODO: x].', 'Sana uusi.']
+    ]) {
+      const result = preparePasteEdits(target, clipboard, realDeps());
+      expect(result).toMatchObject({ status: 'protected-only', changes: [], protectedCount: 1 });
+      expect(applyChanges(target, result.changes)).not.toMatch(glued);
+    }
+    // A piece of a longer change that would put a word against the note goes with the note; the rest is proposed
+    const target = 'Sana [TODO: x]: tule ja mene.';
+    const merged = { wordDiff: () => [{ from: 5, to: 28, insert: 'uusi: tule ja tule' }], changeRatio: () => 0.1, rawDiff: (a, b) => real.wordDiff(a, b, { raw: true }) };
+    const result = preparePasteEdits(target, 'Sana uusi: tule ja tule.', merged);
+    expect(result.changes.map(change => [change.original, change.insert])).toEqual([['mene', 'tule']]);
+    expect(result.protectedCount).toBe(1);
+    expect(applyChanges(target, result.changes)).toBe('Sana [TODO: x]: tule ja tule.');
+    // A word that already stood against the note may still change
+    const before = { wordDiff: () => [{ from: 4, to: 18, insert: 'huusi' }], changeRatio: () => 0.1, rawDiff: merged.rawDiff };
+    expect(applyChanges('Hän sanoi[TODO: x] jotain', preparePasteEdits('Hän sanoi[TODO: x] jotain', 'Hän huusi jotain', before).changes))
+      .toBe('Hän huusi[TODO: x] jotain');
+  });
+
   test('a change that only loses notes or tags, rewrites a note, or whose clipboard still holds a copy of one, keeps them', () => {
     expect(preparePasteEdits(SAMPLE, SAMPLE.replace(' [TODO: tarkista]', ''), realDeps())).toMatchObject({ status: 'protected-only', protectedCount: 1, changes: [] });
     expect(preparePasteEdits(SAMPLE, SAMPLE.replace('<u>kypsä</u>', 'kypsä'), realDeps())).toMatchObject({ status: 'protected-only', protectedCount: 1, changes: [] });
@@ -444,6 +514,10 @@ describe('the words of the Liitä muokkauksina dialog', () => {
     expect(text.result).toBe('0 muutosta');
     expect(text.canPaste).toBe(false);
     expect(text.warning).toBeNull();
+    // A wrong clipboard over a passage with a note (I-04 review): the warning shows here too
+    const wrong = pasteDialogText(request({ status: 'protected-only', protectedCount: 1, ratio: 0.954, warn: true, stats: { changeCount: 0 } }));
+    expect(wrong.warning).toBe('Leikepöydän teksti poikkeaa verrattavasta tekstistä paljon: noin 95 % sanoista muuttuisi. Tarkista, että leikepöydällä on oikea teksti.');
+    expect(wrong).toMatchObject({ result: '0 muutosta', canPaste: false, protectedLine: '1 muutos poistaisi muistutuksen tai alleviivauksen. Se jätetään pois.' });
   });
 
   test('the warning carries the rounded percentage, and only when the request warns', () => {
