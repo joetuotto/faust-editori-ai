@@ -846,6 +846,11 @@ function FAUSTApp() {
   const editorRef = useRef(null);
   const liveContentRef = useRef({ chapterId: null, content: '' }); // see updateChapterContent
   const projectRef = useRef(null);            // the project of the latest render, for timers and async saves
+  // Tarinakansio's form writes typed text 300 ms after the last key: a save writes that batch first
+  // ({ flush, pending }, set by CodexPanel), so the file and the "saved" state never miss it
+  const codexDraftsRef = useRef(null);
+  const flushCodexDrafts = () => { if (codexDraftsRef.current) ReactDOM.flushSync(() => codexDraftsRef.current.flush()); };
+  const codexDraftsPending = () => !!(codexDraftsRef.current && codexDraftsRef.current.pending());
   const callAIRef = useRef(null);             // the callAIWithMode of the latest render, for long-lived services
   const refusalRef = useRef(null);            // the last old request that main refused or stopped, see asIsNotice
   const menuHandlerRef = useRef(null);        // see the menu handler
@@ -2271,7 +2276,8 @@ function FAUSTApp() {
       return false;
     }
 
-    const saving = project;
+    flushCodexDrafts();
+    const saving = projectRef.current;
 
     try {
       setSavingState('saving');
@@ -2280,7 +2286,7 @@ function FAUSTApp() {
       if (result.success) {
         setCurrentFilePath(result.path);
         // Typing during the save keeps the project marked as changed
-        if (projectRef.current === saving) {
+        if (projectRef.current === saving && !codexDraftsPending()) {
           setUnsavedChanges(false);
           window.electronAPI.clearBackup();
         }
@@ -4780,6 +4786,7 @@ ${contextPrompt}`;
     if (!unsavedChanges || !currentFilePath || !window.electronAPI) return;
 
     const autosave = async () => {
+      flushCodexDrafts();
       const saving = projectRef.current;
       try {
         setSavingState('saving');
@@ -4790,7 +4797,7 @@ ${contextPrompt}`;
         if (!result.success) throw new Error(result.error || 'tuntematon virhe');
 
         // Typing during the save keeps the project marked as changed
-        if (projectRef.current === saving) {
+        if (projectRef.current === saving && !codexDraftsPending()) {
           setUnsavedChanges(false);
           window.electronAPI.clearBackup();
         }
@@ -5573,7 +5580,13 @@ ${contextPrompt}`;
                   editorRef.current.scrollToPos(ranges[0].start);
                 },
                 mentionsEnabled: true,
-                isCurrent: ((epoch) => () => projectEpochRef.current === epoch)(projectEpoch)
+                isCurrent: ((epoch) => () => projectEpochRef.current === epoch)(projectEpoch),
+                // I-07 review: a typed key marks the project changed at once; a save takes the form's batch;
+                // focus mode closes the form; a form closing toward a hidden place gives the focus to the text
+                onDirty: () => setUnsavedChanges(true),
+                draftsRef: codexDraftsRef,
+                focusMode,
+                focusEditor: () => { if (editorRef.current) editorRef.current.focus(); }
               }))
           ),
 

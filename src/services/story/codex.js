@@ -191,6 +191,49 @@ function formatEntry(entry) {
 }
 
 // ---------------------------------------------------------------------------
+// The list in the sidebar (stage I-07)
+// ---------------------------------------------------------------------------
+
+/** The section shows its name filter from this many entries on: more than eight. */
+const FILTER_FROM = 9;
+
+/**
+ * The entries as the Tarinakansio section lists them: one group per type, in
+ * the order of the project's types and then the other types (an unknown type
+ * under Käsitteet); named entries alphabetically, unnamed ones last.
+ *
+ * The name filter (part of the name or of an alias, in any case) is shown only
+ * from FILTER_FROM entries on, and it filters only while it is shown: a filter
+ * typed before entries were deleted never hides entries behind a field that is
+ * no longer there.
+ *
+ * @returns {{ showFilter: boolean, groups: Array<{ type: string, items: object[] }> }}
+ */
+function listGroups(entries, { project, filter = '' } = {}) {
+  const records = (Array.isArray(entries) ? entries : []).filter(isRecord);
+  const showFilter = records.length >= FILTER_FROM;
+  const needle = showFilter ? asText(filter).trim().toLocaleLowerCase('fi') : '';
+
+  const own = typesFor(project);
+  const order = [...own, ...Object.keys(TYPE_LABELS).filter(type => !own.includes(type))];
+  const byType = new Map(order.map(type => [type, []]));
+  for (const entry of records) {
+    if (needle) {
+      const words = [entry.name, ...termList(entry.aliases)].map(word => asText(word).toLocaleLowerCase('fi'));
+      if (!words.some(word => word.includes(needle))) continue;
+    }
+    byType.get(typeOf(entry)).push(entry);
+  }
+
+  const nameOf = (entry) => asText(entry.name).trim();
+  const byName = (a, b) => (nameOf(a) ? 0 : 1) - (nameOf(b) ? 0 : 1) || nameOf(a).localeCompare(nameOf(b), 'fi');
+  const groups = order
+    .map(type => ({ type, items: byType.get(type).sort(byName) }))
+    .filter(group => group.items.length > 0);
+  return { showFilter, groups };
+}
+
+// ---------------------------------------------------------------------------
 // Mentions
 // ---------------------------------------------------------------------------
 
@@ -280,9 +323,16 @@ function matchEntries(text, entries, options = {}) {
 /**
  * Mention counts over a book. chapters: [{ id, content }].
  * Chapters marked "Ei tekoälylle" are counted too: nothing is sent.
+ *
+ * options.cache: a Map the caller keeps from one call to the next (the
+ * Tarinakansio list counts again after every pause in typing). A chapter whose
+ * content string and entries list are the very ones of the previous call is
+ * not scanned again, so typing rescans only the open chapter; a new entries
+ * list rescans every chapter; chapters that are gone leave the cache.
  * @returns {{ total: object, byChapter: object, forms: object }}
  */
-function countMentions(chapters, entries) {
+function countMentions(chapters, entries, options = {}) {
+  const cache = options && options.cache instanceof Map ? options.cache : null;
   const prepared = prepareEntries(entries);
   const total = {};
   const merged = {};
@@ -292,9 +342,19 @@ function countMentions(chapters, entries) {
   }
 
   const byChapter = {};
+  const seen = new Set();
   for (const chapter of chapters || []) {
     if (!chapter) continue;
-    const result = matchPrepared(asText(chapter.content), prepared);
+    const content = asText(chapter.content);
+    const hit = cache ? cache.get(chapter.id) : null;
+    let result;
+    if (hit && hit.content === content && hit.entries === entries) {
+      result = hit.result;
+    } else {
+      result = matchPrepared(content, prepared);
+      if (cache) cache.set(chapter.id, { content, entries, result });
+    }
+    seen.add(chapter.id);
     byChapter[chapter.id] = result.counts;
     for (const item of prepared) {
       total[item.id] += result.counts[item.id];
@@ -303,6 +363,7 @@ function countMentions(chapters, entries) {
       }
     }
   }
+  if (cache) for (const id of Array.from(cache.keys())) if (!seen.has(id)) cache.delete(id);
 
   const forms = {};
   for (const item of prepared) forms[item.id] = sortedForms(merged[item.id]);
@@ -692,5 +753,8 @@ module.exports = {
   pendingLegacy,
   migrateLegacy,
   entryFromResearchNote,
-  findBySource
+  findBySource,
+  // Stage I-07: the section's list (src/components/CodexPanel.js draws it)
+  FILTER_FROM,
+  listGroups
 };

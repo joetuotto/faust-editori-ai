@@ -50,7 +50,8 @@ const MODULES = {
   'src/services/ai/quickEdit.js': ['createQuickEdit'],
   'utils/aiContextMenu.js': ['sanitizeContext', 'takeContext', 'buildAiSubmenu'],
   'src/editor/termMatch.js': ['parseTerm', 'parseTermList', 'formatTermList', 'compileTerms', 'findTermMatches', 'todoRanges', 'countTerms'],
-  'src/services/story/codex.js': ['TYPES', 'TYPE_LABELS', 'TYPE_PLURALS', 'STATES', 'STATE_LABELS', 'projectKind', 'folderName', 'typesFor', 'createEntry', 'normalizeEntry', 'normalizeCodex', 'updateEntry', 'removeEntry', 'prepareEntries', 'matchPrepared', 'matchEntries', 'countMentions', 'selectForContext', 'formatEntry', 'pendingLegacy', 'migrateLegacy', 'entryFromResearchNote', 'findBySource'],
+  // I-07 adds the section's list (CodexPanel.js draws it)
+  'src/services/story/codex.js': ['TYPES', 'TYPE_LABELS', 'TYPE_PLURALS', 'STATES', 'STATE_LABELS', 'projectKind', 'folderName', 'typesFor', 'createEntry', 'normalizeEntry', 'normalizeCodex', 'updateEntry', 'removeEntry', 'prepareEntries', 'matchPrepared', 'matchEntries', 'countMentions', 'selectForContext', 'formatEntry', 'pendingLegacy', 'migrateLegacy', 'entryFromResearchNote', 'findBySource', 'FILTER_FROM', 'listGroups'],
   'src/services/ai/contextBuilder.js': ['buildContext', 'describeParts', 'isChapterBlocked', 'chaptersInOrder', 'readSummary', 'normalizeContextFields', 'stripTodos', 'tailLines', 'headLines', 'DROP_ORDER', 'TASK_PROFILES', 'LANGUAGE_RULES', 'UNCALIBRATED_MARGIN', 'MENTION_DETECTION', 'MESSAGES'],
   'src/services/ai/contextSession.js': ['createContextSession', 'getContextSession'],
   'src/editor/termHighlightCore.js': ['createTermHighlightKit'],

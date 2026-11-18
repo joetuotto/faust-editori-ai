@@ -698,7 +698,6 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-popover--sheet { z-index: var(--z-dock); max-height: calc(100vh - var(--header-h) - var(--footer-h) - 2 * var(--sp-3)); }
 .faust-popover--sheet:focus { outline: none; }      /* the sheet takes the focus only so that Esc reaches it; its fields show the ring */
 .faust-popover--sheet .faust-popover__body > * + * { margin-top: var(--sp-3); }      /* fields, the warning and the mentions in one rhythm */
-.faust-popover--sheet .faust-check-group--grid { grid-template-columns: 14px max-content minmax(0, 1fr); }
 .faust-codex__mentions { display: flex; flex-direction: column; gap: var(--sp-1); }
 .faust-codex__mentions > .faust-label { margin-top: var(--sp-2); }
 .faust-codex__form { display: inline-flex; align-items: center; gap: var(--sp-2); }
@@ -1014,6 +1013,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-codex .faust-section__title { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .faust-codex .faust-section__title > .faust-icon { color: var(--accent-line); }
 .faust-codex__banner { margin-bottom: var(--sp-2); }
+/* A long word (projektitiedostossa.) is hyphenated (lang fi) inside the 220px column, only where it is long, else broken */
+.faust-codex__banner .faust-field__hint { hyphens: auto; hyphenate-limit-chars: 12 5 5; overflow-wrap: anywhere; }
 .faust-codex .faust-callout__actions { grid-column: 1 / -1; flex-direction: column; }      /* the two buttons take the narrow column's width */
 .faust-codex__filter { margin-bottom: var(--sp-2); }
 .faust-codex__grouphead { display: flex; align-items: center; gap: var(--sp-1); margin: var(--sp-2) 0 var(--sp-1); }

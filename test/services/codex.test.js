@@ -24,7 +24,9 @@ const {
   pendingLegacy,
   migrateLegacy,
   entryFromResearchNote,
-  findBySource
+  findBySource,
+  FILTER_FROM,
+  listGroups
 } = require('../../src/services/story/codex');
 
 const NOW = '2026-11-17T10:00:00.000Z';
@@ -396,6 +398,115 @@ describe('countMentions', () => {
 
     expect(countMentions([], entries)).toEqual({ total: { a: 0, b: 0 }, byChapter: {}, forms: { a: [], b: [] } });
     expect(countMentions(undefined, undefined)).toEqual({ total: {}, byChapter: {}, forms: {} });
+  });
+
+  // Stage I-07 review: the Tarinakansio list counts again after every pause in typing, with one cache
+  describe('with a cache (I-07)', () => {
+    const entries = [entry({ id: 'a', name: 'Mari' }), entry({ id: 'b', name: 'Pekka', aliases: ['Peka'] })];
+    const chapters = [
+      { id: 'c1', content: 'Mari tuli. Marin laukku.' },
+      { id: 'c2', content: 'Pekan isä ja Mari.' },
+      { id: 'c3', content: 'Ei ketään.' }
+    ];
+
+    test('gives what the uncached count gives, and reuses an unchanged chapter', () => {
+      const cache = new Map();
+      const first = countMentions(chapters, entries, { cache });
+      expect(first).toEqual(countMentions(chapters, entries));
+      expect([...cache.keys()]).toEqual(['c1', 'c2', 'c3']);
+
+      const again = countMentions(chapters.map(chapter => ({ ...chapter })), entries, { cache });
+      expect(again).toEqual(first);
+      for (const id of ['c1', 'c2', 'c3']) expect(again.byChapter[id]).toBe(first.byChapter[id]);
+    });
+
+    test('scans again only the chapter whose text changed', () => {
+      const cache = new Map();
+      const first = countMentions(chapters, entries, { cache });
+      const typed = [chapters[0], { ...chapters[1], content: 'Pekan isä ja Mari. Pekalle.' }, chapters[2]];
+      const next = countMentions(typed, entries, { cache });
+
+      expect(next).toEqual(countMentions(typed, entries));
+      expect(next.byChapter.c1).toBe(first.byChapter.c1);
+      expect(next.byChapter.c3).toBe(first.byChapter.c3);
+      expect(next.byChapter.c2).not.toBe(first.byChapter.c2);
+      expect(next.total).toEqual({ a: 3, b: 2 });
+    });
+
+    test('a new entries list scans every chapter again, and a chapter that is gone leaves the cache', () => {
+      const cache = new Map();
+      const first = countMentions(chapters, entries, { cache });
+      const excluded = entries.map(item => (item.id === 'a' ? { ...item, exclude: ['”Marin”'] } : item));
+      const next = countMentions(chapters, excluded, { cache });
+
+      expect(next).toEqual(countMentions(chapters, excluded));
+      expect(next.total.a).toBe(2);
+      for (const id of ['c1', 'c2', 'c3']) expect(next.byChapter[id]).not.toBe(first.byChapter[id]);
+
+      countMentions(chapters.slice(0, 2), excluded, { cache });
+      expect([...cache.keys()]).toEqual(['c1', 'c2']);
+    });
+
+    test('anything that is not a Map is no cache', () => {
+      expect(countMentions(chapters, entries, { cache: {} })).toEqual(countMentions(chapters, entries));
+      expect(countMentions(chapters, entries, null)).toEqual(countMentions(chapters, entries));
+    });
+  });
+});
+
+// Stage I-07 review: the list of the Tarinakansio section (brief extract 3.8)
+describe('listGroups (I-07)', () => {
+  const names = (result) => result.groups.map(group => [group.type, group.items.map(item => item.name)]);
+
+  test('groups in the order of the project types, then the other types; names alphabetically, unnamed last', () => {
+    const list = [
+      entry({ id: '1', type: 'paikka', name: 'Satama' }),
+      entry({ id: '2', type: 'hahmo', name: 'Öljymies' }),
+      entry({ id: '3', type: 'hahmo', name: '' }),
+      entry({ id: '4', type: 'hahmo', name: 'Aino' }),
+      entry({ id: '5', type: 'termi', name: 'Volframi' }),
+      entry({ id: '6', type: 'outo', name: 'Kirje' }),
+      entry({ id: '7', type: 'hahmo', name: 'Zeta' }),
+      null
+    ];
+    expect(listGroups(list, { project: {} })).toEqual({
+      showFilter: false,
+      groups: [
+        { type: 'hahmo', items: [list[3], list[6], list[1], list[2]] },
+        { type: 'paikka', items: [list[0]] },
+        { type: 'kasite', items: [list[5]] },
+        { type: 'termi', items: [list[4]] }
+      ]
+    });
+    expect(names(listGroups(list, { project: { genre: 'nonfiction' } })).map(([type]) => type))
+      .toEqual(['termi', 'hahmo', 'paikka', 'kasite']);
+    expect(listGroups(undefined)).toEqual({ showFilter: false, groups: [] });
+  });
+
+  test('the filter shows from nine entries on and filters only while it is shown', () => {
+    const make = (n) => Array.from({ length: n }, (_, i) => entry({ id: 'e' + i, name: i === 0 ? 'Mari' : 'Nimi ' + i }));
+    expect(FILTER_FROM).toBe(9);
+
+    const eight = listGroups(make(8), { project: {}, filter: 'mar' });
+    expect(eight.showFilter).toBe(false);
+    expect(eight.groups[0].items).toHaveLength(8);
+
+    const nine = listGroups(make(9), { project: {}, filter: 'mar' });
+    expect(nine.showFilter).toBe(true);
+    expect(names(nine)).toEqual([['hahmo', ['Mari']]]);
+
+    expect(listGroups(make(9), { project: {}, filter: '  ' }).groups[0].items).toHaveLength(9);
+  });
+
+  test('the filter finds a part of the name or of an alias in any case', () => {
+    const list = [
+      entry({ id: 'p', name: 'Pekka', aliases: ['Peka'] }),
+      entry({ id: 'h', type: 'paikka', name: 'Hotelli Pohjola' }),
+      ...Array.from({ length: 7 }, (_, i) => entry({ id: 'x' + i, name: 'Muu ' + i }))
+    ];
+    expect(names(listGroups(list, { project: {}, filter: 'POHJ' }))).toEqual([['paikka', ['Hotelli Pohjola']]]);
+    expect(names(listGroups(list, { project: {}, filter: 'peka' }))).toEqual([['hahmo', ['Pekka']]]);
+    expect(listGroups(list, { project: {}, filter: 'äänetön' }).groups).toEqual([]);
   });
 });
 
