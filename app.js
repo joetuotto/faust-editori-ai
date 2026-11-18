@@ -485,6 +485,7 @@ function FAUSTApp() {
   // ExportModal state
   const [showExportModal, setShowExportModal] = useState(false);
   const [importSource, setImportSource] = useState(null); // open import preview, see beginImport
+  const [importPickError, setImportPickError] = useState(null); // a folder the open preview could not read
 
   // Handler to save chapter data from modal
   // A tiivistelmä the author edits here is theirs: it goes to synopsisManual too, so that
@@ -2214,15 +2215,23 @@ function FAUSTApp() {
 
   // Import a file or a folder. The main process reads it; the preview dialog
   // shows the chapters, and nothing is written to the project before "Tuo".
-  const beginImport = async (kind, request) => {
+  // inPreview: asked from the open preview (Valitse toinen kansio…, Avaa …). Its failure is
+  // shown in the preview, which stays as it was (V 9.6, R-72); from the menu it is a notification.
+  const beginImport = async (kind, request, { inPreview = false } = {}) => {
     if (!window.electronAPI) return;
+    if (inPreview) setImportPickError(null);
     const result = kind === 'folder'
       ? await window.electronAPI.importFolder(request)
       : await window.electronAPI.importDocument();
     if (!result.success) {
-      if (result.error) notify('error', 'Tuonti epäonnistui: ' + failureReason(result.error) + '.');
+      if (!result.error) return;
+      const text = 'Tuonti epäonnistui: ' + failureReason(result.error) + '.';
+      // The path the main process could not read goes under the sentence (R-72)
+      if (inPreview) setImportPickError({ text, detail: result.path || null });
+      else notify('error', text, result.path ? { detail: result.path } : {});
       return;
     }
+    setImportPickError(null);
     setImportSource(result);
   };
 
@@ -2230,6 +2239,7 @@ function FAUSTApp() {
   // update, so the snapshot is exactly the state being changed (importPlan.applyImport).
   const finishImport = (selection) => {
     setImportSource(null);
+    setImportPickError(null);
     if (!selection || selection.chapters.length === 0) return;
 
     const docs = buildChapterDocs(selection, (title) => createDocument('chapter', title));
@@ -4782,14 +4792,15 @@ ${contextPrompt}`;
       onExport: ({ format, chapterIds }) => window.electronAPI.exportManuscript({ project, format, chapterIds })
     }),
     // Tuonnin esikatselu (stage I-01): Tiedosto ▸ Tuo tekstiä… and Tuo kansio…
-    e(ErrorBoundary, { label: 'Tuonnin esikatselu', onDismiss: () => setImportSource(null) },
+    e(ErrorBoundary, { label: 'Tuonnin esikatselu', onDismiss: () => { setImportSource(null); setImportPickError(null); } },
       e(ImportPreviewDialog, {
         source: importSource,
         project,
         // I-02 adds activeRequests, I-03 pendingSuggestions
         getReplaceBlockedReason: () => replaceBlockedReason({}),
-        onPickFolder: (request) => beginImport('folder', request),
-        onDone: finishImport
+        onPickFolder: (request) => beginImport('folder', request, { inPreview: true }),
+        onDone: finishImport,
+        pickError: importPickError
       })
     ),
     // Focus mode: the header is hidden, so a strip at the top keeps the window draggable

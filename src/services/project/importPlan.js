@@ -18,9 +18,13 @@ const { buildSnapshot } = require('./snapshots.js');
 const { formatCount } = require('../format.fi.js');
 
 const UNTITLED = 'Nimetön luku';
+const UNTITLED_PROJECT = 'Nimetön projekti';
 
 // A longer list of sub-folder names is cut and the rest are counted
 const MAX_NAMED_SUBFOLDERS = 5;
+
+// The row shows the first characters of its text under the title
+const EXCERPT_LENGTH = 60;
 
 // "1 luku", "31 lukua", "84 512 sanaa"
 const counted = (n, one, many) => `${formatCount(n)} ${n === 1 ? one : many}`;
@@ -144,6 +148,36 @@ function summaryLine(rows) {
 function importButtonLabel(rows) {
   const { included } = summarizeRows(rows);
   return included === 0 ? 'Tuo' : `Tuo ${counted(included, 'luku', 'lukua')}`;
+}
+
+/**
+ * The first characters of a chapter on one line, as the row shows them under its title.
+ * Markdown markers are left out, as everywhere outside the editor (V 6.3, app.js stripMarkers):
+ * heading signs, **, __, ~~, *, _, ` and the <u> of an underline.
+ */
+function rowExcerpt(content, length = EXCERPT_LENGTH) {
+  const line = String(content || '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/<\/?u>/gi, '')
+    .replace(/\*\*|__|~~|[*_`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return line.length > length ? line.slice(0, length).trimEnd() + '…' : line;
+}
+
+/**
+ * The hints under the two targets of a project that has text (strings of brief 6.3):
+ * append `”Lumen alla”, 6 lukua ennestään`, replace `Nykyiset 6 lukua korvataan. …`.
+ */
+function targetHints(project) {
+  const title = (project && project.title) || UNTITLED_PROJECT;
+  const existing = project && Array.isArray(project.structure) ? project.structure.length : 0;
+  return {
+    append: `”${title}”, ${counted(existing, 'luku', 'lukua')} ennestään`,
+    replace: existing === 1
+      ? 'Nykyinen luku korvataan. Siitä otetaan ensin tilannekuva.'
+      : `Nykyiset ${formatCount(existing)} lukua korvataan. Niistä otetaan ensin tilannekuva.`
+  };
 }
 
 // "Notes." / "Notes, Research." / "a, b, c, d, e ja 2 muuta."
@@ -373,6 +407,8 @@ module.exports = {
   summarizeRows,
   summaryLine,
   importButtonLabel,
+  rowExcerpt,
+  targetHints,
   noticeLines,
   isBlankProject,
   buildSelection,

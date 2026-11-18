@@ -386,6 +386,26 @@ describe('import: one chapter per file', () => {
     expect(content.startsWith('Ä')).toBe(true);
   });
 
+  // Brief 3.1 / contract H: NFC on both import paths, also for the titles a file name or Word gives
+  test('titles from a decomposed file name or Word title are NFC, with and without the option', () => {
+    const A = 'A' + String.fromCharCode(0x308);            // Ä as A + combining diaeresis
+    const file = `/polku/${A}iti.txt`;
+    const nfcTitle = 'Äiti';
+
+    const single = splitIntoChapters('Teksti ilman otsikkoa.', file);
+    expect(single.title).toBe(nfcTitle);
+    expect(single.chapters[0].title).toBe(nfcTitle);
+    expect(single.chapters[0].title).toHaveLength(4);
+
+    const perFile = one('Teksti ilman otsikkoa.', file);
+    expect(perFile.title).toBe(nfcTitle);
+    expect(perFile.chapters[0]).toEqual({ title: nfcTitle, content: 'Teksti ilman otsikkoa.', titleFrom: 'file' });
+
+    const known = { title: `${A}idin kirja` };
+    expect(splitIntoChapters('# Luku\n\nTeksti.', 'a.docx', known).title).toBe('Äidin kirja');
+    expect(one('# Luku\n\nTeksti.', 'a.docx', known).chapters[0].title).toBe('Äidin kirja');
+  });
+
   test('a heading with nothing after it gives an empty chapter with that title', () => {
     expect(one('# Yksin', 'c.md').chapters).toEqual([{ title: 'Yksin', content: '', titleFrom: 'heading' }]);
   });

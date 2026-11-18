@@ -942,9 +942,29 @@ ipcMain.handle('print-manuscript', async (_event, { project, chapterIds = null }
   }
 });
 
+// Menu spec B.12: an import failure gives its reason in Finnish. The import modules' own reasons
+// are Finnish sentences (Tiedosto…, Kansio…, Alikansiota…) and pass as they are. A system error
+// (Node's "ENOENT: no such file or directory, scandir '/…'", also inside readImportFolder's
+// "Kansiota ei voitu lukea: …") or a library's English message (JSZip on a file that is not a
+// .docx) is replaced; the original goes to the log. The path is returned apart from the sentence.
+// subject: 'folder' or 'file'; fileName: the file read, for the Word case.
+const OWN_IMPORT_REASON = /^(Tiedosto|Kansio|Alikansio)/;
+function importFailureReason(error, subject, fileName) {
+  const message = String((error && error.message) || error || '').trim();
+  const code = (error && typeof error.code === 'string' && error.code) || (/\b(E[A-Z]{2,}):/.exec(message) || [])[1] || '';
+  const folder = subject === 'folder';
+  if (code === 'ENOENT' || code === 'ENOTDIR') return folder ? 'Kansiota ei löytynyt.' : 'Tiedostoa ei löytynyt.';
+  if (code === 'EACCES' || code === 'EPERM') return folder ? 'Kansioon ei ole lukuoikeutta.' : 'Tiedostoon ei ole lukuoikeutta.';
+  // readImportFolder's "Kansiota ei voitu lukea: <system message>" never passes with its English tail
+  if (!code && OWN_IMPORT_REASON.test(message) && !/^Kansiota ei voitu lukea:/.test(message)) return message;
+  if (!code && /\.docx$/i.test(fileName || '')) return 'Tiedosto ei ole kelvollinen Word-asiakirja.';
+  return folder ? 'Kansiota ei voitu lukea.' : 'Tiedostoa ei voitu lukea.';
+}
+
 // Read a .txt, .md or .docx file as chapters. The renderer shows them in the
 // import preview; nothing is written to the project here.
 ipcMain.handle('import-document', async () => {
+  let filePath = null;
   try {
     const { filePaths } = await dialog.showOpenDialog(mainWindow, {
       title: 'Tuo tekstiä',
@@ -958,12 +978,13 @@ ipcMain.handle('import-document', async () => {
       return { success: false, canceled: true };
     }
 
-    const buffer = await fs.readFile(filePaths[0]);
-    const imported = await manuscript.importDocument(buffer, filePaths[0]);
-    return { success: true, kind: 'file', filePath: filePaths[0], name: path.basename(filePaths[0]).normalize('NFC'), ...imported };
+    filePath = filePaths[0];
+    const buffer = await fs.readFile(filePath);
+    const imported = await manuscript.importDocument(buffer, filePath);
+    return { success: true, kind: 'file', filePath, name: path.basename(filePath).normalize('NFC'), ...imported };
   } catch (error) {
     console.error('[Import] Error:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: importFailureReason(error, 'file', filePath), path: filePath || undefined };
   }
 });
 
@@ -973,8 +994,8 @@ let lastImportFolder = null;
 
 // Read the .txt, .md and .docx files of a folder as chapters. Read only.
 ipcMain.handle('import-folder', async (_event, request = {}) => {
+  let folderPath = null;
   try {
-    let folderPath;
     if (request && typeof request.subfolder === 'string') {
       folderPath = lastImportFolder
         ? await importFolder.resolveSubfolder(lastImportFolder, request.subfolder)
@@ -993,11 +1014,16 @@ ipcMain.handle('import-folder', async (_event, request = {}) => {
 
     const source = await importFolder.readImportFolder(folderPath);
     lastImportFolder = folderPath;
+    // A file of the folder that could not be read is reported in the preview (report.failed):
+    // its reason in Finnish too, by the same rule
+    const failed = source.report && Array.isArray(source.report.failed)
+      ? source.report.failed.map(entry => ({ ...entry, error: importFailureReason({ message: entry.error }, 'file', entry.name) }))
+      : [];
     console.log('[Import folder]', source.chapters.length, 'files');
-    return { success: true, ...source };
+    return { success: true, ...source, report: { ...source.report, failed } };
   } catch (error) {
     console.error('[Import folder] Error:', error.message);
-    return { success: false, error: error.message };
+    return { success: false, error: importFailureReason(error, 'folder'), path: folderPath || undefined };
   }
 });
 

@@ -15,6 +15,8 @@ const {
   summarizeRows,
   summaryLine,
   importButtonLabel,
+  rowExcerpt,
+  targetHints,
   noticeLines,
   isBlankProject,
   buildSelection,
@@ -455,6 +457,43 @@ describe('counts and sentences', () => {
       .toBe('Tekoälypyyntö on käynnissä. Pysäytä se tai odota sen valmistumista ennen lukujen korvaamista.');
     expect(replaceBlockedReason({ pendingSuggestions: 2, activeRequests: 1 })).toContain('2 käsittelemätöntä ehdotusta');
     expect(replaceBlockedReason({ pendingSuggestions: 1500 })).toContain(`1${NBSP}500 käsittelemätöntä ehdotusta`);
+  });
+
+  // The hints under the two radios are built here, not in the dialog (R-29: no plural helper in a component)
+  test('targetHints: the append and replace hints of brief 6.3, for one chapter and for many', () => {
+    const chapters = (n) => Array.from({ length: n }, (_, i) => ({ id: 'c' + i, content: 'Teksti.' }));
+
+    expect(targetHints({ title: 'Lumen alla', structure: chapters(6) })).toEqual({
+      append: '”Lumen alla”, 6 lukua ennestään',
+      replace: 'Nykyiset 6 lukua korvataan. Niistä otetaan ensin tilannekuva.'
+    });
+    expect(targetHints({ title: 'Lumen alla', structure: chapters(1) })).toEqual({
+      append: '”Lumen alla”, 1 luku ennestään',
+      replace: 'Nykyinen luku korvataan. Siitä otetaan ensin tilannekuva.'
+    });
+    const big = targetHints({ title: 'Romaani', structure: chapters(1200) });
+    expect(big.append).toBe(`”Romaani”, 1${NBSP}200 lukua ennestään`);
+    expect(big.replace).toBe(`Nykyiset 1${NBSP}200 lukua korvataan. Niistä otetaan ensin tilannekuva.`);
+    // A project without a title is named as the app names a new one
+    expect(targetHints({ title: '', structure: chapters(2) }).append).toBe('”Nimetön projekti”, 2 lukua ennestään');
+    expect(targetHints(null).append).toBe('”Nimetön projekti”, 0 lukua ennestään');
+  });
+
+  test('rowExcerpt: the first 60 characters on one line, without Markdown markers', () => {
+    expect(rowExcerpt('Talo oli **vanha** ja _hiljainen_.')).toBe('Talo oli vanha ja hiljainen.');
+    expect(rowExcerpt('# Otsikko\n\nAamulla oli **kirkasta**.\n## Alaotsikko\nTeksti `koodi` ~~pois~~.'))
+      .toBe('Otsikko Aamulla oli kirkasta. Alaotsikko Teksti koodi pois.');
+    expect(rowExcerpt(TALO_TEXT)).toBe('Hän juoksi ”kotiin” – ja jäi.');
+    // The dialogue dash, a list dash and a [TODO: …] are text, not markers
+    expect(rowExcerpt('– Tule, sanoi Aino.\n- Hei.\n[TODO: tarkista]')).toBe('– Tule, sanoi Aino. - Hei. [TODO: tarkista]');
+    // Cut at 60 characters, counted after the markers are gone
+    const long = '**' + 'a'.repeat(70) + '**';
+    expect(rowExcerpt(long)).toBe('a'.repeat(60) + '…');
+    expect(rowExcerpt('x'.repeat(60))).toBe('x'.repeat(60));
+    expect(rowExcerpt('sana '.repeat(20))).toBe(('sana '.repeat(12)).trimEnd() + '…');
+    expect(rowExcerpt('')).toBe('');
+    expect(rowExcerpt(undefined)).toBe('');
+    expect(rowExcerpt('\n\n   \n')).toBe('');
   });
 });
 

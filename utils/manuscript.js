@@ -671,11 +671,13 @@ function randomUuid() {
 // Import
 // ---------------------------------------------------------------------------
 
+// The title a file name gives, in NFC: a name from a decomposing file system (ä as a + ¨) gives
+// the same title as one typed in FAUST, on both import paths
 function fileTitle(fileName) {
-  return String(fileName || 'Tuotu teksti').replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '') || 'Tuotu teksti';
+  return String(fileName || 'Tuotu teksti').normalize('NFC').replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '') || 'Tuotu teksti';
 }
 
-// Windows-1252 bytes 0x80\u20130x9F, which latin1 reads as control characters (index = byte \u2212 0x80).
+// Windows-1252 bytes 0x80–0x9F, which latin1 reads as control characters (index = byte − 0x80).
 // U+FFFD marks the five bytes that Windows-1252 leaves undefined.
 const CP1252_HIGH = '\u20AC\uFFFD\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\uFFFD\u017D\uFFFD\uFFFD\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\uFFFD\u017E\u0178';
 
@@ -758,12 +760,14 @@ function splitIntoChapters(text, fileName, known = {}, options = {}) {
   let lines = String(text || '').normalize('NFC').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n');
   const headingLevel = (line) => ((/^(#{1,6})\s+\S/.exec(line) || [])[1] || '').length;
 
-  let title = known.title || '';
+  // A title found elsewhere (Word's Title style) is normalised like the text
+  const knownTitle = String((known && known.title) || '').normalize('NFC');
+  let title = knownTitle;
   let levels = lines.map(headingLevel).filter(Boolean);
   let splitLevel = levels.length > 0 ? Math.min(...levels) : 0;
 
   if (options && options.oneChapterPerFile) {
-    let chapterTitle = String(known.title || '').trim();
+    let chapterTitle = knownTitle.trim();
     let titleFrom = 'document';
     let level = 0;
 

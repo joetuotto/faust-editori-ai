@@ -913,6 +913,12 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* the head and every row share the columns; the row's own inset (sp-3) is taken back from the
    column's, so a row's box stands on the dialog's left edge and its content on the title's */
 .faust-import__head, .faust-import__list > .faust-row { display: grid; grid-template-columns: var(--import-cols); column-gap: var(--sp-1); align-items: start; }
+/* a row has two lines: the controls and the title field on the first, and under the title, across
+   the columns after it, the file name, its badges and the first characters of the text */
+.faust-import__list > .faust-row { row-gap: var(--sp-half); }
+.faust-import__list > .faust-row > .faust-import__cell { grid-row: 1; }
+.faust-import__list > .faust-row > .faust-row__text { display: contents; }
+.faust-import__list > .faust-row > .faust-row__text > .faust-input { grid-row: 1; grid-column: 4; align-self: center; }
 .faust-import__head { flex: none; align-items: center; min-height: var(--h-sm); padding: 0 var(--sp-3); margin-left: calc(-1 * var(--sp-3)); }
 .faust-import--table .faust-import__list { flex: 1 1 auto; padding: 0; margin-left: calc(-1 * var(--sp-3)); }
 .faust-import__cell { display: flex; align-items: center; min-width: 0; min-height: var(--h-md); }
@@ -920,8 +926,16 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-import__all { gap: var(--sp-1); cursor: pointer; }
 .faust-import__count { justify-content: flex-end; text-align: right; }
 .faust-import__syn { padding-left: var(--sp-2); }
-.faust-import__meta { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
-.faust-import__meta > .faust-row__meta { flex: 0 1 auto; min-width: 0; }
+.faust-import__meta { grid-row: 2; grid-column: 4 / -1; display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
+/* the excerpt takes what is left and gives way first; the file name shrinks only when it and its
+   badges do not fit the line */
+.faust-import__file { flex: 0 1 auto; min-width: 0; }
+.faust-import__meta > .faust-chip { flex: none; }
+.faust-import__excerpt { flex: 1 1 0; min-width: 0; }
+/* a folder that could not be read while the preview is open (V 9.6: at the top of the body) */
+.faust-import__error { flex: none; }
+.faust-dialog__body > .faust-import__error { margin-bottom: var(--sp-3); }
+.faust-import__error-detail { margin-top: var(--sp-1); font: var(--type-meta); overflow-wrap: anywhere; }
 .faust-import__grip { cursor: grab; }
 .faust-import__grip:active { cursor: grabbing; }
 /* an excluded row: the title field reads like the title (strike, --text-2); its running number is a dash, not struck */
@@ -932,6 +946,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-import__target .faust-section { display: flex; flex-direction: column; gap: var(--sp-2); padding-bottom: 0; }
 .faust-import__target .faust-section__head { margin-bottom: 0; }
 .faust-import__target .faust-field + .faust-check { margin-top: var(--sp-1); }
+/* a choice of two lines (label, then its hint): the radio stands on the label's line, at every width
+   (the serif recipe centres it on the whole block); 22px is the line of --type-serif, 14px the radio */
+.faust-check.faust-import__choice { align-items: flex-start; }
+.faust-check.faust-import__choice > input { align-self: flex-start; margin-top: calc((22px - 14px) / 2); }
 .faust-import__choice > span { display: flex; flex-direction: column; }
 .faust-import__choice .faust-check__hint { margin-left: 0; }
 .faust-import--table .faust-import__preview { flex: 1 1 0; border-top: var(--bw) solid var(--rule); }

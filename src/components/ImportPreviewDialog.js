@@ -20,8 +20,10 @@ import { Dialog, Field, Section, Callout, EmptyState, IconButton, Chip } from '.
 import { FaustEditor } from './FaustEditor.js';
 import {
   buildRows, hasOrderNumbers, applyStripNumbers, moveRow, renameRow, setRowIncluded, setAllIncluded,
-  resetOrder, isReordered, summaryLine, importButtonLabel, noticeLines, isBlankProject, buildSelection
+  resetOrder, isReordered, summaryLine, importButtonLabel, rowExcerpt, targetHints, noticeLines,
+  isBlankProject, buildSelection
 } from '../services/project/importPlan.js';
+// A bare number (the Sanoja column); every count with its noun comes from importPlan.js (R-29)
 import { formatCount } from '../services/format.fi.js';
 
 const { createElement: e, useState, useLayoutEffect, useRef } = React;
@@ -29,17 +31,10 @@ const { createElement: e, useState, useLayoutEffect, useRef } = React;
 const DEFAULT_PROJECT_TITLE = 'Nimetön projekti';
 // The empty state offers at most this many sub-folders, in the order the folder lists them
 const MAX_SUBFOLDER_BUTTONS = 6;
-const EXCERPT_LENGTH = 60;
 // Notices that ask the author to act (a warning) and those that only report (info), VF-21
 const WARNING_KINDS = ['scrivener', 'rtf', 'cloud', 'failed', 'duplicate-synopsis', 'encoding'];
-
-const lukua = (n) => (n === 1 ? '1 luku' : formatCount(n) + ' lukua');
-
-// The first characters of a chapter on one line
-function excerpt(content) {
-  const line = String(content || '').replace(/\s+/g, ' ').trim();
-  return line.length > EXCERPT_LENGTH ? line.slice(0, EXCERPT_LENGTH).trimEnd() + '…' : line;
-}
+// The reason of the disabled Tuo (menu-spec B.8, lead decision 3)
+const NOTHING_CHOSEN = 'Valitse ensin vähintään yksi luku';
 
 // The dialog's own state for one source. Choices are not remembered between imports.
 function initialState(source, project) {
@@ -59,6 +54,16 @@ function initialState(source, project) {
   };
 }
 
+// A folder that could not be read while the preview is open (Valitse toinen kansio…, Avaa …):
+// the error stands at the top of the body and the dialog keeps what it showed (V 9.6, R-72)
+function PickError({ error }) {
+  if (!error) return null;
+  return e('div', { className: 'faust-import__error' },
+    e(Callout, { role: 'error' },
+      error.text,
+      error.detail && e('div', { className: 'faust-import__error-detail' }, error.detail)));
+}
+
 function NoticeCallouts({ notices }) {
   const warnings = notices.filter(notice => WARNING_KINDS.includes(notice.kind));
   const infos = notices.filter(notice => !WARNING_KINDS.includes(notice.kind));
@@ -76,32 +81,50 @@ function NoticeCallouts({ notices }) {
  *   getReplaceBlockedReason: () => string | null, asked on every render and again on "Tuo"
  *   onPickFolder: (request?: { subfolder: string }) => void,   folder imports only
  *   onDone: (selection: object | null) => void    ImportSelection, or null when cancelled
+ *   pickError?: { text: string, detail?: string } | null   why the last onPickFolder failed
  * }} props
  */
-export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, onPickFolder, onDone }) {
+export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, onPickFolder, onDone, pickError }) {
   const [state, setState] = useState(() => initialState(source, project));
   const [seenSource, setSeenSource] = useState(source);
   const titleRefs = useRef({});
   const rowRefs = useRef({});
+  const cancelRef = useRef(null);
   const focusAfterMove = useRef(null);
+  // Where the focus goes when the control that held it has gone (see the layout effect)
+  const focusLost = useRef(null);
 
   // A new source starts the dialog over. Done while rendering, so the first frame of a new
   // source already shows its rows (an effect would draw the old rows once and focus them).
   let current = state;
   if (source !== seenSource) {
     current = initialState(source, project);
+    // A source that replaces another in the open dialog: the pressed button (Avaa …) may be gone.
+    // The first source is focused by the Dialog itself, which also remembers where to return.
+    if (source && seenSource) focusLost.current = 'panel';
     setSeenSource(source);
     setState(current);
   }
 
-  // After a keyboard move the row's own title field has the focus again: React moved the row's
-  // element, and a moved element loses the focus
   useLayoutEffect(() => {
+    // After a keyboard move the row's own title field has the focus again
     const key = focusAfterMove.current;
-    if (!key) return;
-    focusAfterMove.current = null;
-    const field = titleRefs.current[key];
-    if (field && document.activeElement !== field) field.focus();
+    if (key) {
+      focusAfterMove.current = null;
+      const field = titleRefs.current[key];
+      if (field && document.activeElement !== field) field.focus();
+    }
+    // A control that held the focus was removed (Avaa … after a new source, the order reset):
+    // the focus fell to the page body, outside the modal. It goes to the panel, as when the dialog
+    // opened, or to the row being previewed. A focus that is still inside the dialog stays.
+    const lost = focusLost.current;
+    if (lost) {
+      focusLost.current = null;
+      const panel = cancelRef.current && cancelRef.current.closest('[role="dialog"]');
+      if (!panel || panel.contains(document.activeElement)) return;
+      const target = lost === 'panel' ? panel : (rowRefs.current[lost] || panel);
+      target.focus();
+    }
   });
 
   if (!source) return null;
@@ -118,7 +141,6 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
   const takesSnapshot = !blank && (replacing || snapshot);
   const notices = noticeLines(source, rows);
   const includedCount = rows.filter(row => row.included).length;
-  const existing = project && Array.isArray(project.structure) ? project.structure.length : 0;
 
   const cancel = () => onDone(null);
   const sub = folder
@@ -127,7 +149,7 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
   const pickFolder = folder && e('button', {
     key: 'folder', type: 'button', className: 'faust-btn faust-btn--lg', onClick: () => onPickFolder()
   }, 'Valitse toinen kansio…');
-  const cancelButton = e('button', { key: 'cancel', type: 'button', className: 'faust-btn faust-btn--lg', onClick: cancel }, 'Peruuta');
+  const cancelButton = e('button', { key: 'cancel', ref: cancelRef, type: 'button', className: 'faust-btn faust-btn--lg', onClick: cancel }, 'Peruuta');
 
   // ---- A folder without chapter files: say why and offer its sub-folders
   if (rows.length === 0) {
@@ -142,6 +164,7 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
       initialFocus: 'panel',
       footer: [cancelButton, pickFolder].filter(Boolean)
     },
+      e(PickError, { error: pickError }),
       e(EmptyState, {
         icon: 'folder',
         title: 'Kansiossa ei ole tuotavia tiedostoja',
@@ -186,7 +209,14 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
       // The line shows where the row lands: above the target when it moves up, below it when it moves down
       ? (dragFrom > index ? ' is-drop-before' : ' is-drop-after')
       : '';
-    const meta = [row.sourceFile, excerpt(row.content)].filter(Boolean).join(' · ');
+    const excerpt = rowExcerpt(row.content);
+    const badges = [
+      row.words === 0 && e(Chip, { key: 'empty', plain: true }, 'tyhjä'),
+      row.encodingGuessed && e(Chip, {
+        key: 'encoding', plain: true, role: 'warning', dot: true,
+        title: 'Tiedosto ei ollut UTF-8-muodossa. Tarkista, että ä ja ö näkyvät oikein.'
+      }, 'merkistö arvattu')
+    ].filter(Boolean);
 
     return e('div', {
       key: row.key,
@@ -253,13 +283,12 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
             if (rowRefs.current[row.key]) rowRefs.current[row.key].focus();
           }
         }),
-        e('div', { className: 'faust-import__meta' },
-          meta && e('span', { className: 'faust-row__meta' }, meta),
-          row.words === 0 && e(Chip, { plain: true }, 'tyhjä'),
-          row.encodingGuessed && e(Chip, {
-            plain: true, role: 'warning', dot: true,
-            title: 'Tiedosto ei ollut UTF-8-muodossa. Tarkista, että ä ja ö näkyvät oikein.'
-          }, 'merkistö arvattu'))
+        // The second line of the row, under the title and across the columns after it: the file
+        // name whole, its badges, then as much of the text as fits
+        (row.sourceFile || badges.length > 0 || excerpt) && e('div', { className: 'faust-import__meta' },
+          row.sourceFile && e('span', { className: 'faust-row__meta faust-import__file', title: row.sourceFile }, row.sourceFile),
+          badges,
+          excerpt && e('span', { className: 'faust-row__meta faust-import__excerpt' }, (row.sourceFile ? '· ' : '') + excerpt))
       ),
       e('span', { className: 'faust-import__cell faust-row__meta faust-import__count' }, formatCount(row.words)),
       e('span', { className: 'faust-import__cell faust-row__meta faust-import__syn' },
@@ -288,7 +317,7 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
     }));
   };
 
-  const projectTitle = (project && project.title) || DEFAULT_PROJECT_TITLE;
+  const hints = targetHints(project);
   const choice = (value, label, hint) => e('label', { key: value, className: 'faust-check faust-check--serif faust-import__choice' },
     e('input', {
       type: 'radio',
@@ -301,6 +330,7 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
   );
 
   const left = e('div', { className: 'faust-import__col faust-import__col--rows' },
+    e(PickError, { error: pickError }),
     notices.length > 0 && e('div', { className: 'faust-import__notices' }, e(NoticeCallouts, { notices })),
     hasOrderNumbers(rows) && e('label', { className: 'faust-check' },
       e('input', {
@@ -337,7 +367,11 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
       e('button', {
         type: 'button',
         className: 'faust-btn faust-btn--quiet faust-btn--sm faust-btn--flush-start',
-        onClick: () => update({ rows: resetOrder(rows), refused: false })
+        onClick: () => {
+          // The button disappears with the reorder; the focus then goes to the row being previewed
+          focusLost.current = shown.key;
+          update({ rows: resetOrder(rows), refused: false });
+        }
       }, 'Palauta alkuperäinen järjestys'))
   );
 
@@ -347,10 +381,8 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
         blank
           ? e('div', { className: 'faust-dialog__lede' }, 'Projektissa ei ole vielä tekstiä. Luvut tuodaan sen sisällöksi.')
           : e('div', { className: 'faust-check-group faust-check-group--column', role: 'radiogroup', 'aria-label': 'Minne luvut tuodaan' },
-              choice('append', 'Lisää nykyisen projektin loppuun', `”${projectTitle}”, ${lukua(existing)} ennestään`),
-              choice('replace', 'Korvaa nykyisen projektin luvut', existing === 1
-                ? 'Nykyinen luku korvataan. Siitä otetaan ensin tilannekuva.'
-                : `Nykyiset ${formatCount(existing)} lukua korvataan. Niistä otetaan ensin tilannekuva.`)),
+              choice('append', 'Lisää nykyisen projektin loppuun', hints.append),
+              choice('replace', 'Korvaa nykyisen projektin luvut', hints.replace)),
         refused && blockedReason && e(Callout, { role: 'error' }, blockedReason),
         replacing && e(Field, { label: 'Projektin nimi' },
           e('input', {
@@ -393,6 +425,7 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
         type: 'button',
         className: 'faust-btn faust-btn--lg faust-btn--primary',
         disabled: includedCount === 0,
+        title: includedCount === 0 ? NOTHING_CHOSEN : undefined,
         onClick: runImport
       }, importButtonLabel(rows))
     ].filter(Boolean)

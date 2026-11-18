@@ -69,7 +69,7 @@ const MODULES = {
   'src/services/review/reviewController.js': ['createReviewController', 'createDefaultReviewController'],
   'src/editor/reviewHighlightsCore.js': ['createReviewHighlightsKit'],
   'utils/importFolder.js': ['CHAPTER_EXTENSIONS', 'naturalCompare', 'fileStem', 'cleanImportTitle', 'pairSynopsisFiles', 'classifyEntries', 'readImportFolder', 'resolveSubfolder'],
-  'src/services/project/importPlan.js': ['buildRows', 'hasOrderNumbers', 'applyStripNumbers', 'moveRow', 'renameRow', 'setRowIncluded', 'setAllIncluded', 'resetOrder', 'isReordered', 'summarizeRows', 'summaryLine', 'importButtonLabel', 'noticeLines', 'isBlankProject', 'buildSelection', 'buildChapterDocs', 'applyImport', 'replaceBlockedReason'],
+  'src/services/project/importPlan.js': ['buildRows', 'hasOrderNumbers', 'applyStripNumbers', 'moveRow', 'renameRow', 'setRowIncluded', 'setAllIncluded', 'resetOrder', 'isReordered', 'summarizeRows', 'summaryLine', 'importButtonLabel', 'rowExcerpt', 'targetHints', 'noticeLines', 'isBlankProject', 'buildSelection', 'buildChapterDocs', 'applyImport', 'replaceBlockedReason'],
   'src/services/project/snapshots.js': ['buildSnapshot', 'addAutoSnapshot', 'pruneBulkSnapshots'],
   // contracts.md 2.2: existing files that a stage extended (I-01)
   'utils/manuscript.js': ['decodeText', 'splitIntoChapters', 'importDocument']
