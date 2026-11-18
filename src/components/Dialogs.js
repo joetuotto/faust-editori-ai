@@ -213,7 +213,8 @@ export const SHORTCUT_GROUPS = [
     title: 'Työkalut',
     items: [
       ['Aikajana', 'CmdOrCtrl+Shift+T'],
-      ['Tutkimuskansio', 'CmdOrCtrl+Shift+R']
+      ['Tutkimuskansio', 'CmdOrCtrl+Shift+R'],
+      ['Pysäytä tekoäly', 'CmdOrCtrl+.', 'ai']
     ]
   },
   {

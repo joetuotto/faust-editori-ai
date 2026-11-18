@@ -1,6 +1,8 @@
 /**
- * ClaudeChat - Reaaliaikainen chat-komponentti FAUSTille
- * Tukee streaming-vastauksia ja extended thinking -tilaa
+ * ClaudeChat - Reaaliaikainen chat-komponentti FAUSTille (Liminal Engine – keskustelu)
+ * The answer streams in. An answer is labelled with the answering model's short name (the
+ * modelName prop), 'Tekoäly' when it is unknown; an answer cut by the answer limit keeps its
+ * text and gets the note '— vastaus katkesi'.
  */
 (function (window) {
   'use strict';
@@ -67,13 +69,10 @@ Tehtäväsi on:
 
 Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin pyydetä.`;
 
-  function ClaudeChat({ project, activeChapter, onInsertText, isOpen, onClose }) {
+  function ClaudeChat({ project, activeChapter, onInsertText, isOpen, onClose, modelName }) {
     const [messages, setMessages] = React.useState([]);
     const [input, setInput] = React.useState('');
     const [isStreaming, setIsStreaming] = React.useState(false);
-    const [isThinking, setIsThinking] = React.useState(false);
-    const [thinkingContent, setThinkingContent] = React.useState('');
-    const [useExtendedThinking, setUseExtendedThinking] = React.useState(false);
     const [error, setError] = React.useState(null);
     const messagesEndRef = React.useRef(null);
     const streamingTextRef = React.useRef('');
@@ -84,7 +83,7 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
       if (messagesEndRef.current) {
         messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
       }
-    }, [messages, thinkingContent]);
+    }, [messages]);
 
     // Focus input when opened
     React.useEffect(() => {
@@ -110,66 +109,36 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
           ? `${context}\n\n---\n\nKäyttäjä: ${input}`
           : input;
 
-        if (useExtendedThinking) {
-          // Extended thinking mode
-          setIsThinking(true);
-          setThinkingContent('');
+        const result = await window.electronAPI.claudeAPIStream({
+          prompt: fullPrompt,
+          system: SYSTEM_PROMPT,
+          maxTokens: 4096,
+          onChunk: (chunk) => {
+            if (chunk.type === 'text') {
+              streamingTextRef.current += chunk.text;
+              setMessages((prev) => {
+                const updated = [...prev];
+                const lastMsg = updated[updated.length - 1];
+                if (lastMsg?.role === 'assistant') {
+                  lastMsg.content = streamingTextRef.current;
+                  return [...updated];
+                } else {
+                  return [...updated, { role: 'assistant', content: streamingTextRef.current }];
+                }
+              });
+            }
+          },
+        });
 
-          const result = await window.electronAPI.claudeAPIThinking({
-            prompt: fullPrompt,
-            budgetTokens: 10000,
-            maxTokens: 16000,
-            stream: true,
-            onChunk: (chunk) => {
-              if (chunk.type === 'thinking') {
-                setThinkingContent((prev) => prev + chunk.text);
-              } else if (chunk.type === 'text') {
-                streamingTextRef.current += chunk.text;
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const lastMsg = updated[updated.length - 1];
-                  if (lastMsg?.role === 'assistant') {
-                    lastMsg.content = streamingTextRef.current;
-                    return [...updated];
-                  } else {
-                    return [...updated, { role: 'assistant', content: streamingTextRef.current }];
-                  }
-                });
-              }
-            },
-          });
+        if (!result.success) {
+          throw new Error(result.error);
+        }
 
-          setIsThinking(false);
-
-          if (!result.success) {
-            throw new Error(result.error);
-          }
-        } else {
-          // Normal streaming mode
-          const result = await window.electronAPI.claudeAPIStream({
-            prompt: fullPrompt,
-            system: SYSTEM_PROMPT,
-            maxTokens: 4096,
-            onChunk: (chunk) => {
-              if (chunk.type === 'text') {
-                streamingTextRef.current += chunk.text;
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const lastMsg = updated[updated.length - 1];
-                  if (lastMsg?.role === 'assistant') {
-                    lastMsg.content = streamingTextRef.current;
-                    return [...updated];
-                  } else {
-                    return [...updated, { role: 'assistant', content: streamingTextRef.current }];
-                  }
-                });
-              }
-            },
-          });
-
-          if (!result.success) {
-            throw new Error(result.error);
-          }
+        // An answer cut by the answer limit keeps its text and says so (report 5.3)
+        if (result.stopReason === 'max_tokens') {
+          setMessages((prev) => prev.map((m, i) => (
+            i === prev.length - 1 && m.role === 'assistant' ? { ...m, note: 'vastaus katkesi' } : m
+          )));
         }
       } catch (err) {
         console.error('Claude chat error:', err);
@@ -183,7 +152,6 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
         ]);
       } finally {
         setIsStreaming(false);
-        setIsThinking(false);
       }
     };
 
@@ -210,7 +178,6 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
     // Clear chat
     const clearChat = () => {
       setMessages([]);
-      setThinkingContent('');
       setError(null);
     };
 
@@ -281,7 +248,7 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
             msg.role === 'user' &&
               React.createElement('div', { className: 'message-role' }, 'Sinä'),
             msg.role === 'assistant' &&
-              React.createElement('div', { className: 'message-role' }, 'Tekoäly'),
+              React.createElement('div', { className: 'message-role' }, modelName || 'Tekoäly'),
             msg.role === 'error' &&
               React.createElement('div', { className: 'message-role error' }, 'Virhe'),
             React.createElement(
@@ -289,6 +256,7 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
               { className: 'message-content' },
               msg.content
             ),
+            msg.note && React.createElement('div', { className: 'message-note' }, '— ' + msg.note),
             msg.role === 'assistant' &&
               React.createElement(
                 'button',
@@ -303,23 +271,8 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
           )
         ),
 
-        // Thinking indicator
-        isThinking &&
-          thinkingContent &&
-          React.createElement(
-            'div',
-            { className: 'chat-message thinking' },
-            React.createElement('div', { className: 'message-role' }, 'Tekoäly pohtii…'),
-            React.createElement(
-              'div',
-              { className: 'thinking-content' },
-              thinkingContent
-            )
-          ),
-
         // Streaming indicator
         isStreaming &&
-          !isThinking &&
           streamingTextRef.current === '' &&
           React.createElement(
             'div',
@@ -368,24 +321,10 @@ Ole luova mutta noudata käyttäjän tyyliä. Vastaa aina suomeksi ellei toisin 
         )
       ),
 
-      // Under the field: the choice that shapes the answer, then the key hint
+      // Under the field: the key hint
       React.createElement(
         'div',
         { className: 'claude-chat-foot' },
-        React.createElement(
-          'label',
-          {
-            className: 'faust-check thinking-toggle',
-            title: 'Tekoäly pohtii vastausta tavallista pidempään. Hitaampi ja kalliimpi; sopii juonen ja rakenteen arviointiin.',
-          },
-          React.createElement('input', {
-            type: 'checkbox',
-            checked: useExtendedThinking,
-            onChange: (e) => setUseExtendedThinking(e.target.checked),
-            disabled: isStreaming,
-          }),
-          'Perusteellinen vastaus'
-        ),
         React.createElement('div', { className: 'faust-meta' }, HINT)
       )
     );

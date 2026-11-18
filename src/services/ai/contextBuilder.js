@@ -17,6 +17,7 @@
 
 const { folderName, selectForContext, formatEntry, normalizeCodex } = require('../story/codex.js');
 const { parseTerm, parseTermList, todoRanges } = require('../../editor/termMatch.js');
+const { formatCount } = require('../format.fi.js');
 
 // While a model's characters per token are not measured from its own usage,
 // only this share of the budget is spent (2.7 × 0.9 is under the lowest
@@ -115,12 +116,6 @@ const has = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const asText = (value) => (typeof value === 'string' ? value : '');
 
-// STUB(src/services/format.fi.js#formatCount): replaced at I-02
-function formatCount(n) {
-  const value = typeof n === 'number' ? n : Number.NaN;
-  if (!Number.isFinite(value) || value < 0) return '0';
-  return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00A0');
-}
 
 // ---------------------------------------------------------------------------
 // Chapters and summaries

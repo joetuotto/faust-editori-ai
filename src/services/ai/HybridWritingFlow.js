@@ -210,7 +210,8 @@ class HybridWritingFlow {
       throw new Error('Electron API not available');
     }
 
-    const modelName = this.project.ai?.model || 'claude-sonnet-4-20250514';
+    // Without a stored model the main process uses the configured one
+    const modelName = this.project.ai?.model || undefined;
     const result = await this.electronAPI.claudeAPI({ prompt, model: modelName });
 
     if (!result?.success) {

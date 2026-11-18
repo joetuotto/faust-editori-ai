@@ -1,5 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// ai:request chunks, routed by request id
+const aiChunkHandlers = new Map();
+ipcRenderer.on('ai:chunk', (_event, chunk) => {
+  const handler = chunk && aiChunkHandlers.get(chunk.id);
+  if (handler) handler(chunk);
+});
+
 // Turvallinen IPC-yhteys Reactille
 contextBridge.exposeInMainWorld('electronAPI', {
   // Project files
@@ -64,50 +71,37 @@ contextBridge.exposeInMainWorld('electronAPI', {
     });
   },
 
-  // Extended thinking: deep analysis mode
-  claudeAPIThinking: (options) => {
-    return new Promise((resolve, reject) => {
-      const chunkHandler = (_event, chunk) => {
-        if (options.onChunk) {
-          options.onChunk(chunk);
-        }
-      };
-
-      if (options.stream) {
-        ipcRenderer.on('claude-stream-chunk', chunkHandler);
-      }
-
-      ipcRenderer.invoke('claude-api-thinking', {
-        prompt: options.prompt,
-        messages: options.messages,
-        budgetTokens: options.budgetTokens,
-        maxTokens: options.maxTokens,
-        stream: options.stream || false
-      })
-        .then(result => {
-          if (options.stream) {
-            ipcRenderer.removeListener('claude-stream-chunk', chunkHandler);
-          }
-          resolve(result);
-        })
-        .catch(error => {
-          if (options.stream) {
-            ipcRenderer.removeListener('claude-stream-chunk', chunkHandler);
-          }
-          reject(error);
-        });
-    });
-  },
-
   // AI provider: Claude (Anthropic) or Cherry Studio gateway
   aiGetProvider: () => ipcRenderer.invoke('ai:get-provider'),
   aiSetProvider: (settings) => ipcRenderer.invoke('ai:set-provider', settings),
   aiListCherryModels: () => ipcRenderer.invoke('ai:list-cherry-models'),
   aiTestProvider: () => ipcRenderer.invoke('ai:test-provider'),
 
-  // API Key management
+  // One request layer: always streaming, chunks tagged with the request id
+  aiRequest: (request, onChunk) => {
+    const id = request && request.id;
+    if (id && typeof onChunk === 'function') aiChunkHandlers.set(id, onChunk);
+    return ipcRenderer.invoke('ai:request', request).finally(() => aiChunkHandlers.delete(id));
+  },
+  aiCancel: (id) => ipcRenderer.invoke('ai:cancel', { id }),
+  aiListAnthropicModels: () => ipcRenderer.invoke('ai:list-anthropic-models'),
+
+  // Which keys are set (booleans); one key at a time is written, values never come back
   loadApiKeys: () => ipcRenderer.invoke('load-api-keys'),
-  saveApiKeys: (keys) => ipcRenderer.invoke('save-api-keys', keys),
+  setApiKey: (name, value) => ipcRenderer.invoke('keys:set', { name, value }),
+
+  // Renderer settings kept in ui-prefs.json
+  prefsGet: () => ipcRenderer.invoke('prefs:get'),
+  prefsSet: (patch) => ipcRenderer.invoke('prefs:set', patch),
+  onPrefsChanged: (callback) => {
+    ipcRenderer.on('prefs:changed', (_event, prefs) => callback(prefs));
+  },
+
+  // Save a text the renderer produced (usage log export)
+  saveTextFile: (payload) => ipcRenderer.invoke('file:save-text', payload),
+
+  // The text and summaries of the chapters marked "Ei tekoälylle", for the wire guard in main
+  setProtectedText: (chapters) => ipcRenderer.send('ai:set-protected', chapters),
 
   // Chat Memory Log (Liminal Engine)
   loadChatMemory: () => ipcRenderer.invoke('chat:load-memory'),

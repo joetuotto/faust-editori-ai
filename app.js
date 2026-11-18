@@ -9,6 +9,13 @@ import { FaustEditor, MANUSCRIPT_FONTS } from './src/components/FaustEditor.js';
 import { ErrorBoundary } from './src/components/ErrorBoundary.js';
 import { ImportPreviewDialog } from './src/components/ImportPreviewDialog.js';
 import { buildChapterDocs, applyImport, replaceBlockedReason } from './src/services/project/importPlan.js';
+// One request layer, the settings store and the smallest context builder (stage I-02)
+import { getAIClient } from './src/services/ai/aiClient.js';
+import { useSetting } from './src/components/useSetting.js';
+import { AiModelBadge } from './src/components/AiModelSettings.js';
+import { BookBriefFields, ChapterNoAIField, useNoAIGuard } from './src/components/ContextFields.js';
+import { normalizeContextFields, MESSAGES } from './src/services/ai/contextBuilder.js';
+import { modelLabel } from './src/services/format.fi.js';
 import {
   TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog, CollectionDialog,
   shortcut, shortcutKeys, count, countParts
@@ -208,6 +215,17 @@ const failureReason = (error) => {
   return text;
 };
 
+// A stop, the "Tekoäly pois" switch and the "Ei tekoälylle" wire guard are not failures of the
+// action that was asked for: their sentences are shown as they are, never inside
+// '<Toiminto> epäonnistui: …' (reconcile R-21, R-72). Returns { kind, text } or null.
+const AS_IS_SENTENCES = { 'Pyyntö pysäytettiin.': 'info', 'Tekoäly pois -asetus on päällä.': 'warning' };
+const asIsNotice = (error) => {
+  const text = String((error && error.message) || error || '').trim();
+  if (Object.prototype.hasOwnProperty.call(AS_IS_SENTENCES, text)) return { kind: AS_IS_SENTENCES[text], text };
+  if (/^Kehotteessa on tekstiä luvusta /.test(text)) return { kind: 'error', text };
+  return null;
+};
+
 // The reason of a failed listen() in the same form: voiceInput.js rejects with Finnish sentences,
 // recognition.start() with the browser's English DOMException, which is never shown as it is
 const voiceFailureReason = (error) => {
@@ -281,6 +299,7 @@ const createDefaultProject = () => ({
 
       // Status & Quality
       status: 'draft', // draft, revised, final
+      noAI: false,     // Ei tekoälylle: the text and summary go to no model
       aiQuality: {
         score: 0,              // 0-10 AI quality rating
         lastAnalyzed: null,
@@ -325,6 +344,13 @@ const createDefaultProject = () => ({
   locations: [],
   timeline: [],
 
+  // Ohjeet tekoälylle and Tarinakansio (contracts.md section 5; the codex UI comes at I-07)
+  brief: '',
+  style: '',
+  avoidWords: [],
+  codex: [],
+  codexLegacyHandled: [],
+
   // Bookmarks - quick navigation points
   bookmarks: [],  // [{id, chapterId, position, name, color, created}]
 
@@ -354,8 +380,9 @@ const createDefaultProject = () => ({
   // AI settings
   ai: {
     provider: 'anthropic',  // Global fallback
-    model: 'claude-sonnet-4-5',
-    activeModel: 'claude-3-5-sonnet-20241022',  // Currently selected model (NEW: unified model selection)
+    // The model is chosen in the Tekoäly tab's settings (config.json), not here: these stay empty
+    model: '',
+    activeModel: '',
     batchGeneration: false,
 
     // Provider configuration per function
@@ -367,13 +394,8 @@ const createDefaultProject = () => ({
       characterBuilder: 'anthropic' // Character archetype building
     },
 
-    // Model names per provider (can be customized)
-    models: {
-      anthropic: 'claude-3-5-sonnet-20241022',
-      openai: 'gpt-4-turbo-preview',
-      grok: 'grok-2-1212',
-      deepseek: 'deepseek-chat'
-    },
+    // Model names per provider: none (CostOptimizer falls back to its own)
+    models: {},
 
     // Writing modes
     currentMode: 'production',
@@ -561,6 +583,12 @@ function FAUSTApp() {
     console.log('[ThreadSheet] Thread saved:', threadData.name);
   };
 
+  // Merge fields into the project (Ohjeet tekoälylle; later Tarinakansio)
+  const patchProject = (patch) => {
+    setProject(prev => ({ ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) }));
+    setUnsavedChanges(true);
+  };
+
   // Delete a place from its form. Places are keyed by their stored name, not the edited one;
   // an entry whose key differs from its name (an old or hand-edited file) is found by the object.
   const deleteLocation = async (location) => {
@@ -718,9 +746,6 @@ function FAUSTApp() {
   // which counts as "not Cherry Studio". AIProviderSettings keeps it current (onProviderChange).
   const [aiSource, setAiSource] = useState(null);
 
-  // API key input state
-  const [apiKeyInputValue, setApiKeyInputValue] = useState('');
-
   // Panel collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
@@ -754,7 +779,6 @@ function FAUSTApp() {
 
   // Tietopaneeli tabs: editor (Ulkoasu), chapter (Luku), project (Projekti), ai (Tekoäly). Opens on Luku.
   const [inspectorTab, setInspectorTab] = useState('chapter');
-  const [apiKeysStatus, setApiKeysStatus] = useState({}); // { anthropic: true }
 
   // Find & Replace state
   // Character sheet (list / view / edit). These two went missing in 8a68586,
@@ -790,6 +814,7 @@ function FAUSTApp() {
   const liveContentRef = useRef({ chapterId: null, content: '' }); // see updateChapterContent
   const projectRef = useRef(null);            // the project of the latest render, for timers and async saves
   const callAIRef = useRef(null);             // the callAIWithMode of the latest render, for long-lived services
+  const refusalRef = useRef(null);            // the last old request that main refused or stopped, see asIsNotice
   const menuHandlerRef = useRef(null);        // see the menu handler
   const lastSearchRef = useRef('');           // the term the current search results belong to
   const panelsBeforeFocusRef = useRef(null);  // panel visibility to restore after focus mode
@@ -824,10 +849,20 @@ function FAUSTApp() {
   // Get active chapter
   const activeChapter = project.structure.find(ch => ch.id === activeChapterId) || project.structure[0];
 
+  // "Tekoäly pois" and "Ei tekoälylle" (contracts.md section 6), defined once:
+  // aiDisabled hides every AI entry point (also while the setting is not known yet); aiHidden adds
+  // focus mode for the sigil bar only; chapterNoAI is the open chapter marked "Ei tekoälylle"
+  const [aiOff, , prefsLoaded] = useSetting('aiOff', false);
+  const aiDisabled = !prefsLoaded || aiOff;
+  const aiHidden = aiDisabled || focusMode;
+  const chapterNoAI = !!(activeChapter && activeChapter.noAI);
+
   // Content of the active chapter as of this render. updateChapterContent keeps
   // it current between renders, because fast typing can outrun React state.
   liveContentRef.current = { chapterId: activeChapter?.id, content: activeChapter?.content || '' };
   projectRef.current = project;
+  // The wire guard in main learns the text of the chapters marked "Ei tekoälylle"
+  useNoAIGuard(project);
 
   // The active chapter id must always name a chapter that exists. After a
   // delete, a snapshot restore or a jump to an old bookmark it could point at
@@ -869,26 +904,11 @@ function FAUSTApp() {
     }
   }, [project.plotThreads]);
 
-  // Load API keys status on mount
+  // The one AI client: its settings are read at start (window.faustAI for DevTools checks)
   useEffect(() => {
-    const loadApiKeysStatus = async () => {
-      if (!window.electronAPI) return;
-
-      try {
-        const result = await window.electronAPI.loadApiKeys();
-        if (result.success && result.keys) {
-          const status = {
-            anthropic: !!(result.keys.ANTHROPIC_API_KEY)
-          };
-          setApiKeysStatus(status);
-          console.log('[API Keys] Status loaded:', status);
-        }
-      } catch (error) {
-        console.error('[API Keys] Load error:', error);
-      }
-    };
-
-    loadApiKeysStatus();
+    const ai = getAIClient();
+    window.faustAI = ai;
+    ai.refreshConfig();
   }, []);
 
   // The tekoälyn lähde once at start-up (AIProviderSettings reports later changes)
@@ -952,8 +972,8 @@ function FAUSTApp() {
   handleEscapeRef.current = (event) => {
     if (event.defaultPrevented || layerStack.size() > 0 || textPrompt || confirmRequest) return;
     if (voiceDiffView) rejectVoiceEdit();
-    else if (claudeChatOpen) closePanelKeepingFocus('.claude-chat-container', () => setClaudeChatOpen(false));
-    else if (aiAssistantOpen) closePanelKeepingFocus('.faust-aipanel', () => setAiAssistantOpen(false));
+    else if (claudeChatOpen && !aiAssistantOpen && !aiDisabled) closePanelKeepingFocus('.claude-chat-container', () => setClaudeChatOpen(false));
+    else if (aiAssistantOpen && !aiDisabled) closePanelKeepingFocus('.faust-aipanel', () => setAiAssistantOpen(false));
     else if (focusMode) toggleFocusMode();
     else return;
     event.preventDefault();
@@ -1055,6 +1075,9 @@ function FAUSTApp() {
       case 'show-ai-writing': openAiWriting(); break;
       case 'voice-edit': if (voiceState === 'idle') handleVoiceEdit(); break;
       case 'show-ai-settings': openAISettings(); break;
+
+      // Pysäytä tekoäly: main has already stopped its requests; the client stops its own handles
+      case 'ai-stop-all': getAIClient().cancelAll(); break;
 
       // Settings and help
       case 'show-settings': showInspectorTab('editor'); break;
@@ -1326,7 +1349,9 @@ function FAUSTApp() {
   // opened last stays and closes the other; closing one reopens nothing. Leaving focus mode restores
   // the panels as they were before it, so that render is compared with that state: a command given in
   // focus mode (⌘2, ⇧⌘K) then counts as the panel opened last, not the one the restore brought back.
-  const rightNow = { inspector: showInspector, engine: aiAssistantOpen /* I-06 adds: , language: !!languagePanel */ };
+  // The Liminal Engine is open only while AI is on (R-28): with "Tekoäly pois" it takes no room
+  const engineShown = aiAssistantOpen && !aiDisabled;
+  const rightNow = { inspector: showInspector, engine: engineShown /* I-06 adds: , language: !!languagePanel */ };
   const rightPrevRef = useRef(rightNow);
   const rightFocusRef = useRef(focusMode);
   useLayoutEffect(() => {
@@ -1344,6 +1369,13 @@ function FAUSTApp() {
     rightFocusRef.current = focusMode;
   });
   const rightColumnOpen = rightNow.inspector || rightNow.engine; /* I-06 adds: || rightNow.language */
+  // Switching "Tekoäly pois" on closes the Liminal Engine and the keskustelu (their conversations stay),
+  // so that switching it off again opens nothing by itself
+  useEffect(() => {
+    if (!aiOff) return;
+    if (aiAssistantOpen) setAiAssistantOpen(false);
+    if (claudeChatOpen) setClaudeChatOpen(false);
+  }, [aiOff]);
 
   // Panels and the window width (R-45, V 6.2). Below 1200 px one side panel is open at a time: opening
   // either side closes the other and the one opened last stays; when the right column closes, a sidebar
@@ -2059,6 +2091,7 @@ function FAUSTApp() {
     return {
       ...defaults,
       ...data,
+      ...normalizeContextFields(data),
       targets: { ...defaults.targets, ...(data.targets || {}) },
       ai: {
         ...defaults.ai,
@@ -2071,6 +2104,8 @@ function FAUSTApp() {
 
   // Replace the open project (New, Open, Recent, recovery)
   const openProject = (data, filePath) => {
+    // A request of the previous project must not answer into this one
+    getAIClient().cancelAll();
     setProject(data);
     setCurrentFilePath(filePath || null);
     setActiveChapterId(data.structure[0]?.id || 'chapter-1');
@@ -2295,6 +2330,7 @@ function FAUSTApp() {
       },
 
       status: 'plan', // plan, draft, revision, final
+      noAI: false, // Ei tekoälylle
       povCharacter: null, // ID of POV character
       mood: '', // User-set mood/tone
       storyTimestamp: '', // Time in story (e.g., "Day 3, Morning")
@@ -2434,52 +2470,6 @@ function FAUSTApp() {
     console.log('[AI Mode] Changed to:', modeName);
   };
 
-  // Save API key
-  const saveApiKey = async (providerName, apiKey) => {
-    if (!window.electronAPI) {
-      notify('error', 'Toiminto ei ole käytettävissä tässä ikkunassa.');
-      return;
-    }
-
-    // Other models are reached through Cherry Studio (see AIProviderSettings)
-    const keyMap = {
-      anthropic: 'ANTHROPIC_API_KEY'
-    };
-
-    try {
-      // Load existing keys first to preserve them
-      const existingResult = await window.electronAPI.loadApiKeys();
-      const existingKeys = existingResult.keys || {};
-
-      // Merge new key with existing keys
-      const updatedKeys = {
-        ...existingKeys,
-        [keyMap[providerName]]: apiKey
-      };
-
-      // Save all keys
-      const result = await window.electronAPI.saveApiKeys(updatedKeys);
-
-      if (result.success) {
-        console.log('[API Key] Saved for:', providerName);
-        setApiKeyInputValue('');
-
-        // Update status
-        setApiKeysStatus(prev => ({
-          ...prev,
-          [providerName]: true
-        }));
-
-        notify('success', 'Clauden API-avain tallennettu.');
-      } else {
-        notify('error', 'Avaimen tallennus epäonnistui: ' + failureReason(result.error) + '.');
-      }
-    } catch (error) {
-      console.error('[API Key] Save error:', error);
-      notify('error', 'Avaimen tallennus epäonnistui: ' + failureReason(error) + '.');
-    }
-  };
-
   // Get current mode config
   const getCurrentMode = () => {
     return project.ai.modes[project.ai.currentMode] || project.ai.modes.production;
@@ -2515,6 +2505,8 @@ function FAUSTApp() {
 
     // Call Claude API
     const response = await window.electronAPI.claudeAPI(apiParams);
+    // A stop, the switch or the wire guard: the three analyses show it as it is (R-21)
+    if (response && response.success === false) refusalRef.current = asIsNotice(response.error);
 
     // Track cost with CostOptimizer
     if (costOptimizerRef.current) {
@@ -2708,8 +2700,9 @@ Return ONLY valid JSON.`;
 
     try {
       console.log('[AI Editor] Analyzing chapter:', chapterId);
-      // Use Polish mode for analysis (precision over creativity)
-      const result = await callAIWithMode(prompt, { temperature: 0.3 });
+      // Use Polish mode for analysis (precision over creativity). The answer is a long JSON
+      // object and a reasoning model spends part of max_tokens before it: room for both
+      const result = await callAIWithMode(prompt, { temperature: 0.3, max_tokens: 8000 });
 
       if (result.success) {
         try {
@@ -2864,14 +2857,18 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
   // the result is shown (report); both are cleared in finally.
   const runChapterAnalysis = async (kind, progressText, request, report) => {
     if (isGenerating || analysisBusy || !activeChapter) return;
+    if (chapterNoAI) { notify('warning', MESSAGES.noAI); return; }
     if (!chapterHasEnoughText()) return;
     const chapterId = activeChapter.id;
     setAnalysisBusy(kind);
     showBusy(progressText);
+    refusalRef.current = null;
     try {
       const result = await request(chapterId);
       closeBusy();
-      report(result, chapterId);
+      const refusal = result ? null : refusalRef.current;
+      if (refusal) notify(refusal.kind, refusal.text);
+      else report(result, chapterId);
     } finally {
       closeBusy();
       setAnalysisBusy(null);
@@ -2936,6 +2933,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
   // marked busy before the answer, so Peruuta and Esc leave no busy state.
   const generateChapter = async (chapterId) => {
     if (isGenerating || analysisBusy) return;
+    if (chapterNoAI && activeChapter && chapterId === activeChapter.id) { notify('warning', MESSAGES.noAI); return; }
     if (!window.electronAPI) {
       console.error('[Generate] Electron API not available');
       return;
@@ -3011,7 +3009,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
               timestamp: new Date().toISOString(),
               generatedFrom: {
                 mode: project.ai.currentMode,
-                model: result.model || project.ai?.model || 'claude-sonnet-4-20250514',
+                model: result.model || project.ai?.model || '',
                 prompt: result.prompt || 'Chapter generation',
                 basedOn: versions.length > 0 ? versions[versions.length - 1].id : null
               },
@@ -3054,7 +3052,9 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
     } catch (error) {
       console.error('[Generate] Exception:', error);
       closeBusy();
-      notify('error', 'Luvun kirjoittaminen epäonnistui: ' + failureReason(error) + '.');
+      const asIs = asIsNotice(error);
+      if (asIs) notify(asIs.kind, asIs.text);
+      else notify('error', 'Luvun kirjoittaminen epäonnistui: ' + failureReason(error) + '.');
     } finally {
       closeBusy();
       setIsGenerating(false);
@@ -3109,8 +3109,11 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
         } else if (status === 'completed') {
           showBusy(`Luku ${current + 1}/${total} valmis: ${count((info && info.wordCount) || 0, 'sana')}.`);
         } else if (status === 'error') {
-          // A failed chapter stays on screen; the run goes on with the next one
-          notify('error', `Luvun ${current + 1} kirjoittaminen epäonnistui: ${failureReason(info && info.error)}.`);
+          // A failed chapter stays on screen; the run goes on with the next one. A stop or the
+          // switch reads as it is (once: the same notification replaces itself)
+          const asIs = asIsNotice(info && info.error);
+          if (asIs) notify(asIs.kind, asIs.text);
+          else notify('error', `Luvun ${current + 1} kirjoittaminen epäonnistui: ${failureReason(info && info.error)}.`);
         }
       };
 
@@ -3160,7 +3163,7 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
               timestamp: new Date().toISOString(),
               generatedFrom: {
                 mode: project.ai.currentMode,
-                model: result.model || project.ai?.model || 'claude-sonnet-4-20250514',
+                model: result.model || project.ai?.model || '',
                 prompt: result.prompt || `Batch generation - Chapter ${idx + 1}`,
                 basedOn: versions.length > 0 ? versions[versions.length - 1].id : null,
                 batchGeneration: true
@@ -3207,13 +3210,16 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
 
         console.log('[Batch Generate] Success:', successCount, 'chapters', totalWords, 'words', `$${totalCost.toFixed(4)}`);
       } else {
-        throw new Error(results.error || 'tuntematon virhe');
+        const firstError = results.errors && results.errors[0] && results.errors[0].error;
+        throw new Error(results.error || firstError || 'tuntematon virhe');
       }
 
     } catch (error) {
       console.error('[Batch Generate] Exception:', error);
       closeBusy();
-      notify('error', 'Lukujen kirjoittaminen epäonnistui: ' + failureReason(error) + '.');
+      const asIs = asIsNotice(error);
+      if (asIs) notify(asIs.kind, asIs.text);
+      else notify('error', 'Lukujen kirjoittaminen epäonnistui: ' + failureReason(error) + '.');
     } finally {
       closeBusy();
       setIsGenerating(false);
@@ -3277,7 +3283,9 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
     } catch (error) {
       console.error('[Regenerate] Exception:', error);
       closeBusy();
-      notify('error', 'Luvun kirjoittaminen uudelleen epäonnistui: ' + failureReason(error) + '.');
+      const asIs = asIsNotice(error);
+      if (asIs) notify(asIs.kind, asIs.text);
+      else notify('error', 'Luvun kirjoittaminen uudelleen epäonnistui: ' + failureReason(error) + '.');
     } finally {
       // The manager follows the rendered project again
       if (refinementManagerRef.current) refinementManagerRef.current.project = projectRef.current;
@@ -3719,13 +3727,17 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         };
       } else {
         console.error('[Voice] AI error:', result.error);
-        notify('error', 'Tekstin muokkaus epäonnistui: ' + failureReason(result.error) + '.');
+        const asIs = asIsNotice(result.error);
+        if (asIs) notify(asIs.kind, asIs.text);
+        else notify('error', 'Tekstin muokkaus epäonnistui: ' + failureReason(result.error) + '.');
         setVoiceState('error');
         return null;
       }
     } catch (error) {
       console.error('[Voice] Exception:', error);
-      notify('error', 'Tekstin muokkaus epäonnistui: ' + failureReason(error) + '.');
+      const asIs = asIsNotice(error);
+      if (asIs) notify(asIs.kind, asIs.text);
+      else notify('error', 'Tekstin muokkaus epäonnistui: ' + failureReason(error) + '.');
       setVoiceState('error');
       return null;
     }
@@ -3733,6 +3745,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
 
   // Muokkaa valintaa puhumalla: the voice button and Työkalut ▸ Tekoäly call this
   const handleVoiceEdit = async () => {
+    if (chapterNoAI) { notify('warning', MESSAGES.noAI); return; }
     if (!textSelection || !textSelection.text.trim()) {
       notify('warning', 'Valitse ensin teksti, jota haluat muokata.');
       return;
@@ -3836,11 +3849,15 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         setContinuePreview(result.continuation);
         console.log('[HybridFlow] Generated continuation:', result.continuation.substring(0, 100) + '...');
       } else {
-        notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(result.error) + '.');
+        const asIs = asIsNotice(result.error);
+        if (asIs) notify(asIs.kind, asIs.text);
+        else notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(result.error) + '.');
       }
     } catch (error) {
       console.error('[HybridFlow] Error:', error);
-      notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(error) + '.');
+      const asIs = asIsNotice(error);
+      if (asIs) notify(asIs.kind, asIs.text);
+      else notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(error) + '.');
     } finally {
       setContinuingWriting(false);
     }
@@ -3874,6 +3891,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
       notify('warning', 'Avaa ensin luku.');
       return;
     }
+    if (chapterNoAI) { notify('warning', MESSAGES.noAI); return; }
     if (!hybridFlowRef.current) {
       notify('warning', 'Tekoälytoiminnot latautuvat vielä.');
       return;
@@ -3907,11 +3925,15 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         setContinuePreview(result.content);
         console.log('[HybridFlow] Outline expanded:', result.wordCount, 'words');
       } else {
-        notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(result.error) + '.');
+        const asIs = asIsNotice(result.error);
+        if (asIs) notify(asIs.kind, asIs.text);
+        else notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(result.error) + '.');
       }
     } catch (error) {
       console.error('[HybridFlow] Expand error:', error);
-      notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(error) + '.');
+      const asIs = asIsNotice(error);
+      if (asIs) notify(asIs.kind, asIs.text);
+      else notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(error) + '.');
     } finally {
       setContinuingWriting(false);
     }
@@ -3938,11 +3960,15 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         setContinuePreview(result.rewritten);
         console.log('[HybridFlow] Section rewritten');
       } else {
-        notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(result.error) + '.');
+        const asIs = asIsNotice(result.error);
+        if (asIs) notify(asIs.kind, asIs.text);
+        else notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(result.error) + '.');
       }
     } catch (error) {
       console.error('[HybridFlow] Rewrite error:', error);
-      notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(error) + '.');
+      const asIs = asIsNotice(error);
+      if (asIs) notify(asIs.kind, asIs.text);
+      else notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(error) + '.');
     } finally {
       setContinuingWriting(false);
     }
@@ -3974,11 +4000,15 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
         setContinuePreview(result.scene);
         console.log('[HybridFlow] Scene generated:', result.wordCount, 'words');
       } else {
-        notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(result.error) + '.');
+        const asIs = asIsNotice(result.error);
+        if (asIs) notify(asIs.kind, asIs.text);
+        else notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(result.error) + '.');
       }
     } catch (error) {
       console.error('[HybridFlow] Scene error:', error);
-      notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(error) + '.');
+      const asIs = asIsNotice(error);
+      if (asIs) notify(asIs.kind, asIs.text);
+      else notify('error', 'Ehdotuksen luonti epäonnistui: ' + failureReason(error) + '.');
     } finally {
       setContinuingWriting(false);
     }
@@ -4216,7 +4246,8 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
     }
 
     const userMessage = aiChatInput.trim();
-    const selectedText = textSelection?.text || '';
+    // In a chapter marked "Ei tekoälylle" the message goes without the selection
+    const selectedText = chapterNoAI ? '' : (textSelection?.text || '');
 
     // Add user message to chat
     setAiChatMessages(prev => [...prev, { role: 'user', content: userMessage, selectedText }]);
@@ -4248,8 +4279,8 @@ ${memoryContext ? `RECENT DECISIONS & DIRECTIONS:\n${memoryContext}\n` : ''}
 ${contextPrompt}`;
 
     try {
-      // Call Claude API
-      const modelName = project.ai?.model || 'claude-sonnet-4-20250514';
+      // The old handler: without a stored model main uses the configured one
+      const modelName = project.ai?.model || undefined;
       const result = await window.electronAPI.claudeAPI({ prompt: fullPrompt, model: modelName });
 
       if (result?.success) {
@@ -4282,12 +4313,14 @@ ${contextPrompt}`;
           });
         }
       } else {
-        // The speaker label already reads Virhe
-        setAiChatMessages(prev => [...prev, { role: 'error', content: failureReason(result && result.error) }]);
+        // The speaker label already reads Virhe; a stop, the switch or the wire guard reads as it is
+        const asIs = asIsNotice(result && result.error);
+        setAiChatMessages(prev => [...prev, { role: 'error', content: asIs ? asIs.text : failureReason(result && result.error) }]);
       }
     } catch (error) {
       console.error('[AI Assistant] Error:', error);
-      setAiChatMessages(prev => [...prev, { role: 'error', content: failureReason(error) }]);
+      const asIs = asIsNotice(error);
+      setAiChatMessages(prev => [...prev, { role: 'error', content: asIs ? asIs.text : failureReason(error) }]);
     } finally {
       setAiChatProcessing(false);
     }
@@ -4782,7 +4815,7 @@ ${contextPrompt}`;
       onCancel: () => setShowCollectionDialog(false),
       onCreate: (n, t, f) => { createCollection(n, t, f); setShowCollectionDialog(false); }
     }),
-    e(ShortcutsDialog, { open: showShortcuts, onClose: () => setShowShortcuts(false) }),
+    e(ShortcutsDialog, { open: showShortcuts, onClose: () => setShowShortcuts(false), aiDisabled }),
     e(ExportDialog, {
       open: showExportModal,
       onClose: () => setShowExportModal(false),
@@ -4796,8 +4829,8 @@ ${contextPrompt}`;
       e(ImportPreviewDialog, {
         source: importSource,
         project,
-        // I-02 adds activeRequests, I-03 pendingSuggestions
-        getReplaceBlockedReason: () => replaceBlockedReason({}),
+        // I-03 adds pendingSuggestions
+        getReplaceBlockedReason: () => replaceBlockedReason({ activeRequests: getAIClient().activeCount() }),
         onPickFolder: (request) => beginImport('folder', request, { inPreview: true }),
         onDone: finishImport,
         pickError: importPickError
@@ -5043,7 +5076,7 @@ ${contextPrompt}`;
                 : 'Näytä tietopaneeli: tekstin ulkoasu, luvun ja projektin tiedot sekä tekoälyasetukset (' + shortcut('CmdOrCtrl+2') + ')',
               onClick: () => (showInspector ? setShowInspector(false) : showInspectorTab())
             }, icons.panelRight({ size: 16 })),
-            e('button', {
+            !aiDisabled && e('button', {
               className: 'faust-btn faust-btn--quiet',
               'data-priority': '1',
               'aria-pressed': aiAssistantOpen,
@@ -5053,7 +5086,7 @@ ${contextPrompt}`;
               onClick: () => (aiAssistantOpen ? setAiAssistantOpen(false) : openLiminalEngine())
             }, icons.star8({ size: 14 }), 'Liminal Engine'),
             // Below 1120 px this button moves into the "more" menu (priority 3)
-            e('button', {
+            !aiDisabled && e('button', {
               className: 'faust-btn faust-btn--quiet',
               'data-priority': '3',
               'aria-pressed': claudeChatOpen,
@@ -5084,8 +5117,9 @@ ${contextPrompt}`;
             )
           ),
 
-          // "More": shown below 1120 px by the stylesheet; its menu lists the priority-3 commands
-          e('button', {
+          // "More": shown below 1120 px by the stylesheet; its menu lists the priority-3 commands.
+          // Its one row is Keskustelu, so with "Tekoäly pois" the button goes too
+          !aiDisabled && e('button', {
             ...headerMore.triggerProps,
             className: 'faust-btn faust-btn--icon faust-header__more',
             'aria-label': 'Lisää toimintoja',
@@ -5093,7 +5127,7 @@ ${contextPrompt}`;
             'aria-haspopup': 'menu'
           }, icons.more({ size: 16 })),
           headerMore.open && e(Popover, { ...headerMore.popoverProps, layer: 'header', menu: true, label: 'Lisää toimintoja' },
-            e('button', {
+            !aiDisabled && e('button', {
               type: 'button',
               className: 'faust-menu__item',
               role: 'menuitemcheckbox',
@@ -5182,7 +5216,11 @@ ${contextPrompt}`;
                 },
                   e('span', { className: 'faust-row__text' },
                     e('span', { className: 'faust-row__title' }, chapter.title || 'Nimetön luku'),
-                    e('span', { className: 'faust-row__meta' }, count(chapter.wordCount || 0, 'sana'))
+                    // ' · ei tekoälylle' never loses its end to the ellipsis: the meta may wrap, and only before the suffix
+                    chapter.noAI
+                      ? e('span', { className: 'faust-row__meta', style: { whiteSpace: 'normal' } },
+                          count(chapter.wordCount || 0, 'sana') + ' ', e('span', { style: { whiteSpace: 'nowrap' } }, '· ei tekoälylle'))
+                      : e('span', { className: 'faust-row__meta' }, count(chapter.wordCount || 0, 'sana'))
                   ),
                   // Row actions: shown on hover, focus and for the open chapter by the stylesheet
                   e('span', { className: 'faust-row__actions' },
@@ -5631,7 +5669,8 @@ ${contextPrompt}`;
               title: 'Lisää toimintoja',
               'aria-haspopup': 'menu'
             }, icons.more({ size: 14 })),
-            e('div', { key: 'end', className: 'faust-formatbar__end' }, sigilbar),
+            // The four AI verbs: not with "Tekoäly pois", in focus mode or in a chapter marked "Ei tekoälylle"
+            e('div', { key: 'end', className: 'faust-formatbar__end' }, !aiHidden && !chapterNoAI && sigilbar),
             formatMore.open && e(Popover, { ...formatMore.popoverProps, key: 'more-menu', menu: true, label: 'Lisää toimintoja' },
               ...(() => {
                 // The paragraph style of the line with the cursor: the matching item is checked (V 4.9)
@@ -6093,7 +6132,7 @@ ${contextPrompt}`;
           // floats over the paper. One occupant, in the order of the expression at its end.
           (() => {
             // Voice edit bar (appears when text is selected)
-            const voiceBarShown = !!(voiceInputAvailable && textSelection && !voiceDiffView);
+            const voiceBarShown = !!(!aiDisabled && !chapterNoAI && voiceInputAvailable && textSelection && !voiceDiffView);
             const voiceBar = voiceBarShown ? e('div', {
               className: 'faust-voicebar',
               'data-state': voiceState === 'listening' ? 'listening' : undefined
@@ -6615,6 +6654,15 @@ ${contextPrompt}`;
               )
             ),
 
+            // Ei tekoälylle (shown also with "Tekoäly pois": it is the author's data)
+            e(ChapterNoAIField, {
+              chapter: activeChapter,
+              onChange: (noAI) => {
+                setProject(prev => ({ ...prev, structure: prev.structure.map(ch => ch.id === activeChapter.id ? { ...ch, noAI } : ch) }));
+                setUnsavedChanges(true);
+              }
+            }),
+
             // POV Character
             e('div', { className: 'faust-field' },
               e('label', { className: 'faust-field__label', htmlFor: 'inspector-chapter-pov' }, 'Näkökulmahahmo'),
@@ -6832,83 +6880,20 @@ ${contextPrompt}`;
 
           // AI provider: Claude directly or Cherry Studio's local gateway; hidden, not unmounted, on the other tabs
           e('div', { style: { display: inspectorTab === 'ai' ? 'block' : 'none' } },
-            e(AIProviderSettings, { onProviderChange: setAiSource })
+            e(AIProviderSettings, {
+              onProviderChange: setAiSource,
+              // Koepyyntö with the open chapter's context: what the real actions would assemble
+              getEditorContext: () => ({
+                project: projectRef.current,
+                chapterId: liveContentRef.current.chapterId,
+                text: liveContentRef.current.content,
+                selection: editorRef.current ? { from: editorRef.current.selectionStart, to: editorRef.current.selectionEnd } : null
+              })
+            })
           ),
 
-          // Claude API Key. The block is its own section (the rule above it parts it from the Cherry Studio
-          // settings) in the field recipe of V 4.2, as the AIProviderSettings block above it is.
-          inspectorTab === 'ai' && e('section', { className: 'faust-section' },
-            // Until I-02 moves the Claude rows into AIProviderSettings (BUG-17's D.5 line)
-            e('div', { className: 'faust-meta', style: { marginBottom: 'var(--sp-3)' } },
-              'Käytössä, kun tekoälyn lähteeksi on valittu Claude.'),
-
-            // API Key input: the field at full width, its button right-aligned on the next line
-            e('div', { className: 'faust-field' },
-              e('label', { className: 'faust-field__label', htmlFor: 'inspector-claude-key' }, 'Clauden API-avain'),
-              e('input', {
-                id: 'inspector-claude-key',
-                type: 'password',
-                className: 'faust-input faust-input--sm',
-                placeholder: 'Liitä avain (sk-ant-…)',
-                value: apiKeyInputValue,
-                onChange: (ev) => setApiKeyInputValue(ev.target.value)
-              }),
-              e('div', { className: 'faust-field__row', style: { justifyContent: 'space-between', alignItems: 'center' } },
-                // Status indicator
-                apiKeysStatus.anthropic
-                  ? e('span', { className: 'faust-chip faust-chip--plain faust-chip--dot faust-chip--success' }, 'Avain tallennettu')
-                  : e('span', { className: 'faust-chip faust-chip--plain faust-chip--hollow' }, 'Avain puuttuu'),
-                e('button', {
-                  className: 'faust-btn faust-btn--sm',
-                  onClick: () => saveApiKey('anthropic', apiKeyInputValue),
-                  disabled: !apiKeyInputValue.trim(),
-                  // A disabled control's tooltip gives the reason (M B.8)
-                  title: !apiKeyInputValue.trim() ? 'Liitä ensin avain' : undefined
-                }, 'Tallenna avain')
-              ),
-
-              // Link to get API key
-              e('div', { className: 'faust-field__hint' },
-                'Hanki avain: ',
-                e('a', {
-                  href: '#',
-                  onClick: (ev) => {
-                    ev.preventDefault();
-                    if (window.electronAPI) window.electronAPI.openExternal('https://console.anthropic.com/');
-                  }
-                }, 'console.anthropic.com')
-              )
-            ),
-
-            // Model selector (the list itself is BUG-13's, stage I-02)
-            e('div', { className: 'faust-field' },
-              e('label', { className: 'faust-field__label', htmlFor: 'inspector-claude-model' }, 'Claude-malli'),
-              e('select', {
-                id: 'inspector-claude-model',
-                className: 'faust-select faust-select--sm',
-                value: project.ai?.model || 'claude-sonnet-4-20250514',
-                onChange: (ev) => {
-                  setProject(prev => ({
-                    ...prev,
-                    ai: {
-                      ...prev.ai,
-                      model: ev.target.value
-                    }
-                  }));
-                  setUnsavedChanges(true);
-                }
-              },
-                e('option', { value: 'claude-sonnet-4-20250514' }, 'Claude Sonnet 4 (suositeltu)'),
-                e('option', { value: 'claude-3-5-sonnet-20241022' }, 'Claude 3.5 Sonnet'),
-                e('option', { value: 'claude-3-5-haiku-20241022' }, 'Claude 3.5 Haiku (nopea)'),
-                e('option', { value: 'claude-opus-4-20250514' }, 'Claude Opus 4 (tehokas)'),
-                e('option', { value: 'claude-opus-4-5-20250514' }, 'Claude Opus 4.5 (uusin)')
-              )
-            )
-          ),
-
-          // AI TAB
-          inspectorTab === 'ai' && (() => {
+          // AI TAB (with "Tekoäly pois" only the settings block above stays)
+          inspectorTab === 'ai' && !aiDisabled && (() => {
             // The Finnish description of each mode (menu spec A.3); the stored names and colours are not shown
             const modeTips = {
               exploration: 'Ideointi: tekoäly kokeilee rohkeasti ja tarjoaa vaihtoehtoja',
@@ -6938,8 +6923,8 @@ ${contextPrompt}`;
             );
           })(),
 
-          // Continue Writing (HybridWritingFlow)
-          inspectorTab === 'ai' && e('section', { className: 'faust-section' },
+          // Continue Writing (HybridWritingFlow); not in a chapter marked "Ei tekoälylle"
+          inspectorTab === 'ai' && !aiDisabled && !chapterNoAI && e('section', { className: 'faust-section' },
             e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Kirjoita tekoälyn kanssa')),
 
             e('button', {
@@ -6954,7 +6939,7 @@ ${contextPrompt}`;
           ),
 
           // Batch Generation
-          inspectorTab === 'ai' && (() => {
+          inspectorTab === 'ai' && !aiDisabled && (() => {
             // Which of the two commands runs (the busy face goes on that button; a rewrite runs neither)
             const oneRunning = magnumOpusRun === 'one';
             const allRunning = magnumOpusRun === 'all';
@@ -6968,9 +6953,10 @@ ${contextPrompt}`;
               e('div', { className: 'faust-meta', style: { marginBottom: 'var(--sp-3)' } },
                 'Tekoäly kirjoittaa kokonaisia lukuja alusta loppuun.'),
 
-              // Cost estimation (no model line until I-02 puts the model badge first in the box, R-17)
+              // Cost estimation: the model the chapters are written with comes first (R-17)
               e('div', { className: 'faust-card faust-card--compact', style: { marginBottom: 'var(--sp-3)' } },
                 e('div', { className: 'faust-card__title' }, 'Kustannusarvio'),
+                e(AiModelBadge, { role: 'default', onOpenSettings: openAISettings, config: aiSource }),
                 // A count is a key-value row, as in Tekoälyn kustannukset below
                 e('div', { className: 'faust-kv' }, e('span', null, 'Lukuja:'), e('span', null, project.structure.length.toLocaleString('fi-FI'))),
                 e('div', { className: 'faust-meta' },
@@ -6979,8 +6965,8 @@ ${contextPrompt}`;
                     : 'Hinta: ei arviota tälle mallille')
               ),
 
-              // Magnum Opus, one chapter (W26)
-              e('button', {
+              // Magnum Opus, one chapter (W26); not in a chapter marked "Ei tekoälylle"
+              !chapterNoAI && e('button', {
                 className: 'faust-btn faust-btn--block',
                 onClick: () => generateChapter(activeChapterId),
                 disabled: !activeChapter || isGenerating || !batchProcessorRef.current,
@@ -7006,7 +6992,7 @@ ${contextPrompt}`;
           })(),
 
           // AI Cost Tracking
-          inspectorTab === 'ai' && costOptimizerRef.current && (() => {
+          inspectorTab === 'ai' && !aiDisabled && costOptimizerRef.current && (() => {
             const stats = costOptimizerRef.current.getStats();
             const providers = Object.keys(stats.byProvider || {});
 
@@ -7195,11 +7181,14 @@ ${contextPrompt}`;
                 }),
 
                 // Rewrite the chapter with an instruction
-                e('button', {
+                !aiDisabled && !chapterNoAI && e('button', {
                   type: 'button',
                   className: 'faust-btn faust-btn--block',
                   title: 'Tekoäly kirjoittaa koko luvun uudelleen ohjeesi mukaan ja korvaa luvun nykyisen tekstin.',
-                  onClick: () => setShowRegenerateDialog(true),
+                  onClick: () => {
+                    if (chapterNoAI) { notify('warning', MESSAGES.noAI); return; }
+                    setShowRegenerateDialog(true);
+                  },
                   disabled: isGenerating,
                   'aria-busy': isGenerating
                 }, isGenerating && e('span', { className: 'faust-spinner faust-spinner--sm' }), isGenerating ? 'Kirjoitetaan…' : 'Kirjoita luku uudelleen…'),
@@ -7298,7 +7287,7 @@ ${contextPrompt}`;
               })(),
 
               // Detect threads button
-              e('button', {
+              !aiDisabled && e('button', {
                 type: 'button',
                 className: 'faust-btn faust-btn--block',
                 title: 'Tekoäly lukee käsikirjoituksen ja tunnistaa juonilangat. Nykyinen juonilankaluettelo korvataan.',
@@ -7391,7 +7380,7 @@ ${contextPrompt}`;
                   `… ja ${count(consistencyErrors.length - 5, 'muu')} ${countParts(consistencyErrors.length - 5, 'ristiriita')[1]}`),
 
                 // Check button
-                e('button', {
+                !aiDisabled && e('button', {
                   type: 'button',
                   className: 'faust-btn faust-btn--block',
                   onClick: runConsistencyCheck,
@@ -7427,7 +7416,7 @@ ${contextPrompt}`;
                   )
                 ),
 
-                e('button', {
+                !aiDisabled && e('button', {
                   type: 'button',
                   className: 'faust-btn faust-btn--block',
                   title: 'Kerro, millaisia hahmoja tarinassa on. Tekoäly ehdottaa niille arkkityyppejä.',
@@ -7435,7 +7424,7 @@ ${contextPrompt}`;
                 }, plan.defined ? 'Muokkaa hahmosuunnitelmaa…' : 'Suunnittele hahmot…'),
 
                 // A disabled button shows no tooltip of its own: the span carries it
-                e('span', {
+                !aiDisabled && e('span', {
                   title: plan.defined ? 'Tee yhdestä suunnitellusta hahmotyypistä yksityiskohtainen hahmo tekoälyn avulla' : 'Suunnittele ensin hahmot',
                   style: { display: 'block' }
                 },
@@ -7463,7 +7452,7 @@ ${contextPrompt}`;
       // AI Assistant Panel (Cursor-style) - Slides in from right
       // Docked in the right column beside Tietopaneeli (R-42): one of the two is open at a time. Always
       // mounted, like Tietopaneeli: closed is width 0, and the conversation is kept while it is closed.
-      e(ErrorBoundary, { label: 'Liminal Engine', onDismiss: () => setAiAssistantOpen(false) }, e('div', { className: 'faust-aipanel', 'data-state': aiAssistantOpen ? 'open' : 'closed' },
+      e(ErrorBoundary, { label: 'Liminal Engine', onDismiss: () => setAiAssistantOpen(false) }, e('div', { className: 'faust-aipanel', 'data-state': engineShown ? 'open' : 'closed' },
         e('div', { className: 'faust-panel' },
         [
           // Header
@@ -7483,7 +7472,7 @@ ${contextPrompt}`;
             }, icons.close({ size: 14 }))
           ),
 
-          // Model selector dropdown
+          // The model the panel's requests go to, and the way to change it (W21, R-85)
           e('div', {
             key: 'model-selector',
             // No rule under the head, as in Tietopaneeli: the block's own rule closes it below
@@ -7492,53 +7481,11 @@ ${contextPrompt}`;
               borderBottom: 'var(--bw) solid var(--rule)'
             }
           },
-          e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-1)' } }, 'Claude-malli'),
-          e('select', {
-            className: 'faust-select faust-select--sm',
-            value: project.ai?.model || 'claude-sonnet-4-20250514',
-            onChange: (ev) => {
-              setProject(prev => ({
-                ...prev,
-                ai: {
-                  ...prev.ai,
-                  model: ev.target.value
-                }
-              }));
-              setUnsavedChanges(true);
-            },
-            style: { marginBottom: 'var(--sp-2)' }
-          },
-            e('option', { value: 'claude-sonnet-4-20250514' }, 'Claude Sonnet 4 (suositeltu)'),
-            e('option', { value: 'claude-3-5-sonnet-20241022' }, 'Claude 3.5 Sonnet'),
-            e('option', { value: 'claude-3-5-haiku-20241022' }, 'Claude 3.5 Haiku (nopea)'),
-            e('option', { value: 'claude-opus-4-20250514' }, 'Claude Opus 4 (tehokas)'),
-            e('option', { value: 'claude-opus-4-5-20250514' }, 'Claude Opus 4.5 (uusin)')
-          ),
-          e('div', { className: 'faust-field__label', style: { marginBottom: 'var(--sp-1)' } }, 'Mukautettu malli (valinnainen)'),
-          e('input', {
-            className: 'faust-input faust-input--sm',
-            type: 'text',
-            value: '',
-            onChange: (ev) => {
-              if (ev.target.value.trim()) {
-                setProject(prev => ({
-                  ...prev,
-                  ai: {
-                    ...prev.ai,
-                    model: ev.target.value.trim()
-                  }
-                }));
-                setUnsavedChanges(true);
-              }
-            },
-            placeholder: 'Liitä mallin tunnus'
-          }),
-          e('div', { className: 'faust-field__hint', style: { marginTop: 'var(--sp-2)' } },
-            'Koskee vain Claudea. Lähteen ja mallin voi vaihtaa tietopaneelin Tekoäly-välilehdellä.')
+            e(AiModelBadge, { role: 'default', onOpenSettings: openAISettings, config: aiSource })
           ),
 
-          // Selected text context badge
-          textSelection ? e('div', {
+          // Selected text context badge (a chapter marked "Ei tekoälylle" sends no selection)
+          textSelection && !chapterNoAI ? e('div', {
             key: 'text-selection',
             className: 'faust-excerpt',
             style: { margin: 'var(--sp-3) var(--sp-4) 0' }
@@ -7616,7 +7563,7 @@ ${contextPrompt}`;
                   sendAiAssistantMessage();
                 }
               },
-              placeholder: textSelection ? 'Kerro, miten valittua tekstiä muutetaan…' : 'Kirjoita viesti…',
+              placeholder: textSelection && !chapterNoAI ? 'Kerro, miten valittua tekstiä muutetaan…' : 'Kirjoita viesti…',
               disabled: aiChatProcessing
             }),
               // Pressed while it listens, the button stops listening (V 4.1). A stopped recognition may
@@ -8481,7 +8428,10 @@ ${contextPrompt}`;
               e('option', { value: 'en' }, 'Englanti')
             ),
             e('span', { className: 'faust-field__hint' }, 'Tekoäly kirjoittaa uudet luvut tällä kielellä. Ei vaikuta oikolukuun.')
-          )
+          ),
+
+          // Ohjeet tekoälylle: Käsikirjoituksen ydin and Tyyliohje (Vältettävät sanat from I-07 on)
+          e(BookBriefFields, { project, activeChapter, onChange: patchProject, showAvoidWords: false })
     )),
 
     // Version Comparison Dialog. It opens over Luvun versiot, which stays open under it (W7).
@@ -8692,7 +8642,7 @@ ${contextPrompt}`;
         ? e('div', { className: 'faust-empty' },
             icons.sol({ size: 40, className: 'faust-empty__icon' }),
             e('div', { className: 'faust-empty__title' }, 'Ei vielä hahmoja.'),
-            e('div', { className: 'faust-empty__hint' }, hasCastPlan ? 'Luo ensimmäinen valitsemalla + Uusi hahmo…' : 'Aloita valitsemalla Suunnittele hahmot…'))
+            !aiDisabled && e('div', { className: 'faust-empty__hint' }, hasCastPlan ? 'Luo ensimmäinen valitsemalla + Uusi hahmo…' : 'Aloita valitsemalla Suunnittele hahmot…'))
         : e('div', { className: 'faust-listgrid' },
             characters.map((char, idx) => {
               const role = (char.basicInfo && char.basicInfo.role) || char.role || '';
@@ -8727,7 +8677,7 @@ ${contextPrompt}`;
         className: 'faust-dialog--steady',
         dismissOnScrim: true,
         onClose: closeCharacterSheet,
-        actions: !isProfile && e('button', {
+        actions: !isProfile && !aiDisabled && e('button', {
           className: 'faust-btn',
           onClick: () => {
             // The builder opens in place of this window: close this one first
@@ -9155,7 +9105,7 @@ ${contextPrompt}`;
     })()),
 
     // Kirjoita tekoälyn kanssa: continue the text, write from a summary, rewrite a selection, write a scene
-    e(ErrorBoundary, { label: 'Kirjoita tekoälyn kanssa', onDismiss: () => setShowContinueDialog(false) }, showContinueDialog && (() => {
+    e(ErrorBoundary, { label: 'Kirjoita tekoälyn kanssa', onDismiss: () => setShowContinueDialog(false) }, !aiDisabled && !chapterNoAI && showContinueDialog && (() => {
       const chapterHasText = !!(activeChapter && chapterText(activeChapter).trim());
       const hasSelection = !!textSelection?.text;
       const closeWriting = () => {
@@ -9409,10 +9359,14 @@ ${contextPrompt}`;
     })()),
 
     // Claude Chat Component
+    // Never unmounted: the conversation lives in its state and survives focus mode and the switch
     e(ErrorBoundary, { label: 'Keskustelu', onDismiss: () => setClaudeChatOpen(false) }, window.ClaudeChat && e(window.ClaudeChat, {
       project: project,
-      activeChapter: activeChapter,
-      isOpen: claudeChatOpen && !aiAssistantOpen,
+      // A chapter marked "Ei tekoälylle" lends the chat neither its summary nor its text
+      activeChapter: chapterNoAI ? null : activeChapter,
+      isOpen: claudeChatOpen && !aiAssistantOpen && !aiDisabled,
+      // The answer's label: the short name of the model the old handler uses
+      modelName: modelLabel(aiSource && (aiSource.provider === 'cherry' ? aiSource.model : aiSource.anthropicModel)),
       // Its own Esc (in its field) and its close button: the focus goes to the manuscript
       onClose: () => closePanelKeepingFocus('.claude-chat-container', () => setClaudeChatOpen(false)),
       onInsertText: (text) => {

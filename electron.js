@@ -1,4 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, shell, nativeTheme } = require('electron');
+const { createRequestTable, classifyAIError, codedError, AI_CONSTANTS } = require('./utils/aiRequest');
+const appSettings = require('./utils/appSettings');
+const { buildGuardIndex, findProtected, collectStrings } = require('./utils/noAIGuard');
 const manuscript = require('./utils/manuscript');
 const importFolder = require('./utils/importFolder');
 const path = require('path');
@@ -96,7 +99,11 @@ function getAIProviderConfig() {
     gatewayUrl,
     model: process.env.CHERRY_MODEL || apiConfig.CHERRY_MODEL || '',
     cherryKey: process.env.CHERRY_API_KEY || apiConfig.CHERRY_API_KEY || '',
-    anthropicKey: process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY || ''
+    anthropicKey: process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY || '',
+    // FAUST_ANTHROPIC_MODEL, not ANTHROPIC_MODEL: a value set in the shell for other tools is not picked up
+    anthropicModel: String(process.env.FAUST_ANTHROPIC_MODEL || apiConfig.ANTHROPIC_MODEL || '').trim(),
+    roles: appSettings.readRoles(apiConfig),
+    modelSettings: appSettings.readModelSettings(apiConfig)
   };
 }
 
@@ -107,9 +114,18 @@ function publicAIProviderConfig() {
     provider: cfg.provider,
     gatewayUrl: cfg.gatewayUrl,
     model: cfg.model,
+    anthropicModel: cfg.anthropicModel,
+    roles: cfg.roles,
+    modelSettings: cfg.modelSettings,
+    defaults: {
+      window: AI_CONSTANTS.DEFAULT_WINDOW_TOKENS,
+      headroom: AI_CONSTANTS.DEFAULT_HEADROOM_TOKENS,
+      maxOutput: AI_CONSTANTS.MAX_OUTPUT_TOKENS
+    },
     hasCherryKey: !!cfg.cherryKey,
     hasAnthropicKey: !!cfg.anthropicKey,
-    providerFromEnv: !!process.env.FAUST_AI_PROVIDER
+    providerFromEnv: !!process.env.FAUST_AI_PROVIDER,
+    keyFromEnv: { cherry: !!process.env.CHERRY_API_KEY, anthropic: !!process.env.ANTHROPIC_API_KEY }
   };
 }
 
@@ -157,48 +173,103 @@ function createCherryClient({ apiKey, baseURL, model }) {
   };
 }
 
+// Anthropic-SDK-shaped client for Claude directly, for the old handlers in Anthropic mode. The
+// model field of the settings decides, as the selected gateway model does in Cherry Studio mode;
+// with the field empty the caller's model is used. Current Claude models answer a request that
+// carries temperature with 400, and they think by default inside the same max_tokens.
+function createDirectClient({ apiKey, model }) {
+  const inner = new Anthropic({ apiKey });
+
+  const prepare = (params = {}) => {
+    const next = { ...params, model: model || params.model };
+    if (!next.model) {
+      throw codedError('no_model', 'Claude-mallia ei ole valittu. Valitse malli tietopaneelin Tekoäly-välilehdellä.');
+    }
+    delete next.temperature;
+    delete next.top_p;
+    delete next.top_k;
+    // The old handlers send 2 000 or 4 096 (reconcile R-11)
+    next.max_tokens = Math.max(Number(next.max_tokens) || 0, 16000);
+    return next;
+  };
+
+  return {
+    messages: {
+      create: async (params, options) => inner.messages.create(prepare(params), options),
+      stream: (params, options) => inner.messages.stream(prepare(params), options)
+    }
+  };
+}
+
 // Client for the selected provider. Throws a user-facing error if it is not configured.
 function getClaudeClient() {
   const cfg = getAIProviderConfig();
 
   if (cfg.provider === 'cherry') {
     if (!cfg.cherryKey) {
-      throw new Error('Cherry Studion API-avain puuttuu. Lisää se tietopaneelin Tekoäly-välilehdellä.');
+      throw codedError('no_key', 'Cherry Studion API-avain puuttuu. Lisää se tietopaneelin Tekoäly-välilehdellä.');
     }
     if (!cfg.model) {
-      throw new Error('Cherry Studion mallia ei ole valittu. Valitse malli tietopaneelin Tekoäly-välilehdellä.');
+      throw codedError('no_model', 'Cherry Studion mallia ei ole valittu. Valitse malli tietopaneelin Tekoäly-välilehdellä.');
     }
     return createCherryClient({ apiKey: cfg.cherryKey, baseURL: cfg.gatewayUrl, model: cfg.model });
   }
 
   if (!cfg.anthropicKey) {
-    throw new Error('Clauden API-avain puuttuu. Lisää se tietopaneelin Tekoäly-välilehdellä.');
+    throw codedError('no_key', 'Clauden API-avain puuttuu. Lisää se tietopaneelin Tekoäly-välilehdellä.');
+  }
+  return createDirectClient({ apiKey: cfg.anthropicKey, model: cfg.anthropicModel });
+}
+
+// The bare SDK client for ai:request, whose parameters buildParams (utils/aiRequest.js) has made final
+function getRawAIClient(cfg) {
+  if (cfg.provider === 'cherry') {
+    if (!cfg.cherryKey) {
+      throw codedError('no_key', 'Cherry Studion API-avain puuttuu. Lisää se tietopaneelin Tekoäly-välilehdellä.');
+    }
+    return new Anthropic({ apiKey: cfg.cherryKey, baseURL: cfg.gatewayUrl });
+  }
+  if (!cfg.anthropicKey) {
+    throw codedError('no_key', 'Clauden API-avain puuttuu. Lisää se tietopaneelin Tekoäly-välilehdellä.');
   }
   return new Anthropic({ apiKey: cfg.anthropicKey });
 }
 
-// Turn SDK/network errors into messages that say what to do
+// Turn SDK/network errors into messages that say what to do (one table: utils/aiRequest.js)
 function describeAIError(error) {
-  const message = (error && error.message) || String(error);
-  const cfg = getAIProviderConfig();
-  if (cfg.provider !== 'cherry') return message;
-
-  const status = error && error.status;
-  if (status === 401 || status === 403) {
-    return 'Cherry Studio hylkäsi API-avaimen. Kopioi avain Cherry Studiosta (Settings → API Gateway → API Key) ja tallenna se tietopaneelin Tekoäly-välilehdellä.';
-  }
-  if (!status && /connect|ECONNREFUSED|fetch failed|network/i.test(message)) {
-    return `Cherry Studioon ei saada yhteyttä (${cfg.gatewayUrl}). Varmista, että Cherry Studio on käynnissä ja sen API Gateway päällä.`;
-  }
-  return message;
+  return classifyAIError(error, getAIProviderConfig()).message;
 }
+
+// --- "Ei tekoälylle": the wire guard ---
+// The renderer sends the text and summaries of every chapter marked "Ei tekoälylle"
+// (useNoAIGuard); every request, old or new, whose text overlaps them is refused here.
+let protectedIndex = [];
+ipcMain.on('ai:set-protected', (_event, chapters) => {
+  const list = Array.isArray(chapters)
+    ? chapters.filter(c => c && typeof c.title === 'string' && typeof c.text === 'string')
+    : [];
+  protectedIndex = buildGuardIndex(list);
+});
+
+function refuseProtected(payload) {
+  const hit = findProtected(collectStrings(payload), protectedIndex);
+  return hit
+    ? `Kehotteessa on tekstiä luvusta ”${hit.title}”, joka on merkitty Ei tekoälylle (”${hit.snippet}…”). Mitään ei lähetetty.`
+    : null;
+}
+
+// The two sentences the old handlers answer with when they did not send (contracts.md 8.1, 8.3)
+const AI_OFF_SENTENCE = 'Tekoäly pois -asetus on päällä.';
+const STOPPED_SENTENCE = 'Pyyntö pysäytettiin.';
 
 // --- UI prefs kept by the main process ---
 // Panels and editor settings live in the renderer (localStorage). The theme lives there too;
 // the renderer reports it ('theme-changed') and the copy kept here (uiPrefs.theme, 'NOX' or
-// 'DEIS') is what the native layer and the window's first frame are painted from.
+// 'DEIS') is what the native layer and the window's first frame are painted from. Settings
+// of the new features live here too and reach the renderer through prefs:get / prefs:changed.
 let uiPrefs = {
-  spellCheck: true
+  spellCheck: true,
+  aiOff: false
 };
 
 // The two --surface-page values of styles/faust-tokens.css: the window is this colour
@@ -226,20 +297,32 @@ async function loadUiPrefs() {
   try {
     const raw = await fs.readFile(getUiPrefsPath(), 'utf-8');
     uiPrefs = { ...uiPrefs, ...JSON.parse(raw) };
-    console.log('[UI Prefs] Loaded:', uiPrefs);
+    // Key names only: a value (a saved prompt, say) never goes to the console
+    console.log('[UI Prefs] Loaded:', Object.keys(uiPrefs).join(', '));
   } catch (error) {
     console.log('[UI Prefs] First run, using defaults');
   }
 }
 
+// One change of the preferences: merged by the rules of utils/appSettings.js, written atomically,
+// one write after another (two quick theme switches cannot tear the file), and sent to the
+// renderer, whose settings store follows it. Resolves with { success, prefs } or { success, error }.
 let uiPrefsSaving = Promise.resolve();
 async function saveUiPrefs(next) {
-  uiPrefs = { ...uiPrefs, ...next };
-  // Saves run one after another and each writes atomically: two quick theme switches cannot tear the file
+  const merged = appSettings.mergePrefs(uiPrefs, next);
+  if (!merged.ok) return { success: false, error: merged.error };
+  uiPrefs = merged.prefs;
   const text = JSON.stringify(uiPrefs, null, 2);
   uiPrefsSaving = uiPrefsSaving.catch(() => {}).then(() => writeFileAtomic(getUiPrefsPath(), text));
-  await uiPrefsSaving;
-  console.log('[UI Prefs] Saved:', uiPrefs);
+  try {
+    await uiPrefsSaving;
+  } catch (error) {
+    console.error('[UI Prefs] Save error:', error.message);
+    return { success: false, error: 'Asetusten tallennus epäonnistui.' };
+  }
+  console.log('[UI Prefs] Saved:', Object.keys(next).join(', '));
+  sendToRenderer('prefs:changed', uiPrefs);
+  return { success: true, prefs: uiPrefs };
 }
 
 // --- v1.4.1: Timeout wrapper for AI calls ---
@@ -272,6 +355,15 @@ function sendToRenderer(channel, ...args) {
 function menuAction(action, arg) {
   sendToRenderer('menu-action', action, arg);
 }
+
+// The running AI requests: those of the one request layer (ai:request) and, tracked, those of the
+// old handlers, so that "Pysäytä tekoäly" and "Tekoäly pois" stop every one of them
+const aiRequests = createRequestTable({
+  getConfig: getAIProviderConfig,
+  getClient: getRawAIClient,
+  isAiOff: () => uiPrefs.aiOff === true,
+  refuse: (value) => refuseProtected(value)
+});
 
 function createWindow() {
   rendererDirty = false;
@@ -407,6 +499,8 @@ function attachCloseGuard(win) {
   });
 
   win.on('closed', () => {
+    // A request still streaming has nowhere to go
+    aiRequests.abortAll();
     if (mainWindow === win) mainWindow = null;
   });
 }
@@ -465,6 +559,9 @@ function createMenu() {
   });
   const separator = { type: 'separator' };
   const insertText = (label, text) => ({ label, click: () => menuAction('insert-text', text) });
+  // Every AI door of the menu goes through this: with "Tekoäly pois" on, it is absent (reconcile R-6).
+  // The way back, Työkalut ▸ Tekoäly ▸ Tekoälyasetukset… and Tekoäly pois, is never inside it.
+  const aiItems = (...items) => (uiPrefs.aiOff === true ? [] : items);
 
   const template = [
     // App menu (macOS)
@@ -585,8 +682,10 @@ function createMenu() {
       submenu: [
         item('Sivupalkki', 'toggle-sidebar', 'CmdOrCtrl+1'),
         item('Tietopaneeli', 'toggle-inspector', 'CmdOrCtrl+2'),
-        { ...item('Liminal Engine (tekoälyavustaja)', 'toggle-ai-panel', 'CmdOrCtrl+Shift+K'), toolTip: 'Näytä tai kätke tekoälyavustajan paneeli' },
-        item('Keskustelu', 'toggle-chat-window'),
+        ...aiItems(
+          { ...item('Liminal Engine (tekoälyavustaja)', 'toggle-ai-panel', 'CmdOrCtrl+Shift+K'), toolTip: 'Näytä tai kätke tekoälyavustajan paneeli' },
+          item('Keskustelu', 'toggle-chat-window')
+        ),
         separator,
         item('Korttinäkymä', 'toggle-corkboard'),
         item('Jaettu näkymä', 'toggle-split-view'),
@@ -624,16 +723,18 @@ function createMenu() {
         item('Aikajana', 'show-timeline', 'CmdOrCtrl+Shift+T'),
         item('Tutkimuskansio', 'show-research', 'CmdOrCtrl+Shift+R'),
         separator,
-        item('Suunnittele hahmot…', 'show-cast-plan'),
-        item('Uusi hahmo…', 'show-character-builder'),
+        ...aiItems(
+          item('Suunnittele hahmot…', 'show-cast-plan'),
+          item('Uusi hahmo…', 'show-character-builder')
+        ),
         item('Luvun versiot', 'show-version-history'),
         separator,
         {
           label: 'Tekoäly',
           submenu: [
-            // The action items are one array, so that they can be left out as one
-            // while the settings group below stays (reconcile R-4, R-6)
-            ...[
+            // The action items and Pysäytä tekoäly are one group, left out as one while the
+            // settings group below stays (reconcile R-4, R-6)
+            ...aiItems(
               item('Analysoi luku', 'ai-analyze'),
               item('Pika-arvio', 'ai-quick-check'),
               item('Tee tiivistelmä', 'ai-summary'),
@@ -648,10 +749,32 @@ function createMenu() {
               },
               separator,
               item('Kirjoita tekoälyn kanssa…', 'show-ai-writing'),
-              item('Muokkaa valintaa puhumalla', 'voice-edit')
-            ],
-            separator,
-            item('Tekoälyasetukset…', 'show-ai-settings')
+              item('Muokkaa valintaa puhumalla', 'voice-edit'),
+              separator,
+              // One command stops everything: the request layer and the tracked old handlers stop in
+              // main, which then refuses the old handlers for STOP_LATCH_MS, so that a batch loop
+              // cannot start its next chapter; the renderer's client stops its own handles
+              {
+                label: 'Pysäytä tekoäly',
+                accelerator: 'CmdOrCtrl+.',
+                click: () => {
+                  aiRequests.abortAll({ latchMs: AI_CONSTANTS.STOP_LATCH_MS });
+                  menuAction('ai-stop-all');
+                }
+              },
+              separator
+            ),
+            item('Tekoälyasetukset…', 'show-ai-settings'),
+            {
+              label: 'Tekoäly pois',
+              type: 'checkbox',
+              checked: uiPrefs.aiOff === true,
+              click: async (menuItem) => {
+                await saveUiPrefs({ aiOff: menuItem.checked });
+                if (menuItem.checked) aiRequests.abortAll();
+                createMenu();
+              }
+            }
           ]
         }
       ]
@@ -1036,19 +1159,21 @@ ipcMain.handle('open-external', async (_event, url) => {
   return { success: true };
 });
 
-// Load API Keys
+// Which keys are set: two booleans, never a value
 ipcMain.handle('load-api-keys', async () => {
-  return { success: true, keys: apiConfig };
+  return { success: true, keys: appSettings.publicKeyStatus(getAIProviderConfig()) };
 });
 
-// Save API Keys (v1.4.3: with encryption)
-ipcMain.handle('save-api-keys', async (event, keys) => {
+// Write or delete one key ('' deletes). The other settings are merged here, because the renderer
+// no longer has them to send back. No log line names a value.
+ipcMain.handle('keys:set', async (_event, { name, value } = {}) => {
+  const result = appSettings.applyKeyWrite(apiConfig, name, value);
+  if (!result.ok) return { success: false, error: result.error };
   try {
-    const { encrypted } = await persistApiConfig(keys);
-    return { success: true, encrypted };
+    const { encrypted } = await persistApiConfig(result.config);
+    return { success: true, encrypted, keys: appSettings.publicKeyStatus(getAIProviderConfig()) };
   } catch (error) {
-    console.error('[Security] Save API keys error:', error);
-    return { success: false, error: error.message };
+    return { success: false, error: 'Avaimen tallennus epäonnistui.' };
   }
 });
 
@@ -1059,16 +1184,7 @@ ipcMain.handle('ai:get-provider', async () => {
 
 ipcMain.handle('ai:set-provider', async (_event, next = {}) => {
   try {
-    const updated = { ...apiConfig };
-    if (next.provider === 'cherry' || next.provider === 'anthropic') {
-      updated.AI_PROVIDER = next.provider;
-    }
-    if (typeof next.gatewayUrl === 'string' && next.gatewayUrl.trim()) {
-      updated.CHERRY_GATEWAY_URL = next.gatewayUrl.trim();
-    }
-    if (typeof next.model === 'string') {
-      updated.CHERRY_MODEL = next.model;
-    }
+    const updated = appSettings.applyProviderPatch(apiConfig, next);
     await persistApiConfig(updated);
     console.log('[AI Provider] Settings saved:', publicAIProviderConfig());
     return { success: true, ...publicAIProviderConfig() };
@@ -1115,14 +1231,38 @@ ipcMain.handle('ai:list-cherry-models', async () => {
   }
 });
 
-// Send one short request through the selected provider
+// The models Claude offers to this key, with each one's window when the list says it
+ipcMain.handle('ai:list-anthropic-models', async () => {
+  const cfg = getAIProviderConfig();
+  if (!cfg.anthropicKey) {
+    return { success: false, error: 'Clauden API-avain puuttuu.' };
+  }
+  try {
+    const page = await withTimeout(new Anthropic({ apiKey: cfg.anthropicKey }).models.list({ limit: 100 }), 8000);
+    const data = page && Array.isArray(page.data) ? page.data : [];
+    return {
+      success: true,
+      models: data.map(m => ({
+        id: m.id,
+        name: m.display_name || m.id,
+        window: m.max_input_tokens ?? null,
+        maxOutput: m.max_tokens ?? null
+      }))
+    };
+  } catch (error) {
+    return { success: false, error: describeAIError(error) };
+  }
+});
+
+// Send one short request through the selected provider. The model is the configured one: both
+// wrappers fill it in, and an empty Claude model field gives its own reason.
 ipcMain.handle('ai:test-provider', async () => {
   try {
     const client = getClaudeClient();
     const started = Date.now();
     const message = await withTimeout(
       client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: '',
         max_tokens: 1000,
         messages: [{ role: 'user', content: 'Vastaa yhdellä sanalla: toimii' }]
       }),
@@ -1255,9 +1395,57 @@ ipcMain.handle('clear-backup', async () => {
   return { success: true };
 });
 
-// Claude API (Anthropic SDK - REAL IMPLEMENTATION)
-ipcMain.handle('claude-api', async (event, promptOrOptions) => {
+// --- One request layer (report 5.3): every new AI feature sends through ai:request ---
+// The renderer's client (src/services/ai/aiClient.js) sends AIRequest objects; the answer streams
+// back as ai:chunk messages tagged with the request id, and the call resolves with one result that
+// says how the answer ended. It never rejects.
+ipcMain.handle('ai:request', (event, request) => aiRequests.start(request, (chunk) => {
+  if (!event.sender.isDestroyed()) event.sender.send('ai:chunk', chunk);
+}));
+ipcMain.handle('ai:cancel', (_event, { id } = {}) => ({ ok: true, found: aiRequests.cancel(id) }));
+
+// Renderer settings kept in ui-prefs.json (the renderer's settings store reads and writes them here)
+ipcMain.handle('prefs:get', () => ({ success: true, prefs: uiPrefs }));
+ipcMain.handle('prefs:set', async (_event, patch) => {
+  const before = uiPrefs.aiOff === true;
+  const result = await saveUiPrefs(patch);
+  if (result.success && (uiPrefs.aiOff === true) !== before) {
+    if (uiPrefs.aiOff === true) aiRequests.abortAll();
+    createMenu();
+  }
+  return result;
+});
+
+// Save a text the renderer produced (the usage log export)
+ipcMain.handle('file:save-text', async (_event, { title, defaultName, text } = {}) => {
   try {
+    if (typeof text !== 'string') return { success: false, error: 'Ei tallennettavaa tekstiä.' };
+    const { filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: title || 'Tallenna',
+      defaultPath: `${safeFileName(defaultName || 'teksti')}.txt`,
+      filters: [{ name: 'Tekstitiedosto', extensions: ['txt'] }]
+    });
+    if (!filePath) return { success: false, canceled: true };
+    await fs.writeFile(filePath, text, 'utf-8');
+    return { success: true, path: filePath };
+  } catch (error) {
+    console.error('[Save text] Error:', error.message);
+    return { success: false, error: error.message };
+  }
+});
+
+// Claude API (Anthropic SDK). Stays for its old callers, with three guards: the "Tekoäly pois"
+// switch, the "Ei tekoälylle" wire guard and the abort table (Pysäytä tekoäly stops it, and for a
+// few seconds after a stop it refuses, so that a batch loop cannot go on to its next chapter).
+ipcMain.handle('claude-api', async (event, promptOrOptions) => {
+  const abort = new AbortController();
+  const release = aiRequests.track(abort);
+  try {
+    if (uiPrefs.aiOff === true) return { success: false, error: AI_OFF_SENTENCE };
+    if (aiRequests.isLatched()) return { success: false, error: STOPPED_SENTENCE };
+    const refused = refuseProtected(promptOrOptions);
+    if (refused) return { success: false, error: refused };
+
     // Support both string prompt and { prompt, model, temperature, max_tokens } object
     const prompt = typeof promptOrOptions === 'string' ? promptOrOptions : promptOrOptions.prompt;
     const model = typeof promptOrOptions === 'object' ? promptOrOptions.model : null;
@@ -1265,15 +1453,15 @@ ipcMain.handle('claude-api', async (event, promptOrOptions) => {
     // The Messages API requires max_tokens: callers that pass an object without it get the default too
     const maxTokens = (typeof promptOrOptions === 'object' && promptOrOptions.max_tokens) || 2000;
 
-    // Claude directly, or the model selected in Cherry Studio's gateway
+    // Claude directly, or the model selected in Cherry Studio's gateway; '' = the configured model
     const anthropic = getClaudeClient();
 
     const message = await anthropic.messages.create({
-      model: model || 'claude-3-5-sonnet-20241022',
+      model: model || '',
       max_tokens: maxTokens,
       temperature: temperature,
       messages: [{ role: 'user', content: prompt }]
-    });
+    }, { signal: abort.signal });
 
     return {
       success: true,
@@ -1281,14 +1469,31 @@ ipcMain.handle('claude-api', async (event, promptOrOptions) => {
       usage: message.usage
     };
   } catch (error) {
+    if (abort.signal.aborted) return { success: false, error: STOPPED_SENTENCE };
     console.error('Claude API error:', error);
     return { success: false, error: describeAIError(error) };
+  } finally {
+    release();
   }
 });
 
-// Claude API Streaming - Real-time token-by-token response
+// Claude API Streaming - Real-time token-by-token response. The same three guards; every
+// failure, a refusal included, also goes to the renderer as an error chunk.
 ipcMain.handle('claude-api-stream', async (event, options) => {
+  const abort = new AbortController();
+  const release = aiRequests.track(abort);
+  const fail = (message) => {
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('claude-stream-chunk', { error: message, type: 'error' });
+    }
+    return { success: false, error: message };
+  };
   try {
+    if (uiPrefs.aiOff === true) return fail(AI_OFF_SENTENCE);
+    if (aiRequests.isLatched()) return fail(STOPPED_SENTENCE);
+    const refused = refuseProtected(options);
+    if (refused) return fail(refused);
+
     const {
       prompt,
       messages = [],
@@ -1305,9 +1510,9 @@ ipcMain.handle('claude-api-stream', async (event, options) => {
       ? messages
       : [{ role: 'user', content: prompt }];
 
-    // Create streaming request
+    // Create streaming request ('' = the configured model)
     const streamParams = {
-      model: model || 'claude-sonnet-4-20250514',
+      model: model || '',
       max_tokens: maxTokens,
       temperature: temperature,
       messages: apiMessages
@@ -1318,14 +1523,16 @@ ipcMain.handle('claude-api-stream', async (event, options) => {
       streamParams.system = system;
     }
 
-    const stream = anthropic.messages.stream(streamParams);
+    const stream = anthropic.messages.stream(streamParams, { signal: abort.signal });
 
     // Send chunks as they arrive
     stream.on('text', (text) => {
-      event.sender.send('claude-stream-chunk', {
-        text,
-        type: 'text'
-      });
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('claude-stream-chunk', {
+          text,
+          type: 'text'
+        });
+      }
     });
 
     // Wait for completion
@@ -1338,102 +1545,11 @@ ipcMain.handle('claude-api-stream', async (event, options) => {
       model: finalMessage.model
     };
   } catch (error) {
+    if (abort.signal.aborted) return fail(STOPPED_SENTENCE);
     console.error('Claude Stream API error:', error);
-    const message = describeAIError(error);
-    event.sender.send('claude-stream-chunk', {
-      error: message,
-      type: 'error'
-    });
-    return { success: false, error: message };
-  }
-});
-
-// Claude API with Extended Thinking - Deep analysis mode
-ipcMain.handle('claude-api-thinking', async (event, options) => {
-  try {
-    const {
-      prompt,
-      messages = [],
-      budgetTokens = 10000,
-      maxTokens = 16000,
-      stream = false
-    } = options;
-
-    // With the Cherry Studio gateway the "thinking" parameter is dropped and
-    // the selected model decides on its own whether it reasons first
-    const anthropic = getClaudeClient();
-
-    // Build messages array
-    const apiMessages = messages.length > 0
-      ? messages
-      : [{ role: 'user', content: prompt }];
-
-    // Extended thinking requires specific model and settings
-    const thinkingParams = {
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: maxTokens,
-      thinking: {
-        type: 'enabled',
-        budget_tokens: budgetTokens
-      },
-      messages: apiMessages
-    };
-
-    if (stream) {
-      // Streaming with extended thinking
-      const streamResponse = anthropic.messages.stream(thinkingParams);
-
-      streamResponse.on('contentBlockStart', (block) => {
-        if (block.content_block?.type === 'thinking') {
-          event.sender.send('claude-stream-chunk', {
-            type: 'thinking_start'
-          });
-        }
-      });
-
-      streamResponse.on('text', (text, snapshot) => {
-        // Check if this is thinking or text content
-        const currentBlock = snapshot.content?.[snapshot.content.length - 1];
-        const chunkType = currentBlock?.type === 'thinking' ? 'thinking' : 'text';
-
-        event.sender.send('claude-stream-chunk', {
-          text,
-          type: chunkType
-        });
-      });
-
-      const finalMessage = await streamResponse.finalMessage();
-
-      // Extract thinking and text content
-      const thinkingBlocks = finalMessage.content.filter(b => b.type === 'thinking');
-      const textBlocks = finalMessage.content.filter(b => b.type === 'text');
-
-      return {
-        success: true,
-        thinking: thinkingBlocks.map(b => b.thinking).join('\n'),
-        response: textBlocks.map(b => b.text).join('\n'),
-        usage: finalMessage.usage,
-        stopReason: finalMessage.stop_reason
-      };
-    } else {
-      // Non-streaming extended thinking
-      const response = await anthropic.messages.create(thinkingParams);
-
-      // Extract thinking and text content
-      const thinkingBlocks = response.content.filter(b => b.type === 'thinking');
-      const textBlocks = response.content.filter(b => b.type === 'text');
-
-      return {
-        success: true,
-        thinking: thinkingBlocks.map(b => b.thinking).join('\n'),
-        response: textBlocks.map(b => b.text).join('\n'),
-        usage: response.usage,
-        stopReason: response.stop_reason
-      };
-    }
-  } catch (error) {
-    console.error('Claude Thinking API error:', error);
-    return { success: false, error: describeAIError(error) };
+    return fail(describeAIError(error));
+  } finally {
+    release();
   }
 });
 
