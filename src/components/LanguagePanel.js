@@ -29,20 +29,22 @@
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
  */
 import { icons } from './icons.js';
-import { Tabs, Section, Callout, EmptyState, Progress, Field, Chip, notify } from './ui.js';
+import { Tabs, Section, Callout, EmptyState, Progress, Field, Chip, IconButton, notify } from './ui.js';
 import { count } from './Dialogs.js';
 import { AiModelBadge } from './AiModelSettings.js';
 import { ContextRow, useContextPreview } from './ContextRow.js';
+import { useSetting } from './useSetting.js';
 import {
   checkTypography, fixesFor, dashLineChanges, countDashLines, effectiveLineStartDash
 } from '../editor/typography.fi.js';
-import { runProofread, proofreadTask, proofBudget, summaryLine, modelNote } from '../services/ai/proofreadPass.js';
+import { runProofread, proofreadTask, proofBudget, modelNote } from '../services/ai/proofreadPass.js';
 import proofreadModelNotes from '../services/ai/proofreadModelNotes.js';
 import { isChapterBlocked, MESSAGES } from '../services/ai/contextBuilder.js';
 import { buildVoikkoInput, voikkoFindings, nameHits } from '../services/language/voikkoCheck.js';
 import {
-  SET_ASIDE_REASONS, languageName, typographyView, excerptAround, proofPlan, batchNumberOf, notRunText,
-  resumePlace, locatePassage, setAsideChanges, voikkoWordRows, voikkoChange
+  TYPOGRAPHY_META, VOIKKO_META, PROOFREAD_META, setAsideReason, runSummary, languageName, typographyView,
+  excerptAround, proofPlan, batchNumberOf, notRunText, resumePlace, locatePassage, setAsideChanges,
+  voikkoWordRows, voikkoChange
 } from '../services/language/languageTools.js';
 import { formatCount, pendingSuggestions } from '../services/format.fi.js';
 
@@ -54,12 +56,11 @@ const TABS = [
   { id: 'voikko', label: 'Voikko' }
 ];
 
-const TYPOGRAPHY_META = { source: 'local', action: 'typography', actionLabel: 'Typografia', instruction: '', provider: null, model: null, requestLogId: null };
-const PROOFREAD_META = { source: 'faust', action: 'proofread', actionLabel: 'Kielenhuolto', instruction: '', provider: null, model: null, requestLogId: null };
 // The run's own instruction ("Oikolue nämä n riviä…") is not the author's: the row names it "ohje"
 // (the label of a built-in action's instruction since I-05), not "oma ohje"
 const withLabel = (task) => (task ? { ...task, instructionLabel: 'ohje' } : null);
-const VOIKKO_META = { source: 'local', action: 'voikko', actionLabel: 'Voikko', instruction: '', provider: null, model: null, requestLogId: null };
+// A day number at a line start has no fix in the checker (typography.fi.js): say why there is no Ehdota
+const NO_FIX_AT_LINE_START = 'Rivin alussa piste tekisi rivistä numeroidun luettelon. Muotoile virke toisin.';
 
 const INSTALL_COMMAND = 'brew install libvoikko';
 const VOIKKO_MISSING = 'Voikkoa ei löytynyt. Asenna: brew install libvoikko';
@@ -154,6 +155,22 @@ export function LanguagePanel(props) {
     status.then(() => (wordCheck ? wordCheck.refresh() : null)).then((source) => setGuard(source || null), () => setGuard(null));
   };
   useEffect(() => { refreshCheckers(false); }, []);
+  // The system checker answers only while Työkalut ▸ Oikoluku is on: the guard line is read again when
+  // the switch changes and whenever Kielenhuolto is shown, so it never says a checker guards the run
+  // when none does
+  const [spellCheckOn] = useSetting('spellCheck', true);
+  const proofreadShown = shown === 'proofread';
+  useEffect(() => {
+    if (!wordCheck || !proofreadShown) return;
+    wordCheck.refresh().then((source) => setGuard(source || null), () => setGuard(null));
+  }, [proofreadShown, spellCheckOn]);
+  // The checker a run's batches ask: which one answers is looked up when a batch is checked, so a switch
+  // turned off during the run turns the guard off there and then (the panel says so)
+  const guardWords = (words) => wordCheck.refresh().then((source) => {
+    setGuard(source || null);
+    const check = wordCheck.current();
+    return check ? check(words) : undefined;
+  });
 
   // ---------------------------------------------------------------------------------------------
   // Typografia
@@ -223,13 +240,22 @@ export function LanguagePanel(props) {
   const abortRef = useRef(null);
   const runRef = useRef(null);
   runRef.current = run;
+  // False once the panel is unmounted (a new project: rule 14). A batch whose answer is still being
+  // checked then (the suspect-word lookup is a round trip to Voikko) is not proposed into the next project
+  const aliveRef = useRef(true);
 
   // Another chapter stops the run (its suggestions stay with its chapter); unmounting stops it too
   useEffect(() => {
     const current = runRef.current;
     if (current && current.status === 'running' && current.chapterId !== chapterId && abortRef.current) abortRef.current.abort();
   }, [chapterId]);
-  useEffect(() => () => { if (abortRef.current) abortRef.current.abort(); }, []);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      if (abortRef.current) abortRef.current.abort();
+    };
+  }, []);
 
   const startRun = (resume) => {
     if (!controller || !aiClient || !chapterId) return;
@@ -275,14 +301,14 @@ export function LanguagePanel(props) {
         answerTokens: task.answerTokens, exclude, include
       }),
       request: (opts) => aiClient.requestEdit({ role: 'edit', ...opts }),
-      checkWords: wordCheck ? wordCheck.current() : undefined,
+      checkWords: wordCheck ? guardWords : undefined,
       signal: abort.signal,
       onProgress: (progress) => {
         setRun(current => (current && current.chapterId === startedFor && current.status === 'running' ? { ...current, progress } : current));
       },
       // One group for the whole run; every batch lands on its own words through baseText (contracts 4.3)
       onBatch: ({ changes }) => {
-        if (!changes || changes.length === 0) return { skipped: [] };
+        if (!aliveRef.current || !changes || changes.length === 0) return { skipped: [] };
         const res = controller.propose(startedFor, changes, { baseText: runText, groupId: groupId || undefined, meta: PROOFREAD_META });
         if (!groupId && res && res.groupId) {
           groupId = res.groupId;
@@ -405,13 +431,7 @@ export function LanguagePanel(props) {
 
   const head = e('div', { className: 'faust-panel__head' },
     e('span', { className: 'faust-panel__title' }, 'Kielen työkalut'),
-    e('button', {
-      type: 'button',
-      className: 'faust-btn faust-btn--icon faust-btn--sm',
-      'aria-label': 'Sulje',
-      title: 'Sulje',
-      onClick: onClose
-    }, icons.close({ size: 14 })));
+    e(IconButton, { icon: 'close', size: 'sm', label: 'Sulje', title: 'Sulje', onClick: onClose }));
 
   const tabRow = e('div', { className: 'faust-panel__tabs' },
     e(Tabs, { value: shown, onChange: onMode, items: tabs, label: 'Kielen työkalut' }));
@@ -454,20 +474,25 @@ export function LanguagePanel(props) {
       e('div', { style: { display: 'flex', flexDirection: 'column', marginTop: 'var(--sp-2)' } },
         view.questions.slice(0, 5).map(finding => e(ListRow, {
           key: finding.id,
-          actions: smallButton('Näytä', 'Näytä kohta tekstissä', () => reveal(finding.from, finding.to), { quiet: true })
+          actions: smallButton('Näytä', 'Näytä kohta tekstissä', () => reveal(finding.from, finding.to))
         }, e(Excerpt, { text, from: finding.from, to: finding.to })))));
+
+    // The count, the recommendations and the bulk button only when something is listed: a chapter with
+    // just the dash-line question shows the question alone (no "0 kohtaa" above it)
+    const listed = view.listed > 0;
+    const summary = (listed || waitingText) && e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+      listed && e('div', { className: 'faust-meta' }, count(view.listed, 'kohta')),
+      listed && view.recommendations > 0 && e('div', { className: 'faust-meta' }, `Suosituksia: ${formatCount(view.recommendations)}`),
+      listed && (fixes.length > 0 || waiting > 0) && blockButton(`Ehdota kaikki korjaukset (${formatCount(fixes.length)})`,
+        () => propose(withMeta(fixes, TYPOGRAPHY_META), text, TYPOGRAPHY_META),
+        { primary: true, disabled: waiting > 0 || fixes.length === 0, title: waitingText || undefined }),
+      waitingText && e('div', { className: 'faust-field__hint' }, waitingText));
 
     return e(React.Fragment, null,
       e(Section, { title: `Typografia: ${chapterTitle}` },
-        view.listed === 0 && !question
+        !listed && !question && !waitingText
           ? e(EmptyState, { size: 'compact', title: 'Ei huomautettavaa tässä luvussa.' })
-          : e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
-              e('div', { className: 'faust-meta' }, count(view.listed, 'kohta')),
-              view.recommendations > 0 && e('div', { className: 'faust-meta' }, `Suosituksia: ${formatCount(view.recommendations)}`),
-              (fixes.length > 0 || waiting > 0) && blockButton(`Ehdota kaikki korjaukset (${formatCount(fixes.length)})`,
-                () => propose(withMeta(fixes, TYPOGRAPHY_META), text, TYPOGRAPHY_META),
-                { primary: true, disabled: waiting > 0 || fixes.length === 0, title: waitingText || undefined }),
-              waitingText && e('div', { className: 'faust-field__hint' }, waitingText))),
+          : summary || null),
       question,
       view.groups.map(group => e(Section, {
         key: group.ruleId,
@@ -480,10 +505,12 @@ export function LanguagePanel(props) {
         group.findings.map(finding => e(ListRow, {
           key: finding.id,
           actions: [
-            e(React.Fragment, { key: 'show' }, smallButton('Näytä', 'Näytä kohta tekstissä', () => reveal(finding.from, finding.to), { quiet: true })),
+            e(React.Fragment, { key: 'show' }, smallButton('Näytä', 'Näytä kohta tekstissä', () => reveal(finding.from, finding.to))),
             finding.fix && e(React.Fragment, { key: 'fix' }, smallButton('Ehdota', 'Ehdota tätä korjausta', () => proposeOne(finding), { disabled: fixWaits(finding) }))
           ]
-        }, e(Excerpt, { text, from: finding.from, to: finding.to }))))));
+        },
+          e(Excerpt, { text, from: finding.from, to: finding.to }),
+          !finding.fix && finding.ruleId === 'paivays-jarjestyspiste' && e('span', { className: 'faust-row__meta' }, NO_FIX_AT_LINE_START))))));
   };
 
   const typographyFoot = () => (finnish && others.length > 0
@@ -534,11 +561,12 @@ export function LanguagePanel(props) {
         e('label', { className: 'faust-check' },
           e('input', { type: 'checkbox', checked: proofOptions.skipQuoteLines !== false, onChange: (ev) => setProofread({ skipQuoteLines: ev.target.checked }) }),
           'Ohita lainausrivit (>)'),
-        e('div', { style: { display: 'flex', flexDirection: 'column' } },
-          e('label', { className: 'faust-check' },
-            e('input', { type: 'checkbox', checked: proofOptions.skipDialogue === true, onChange: (ev) => setProofread({ skipDialogue: ev.target.checked }) }),
-            'Ohita vuorosanat'),
-          e('div', { className: 'faust-field__hint' }, 'Vuorosanaviivalla alkavat rivit jätetään pois, eikä lainausmerkkien sisällä olevaa tekstiä muuteta.')),
+        // The hint belongs to the checkbox's label (VF-22): under its text, read with it
+        e('label', { className: 'faust-check' },
+          e('input', { type: 'checkbox', checked: proofOptions.skipDialogue === true, onChange: (ev) => setProofread({ skipDialogue: ev.target.checked }) }),
+          e('span', { style: { display: 'flex', flexDirection: 'column' } },
+            'Ohita vuorosanat',
+            e('span', { className: 'faust-check__hint', style: { marginLeft: 0 } }, 'Vuorosanaviivalla alkavat rivit jätetään pois, eikä lainausmerkkien sisällä olevaa tekstiä muuteta.'))),
         e(Field, { label: 'Tahallista / huomioi' },
           e('textarea', {
             className: 'faust-textarea faust-textarea--author',
@@ -582,7 +610,7 @@ export function LanguagePanel(props) {
     const mine = run.groupId ? pending.filter(item => item.groupId === run.groupId) : [];
     const dialogue = mine.filter(item => item.meta && item.meta.dialogue === true).length;
     const bulk = mine.length - dialogue;
-    const summary = summaryLine({ status: result.status, corrections: totals.corrections, setAside: totals.setAside });
+    const summary = runSummary({ ...totals, status: result.status });
     const failures = (result.failedBatches || []).map(failure => `Erä ${formatCount(failure.index + 1)} epäonnistui: ${reasonOf(failure.message)}.`);
     const stoppedEarly = result.status === 'stopped' || result.status === 'failed';
     const place = stoppedEarly ? resumePlace(text, result.resumeLine) : null;
@@ -590,7 +618,15 @@ export function LanguagePanel(props) {
 
     const rewritten = totals.setAside.filter(entry => entry.reason === 'rewritten');
     const elsewhere = totals.setAside.filter(entry => entry.reason !== 'rewritten');
-    const suggestAnyway = (entry) => propose(setAsideChanges(entry, entry, textDeps), entry.baseText, PROOFREAD_META, run.groupId);
+    // Into the run's group; when no batch placed a change the run has none yet, and the first of these
+    // proposals makes it, so Hyväksy loput, Hylkää loput and the dialogue line count them
+    const suggestAnyway = (entry) => {
+      const res = propose(setAsideChanges(entry, entry, textDeps), entry.baseText, PROOFREAD_META, run.groupId);
+      if (!run.groupId && res && res.groupId) {
+        const groupId = res.groupId;
+        setRun(current => (current && current.chapterId === run.chapterId && !current.groupId ? { ...current, groupId } : current));
+      }
+    };
 
     return e(React.Fragment, null,
       e(Section, { title: `Kielenhuolto: ${chapterTitle}` },
@@ -616,7 +652,7 @@ export function LanguagePanel(props) {
         rewritten.map((entry, i) => e(ListRow, {
           key: entry.key + ':' + i,
           actions: [
-            e(React.Fragment, { key: 'show' }, smallButton('Näytä', 'Näytä kohta tekstissä', () => revealPassage(entry.original, entry.from), { quiet: true })),
+            e(React.Fragment, { key: 'show' }, smallButton('Näytä', 'Näytä kohta tekstissä', () => revealPassage(entry.original, entry.from))),
             e(React.Fragment, { key: 'fix' }, smallButton('Ehdota silti', null, () => suggestAnyway(entry)))
           ]
         },
@@ -626,12 +662,12 @@ export function LanguagePanel(props) {
         elsewhere.map((entry, i) => e(ListRow, {
           key: entry.key + ':' + i,
           actions: [
-            e(React.Fragment, { key: 'show' }, smallButton('Näytä', 'Näytä kohta tekstissä', () => revealPassage(entry.original, entry.from), { quiet: true })),
+            e(React.Fragment, { key: 'show' }, smallButton('Näytä', 'Näytä kohta tekstissä', () => revealPassage(entry.original, entry.from))),
             entry.reason === 'suspect' && e(React.Fragment, { key: 'fix' }, smallButton('Ehdota silti', null, () => suggestAnyway(entry)))
           ]
         },
           e('span', { className: 'faust-quote' }, entry.original.length > 80 ? entry.original.slice(0, 80) + '…' : entry.original),
-          e('span', { className: 'faust-row__meta' }, SET_ASIDE_REASONS[entry.reason] || entry.reason)))),
+          e('span', { className: 'faust-row__meta' }, setAsideReason(entry))))),
     );
   };
 
@@ -698,10 +734,10 @@ export function LanguagePanel(props) {
         words.map(row => e(ListRow, {
           key: row.word,
           actions: [
-            e(React.Fragment, { key: 'show' }, smallButton('Näytä', 'Näytä kohta tekstissä', () => showFinding(row.first), { quiet: true })),
+            e(React.Fragment, { key: 'show' }, smallButton('Näytä', 'Näytä kohta tekstissä', () => showFinding(row.first))),
             ...row.suggestions.map(suggestion => e(React.Fragment, { key: 's:' + suggestion },
               smallButton(`Ehdota: ${suggestion}`, null, () => offer(row.first, suggestion)))),
-            e(React.Fragment, { key: 'skip' }, smallButton('Ohita sana', null, () => setIgnored(prev => new Set([...prev, row.word])), { quiet: true }))
+            e(React.Fragment, { key: 'skip' }, smallButton('Ohita sana', null, () => setIgnored(prev => new Set([...prev, row.word]))))
           ]
         }, e('span', { className: 'faust-quote' }, row.count > 1 ? `${row.word} ×${formatCount(row.count)}` : row.word)))),
       mine && mine.status === 'done' && (grammar.length > 0 || !voikko.hasGrammar) && e(Section, { title: `Kielioppi (${formatCount(grammar.length)})` },
@@ -710,7 +746,7 @@ export function LanguagePanel(props) {
           : grammar.map(finding => e(ListRow, {
             key: finding.id,
             actions: [
-              e(React.Fragment, { key: 'show' }, smallButton('Näytä', 'Näytä kohta tekstissä', () => showFinding(finding), { quiet: true })),
+              e(React.Fragment, { key: 'show' }, smallButton('Näytä', 'Näytä kohta tekstissä', () => showFinding(finding))),
               finding.suggestions && finding.suggestions[0] !== undefined && e(React.Fragment, { key: 'fix' },
                 smallButton(`Ehdota: ${finding.suggestions[0]}`, null, () => offer(finding, finding.suggestions[0])))
             ]
@@ -725,7 +761,7 @@ export function LanguagePanel(props) {
                 e('input', { className: 'faust-input faust-input--sm', value: baseForm.name, onChange: (ev) => setBaseForm({ ...baseForm, name: ev.target.value, result: null }) })),
               e(Field, { label: 'Vartalo (valinnainen)' },
                 e('input', { className: 'faust-input faust-input--sm', value: baseForm.stem, onChange: (ev) => setBaseForm({ ...baseForm, stem: ev.target.value, result: null }) })),
-              blockButton('Vertaa', compareBaseForms, { disabled: baseForm.busy || !baseForm.name.trim(), busy: baseForm.busy }),
+              e('div', null, smallButton('Vertaa', null, compareBaseForms, { disabled: baseForm.busy || !baseForm.name.trim() })),
               baseForm.result && baseForm.result.error && e(Callout, { role: 'error' }, `Voikon ajo epäonnistui: ${baseForm.result.error}.`),
               baseForm.result && baseForm.result.unknown && e(Callout, { role: 'hint' }, 'Voikko ei tunne tätä sanaa, joten perusmuotohaku ei löydä sitä.'),
               baseForm.result && baseForm.result.byLemma && e('div', { className: 'faust-meta' },

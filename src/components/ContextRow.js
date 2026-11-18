@@ -262,6 +262,16 @@ export function useContextPreview(args = {}) {
   const taskId = taskIdOf(task);
   const [exclude, setExclude] = useState(() => (taskId ? getContextSession().getExclude(taskId) : []));
   const [include, setInclude] = useState([]);
+  // The parts the author switched off are remembered per task (contracts 6, context.exclude). A host
+  // that is mounted before it has a task (Kielen työkalut stays mounted while closed, from before the
+  // settings are loaded) reads them when the task's id appears, and again for another task; the same
+  // id coming back keeps what was chosen meanwhile
+  const [readFor, setReadFor] = useState(taskId);
+  if (taskId && taskId !== readFor) {
+    setReadFor(taskId);
+    setExclude(getContextSession().getExclude(taskId));
+    setInclude([]);
+  }
   const spec = isRecord(task) ? task : null;
   const from = selection ? (selection.from ?? selection.start) : null;
   const to = selection ? (selection.to ?? selection.end) : null;

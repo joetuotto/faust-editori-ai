@@ -39,10 +39,9 @@ import { SmartTypingSwitch, LineStartDashSelect } from './src/components/Typogra
 import { explainChange } from './src/services/ai/proofreadPass.js';
 import { createWordCheck } from './src/services/language/wordCheck.js';
 import { getContextSession } from './src/services/ai/contextSession.js';
-import { splitBlocks } from './src/editor/blocks.js';
-import { batchParagraphs } from './src/services/ai/batchParagraphs.js';
-import { maskSpans, unmaskSpans, placeholderInstruction } from './src/services/ai/maskSpans.js';
-import { trimToSentence, splitSentences } from './src/editor/sentences.js';
+// The text functions Kielenhuolto and Miksi? work with (lines, masking, batches, diff, sentences), handed
+// to them as one object so the pure modules have no hard-wired paths; the Cmd+K chip takes the same one
+import { TEXT_DEPS as textDeps } from './src/services/language/languageTools.js';
 import {
   TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog, CollectionDialog,
   shortcut, shortcutKeys, count, countParts
@@ -228,10 +227,6 @@ const LEAVES_FOCUS = [
   // I-06: the four doors of Kielen työkalut
   'check-typography', 'proofread-chapter', 'voikko-check-chapter', 'voikko-help'
 ];
-
-// The text functions Kielenhuolto and Miksi? work with (lines, masking, batches, diff, sentences),
-// handed to them as one object so the pure modules have no hard-wired paths (stage I-06)
-const textDeps = { splitBlocks, batchParagraphs, maskSpans, unmaskSpans, placeholderInstruction, wordDiff, changeRatio, trimToSentence, splitSentences };
 
 // 16.11.2026 klo 14.32
 const formatDateTimeFi = (value) => {

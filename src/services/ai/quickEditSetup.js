@@ -35,11 +35,11 @@ import { getSettingsStore } from '../settingsStore.js';
 import { modelLabel } from '../format.fi.js';
 import { projectKind, folderName } from '../story/codex.js';
 import { wordDiff, changeRatio } from '../../editor/wordDiff.js';
-import { trimToSentence, splitSentences } from '../../editor/sentences.js';
+import { trimToSentence } from '../../editor/sentences.js';
 import { splitBlocks, blockAt } from '../../editor/blocks.js';
-import { batchParagraphs } from './batchParagraphs.js';
 import { createProofreadSelection, proofBudget } from './proofreadPass.js';
 import { normaliseModelText, effectiveLineStartDash } from '../../editor/typography.fi.js';
+import { TEXT_DEPS } from '../language/languageTools.js';
 import { openPrompt, updatePrompt, closePrompt, getPrompt, focusPrompt } from '../../editor/inlinePrompt.js';
 import { mountContextRow, manualChoicesFor } from '../../components/ContextRow.js';
 
@@ -284,16 +284,20 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
 
   // The chip's Kielenhuolto: one job, one pipeline, one name (brief I-06 step 7). Its build goes through
   // context.build, so the prompt's row shows each batch's request and its lists apply to the batches.
-  const proofTextDeps = { splitBlocks, batchParagraphs, maskSpans, unmaskSpans, placeholderInstruction, wordDiff, changeRatio, trimToSentence, splitSentences };
   const proofreadSelection = createProofreadSelection({
     getProject,
-    textDeps: proofTextDeps,
+    textDeps: TEXT_DEPS,
     build: (task, { chapterId, text: runText, model }) => context.build({ task: { ...task, instructionLabel: 'ohje' }, project: getProject(), chapterId, text: runText, role: 'edit', model, answerTokens: task.answerTokens }),
     request: (opts) => client.requestEdit({ role: 'edit', ...opts }),
-    // Read when the chip runs: the checker's status was awaited by wordCheck.refresh() at start
+    // Which checker answers is looked up when the batch is checked, as in the panel: the system checker
+    // answers only while Työkalut ▸ Oikoluku is on, and the switch may have changed since the app started
     getCheckWords: () => {
       const check = typeof getWordCheck === 'function' ? getWordCheck() : null;
-      return check && typeof check.current === 'function' ? check.current() : undefined;
+      if (!check || typeof check.current !== 'function') return undefined;
+      return (words) => Promise.resolve(typeof check.refresh === 'function' ? check.refresh() : null).then(() => {
+        const current = check.current();
+        return current ? current(words) : undefined;
+      });
     },
     getBudget: (model) => proofBudget({ promptBudgetChars: ai.budgetFor(model || ai.modelFor('edit'), 0).promptBudgetChars }),
     dashDialogue: (project) => effectiveLineStartDash(project || {}) === 'dialogue'

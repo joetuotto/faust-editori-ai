@@ -63,7 +63,8 @@ const DEFAULT_DEPS = {
   wordDiff: () => require('../../editor/wordDiff.js').wordDiff,
   changeRatio: () => require('../../editor/wordDiff.js').changeRatio,
   trimToSentence: () => require('../../editor/sentences.js').trimToSentence,
-  splitSentences: () => require('../../editor/sentences.js').splitSentences
+  splitSentences: () => require('../../editor/sentences.js').splitSentences,
+  stripTodos: () => require('./contextBuilder.js').stripTodos
 };
 
 function dep(deps, name) {
@@ -959,10 +960,20 @@ async function runProofread(params) {
 const EXPLAIN_SYSTEM = 'Olet suomen kielen oikolukija. Perustele yksi tekstiin tehty korjaus yhdellä lyhyellä suomenkielisellä virkkeellä. Älä ehdota muita muutoksia äläkä toista tekstiä.';
 
 /**
- * The small request behind "Miksi?".
+ * The small request behind "Miksi?". The model reads the line, so its [TODO: …] notes stay home, as
+ * they do in every read-only context (stripTodos of the context builder): the run itself sent the line
+ * with its notes masked, and the change never touches a note.
+ * @param {{original: string, revised: string, before: string, after: string}} fields
+ * @param {object} [deps] stripTodos (else the context builder's)
  * @returns {{system: string, messages: Array, maxTokens: 300, temperature: 0}}
  */
-function buildExplainRequest({ original, revised, before, after }) {
+function buildExplainRequest(fields, deps) {
+  const strip = dep(deps, 'stripTodos');
+  const clean = (value) => strip(String(value == null ? '' : value));
+  const original = clean(fields.original);
+  const revised = clean(fields.revised);
+  const before = clean(fields.before);
+  const after = clean(fields.after);
   let change = `Muutos: ”${before}” → ”${after}”`;
   if (!before) change = `Muutos: lisätty ”${after}”`;
   else if (!after) change = `Muutos: poistettu ”${before}”`;
@@ -1023,7 +1034,7 @@ async function explainChange({ original, revised, before, after, request, signal
   let handle;
   try {
     handle = request({
-      ...buildExplainRequest({ original, revised, before, after }),
+      ...buildExplainRequest({ original, revised, before, after }, deps),
       thinking: 'off',
       meta: { action: 'proofread-explain', actionLabel: 'Miksi?', instruction: '' }
     });

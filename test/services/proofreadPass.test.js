@@ -1493,6 +1493,39 @@ describe('"Miksi?"', () => {
     expect(buildExplainRequest(CHANGE).messages[0].content.split('\n')[2]).toBe('Muutos: lisätty ”,”');
     expect(buildExplainRequest({ original: 'a, b', revised: 'a b', before: ',', after: '' }).messages[0].content.split('\n')[2]).toBe('Muutos: poistettu ”,”');
   });
+
+  test('Miksi? never sends a [TODO: …] note of the line, which the run itself kept home (I-06 review)', async () => {
+    const text = 'Otsikko\n\nHän sanoi että satoi [TODO: salainen muistiinpano kustantajalle] ja oli kylmä.\n';
+    const { calls, changes } = await run(text, fixing(addComma));
+    // The run masked the note
+    expect(JSON.stringify(calls)).not.toContain('salainen muistiinpano');
+    expect(changes).toHaveLength(1);
+    const change = changes[0];
+    // meta.line holds the author's line as it is (the bar shows it); the request is what must not
+    expect(change.meta.line.original).toContain('[TODO: salainen muistiinpano kustantajalle]');
+
+    // As app.js asks it: the line's original and revised text, the change's two sides
+    const model = plainRequest('Että-sivulauseen eteen tulee pilkku.');
+    const answer = await explainChange({
+      original: change.meta.line.original,
+      revised: change.meta.line.revised,
+      before: change.original,
+      after: change.insert,
+      request: model.request,
+      deps
+    });
+    expect(answer.ok).toBe(true);
+    const sent = JSON.stringify(model.calls[0]);
+    expect(sent).not.toContain('salainen muistiinpano');
+    expect(sent).not.toContain('[TODO:');
+    expect(model.calls[0].messages[0].content).toBe(
+      'Alkuperäinen rivi: Hän sanoi että satoi ja oli kylmä.\nKorjattu rivi: Hän sanoi, että satoi ja oli kylmä.\nMuutos: lisätty ”,”\nMiksi tämä muutos tehtiin?'
+    );
+    // An injected stripTodos is used
+    const stripTodos = jest.fn((value) => value.replace(/\[TODO:[^\]\n]*\]/g, '[muistutus]'));
+    expect(buildExplainRequest({ original: 'a [TODO: x] b', revised: 'a, [TODO: x] b', before: '', after: ',' }, { stripTodos }).messages[0].content.split('\n')[0])
+      .toBe('Alkuperäinen rivi: a [muistutus] b');
+  });
 });
 
 describe('summary and the model caveat', () => {

@@ -990,6 +990,11 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-langpanel .faust-section__title > .faust-chip { margin-left: var(--sp-1); vertical-align: 1px; }
 /* The callout's buttons take its width (Luettelo vai vuorosana?, the install box of Voikko) */
 .faust-langpanel .faust-callout__actions { flex-direction: column; }
+/* A row's meta is its message (a set-aside reason, the line-start date note): it wraps under the excerpt
+   instead of ending in an ellipsis */
+.faust-langpanel .faust-row--static .faust-row__meta { display: block; white-space: normal; overflow: visible; text-overflow: clip; }
+/* Muut luvut of a long manuscript never takes the tab: the foot scrolls on its own past a third of the panel */
+.faust-langpanel .faust-panel__foot { max-height: 35%; overflow-y: auto; overscroll-behavior: contain; }
 /* end I-06 */
 
 /* ============ 14 Editor (CodeMirror) ============

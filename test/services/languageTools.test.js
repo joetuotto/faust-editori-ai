@@ -3,7 +3,8 @@
 // The text functions are P-01's real modules, so the batching is the one a run uses.
 
 const {
-  SET_ASIDE_REASONS, languageName, typographyView, excerptAround, proofPlan, batchNumberOf, notRunText,
+  TEXT_DEPS, TYPOGRAPHY_META, VOIKKO_META, PROOFREAD_META, SET_ASIDE_REASONS, setAsideReason, runSummary,
+  languageName, typographyView, excerptAround, proofPlan, batchNumberOf, notRunText,
   resumePlace, locatePassage, setAsideChanges, voikkoWordRows, voikkoChange
 } = require('../../src/services/language/languageTools');
 const { checkTypography } = require('../../src/editor/typography.fi');
@@ -137,6 +138,59 @@ describe('Kielenhuolto runs', () => {
     expect(SET_ASIDE_REASONS.moved).toBe('Rivi muuttui ajon aikana');
     expect(SET_ASIDE_REASONS.protected).toBe('Muutos olisi koskenut muistutusta tai alleviivausta');
     expect(SET_ASIDE_REASONS.suspect).toBe('Malli vaihtoi tunnetun sanan tuntemattomaan');
+  });
+
+  test('a line the structure guard set aside names the structure, not a note, when its notes came back unchanged (I-06 review)', async () => {
+    // The model put the full stop after a line-start day number: the line would become a numbered list
+    const text = 'Alku.\n16 marraskuuta oli kylmä [TODO: tarkista päivä].\nHän sanoi että tulee <u>huomenna</u>.';
+    const reply = (opts) => opts.original.split('\n').map((line) => line
+      .replace('16 marraskuuta', '16. marraskuuta')
+      .replace('sanoi että', 'sanoi, että')).join('\n');
+    const request = (opts) => ({
+      result: Promise.resolve({ ok: true, accepted: true, cancelled: false, inner: reply(opts), text: '', model: 'm', logMeta: {} }),
+      cancel() {}
+    });
+    const result = await runProofread({ text, deps, meta: { chapterId: 'c' }, request, onBatch: () => ({ skipped: [] }) });
+    const aside = result.setAside.find(entry => entry.original.startsWith('16 marraskuuta'));
+    expect(aside).toMatchObject({ reason: 'protected', revised: '16. marraskuuta oli kylmä [TODO: tarkista päivä].' });
+    expect(setAsideReason(aside)).toBe('Muutos olisi tehnyt rivistä luettelon tai otsikon');
+    // The comma of the third line was proposed
+    expect(result.corrections).toBe(1);
+
+    // A change that would rewrite a note or a tag keeps the run's own reason
+    expect(setAsideReason({ reason: 'protected', original: 'a [TODO: x] b', revised: 'a [TODO: y] b' })).toBe(SET_ASIDE_REASONS.protected);
+    expect(setAsideReason({ reason: 'protected', original: 'a <u>b</u>', revised: 'a b' })).toBe(SET_ASIDE_REASONS.protected);
+    expect(setAsideReason({ reason: 'protected', original: 'a', revised: null })).toBe(SET_ASIDE_REASONS.protected);
+    // Every other reason reads as before
+    expect(setAsideReason({ reason: 'moved', original: 'a', revised: 'b' })).toBe('Rivi muuttui ajon aikana');
+  });
+
+  test('runSummary says that a run stopped or failed before any answer, not that nothing needed correcting (I-06 review)', () => {
+    const none = { corrections: 0, setAside: [], linesUnchanged: 0, linesChanged: 0, linesSent: 10 };
+    expect(runSummary({ ...none, status: 'stopped' })).toBe('Pysäytetty ennen ensimmäistä vastausta.');
+    expect(runSummary({ ...none, status: 'failed' })).toBe('Keskeytyi virheeseen ennen ensimmäistä vastausta.');
+    // A finished run that found nothing, and runs with answers, keep summaryLine
+    expect(runSummary({ ...none, status: 'done' })).toBe('Ei korjattavaa');
+    expect(runSummary({ ...none, status: 'stopped', linesUnchanged: 10 })).toBe('Pysäytetty: Ei korjattavaa');
+    expect(runSummary({ ...none, status: 'stopped', corrections: 4, linesChanged: 3, setAside: [{}] })).toBe('Pysäytetty: 4 korjausta, 1 rivi ohitettu');
+    expect(runSummary({ ...none, status: 'failed', setAside: [{}, {}] })).toBe('Keskeytyi virheeseen: Ei korjattavaa, 2 riviä ohitettu');
+  });
+});
+
+describe('what the panel and the chip share', () => {
+  test('TEXT_DEPS holds every text function a run and Miksi? take, as functions', () => {
+    expect(Object.keys(TEXT_DEPS).sort()).toEqual(Object.keys(deps).sort());
+    for (const [name, fn] of Object.entries(TEXT_DEPS)) expect([name, typeof fn]).toEqual([name, 'function']);
+    expect(TEXT_DEPS.splitBlocks).toBe(splitBlocks);
+    expect(TEXT_DEPS.wordDiff).toBe(wordDiff);
+  });
+
+  test('the three metas are the contract\'s, and the Voikko and set-aside proposals use them', () => {
+    const local = { instruction: '', provider: null, model: null, requestLogId: null };
+    expect(TYPOGRAPHY_META).toEqual({ source: 'local', action: 'typography', actionLabel: 'Typografia', ...local });
+    expect(VOIKKO_META).toEqual({ source: 'local', action: 'voikko', actionLabel: 'Voikko', ...local });
+    expect(PROOFREAD_META).toEqual({ source: 'faust', action: 'proofread', actionLabel: 'Kielenhuolto', ...local });
+    expect(voikkoChange({ from: 0, to: 1, quote: 'a' }, 'b').meta).toEqual(VOIKKO_META);
   });
 });
 

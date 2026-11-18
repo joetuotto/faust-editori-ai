@@ -369,6 +369,17 @@ describe('smartReplace', () => {
     expect(typed('Hän odotti...')).toBe('Hän odotti...');
   });
 
+  test('a mark typed inside a web address stays as typed, as the checker leaves it (I-06 review)', () => {
+    // An apostrophe and "--" inside an address are part of it
+    expect(typed("Katso www.x.fi/'b' ja https://esim.fi/?q=a--b tästä.")).toBe("Katso www.x.fi/'b' ja https://esim.fi/?q=a--b tästä.");
+    expect(rulesOf("Katso www.x.fi/'b ja https://esim.fi/?q=a--b tästä.")).toEqual([]);
+    // A quotation mark is never part of an address: around one it is converted, as the checker asks
+    expect(typed('Osoite "https://esim.fi/a" tässä.')).toBe('Osoite ”https://esim.fi/a” tässä.');
+    expect(typed('Osoite https://esim.fi/"a"')).toBe('Osoite https://esim.fi/”a”');
+    // After the address, prose again
+    expect(typed("www.x.fi -- ja vaa'n")).toBe('www.x.fi – ja vaa’n');
+  });
+
   test('a caret outside the line gives null', () => {
     expect(smartReplace('"', 0, ON)).toBeNull();
     expect(smartReplace('"', 5, ON)).toBeNull();
@@ -643,10 +654,33 @@ describe('checkTypography', () => {
   test('paivays-jarjestyspiste: 16 marraskuuta 2026; vuoden 2025 marraskuuta gives none', () => {
     expect(findingsOf('Hän tuli 16 marraskuuta 2026.', 'paivays-jarjestyspiste').map(f => [f.quote, f.fix]))
       .toEqual([['16 marraskuuta', { from: 11, to: 11, insert: '.' }]]);
-    expect(fixed('3 toukokuuta ja 24 joulukuuta')).toBe('3. toukokuuta ja 24. joulukuuta');
+    expect(fixed('Välillä 3 toukokuuta ja 24 joulukuuta')).toBe('Välillä 3. toukokuuta ja 24. joulukuuta');
     expect(rulesOf('vuoden 2025 marraskuuta')).toEqual([]);
     expect(rulesOf('16. marraskuuta')).toEqual([]);
     expect(rulesOf('kolme toukokuuta')).toEqual([]);
+  });
+
+  test('paivays-jarjestyspiste at the start of a line is listed without a fix: the full stop would make the line a numbered list (I-06 review)', () => {
+    const { splitBlocks } = require('../../src/editor/blocks');
+    const { parseBlocks } = require('../../utils/manuscript');
+    // What the fix would have written is item 1 of a numbered list, in the editor and in every export
+    // (the day number is lost: the export numbers the item itself)
+    expect(splitBlocks('16. marraskuuta oli kylmä.')[0]).toMatchObject({ kind: 'list', ordered: true });
+    expect(parseBlocks('16. marraskuuta oli kylmä.')).toEqual([{ type: 'list', ordered: true, items: [[{ text: 'marraskuuta oli kylmä.' }]] }]);
+
+    for (const line of ['16 marraskuuta oli kylmä.', '  3 toukokuuta alkoi sade.']) {
+      const findings = findingsOf(line, 'paivays-jarjestyspiste');
+      expect(findings).toHaveLength(1);
+      expect(findings[0].fix).toBeNull();
+      // Neither "Ehdota kaikki korjaukset" nor the finding's own Ehdota can propose it
+      expect(fixesFor(checkTypography(line), { levels: ['normi', 'suositus'] })).toEqual([]);
+    }
+    // Later in the line the fix stays, and so does the next line's
+    expect(fixed('3 toukokuuta ja 24 joulukuuta')).toBe('3 toukokuuta ja 24. joulukuuta');
+    const text = 'Ensin.\n16 marraskuuta oli kylmä, 17 marraskuuta lämmin.';
+    const changes = fixesFor(checkTypography(text));
+    expect(apply(text, changes)).toBe('Ensin.\n16 marraskuuta oli kylmä, 17. marraskuuta lämmin.');
+    expect(splitBlocks(apply(text, changes)).map(block => block.kind)).toEqual(['paragraph', 'paragraph']);
   });
 
   test('kellonaika-kaksoispiste: kello 16:30, klo 9:15; Joh. 3:16 and kello 25:99 give none', () => {

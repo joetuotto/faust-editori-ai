@@ -122,6 +122,9 @@ function smartReplace(line, col, options) {
   const text = String(line == null ? '' : line);
   if (!(col >= 1) || col > text.length) return null;
   if (insideRanges(protectedRanges(text), col - 1)) return null;
+  // Inside a web address the mark is part of the address, as the checker reads it ("--" or an apostrophe
+  // in a path). While it is typed the address has no end yet, so the whole token counts
+  if (insideRanges(addressTokens(text), col - 1)) return null;
 
   const ch = text[col - 1];
   const before = text.slice(0, col);
@@ -419,6 +422,12 @@ function addressRanges(line) {
   return ranges;
 }
 
+// The same addresses with whatever is attached to them: smart typing sees an address while it is being
+// typed, when a trailing apostrophe or hyphen may still be followed by more of it
+function addressTokens(line) {
+  return [...line.matchAll(ADDRESS)].map(match => [match.index, match.index + match[0].length]);
+}
+
 // Every rule returns hits as { from, to, fix, convert? } in offsets of the
 // line: from/to are the characters to show, fix is the change to propose
 const CHECKS = [
@@ -496,9 +505,12 @@ const CHECKS = [
       { from: m.index, to: m.index + m[0].length, fix: replaceAt(m.index, m.index + m[0].length, normal) }
     ))],
 
+  // At the start of a line the full stop would make the line a numbered list item ("16. marraskuuta …"
+  // is read, shown and exported as item 1 of a list), so there the finding has no fix
   ['paivays-jarjestyspiste', (line) => [...line.matchAll(DAY_BEFORE_MONTH)].map((m) => {
     const afterNumber = m.index + m[1].length;
-    return { from: m.index, to: m.index + m[0].length, fix: replaceAt(afterNumber, afterNumber, '.') };
+    const lineStart = line.slice(0, m.index).trim() === '';
+    return { from: m.index, to: m.index + m[0].length, fix: lineStart ? null : replaceAt(afterNumber, afterNumber, '.') };
   })],
 
   // "Joh. 3:16" and "kello 8:05:30" do not match

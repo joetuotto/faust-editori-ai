@@ -60,7 +60,7 @@ const MODULES = {
   'src/services/ai/proofreadModelNotes.js': ['testedAt', 'ownText', 'scope', 'typography', 'models'],
   'src/services/language/wordCheck.js': ['createWordCheck'],
   // Stage I-06: the decisions of Kielen työkalut that need no React (src/components/LanguagePanel.js)
-  'src/services/language/languageTools.js': ['SET_ASIDE_REASONS', 'languageName', 'typographyView', 'excerptAround', 'proofPlan', 'batchNumberOf', 'notRunText', 'resumePlace', 'locatePassage', 'setAsideChanges', 'voikkoWordRows', 'voikkoChange'],
+  'src/services/language/languageTools.js': ['TEXT_DEPS', 'TYPOGRAPHY_META', 'VOIKKO_META', 'PROOFREAD_META', 'SET_ASIDE_REASONS', 'setAsideReason', 'runSummary', 'languageName', 'typographyView', 'excerptAround', 'proofPlan', 'batchNumberOf', 'notRunText', 'resumePlace', 'locatePassage', 'setAsideChanges', 'voikkoWordRows', 'voikkoChange'],
   'src/editor/smartTypingCore.js': ['createSmartTypingKit'],
   'utils/voikko.js': ['createVoikko', 'parseSpellOutput', 'parseGrammarOutput', 'parseSuggestions', 'codePointToUtf16', 'sanitizeLine', 'CANDIDATE_DIRS', 'GC_ARG_SETS'],
   'src/services/language/voikkoCheck.js': ['tokenizeWords', 'buildVoikkoInput', 'voikkoFindings', 'nameHits'],

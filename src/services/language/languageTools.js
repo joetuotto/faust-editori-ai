@@ -8,10 +8,27 @@
  * set aside, where a passage of an earlier text stands now, and the Voikko rows and changes.
  *
  * Pure CommonJS module: no DOM, no React. The text functions (splitBlocks, maskSpans, batchParagraphs,
- * wordDiff) are injected as `deps`, as in proofreadPass.js.
+ * wordDiff) are injected as `deps`, as in proofreadPass.js; TEXT_DEPS is the one set of them that the app
+ * (Kielenhuolto, Miksi?) and the Cmd+K chip hand over.
  */
 const { TYPOGRAPHY_RULES, isDialogueLine, quoteSpans } = require('../../editor/typography.fi.js');
-const { selectProofLines, locateLines } = require('../ai/proofreadPass.js');
+const { selectProofLines, locateLines, summaryLine } = require('../ai/proofreadPass.js');
+const { splitBlocks } = require('../../editor/blocks.js');
+const { batchParagraphs } = require('../ai/batchParagraphs.js');
+const { maskSpans, unmaskSpans, placeholderInstruction } = require('../ai/maskSpans.js');
+const { wordDiff, changeRatio } = require('../../editor/wordDiff.js');
+const { trimToSentence, splitSentences } = require('../../editor/sentences.js');
+const { TODO_PATTERN_SOURCE } = require('../../editor/textTools.js');
+
+/** The text functions Kielenhuolto and Miksi? work with, as one object (proofreadPass.js `deps`). */
+const TEXT_DEPS = Object.freeze({ splitBlocks, batchParagraphs, maskSpans, unmaskSpans, placeholderInstruction, wordDiff, changeRatio, trimToSentence, splitSentences });
+
+// The meta of each kind of proposal the panel makes (contracts 1.1): the local tools are never logged
+const LOCAL_META = { instruction: '', provider: null, model: null, requestLogId: null };
+const TYPOGRAPHY_META = Object.freeze({ source: 'local', action: 'typography', actionLabel: 'Typografia', ...LOCAL_META });
+const VOIKKO_META = Object.freeze({ source: 'local', action: 'voikko', actionLabel: 'Voikko', ...LOCAL_META });
+// Kielenhuolto's group meta; every change of a run carries its own (model, runId, dialogue, line) too
+const PROOFREAD_META = Object.freeze({ source: 'faust', action: 'proofread', actionLabel: 'Kielenhuolto', ...LOCAL_META });
 
 // Why a line was set aside, in the panel's words (brief I-06 step 6, reconcile R-82)
 const SET_ASIDE_REASONS = {
@@ -23,8 +40,48 @@ const SET_ASIDE_REASONS = {
   truncated: 'Vastaus katkesi tämän rivin kohdalla',
   moved: 'Rivi muuttui ajon aikana',
   protected: 'Muutos olisi koskenut muistutusta tai alleviivausta',
-  suspect: 'Malli vaihtoi tunnetun sanan tuntemattomaan'
+  suspect: 'Malli vaihtoi tunnetun sanan tuntemattomaan',
+  // Not a reason of a ProofreadResult: the panel's name for a 'protected' line whose notes and
+  // underline tags the change left as they were (see setAsideReason)
+  structure: 'Muutos olisi tehnyt rivistä luettelon tai otsikon'
 };
+
+// The notes and underline tags of a line, in order (the run's structure guard compares the same);
+// the note pattern is the editor's one source (contracts rule 9)
+const NOTE_OR_TAG = new RegExp(`${TODO_PATTERN_SOURCE}|<\\/?u>`, 'g');
+const notesOf = (line) => JSON.stringify(String(line == null ? '' : line).match(NOTE_OR_TAG) || []);
+
+/**
+ * The sentence of a set-aside line. The run's guard sets a line aside as 'protected' when the change
+ * would alter a note, an underline tag or the line's structure (a list marker, a heading, a scene break,
+ * a quote line): when the line's notes and tags came back as they were, it was the structure, and the
+ * panel says so instead of naming a note ("16 marraskuuta" → "16. marraskuuta" at a line start).
+ * @param {{reason: string, original?: string, revised?: string|null}} entry SetAside
+ * @returns {string}
+ */
+function setAsideReason(entry) {
+  const reason = entry && entry.reason;
+  if (reason === 'protected' && typeof entry.revised === 'string' && notesOf(entry.original) === notesOf(entry.revised)) {
+    return SET_ASIDE_REASONS.structure;
+  }
+  return SET_ASIDE_REASONS[reason] || String(reason || '');
+}
+
+/**
+ * The first line of a run's result. A run that stopped or failed before any line was answered has
+ * checked nothing: it does not say "Ei korjattavaa" (nothing to correct) but that no answer came.
+ * @param {{status: string, corrections: number, setAside: Array, linesUnchanged: number, linesChanged: number}} totals
+ * @returns {string}
+ */
+function runSummary(totals) {
+  const value = totals || {};
+  const answered = (value.linesUnchanged || 0) + (value.linesChanged || 0) + (Array.isArray(value.setAside) ? value.setAside.length : 0);
+  if (answered === 0 && !(value.corrections > 0)) {
+    if (value.status === 'stopped') return 'Pysäytetty ennen ensimmäistä vastausta.';
+    if (value.status === 'failed') return 'Keskeytyi virheeseen ennen ensimmäistä vastausta.';
+  }
+  return summaryLine(value);
+}
 
 const LANGUAGE_NAMES = { fi: 'suomi', en: 'englanti', sv: 'ruotsi' };
 
@@ -196,13 +253,9 @@ function setAsideChanges(entry, run, deps) {
     insert: change.insert,
     original: typeof change.original === 'string' ? change.original : entry.original.slice(change.from, change.to),
     meta: {
-      source: 'faust',
-      action: 'proofread',
-      actionLabel: 'Kielenhuolto',
-      instruction: '',
+      ...PROOFREAD_META,
       provider: (run && run.provider) || null,
       model: (run && run.model) || null,
-      requestLogId: null,
       runId: (run && run.runId) || null,
       dialogue: dialogueLine || touches(quoted, change.from, change.to),
       line
@@ -234,12 +287,18 @@ function voikkoChange(finding, suggestion) {
     to: finding.to,
     insert: String(suggestion),
     original: finding.quote,
-    meta: { source: 'local', action: 'voikko', actionLabel: 'Voikko', instruction: '', provider: null, model: null, requestLogId: null }
+    meta: { ...VOIKKO_META }
   };
 }
 
 module.exports = {
+  TEXT_DEPS,
+  TYPOGRAPHY_META,
+  VOIKKO_META,
+  PROOFREAD_META,
   SET_ASIDE_REASONS,
+  setAsideReason,
+  runSummary,
   languageName,
   typographyView,
   excerptAround,
