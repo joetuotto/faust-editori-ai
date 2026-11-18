@@ -895,6 +895,53 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-dropzone { display: grid; place-items: center; min-height: 160px; padding: var(--sp-5); border: var(--bw) dashed var(--border-control); border-radius: var(--radius-md); color: var(--text-2); text-align: center; transition: background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
 .faust-dropzone.is-over { background: var(--accent-tint); border-color: var(--accent-line); border-style: solid; color: var(--text); }
 
+/* I-01: import preview */
+/* Tuonnin esikatselu (VF-21): the rows of a folder or a file in the wider left column, a rule, then
+   where they go and the selected row's text as a read-only editor on the paper. Both columns are
+   flex columns of their own; in the left one only the list scrolls (and the notices, past 30 %). */
+.faust-import--table { grid-template-columns: minmax(440px, 1.2fr) 1px minmax(0, 1fr);
+  /* include · number · handle · title · words · summary · move. The fixed columns fit their heading
+     (TUO beside the box, TIIVISTELMÄ after an 8px inset) in mono 11; the title takes the rest
+     (138px in the 1024px window, measured). */
+  --import-cols: 40px 24px 24px minmax(0, 1fr) 48px 92px 52px; }
+.faust-import__col { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; min-height: 0; }
+.faust-import__col--rows { padding: var(--sp-4) var(--sp-3) var(--sp-3) var(--dialog-pad); }
+.faust-import__col--target { gap: 0; }
+.faust-import__notices { flex: 0 1 auto; display: flex; flex-direction: column; gap: var(--sp-2); min-height: 0; }
+.faust-import__col--rows > .faust-import__notices { max-height: 30%; overflow-y: auto; }
+.faust-import__notice + .faust-import__notice { margin-top: var(--sp-1); }
+/* the head and every row share the columns; the row's own inset (sp-3) is taken back from the
+   column's, so a row's box stands on the dialog's left edge and its content on the title's */
+.faust-import__head, .faust-import__list > .faust-row { display: grid; grid-template-columns: var(--import-cols); column-gap: var(--sp-1); align-items: start; }
+.faust-import__head { flex: none; align-items: center; min-height: var(--h-sm); padding: 0 var(--sp-3); margin-left: calc(-1 * var(--sp-3)); }
+.faust-import--table .faust-import__list { flex: 1 1 auto; padding: 0; margin-left: calc(-1 * var(--sp-3)); }
+.faust-import__cell { display: flex; align-items: center; min-width: 0; min-height: var(--h-md); }
+.faust-import__head .faust-import__cell { min-height: 0; }
+.faust-import__all { gap: var(--sp-1); cursor: pointer; }
+.faust-import__count { justify-content: flex-end; text-align: right; }
+.faust-import__syn { padding-left: var(--sp-2); }
+.faust-import__meta { display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
+.faust-import__meta > .faust-row__meta { flex: 0 1 auto; min-width: 0; }
+.faust-import__grip { cursor: grab; }
+.faust-import__grip:active { cursor: grabbing; }
+/* an excluded row: the title field reads like the title (strike, --text-2); its running number is a dash, not struck */
+.faust-import .faust-row.is-excluded .faust-input { color: var(--text-2); text-decoration: line-through; text-decoration-color: var(--text-3); }
+.faust-import .faust-row.is-excluded .faust-import__num { text-decoration: none; }
+/* right column: the target section on the dialog surface, the text on the paper below it */
+.faust-import__target { flex: none; padding: var(--sp-4) var(--dialog-pad) var(--sp-4) var(--sp-5); }
+.faust-import__target .faust-section { display: flex; flex-direction: column; gap: var(--sp-2); padding-bottom: 0; }
+.faust-import__target .faust-section__head { margin-bottom: 0; }
+.faust-import__target .faust-field + .faust-check { margin-top: var(--sp-1); }
+.faust-import__choice > span { display: flex; flex-direction: column; }
+.faust-import__choice .faust-check__hint { margin-left: 0; }
+.faust-import--table .faust-import__preview { flex: 1 1 0; border-top: var(--bw) solid var(--rule); }
+.faust-import__preview .faust-editor-host { font-family: var(--font-serif); font-size: var(--ms-size); line-height: var(--ms-leading); color: var(--ink); }
+/* the empty state of a folder without chapter files: its sub-folders as buttons, under the notices */
+.faust-import__draft { margin-top: var(--sp-2); }
+.faust-dialog__body > .faust-import__notices { margin-top: var(--sp-2); }
+.faust-import__subfolders { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); margin-top: var(--sp-4); }
+/* end I-01 */
+
 /* ============ 14 Editor (CodeMirror) ============
  * Specificity (0,3,0) or more: at least one class more than the CodeMirror theme, which is
  * injected last, and two more than the highlight classes, so no !important is needed.

@@ -70,7 +70,9 @@ const MODULES = {
   'src/editor/reviewHighlightsCore.js': ['createReviewHighlightsKit'],
   'utils/importFolder.js': ['CHAPTER_EXTENSIONS', 'naturalCompare', 'fileStem', 'cleanImportTitle', 'pairSynopsisFiles', 'classifyEntries', 'readImportFolder', 'resolveSubfolder'],
   'src/services/project/importPlan.js': ['buildRows', 'hasOrderNumbers', 'applyStripNumbers', 'moveRow', 'renameRow', 'setRowIncluded', 'setAllIncluded', 'resetOrder', 'isReordered', 'summarizeRows', 'summaryLine', 'importButtonLabel', 'noticeLines', 'isBlankProject', 'buildSelection', 'buildChapterDocs', 'applyImport', 'replaceBlockedReason'],
-  'src/services/project/snapshots.js': ['buildSnapshot', 'addAutoSnapshot', 'pruneBulkSnapshots']
+  'src/services/project/snapshots.js': ['buildSnapshot', 'addAutoSnapshot', 'pruneBulkSnapshots'],
+  // contracts.md 2.2: existing files that a stage extended (I-01)
+  'utils/manuscript.js': ['decodeText', 'splitIntoChapters', 'importDocument']
 };
 
 // The editor cores: the factory is called with CodeMirror and must return these names.
@@ -143,8 +145,7 @@ const RETIRED_WORDINGS = [
 // the name exists: the stage that adds the name deletes the row and lists the name in MODULES (a case fails
 // on a stale row).
 const PENDING_EXPORTS = {
-  'src/editor/textTools.js': ['WORD_CHAR'], // src/editor/wordDiff.js
-  'utils/manuscript.js': ['decodeText'] // utils/importFolder.js
+  'src/editor/textTools.js': ['WORD_CHAR'] // src/editor/wordDiff.js
 };
 
 // Relative requires that may be absent or cannot be loaded under Jest (an optional module behind try/catch,

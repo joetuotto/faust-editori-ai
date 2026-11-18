@@ -15,18 +15,12 @@
 
 const { countWords } = require('../../editor/textTools.js');
 const { buildSnapshot } = require('./snapshots.js');
+const { formatCount } = require('../format.fi.js');
 
 const UNTITLED = 'Nimetön luku';
 
 // A longer list of sub-folder names is cut and the rest are counted
 const MAX_NAMED_SUBFOLDERS = 5;
-
-// STUB(src/services/format.fi.js#formatCount): replaced at I-01
-function formatCount(n) {
-  const value = typeof n === 'number' ? n : Number.NaN;
-  if (!Number.isFinite(value) || value < 0) return '0';
-  return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
-}
 
 // "1 luku", "31 lukua", "84 512 sanaa"
 const counted = (n, one, many) => `${formatCount(n)} ${n === 1 ? one : many}`;

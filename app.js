@@ -7,6 +7,8 @@
 import { AIProviderSettings } from './src/components/AIProviderSettings.js';
 import { FaustEditor, MANUSCRIPT_FONTS } from './src/components/FaustEditor.js';
 import { ErrorBoundary } from './src/components/ErrorBoundary.js';
+import { ImportPreviewDialog } from './src/components/ImportPreviewDialog.js';
+import { buildChapterDocs, applyImport, replaceBlockedReason } from './src/services/project/importPlan.js';
 import {
   TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog, CollectionDialog,
   shortcut, shortcutKeys, count, countParts
@@ -482,6 +484,7 @@ function FAUSTApp() {
 
   // ExportModal state
   const [showExportModal, setShowExportModal] = useState(false);
+  const [importSource, setImportSource] = useState(null); // open import preview, see beginImport
 
   // Handler to save chapter data from modal
   // A tiivistelmä the author edits here is theirs: it goes to synopsisManual too, so that
@@ -977,7 +980,8 @@ function FAUSTApp() {
       case 'save-project': saveProject(); break;
       case 'save-project-as': saveProject({ saveAs: true }); break;
       case 'save-and-close': saveAndClose(); break;
-      case 'import-document': importDocument(); break;
+      case 'import-document': beginImport('file'); break;
+      case 'import-folder': beginImport('folder'); break;
       case 'show-export': setShowExportModal(true); break;
       case 'print': printManuscript(); break;
       case 'show-snapshots': setShowSnapshotsPanel(true); break;
@@ -2208,37 +2212,38 @@ function FAUSTApp() {
     console.log('[New] New project created');
   };
 
-  // Import a .txt, .md or .docx file as chapters
-  const importDocument = async () => {
+  // Import a file or a folder. The main process reads it; the preview dialog
+  // shows the chapters, and nothing is written to the project before "Tuo".
+  const beginImport = async (kind, request) => {
     if (!window.electronAPI) return;
-
-    const result = await window.electronAPI.importDocument();
+    const result = kind === 'folder'
+      ? await window.electronAPI.importFolder(request)
+      : await window.electronAPI.importDocument();
     if (!result.success) {
       if (result.error) notify('error', 'Tuonti epäonnistui: ' + failureReason(result.error) + '.');
       return;
     }
+    setImportSource(result);
+  };
 
-    const imported = result.chapters.map(chapter => {
-      const doc = createDocument('chapter', chapter.title);
-      return { ...doc, content: chapter.content, wordCount: countWords(chapter.content) };
-    });
-    if (imported.length === 0) return;
+  // "Tuo" in the preview (selection) or a cancel (null). The import and its snapshot are one
+  // update, so the snapshot is exactly the state being changed (importPlan.applyImport).
+  const finishImport = (selection) => {
+    setImportSource(null);
+    if (!selection || selection.chapters.length === 0) return;
 
-    // An untouched new project is replaced; otherwise the chapters are added to the end
-    const pristine = !currentFilePath && project.structure.length === 1 &&
-      !(project.structure[0].content || '').trim() && project.title === 'Nimetön projekti';
-
-    setProject(prev => pristine
-      ? { ...prev, title: result.title || prev.title, author: prev.author || result.author || '', structure: imported }
-      : { ...prev, structure: [...prev.structure, ...imported] });
-    if (pristine) {
+    const docs = buildChapterDocs(selection, (title) => createDocument('chapter', title));
+    setProject(prev => applyImport(prev, selection, docs));
+    if (selection.mode === 'replace') {
+      // Undo steps refer to chapters that a replace has removed
+      if (commandManagerRef.current) commandManagerRef.current.clear();
       // A consistency result belongs to the text it was found in
       setConsistencyErrors([]);
       setConsistencyChecked(false);
     }
-    setActiveChapterId(imported[0].id);
+    setActiveChapterId(docs[0].id);
     setUnsavedChanges(true);
-    console.log('[Import]', imported.length, 'chapters from', result.filePath);
+    console.log('[Import]', docs.length, 'chapters,', selection.mode);
   };
 
   // Print the whole manuscript through the system print dialog
@@ -4776,6 +4781,17 @@ ${contextPrompt}`;
       activeChapterId: activeChapter ? activeChapter.id : null,
       onExport: ({ format, chapterIds }) => window.electronAPI.exportManuscript({ project, format, chapterIds })
     }),
+    // Tuonnin esikatselu (stage I-01): Tiedosto ▸ Tuo tekstiä… and Tuo kansio…
+    e(ErrorBoundary, { label: 'Tuonnin esikatselu', onDismiss: () => setImportSource(null) },
+      e(ImportPreviewDialog, {
+        source: importSource,
+        project,
+        // I-02 adds activeRequests, I-03 pendingSuggestions
+        getReplaceBlockedReason: () => replaceBlockedReason({}),
+        onPickFolder: (request) => beginImport('folder', request),
+        onDone: finishImport
+      })
+    ),
     // Focus mode: the header is hidden, so a strip at the top keeps the window draggable
     focusMode && e('div', { className: 'faust-focus-drag' }),
     focusMode && e('button', {

@@ -675,6 +675,60 @@ function fileTitle(fileName) {
   return String(fileName || 'Tuotu teksti').replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '') || 'Tuotu teksti';
 }
 
+// Windows-1252 bytes 0x80\u20130x9F, which latin1 reads as control characters (index = byte \u2212 0x80).
+// U+FFFD marks the five bytes that Windows-1252 leaves undefined.
+const CP1252_HIGH = '\u20AC\uFFFD\u201A\u0192\u201E\u2026\u2020\u2021\u02C6\u2030\u0160\u2039\u0152\uFFFD\u017D\uFFFD\uFFFD\u2018\u2019\u201C\u201D\u2022\u2013\u2014\u02DC\u2122\u0161\u203A\u0153\uFFFD\u017E\u0178';
+
+/**
+ * The text of a file whose encoding is not declared. First match wins: a UTF-8 or UTF-16
+ * byte order mark (removed), valid UTF-8, else Windows-1252. TextDecoder('windows-1252')
+ * is not used: Node may be built without the full ICU data, and then it reads latin1.
+ * Never throws.
+ * @param {Buffer|Uint8Array} buffer
+ * @returns {{ text: string, encoding: 'utf-8' | 'utf-16le' | 'utf-16be' | 'windows-1252' }}
+ */
+function decodeText(buffer) {
+  try {
+    if (!buffer || !buffer.length) return { text: '', encoding: 'utf-8' };
+    const bytes = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
+
+    if (bytes.length >= 3 && bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF) {
+      return { text: bytes.subarray(3).toString('utf-8'), encoding: 'utf-8' };
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
+      const body = bytes.subarray(2, 2 + ((bytes.length - 2) & ~1));
+      return { text: body.toString('utf16le'), encoding: 'utf-16le' };
+    }
+    if (bytes.length >= 2 && bytes[0] === 0xFE && bytes[1] === 0xFF) {
+      // Big endian: swap each pair, then read it as little endian
+      const body = Buffer.from(bytes.subarray(2, 2 + ((bytes.length - 2) & ~1)));
+      body.swap16();
+      return { text: body.toString('utf16le'), encoding: 'utf-16be' };
+    }
+
+    try {
+      return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), encoding: 'utf-8' };
+    } catch (_notUtf8) {
+      const text = bytes.toString('latin1').replace(/[\u0080-\u009F]/g, (char) => CP1252_HIGH[char.charCodeAt(0) - 0x80]);
+      return { text, encoding: 'windows-1252' };
+    }
+  } catch (_error) {
+    return { text: '', encoding: 'utf-8' };
+  }
+}
+
+// Headings inside a chapter start from level 1 again: with level > 0 the headings below it move
+// up by that many levels. Then the lines are joined, leading blank lines and runs of more than
+// one blank line go, and so does the trailing white space.
+function tidy(lines, level) {
+  const relevelled = level > 0
+    ? lines.map(line => line.replace(/^(#{2,6})(?=\s)/, (marks) => (
+      marks.length > level ? '#'.repeat(marks.length - level) : marks
+    )))
+    : lines;
+  return relevelled.join('\n').replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n').trimEnd();
+}
+
 /**
  * Split text into chapters at its headings.
  *
@@ -684,18 +738,56 @@ function fileTitle(fileName) {
  * - With a title, one short line before the first chapter is the author.
  * - Any other text before the first heading becomes a chapter of its own.
  *
+ * With options.oneChapterPerFile (the folder import: one file is one chapter) the text is
+ * never split. The chapter's title is, first match wins: known.title (titleFrom 'document');
+ * the first filled line when it is the only heading at the highest level the text uses
+ * (titleFrom 'heading': the line leaves the text and the deeper headings move up); else the
+ * file name (titleFrom 'file', every heading stays). No book title or author is inferred.
+ *
+ * The text is normalised to Unicode NFC first, in both modes.
+ *
  * @param {string} text
  * @param {string} fileName - used for the title when the text has none
  * @param {{ title?: string }} [known] - a title found elsewhere (e.g. a Word title style)
- * @returns {{ title: string, author: string, chapters: Array<{ title: string, content: string }> }}
+ * @param {{ oneChapterPerFile?: boolean }} [options]
+ * @returns {{ title: string, author: string,
+ *   chapters: Array<{ title: string, content: string, titleFrom?: 'document' | 'heading' | 'file' }> }}
+ *   (titleFrom only with oneChapterPerFile)
  */
-function splitIntoChapters(text, fileName, known = {}) {
-  let lines = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n');
+function splitIntoChapters(text, fileName, known = {}, options = {}) {
+  let lines = String(text || '').normalize('NFC').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n');
   const headingLevel = (line) => ((/^(#{1,6})\s+\S/.exec(line) || [])[1] || '').length;
 
   let title = known.title || '';
   let levels = lines.map(headingLevel).filter(Boolean);
   let splitLevel = levels.length > 0 ? Math.min(...levels) : 0;
+
+  if (options && options.oneChapterPerFile) {
+    let chapterTitle = String(known.title || '').trim();
+    let titleFrom = 'document';
+    let level = 0;
+
+    if (!chapterTitle) {
+      const firstFilled = lines.findIndex(line => line.trim());
+      const isOnlyTop = levels.filter(found => found === splitLevel).length === 1;
+      if (splitLevel > 0 && isOnlyTop && firstFilled !== -1 && headingLevel(lines[firstFilled]) === splitLevel) {
+        const raw = lines[firstFilled].replace(/^#+\s+/, '').trim();
+        chapterTitle = runsToText(parseInline(raw)).trim() || raw;
+        titleFrom = 'heading';
+        level = splitLevel;
+        lines = lines.slice(firstFilled + 1);
+      } else {
+        chapterTitle = fileTitle(fileName);
+        titleFrom = 'file';
+      }
+    }
+
+    return {
+      title: chapterTitle,
+      author: '',
+      chapters: [{ title: chapterTitle, content: tidy(lines, level), titleFrom }]
+    };
+  }
 
   // "# Book title" + several "## Chapter" headings: the first one is the title
   if (!title && splitLevel > 0) {
@@ -744,11 +836,7 @@ function splitIntoChapters(text, fileName, known = {}) {
     chapters: sections.map(section => ({
       title: section.title,
       // Headings inside a chapter start from level 1 again
-      content: section.lines
-        .map(line => line.replace(/^(#{2,6})(?=\s)/, (marks) => (
-          marks.length > splitLevel ? '#'.repeat(marks.length - splitLevel) : marks
-        )))
-        .join('\n').replace(/^\n+/, '').replace(/\n{3,}/g, '\n\n').trimEnd()
+      content: tidy(section.lines, splitLevel)
     }))
   };
 }
@@ -908,17 +996,20 @@ async function docxToMarkdown(buffer) {
  * Import a file's contents as chapters.
  * @param {Buffer} buffer
  * @param {string} fileName - decides the format by extension
+ * @param {{ oneChapterPerFile?: boolean }} [options] - passed to splitIntoChapters
+ * @returns {Promise<{ title, author, chapters, encoding? }>} encoding (decodeText's) for text files only
  */
-async function importDocument(buffer, fileName) {
+async function importDocument(buffer, fileName, options = {}) {
   const extension = (/\.([^.]+)$/.exec(fileName || '') || [])[1];
   const type = (extension || '').toLowerCase();
 
   if (type === 'docx') {
     const { title, markdown } = await readDocx(buffer);
-    return splitIntoChapters(markdown, fileName, { title });
+    return splitIntoChapters(markdown, fileName, { title }, options);
   }
   if (['txt', 'md', 'markdown', 'text'].includes(type)) {
-    return splitIntoChapters(buffer.toString('utf-8'), fileName);
+    const { text, encoding } = decodeText(buffer);
+    return { ...splitIntoChapters(text, fileName, {}, options), encoding };
   }
   throw new Error(`Tiedostomuotoa .${type || '?'} ei voi tuoda. Tuetut muodot: .txt, .md, .docx`);
 }
@@ -953,6 +1044,7 @@ module.exports = {
   toRTF,
   toDocx,
   toEPUB,
+  decodeText,
   splitIntoChapters,
   docxToMarkdown,
   importDocument,

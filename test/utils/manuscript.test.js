@@ -16,7 +16,8 @@ const {
   splitIntoChapters,
   docxToMarkdown,
   importDocument,
-  textStatistics
+  textStatistics,
+  decodeText
 } = require('../../utils/manuscript');
 
 const project = {
@@ -308,6 +309,147 @@ describe('import', () => {
     const result = await importDocument(Buffer.from('# A\nteksti', 'utf-8'), 'a.md');
     expect(result.chapters).toEqual([{ title: 'A', content: 'teksti' }]);
     await expect(importDocument(Buffer.from('x'), 'kuva.png')).rejects.toThrow('.png');
+  });
+});
+
+// Folder import (stage I-01): every file is one chapter
+describe('import: one chapter per file', () => {
+  const one = (text, file, known) => splitIntoChapters(text, file, known || {}, { oneChapterPerFile: true });
+  const SCENES = '# Saapuminen\n\nTeksti.\n\n## Laiturilla\nA\n\n## Talossa\nB\n';
+
+  test('a chapter file with scene headings stays one chapter and keeps its title', () => {
+    expect(one(SCENES, '3 Saapuminen [12].md')).toEqual({
+      title: 'Saapuminen',
+      author: '',
+      chapters: [{ title: 'Saapuminen', content: 'Teksti.\n\n# Laiturilla\nA\n\n# Talossa\nB', titleFrom: 'heading' }]
+    });
+  });
+
+  test('the same file without the option is still read as book title plus chapters', () => {
+    const result = splitIntoChapters(SCENES, '3 Saapuminen [12].md');
+    expect(result.title).toBe('Saapuminen');
+    expect(result.author).toBe('Teksti.');
+    expect(result.chapters.map(c => c.title)).toEqual(['Laiturilla', 'Talossa']);
+  });
+
+  test('several top-level headings: the title comes from the file name and every heading stays', () => {
+    const result = one('# Laiturilla\nA\n\n# Talossa\nB\n', '3 Saapuminen [12].md');
+    expect(result.title).toBe('3 Saapuminen [12]');
+    expect(result.chapters).toEqual([{ title: '3 Saapuminen [12]', content: '# Laiturilla\nA\n\n# Talossa\nB', titleFrom: 'file' }]);
+  });
+
+  test('dialogue dash, list dash, [TODO: …] and <u> come through unchanged', () => {
+    const input = '– Tule, sanoi Aino.\n\n- Hei, sanoi Pekka.\n\n[TODO: tarkista lautan aikataulu]\n\nHän <u>juoksi</u> ”kotiin” – ja jäi.\n';
+    const result = one(input, '1 Alku [10].txt');
+    expect(result.chapters).toHaveLength(1);
+    expect(result.chapters[0].titleFrom).toBe('file');
+    expect(result.chapters[0].content).toBe(input.slice(0, -1));
+  });
+
+  test('an empty file is one chapter with empty content', () => {
+    const result = one('\n\n   \n', '5 Tyhjä [3].txt');
+    expect(result.chapters).toEqual([{ title: '5 Tyhjä [3]', content: '', titleFrom: 'file' }]);
+    expect(result.title).toBe('5 Tyhjä [3]');
+  });
+
+  test('a heading that is not on the first filled line is not the title', () => {
+    const text = 'Johdanto.\n\n# Otsikko keskellä\n\nTeksti.';
+    const result = one(text, 'a.txt');
+    expect(result.title).toBe('a');
+    expect(result.chapters).toEqual([{ title: 'a', content: text, titleFrom: 'file' }]);
+  });
+
+  test('a lone lower-level heading is the title and deeper headings move up', () => {
+    const result = one('## Yö\n\n### Uni\nA\n', 'a.md');
+    expect(result.title).toBe('Yö');
+    expect(result.chapters).toEqual([{ title: 'Yö', content: '# Uni\nA', titleFrom: 'heading' }]);
+  });
+
+  test('a Word title wins over the first heading, which stays in the text', () => {
+    const result = one('# Luku\n\nTeksti.', 'a.docx', { title: 'Asiakirjan nimi' });
+    expect(result.title).toBe('Asiakirjan nimi');
+    expect(result.chapters).toEqual([{ title: 'Asiakirjan nimi', content: '# Luku\n\nTeksti.', titleFrom: 'document' }]);
+  });
+
+  test('#hashtag is not a heading', () => {
+    const text = '#hashtag ei ole otsikko\nTeksti.';
+    const result = one(text, 'b.txt');
+    expect(result.title).toBe('b');
+    expect(result.chapters).toEqual([{ title: 'b', content: text, titleFrom: 'file' }]);
+  });
+
+  test('byte order mark, CRLF and decomposed ä are normalised', () => {
+    // U+FEFF, then "Äiti" with a decomposed Ä (A + U+0308)
+    const result = one('﻿Äiti tuli.\r\nToinen rivi.\r\n\r\n\r\n\r\nKolmas.', '/polku/2 Äiti [11].txt');
+    const { content } = result.chapters[0];
+    expect(content).toBe('Äiti tuli.\nToinen rivi.\n\nKolmas.');
+    expect(content.startsWith('Ä')).toBe(true);
+  });
+
+  test('a heading with nothing after it gives an empty chapter with that title', () => {
+    expect(one('# Yksin', 'c.md').chapters).toEqual([{ title: 'Yksin', content: '', titleFrom: 'heading' }]);
+  });
+
+  test('inline markers are removed from a heading used as the title', () => {
+    const result = one('# **Lihava** otsikko\n\nTeksti', 'c.md');
+    expect(result.title).toBe('Lihava otsikko');
+    expect(result.chapters[0].title).toBe('Lihava otsikko');
+  });
+
+  test('importDocument passes the option through for text and Word files', async () => {
+    const md = await importDocument(Buffer.from(SCENES, 'utf-8'), '3 Saapuminen [12].md', { oneChapterPerFile: true });
+    expect(md.chapters).toHaveLength(1);
+    expect(md.chapters[0]).toEqual({ title: 'Saapuminen', content: 'Teksti.\n\n# Laiturilla\nA\n\n# Talossa\nB', titleFrom: 'heading' });
+
+    const docx = await importDocument(await toDocx(buildManuscript(project)), 'Käsikirjoitus.docx', { oneChapterPerFile: true });
+    expect(docx.chapters).toHaveLength(1);
+    expect(docx.chapters[0].title).toBe(project.title);
+    expect(docx.chapters[0].titleFrom).toBe('document');
+    // Without the option the same Word file is three chapters
+    expect((await importDocument(await toDocx(buildManuscript(project)), 'Käsikirjoitus.docx')).chapters).toHaveLength(3);
+  });
+});
+
+describe('decodeText', () => {
+  const SENTENCE = 'Äiti sanoi: ”Tule” – ja öljy, Åke.';
+
+  test('reads UTF-8 with ä ö å, ” and –', () => {
+    expect(decodeText(Buffer.from(SENTENCE, 'utf-8'))).toEqual({ text: SENTENCE, encoding: 'utf-8' });
+  });
+
+  test('removes a UTF-8 byte order mark', () => {
+    const buffer = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from('Äiti', 'utf-8')]);
+    expect(decodeText(buffer)).toEqual({ text: 'Äiti', encoding: 'utf-8' });
+  });
+
+  test('reads UTF-16 by its byte order mark, both byte orders', () => {
+    const little = Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from('Äiti – ö', 'utf16le')]);
+    expect(decodeText(little)).toEqual({ text: 'Äiti – ö', encoding: 'utf-16le' });
+
+    const swapped = Buffer.from('Äiti – ö', 'utf16le').swap16();
+    const big = Buffer.concat([Buffer.from([0xFE, 0xFF]), swapped]);
+    expect(decodeText(big)).toEqual({ text: 'Äiti – ö', encoding: 'utf-16be' });
+  });
+
+  test('falls back to Windows-1252 and maps ” – … to the right characters', () => {
+    const bytes = Buffer.from([0xC4, 0x69, 0x74, 0x69, 0x20, 0x94, 0x68, 0x65, 0x69, 0x94, 0x20, 0x96, 0x20, 0xF6, 0xE5, 0x85]);
+    expect(decodeText(bytes)).toEqual({ text: 'Äiti ”hei” – öå…', encoding: 'windows-1252' });
+  });
+
+  test('an empty buffer is empty text', () => {
+    expect(decodeText(Buffer.alloc(0))).toEqual({ text: '', encoding: 'utf-8' });
+    expect(decodeText(undefined)).toEqual({ text: '', encoding: 'utf-8' });
+  });
+
+  test('importDocument reports the encoding of a text file', async () => {
+    // "Äiti – ö" in Windows-1252
+    const buffer = Buffer.from([0xC4, 0x69, 0x74, 0x69, 0x20, 0x96, 0x20, 0xF6]);
+    const result = await importDocument(buffer, 'a.txt');
+    expect(result.encoding).toBe('windows-1252');
+    expect(result.chapters[0].content).toBe('Äiti – ö');
+    expect(result.chapters[0].content).not.toMatch(/[�\u0080-\u009F]/);
+    // A Word file has no encoding of its own
+    expect(await importDocument(await toDocx(buildManuscript(project)), 'x.docx')).not.toHaveProperty('encoding');
   });
 });
 

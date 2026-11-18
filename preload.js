@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportManuscript: (payload) => ipcRenderer.invoke('export-manuscript', payload),
   printManuscript: (payload) => ipcRenderer.invoke('print-manuscript', payload),
   importDocument: () => ipcRenderer.invoke('import-document'),
+  importFolder: (request) => ipcRenderer.invoke('import-folder', request),
 
   // AI calls. Go to Claude or to the model selected in Cherry Studio,
   // depending on the provider setting (see aiGetProvider).

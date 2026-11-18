@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, shell, nativeTheme } = require('electron');
 const manuscript = require('./utils/manuscript');
+const importFolder = require('./utils/importFolder');
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -496,6 +497,7 @@ function createMenu() {
         item('Projektin asetukset…', 'show-project-settings'),
         separator,
         item('Tuo tekstiä…', 'import-document'),
+        item('Tuo kansio…', 'import-folder'),
         item('Vie…', 'show-export', 'CmdOrCtrl+E'),
         item('Tulosta…', 'print', 'CmdOrCtrl+P'),
         separator,
@@ -940,12 +942,13 @@ ipcMain.handle('print-manuscript', async (_event, { project, chapterIds = null }
   }
 });
 
-// Read a .txt, .md or .docx file as chapters
+// Read a .txt, .md or .docx file as chapters. The renderer shows them in the
+// import preview; nothing is written to the project here.
 ipcMain.handle('import-document', async () => {
   try {
     const { filePaths } = await dialog.showOpenDialog(mainWindow, {
       title: 'Tuo tekstiä',
-      message: 'Valitse tuotava tiedosto (.txt, .md tai .docx). Teksti jaetaan luvuiksi otsikoiden kohdalta ja lisätään avoimeen projektiin.',
+      message: 'Valitse tuotava tiedosto (.txt, .md tai .docx). Näet luvut esikatselussa ennen kuin mitään tuodaan.',
       buttonLabel: 'Tuo',
       filters: [{ name: 'Tekstit ja Word-asiakirjat', extensions: ['txt', 'md', 'markdown', 'docx'] }],
       properties: ['openFile']
@@ -957,9 +960,43 @@ ipcMain.handle('import-document', async () => {
 
     const buffer = await fs.readFile(filePaths[0]);
     const imported = await manuscript.importDocument(buffer, filePaths[0]);
-    return { success: true, filePath: filePaths[0], ...imported };
+    return { success: true, kind: 'file', filePath: filePaths[0], name: path.basename(filePaths[0]).normalize('NFC'), ...imported };
   } catch (error) {
     console.error('[Import] Error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// The folder last read by the import. The renderer may ask for one of its
+// direct sub-folders by name, never for a path of its own.
+let lastImportFolder = null;
+
+// Read the .txt, .md and .docx files of a folder as chapters. Read only.
+ipcMain.handle('import-folder', async (_event, request = {}) => {
+  try {
+    let folderPath;
+    if (request && typeof request.subfolder === 'string') {
+      folderPath = lastImportFolder
+        ? await importFolder.resolveSubfolder(lastImportFolder, request.subfolder)
+        : null;
+      if (!folderPath) return { success: false, error: 'Alikansiota ei löytynyt.' };
+    } else {
+      const { filePaths } = await dialog.showOpenDialog(mainWindow, {
+        title: 'Tuo kansio',
+        message: 'Valitse kansio, jonka tiedostot tuodaan luvuiksi.',
+        buttonLabel: 'Valitse',
+        properties: ['openDirectory']
+      });
+      if (!filePaths || !filePaths[0]) return { success: false, canceled: true };
+      folderPath = filePaths[0];
+    }
+
+    const source = await importFolder.readImportFolder(folderPath);
+    lastImportFolder = folderPath;
+    console.log('[Import folder]', source.chapters.length, 'files');
+    return { success: true, ...source };
+  } catch (error) {
+    console.error('[Import folder] Error:', error.message);
     return { success: false, error: error.message };
   }
 });

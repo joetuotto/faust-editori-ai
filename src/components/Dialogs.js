@@ -16,6 +16,7 @@
  */
 
 import { icons } from './icons.js';
+import { formatCount } from '../services/format.fi.js';
 import { layerStack, holdLayer, returnFocus, scrimPress, Dialog } from './ui.js';
 
 const { createElement: e, useState, useEffect, useLayoutEffect, useRef, useId } = React;
@@ -272,17 +273,21 @@ const shortcutGrid = (groups, aiDisabled) => e('div', { className: 'faust-shortc
 // ---------------------------------------------------------------------------
 // Counting
 
-// Partitive of the nouns the app counts (rule B.13); a phrase is inflected word by word
+// Partitive of the nouns the app counts (rule B.13, R-29); a phrase is inflected word by word
 // ('muu juonilanka' → 'muuta juonilankaa')
 const PARTITIVE = {
   luku: 'lukua', sana: 'sanaa', merkki: 'merkkiä', sivu: 'sivua',
   hahmo: 'hahmoa', paikka: 'paikkaa', juonilanka: 'juonilankaa', versio: 'versiota',
   ristiriita: 'ristiriitaa', varoitus: 'varoitusta', merkintä: 'merkintää', osuma: 'osumaa',
-  pyyntö: 'pyyntöä', tähti: 'tähteä', malli: 'mallia', muu: 'muuta'
+  pyyntö: 'pyyntöä', tähti: 'tähteä', malli: 'mallia', muu: 'muuta',
+  ehdotus: 'ehdotusta', havainto: 'havaintoa', kohta: 'kohtaa', rivi: 'riviä',
+  muutos: 'muutosta', korjaus: 'korjausta', tiedosto: 'tiedostoa', kohde: 'kohdetta',
+  erä: 'erää', osa: 'osaa', yritys: 'yritystä', kappale: 'kappaletta'
 };
 
 /**
  * A count as [number, noun], for readouts that set the number apart: countParts(2, 'luku') is ['2', 'lukua'].
+ * The number is grouped by formatCount of src/services/format.fi.js (R-29), as the pure modules do it.
  * @param {number} n
  * @param {string} word the noun in the nominative singular
  * @returns {[string, string]}
@@ -290,7 +295,7 @@ const PARTITIVE = {
 export function countParts(n, word) {
   const value = Number(n) || 0;
   const noun = value === 1 ? word : String(word).split(' ').map(part => PARTITIVE[part] || part).join(' ');
-  return [value.toLocaleString('fi-FI'), noun];
+  return [formatCount(value), noun];
 }
 
 /**
