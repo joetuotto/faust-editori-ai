@@ -48,6 +48,12 @@
  * undo, onChange and the typewriter centring do not see it. Cmd-click (Ctrl-click elsewhere) on an
  * underlined name calls `onMentionClick(entryId)`, read through a ref.
  *
+ * Tarkistus (src/editor/reviewHighlights.js, stage I-08): the prop `findingHighlights` ({ version, items,
+ * activeId } or null) underlines the passages of the open findings in a state field of their own, so the
+ * search marks and these never touch. A new version replaces the set by an effect; between versions the
+ * marks follow the text, and an outside change (undo, Korvaa kaikki) puts this render's set back. A press
+ * inside a mark calls `onFindingClick(findingId)`, read through a ref; the caret still lands there.
+ *
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
  */
 
@@ -69,6 +75,7 @@ import { wordDiff } from '../editor/wordDiff.js';
 import { inlinePrompt } from '../editor/inlinePrompt.js';
 import { smartTyping, SmartTyping } from '../editor/smartTyping.js';
 import { termHighlight, setTermHighlightConfig } from '../editor/termHighlight.js';
+import { reviewHighlights, setFindingHighlights } from '../editor/reviewHighlights.js';
 import { modelLabel } from '../services/format.fi.js';
 
 const { createElement: e, useRef, useLayoutEffect, forwardRef } = React;
@@ -378,6 +385,10 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
     // on an underlined name (entryId) (I-07)
     termHighlights,
     onMentionClick,
+    // The open findings of the Tarkistus tab ({ version, items: [{ id, from, to }], activeId } or null:
+    // null while the tab is not on screen) and a click on an underlined passage (findingId) (I-08)
+    findingHighlights,
+    onFindingClick,
     // The text's accessible name; a read-only text is never spell-checked
     label = 'Käsikirjoitus'
   } = props;
@@ -391,6 +402,8 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
   const smartTypingRef = useRef(null);
   const termHighlightsRef = useRef(termHighlights || null);
   const onMentionClickRef = useRef(onMentionClick);
+  const findingHighlightsRef = useRef(findingHighlights);
+  const onFindingClickRef = useRef(onFindingClick);
   // The lists the view holds now: a render with the same lists dispatches nothing
   const appliedTermsRef = useRef(null);
   // Texts this editor has reported through onChange and not yet seen come back as `value`
@@ -407,6 +420,9 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
   // The lists the editor starts with (it is created per chapter) and the click handler of this render
   termHighlightsRef.current = termHighlights || null;
   onMentionClickRef.current = onMentionClick;
+  // The findings of this render (computed against this render's text) and the click handler
+  findingHighlightsRef.current = findingHighlights;
+  onFindingClickRef.current = onFindingClick;
 
   // Create the editor once per mount (the parent remounts it per chapter with `key`)
   useLayoutEffect(() => {
@@ -459,7 +475,9 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
           highlightField,
           ...(readOnly ? [] : [         // suggestion and review marks go here
             suggestionExtension({ external: External, diff: (a, b) => wordDiff(a, b, { raw: true }), seed: seed && seed.state, modelLabel }),
-            settledField
+            settledField,
+            // The Tarkistus tab's findings: a field of their own, never shared with the search marks (I-08)
+            reviewHighlights({ onFindingClick: (id) => onFindingClickRef.current && onFindingClickRef.current(id) })
           ]),
           underlinePlugin,
           todoPlugin,
@@ -521,6 +539,8 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
       }
       // Always once, so the bar shows this chapter's state (restored suggestions, a notice, or nothing)
       if (onSuggestionsRef.current) onSuggestionsRef.current(suggestionSnapshot(view.state), { type: 'seeded' });
+      // The editor is created again for every chapter: the findings shown now are set here first
+      if (findingHighlightsRef.current) view.dispatch({ effects: setFindingHighlights.of(findingHighlightsRef.current) });
     }
 
     return () => {
@@ -581,7 +601,18 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
       changes: { from: start, to: currentEnd, insert: incoming.slice(start, incomingEnd) },
       annotations: External.of(true)
     });
+    // An undo, a redo or a replace-all arrives as one coarse change that can swallow the finding marks;
+    // the findings of this render were computed against the new text, so they put them back
+    if (!readOnly && findingHighlightsRef.current) view.dispatch({ effects: setFindingHighlights.of(findingHighlightsRef.current) });
   }, [value]);
+
+  // The findings changed (a run ended, a status, the tab shown or hidden, another finding selected). Typing does
+  // not change the version: while the author writes, the marks follow the text through the field's own mapping.
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (!view || readOnly) return;
+    view.dispatch({ effects: setFindingHighlights.of(findingHighlights || null) });
+  }, [findingHighlights ? findingHighlights.version : -1]);
 
   // Vältettävät sanat and the Tarinakansio entries changed (the list was edited, a Näytä toggle): the new
   // lists replace the old ones by an effect. The document, the selection and the scroll stay as they are.
