@@ -33,14 +33,14 @@
 <style>
 /* ---- page-only layout (tn-): tokens only ---- */
 [hidden] { display: none !important; }      /* the recipes set display; the live dialogs are closed with the hidden attribute */
-.tn-top { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: var(--sp-5); padding: var(--sp-2) var(--sp-5); background: var(--surface-panel); border-bottom: var(--bw) solid var(--rule); }
+.tn-top { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: var(--sp-2) var(--sp-5); padding: var(--sp-2) var(--sp-5); background: var(--surface-panel); border-bottom: var(--bw) solid var(--rule); }
 .tn-top h1 { font: var(--type-title-panel); letter-spacing: 0; white-space: nowrap; }
-.tn-nav { display: flex; flex-wrap: nowrap; gap: var(--sp-3); font: var(--type-meta); min-width: 0; overflow-x: auto; scrollbar-width: none; }      /* one row, as the app's header row: never wraps, scrolls sideways */
+.tn-nav { display: flex; flex-wrap: wrap; gap: 0 var(--sp-3); font: var(--type-meta); min-width: 0; }      /* wraps to a second line rather than cutting a label: horizontal scrolling is the timeline's alone (V 6.3) */
 .tn-nav a { flex: none; padding: var(--sp-1) 0; color: var(--text-2); text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; }
 .tn-nav a:hover { color: var(--text); }
 .tn-nav a[aria-current="true"] { color: var(--text); border-bottom-color: var(--accent-line); }      /* the section in view: the selected tab's underline (V 4.3) */
 .tn-main { max-width: 1280px; margin: 0 auto; padding: 0 var(--sp-5) var(--sp-8); }
-.tn-section { padding: var(--sp-6) 0 var(--sp-5); border-top: var(--bw) solid var(--rule); scroll-margin-top: 56px; }
+.tn-section { padding: var(--sp-6) 0 var(--sp-5); border-top: var(--bw) solid var(--rule); scroll-margin-top: calc(var(--tn-top-h, 40px) + var(--sp-4)); }      /* under the sticky bar, however many lines its nav takes */
 .tn-section:first-child { border-top: 0; }
 .tn-section > h2 { font: var(--type-title-view); letter-spacing: var(--tracking-title); margin-bottom: var(--sp-1); }
 .tn-lead { font: var(--type-serif); color: var(--text-2); max-width: 70ch; margin-bottom: var(--sp-4); }
@@ -75,9 +75,11 @@
 .tn-type > span:nth-child(odd) { font: var(--type-meta); color: var(--text-3); }
 .tn-levels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-2); }
 .tn-levels .tn-box { display: flex; flex-direction: column; gap: var(--sp-1); font: var(--type-ui); }
-.tn-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: var(--sp-3) var(--sp-1); }
+.tn-icons { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--sp-3) var(--sp-1); }      /* wide enough for the longest meaning, tutkimuskansio, on one line */
 .tn-icons > span { display: flex; flex-direction: column; align-items: center; gap: var(--sp-1); font: var(--type-meta); color: var(--text-3); overflow-wrap: anywhere; text-align: center; }
 .tn-icons > span > .faust-icon { color: var(--text); }
+.tn-icons > span > code { font: var(--type-meta); color: var(--text-3); }
+.tn-icons > span > b { font: var(--type-meta); font-weight: var(--w-mono); color: var(--text-2); overflow-wrap: normal; }      /* the sigil's one meaning (V 5.3, M A.2) */
 .tn-icons--sigil > span > .faust-icon { color: var(--accent-line); }
 /* mock-only: what CodeMirror itself does in the real app (structure and inherited type) */
 .tn-cm.faust-editor-host { position: relative; font-family: var(--font-serif); font-size: var(--ms-size); line-height: var(--ms-leading); color: var(--ink); }
@@ -869,12 +871,12 @@ Nyt: 13 450 sanaa</span></div>
 <section class="tn-section" id="kuvakkeet" data-title="Kuvakkeet">
   <h2>Kuvakkeet</h2>
   <p class="tn-lead"><span id="tn-sigil-count">17</span> sigiliä ja <span id="tn-glyph-count">77</span> työkalukuvaketta (src/components/icons.js). Sigili on kultaa siellä, missä se on säädin tai otsikko; työkalukuvake on tekstinsä värinen. Viivan paksuus pysyy ruudulla samana koosta riippumatta.</p>
-  <div class="tn-h3">Sigilit 40</div><div class="tn-icons tn-icons--sigil" data-sheet="sigils" data-size="40"></div>
-  <div class="tn-h3">Sigilit 20</div><div class="tn-icons tn-icons--sigil" data-sheet="sigils" data-size="20"></div>
-  <div class="tn-h3">Sigilit 14</div><div class="tn-icons tn-icons--sigil" data-sheet="sigils" data-size="14"></div>
-  <div class="tn-h3">Työkalukuvakkeet 24</div><div class="tn-icons" data-sheet="glyphs" data-size="24"></div>
-  <div class="tn-h3">Työkalukuvakkeet 16</div><div class="tn-icons" data-sheet="glyphs" data-size="16"></div>
-  <div class="tn-h3">Työkalukuvakkeet 14</div><div class="tn-icons" data-sheet="glyphs" data-size="14"></div>
+  <div class="tn-h3">Sigilit · 40 px</div><div class="tn-icons tn-icons--sigil" data-sheet="sigils" data-size="40"></div>
+  <div class="tn-h3">Sigilit · 20 px</div><div class="tn-icons tn-icons--sigil" data-sheet="sigils" data-size="20"></div>
+  <div class="tn-h3">Sigilit · 14 px</div><div class="tn-icons tn-icons--sigil" data-sheet="sigils" data-size="14"></div>
+  <div class="tn-h3">Työkalukuvakkeet · 24 px</div><div class="tn-icons" data-sheet="glyphs" data-size="24"></div>
+  <div class="tn-h3">Työkalukuvakkeet · 16 px</div><div class="tn-icons" data-sheet="glyphs" data-size="16"></div>
+  <div class="tn-h3">Työkalukuvakkeet · 14 px</div><div class="tn-icons" data-sheet="glyphs" data-size="14"></div>
   <div class="tn-h3">Täytetty tähti (Icon filled)</div>
   <div class="tn-row" style="color: var(--accent-line)"><i data-icon="star" data-size="16" data-filled="1"></i><i data-icon="star" data-size="16" data-filled="1"></i><i data-icon="star" data-size="16"></i></div>
 </section>
@@ -924,10 +926,18 @@ const sheets = { sigils: Object.keys(SIGILS), glyphs: Object.keys(GLYPHS) };
 // The lead text counts what the sheets draw
 document.getElementById('tn-sigil-count').textContent = String(sheets.sigils.length);
 document.getElementById('tn-glyph-count').textContent = String(sheets.glyphs.length);
+// Each sigil's one meaning (V 5.3, M A.2), under its code id
+const MEANING = {
+  mercury: 'Analysoi luku', alembic: 'Pika-arvio', sulfur: 'Tee tiivistelmä', stone: 'Magnum Opus', stoneFull: 'Magnum Opus',
+  sol: 'hahmo', luna: 'aikajana', terra: 'paikka', lemniscate: 'juonilanka', salt: 'tarinakansio', trigon: 'tutkimuskansio',
+  hexagon: 'luku', star8: 'FAUST', phase0: 'tila: suunnitteilla', phase1: 'tila: luonnos', phase2: 'tila: muokattavana', phase3: 'tila: valmis'
+};
 for (const grid of document.querySelectorAll('[data-sheet]')) {
+  const size = Number(grid.dataset.size);
   for (const name of sheets[grid.dataset.sheet]) {
+    if (name === 'stoneFull' && size < 32) continue;      // V 5.2: the full stone is drawn at 32px and larger only
     const cell = document.createElement('span');
-    cell.innerHTML = `<i data-icon="${name}" data-size="${grid.dataset.size}"></i>${name}`;
+    cell.innerHTML = `<i data-icon="${name}" data-size="${size}"></i><code>${name}</code>` + (MEANING[name] ? `<b>${MEANING[name]}</b>` : '');
     grid.append(cell);
   }
 }
@@ -999,10 +1009,9 @@ const navLinks = [...document.querySelectorAll('.tn-section')].map(section => {
   return link;
 });
 document.getElementById('tn-nav').append(...navLinks);
-// The section in view carries aria-current (the link nearest the band under the sticky bar), and its
-// link is scrolled into the one-row nav
+// The section in view carries aria-current (the link nearest the band under the sticky bar)
 const markCurrent = () => {
-  const band = document.querySelector('.tn-top').getBoundingClientRect().bottom + 16;      // a section scrolled to by its link stands 56px down (scroll-margin-top)
+  const band = document.querySelector('.tn-top').getBoundingClientRect().bottom + 17;      // a section scrolled to by its link stands 16px under the bar (scroll-margin-top); 1px for rounding
   let current = navLinks[0];
   for (const link of navLinks) {
     const section = document.getElementById(link.getAttribute('href').slice(1));
@@ -1014,13 +1023,17 @@ const markCurrent = () => {
     if (link === current) {
       if (link.getAttribute('aria-current') !== 'true') {
         link.setAttribute('aria-current', 'true');
-        link.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       }
     } else link.removeAttribute('aria-current');
   }
 };
 window.addEventListener('scroll', markCurrent, { passive: true });
+// The sticky bar's height (its nav may wrap) sets where a section scrolled to by its link stands
+const topBar = document.querySelector('.tn-top');
+const measureTop = () => root.style.setProperty('--tn-top-h', topBar.offsetHeight + 'px');
+new ResizeObserver(measureTop).observe(topBar);      // also when the web fonts arrive and the nav rewraps
 window.addEventListener('resize', markCurrent);
+measureTop();
 markCurrent();
 
 // The real notification host and the alert shim

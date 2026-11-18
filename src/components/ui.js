@@ -779,8 +779,10 @@ export function usePopover() {
  * is missing or hidden (an empty rectangle, as in focus mode) it carries data-anchor="none" and no
  * inline top or left: the stylesheet gives it a fixed place. Closes on Esc (bubble phase; with
  * layer 'modal' through the layer stack), on a press outside it and its anchor, and by its close
- * button. Opened by the keyboard it takes the focus; on closing it returns the focus to the anchor,
- * or calls restoreFocus. layer: 'header' | 'modal'; menu: a .faust-menu without head and body.
+ * button. Opened by the keyboard it takes the focus; on closing it calls restoreFocus, or returns the
+ * focus to its opener (V 7.4 row F): to the element that had the focus when it opened (the manuscript,
+ * when a menu command opened it), or to the anchor when that was the anchor itself or nothing.
+ * layer: 'header' | 'modal'; menu: a .faust-menu without head and body.
  */
 export function Popover(props) {
   return props.open === false ? null : e(PopoverFrame, props);
@@ -794,6 +796,9 @@ function PopoverFrame({ anchorRef, alignRef, title, width, onClose, footer, laye
   onCloseRef.current = onClose;
   const restoreRef = useRef(restoreFocus);
   restoreRef.current = restoreFocus;
+  // The opener: what had the focus when the popover first rendered (before it moves focus in)
+  const openerRef = useRef(undefined);
+  if (openerRef.current === undefined) openerRef.current = (typeof document !== 'undefined' && document.activeElement) || null;
   const close = () => { if (onCloseRef.current) onCloseRef.current(); };
 
   // Placement
@@ -907,7 +912,13 @@ function PopoverFrame({ anchorRef, alignRef, title, width, onClose, footer, laye
       const active = document.activeElement;
       const wasInside = !active || active === document.body || (el && el.contains(active));
       if (!wasInside) return;
-      if (restoreRef.current) restoreRef.current();
+      if (restoreRef.current) { restoreRef.current(); return; }
+      // A menu command opens the popover with the focus in the text: Esc gives it back there, so typing
+      // goes on; opened from its button (or with nothing focused), the focus returns to the button
+      const opener = openerRef.current;
+      const openerElsewhere = opener && opener !== document.body && opener.focus && document.contains(opener) &&
+        !(anchor && anchor.contains(opener)) && !(el && el.contains(opener));
+      if (openerElsewhere) opener.focus();
       else if (anchor && anchor.focus && document.contains(anchor)) anchor.focus();
     };
   }, []);

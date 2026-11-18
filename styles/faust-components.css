@@ -84,6 +84,10 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 .faust-icon--sigil { color: var(--accent-line); }                                   /* a sigil beside its words: the gold line, as on the format bar */
 :disabled > .faust-icon--sigil { color: inherit; }
 .faust-kept-name { text-transform: none; letter-spacing: 0; }                       /* a kept name (Magnum Opus, Liminal Engine) is never set in capitals, also inside a caps heading */
+/* In a section title's slot a kept name reads as the heading it is by its face (names and titles are serif,
+   V 0.1 rule 3), since it cannot take the capitals of the other section titles */
+.faust-section__title:has(> .faust-kept-name) { display: flex; align-items: center; gap: var(--sp-2); }
+.faust-section__title > .faust-kept-name { font: var(--type-title-pop); color: var(--text); }
 .faust-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
 /* ============ 3 Buttons ============
@@ -312,7 +316,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 .faust-card.is-dragging { opacity: 0.5; border-style: dashed; }
 .faust-card.is-drop-target { box-shadow: inset 3px 0 0 var(--accent-line); }
 .faust-card[aria-disabled="true"] { color: var(--text-disabled); box-shadow: none; cursor: default; }
-.faust-card--stripe { background-image: linear-gradient(90deg, var(--stripe, var(--accent-line)) 0 3px, transparent 3px); padding-left: calc(var(--sp-3) + 3px); }
+.faust-card--stripe { background-image: linear-gradient(90deg, var(--stripe, var(--accent-line)) 0 3px, transparent 3px); background-repeat: no-repeat; padding-left: calc(var(--sp-3) + 3px); }      /* no-repeat: the image is sized to the padding box, and a repeat would paint the stripe's first pixels under the translucent right border */
 .faust-card--add { align-items: center; justify-content: center; background: none; border-style: dashed; border-color: var(--border-control); color: var(--text-3); }
 .faust-card--add:hover { color: var(--text); background: var(--fill-hover); }
 .faust-card__head  { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
@@ -320,11 +324,18 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 .faust-card--compact .faust-card__title { font: var(--type-ui-strong); }
 .faust-card .faust-card__title--author { font: var(--type-title-pop); }      /* a title in the author's words stays serif in a compact card */
 .faust-card__body  { font: var(--type-serif-sm); color: var(--text-2); }            /* the synopsis: upright; italic is kept for verbatim quotation */
-.faust-card__foot  { margin-top: auto; padding-top: var(--sp-2); border-top: var(--bw) solid var(--rule); display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
+.faust-card__foot  { align-self: stretch; margin-top: auto; padding-top: var(--sp-2); border-top: var(--bw) solid var(--rule); display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; }
 .faust-card.is-selected :is(.faust-card__foot, .faust-meta, .faust-label, .faust-kv, .faust-stat) { color: var(--text-2); }
 /* The three list windows (Hahmot, Paikat, Juonilangat): one grid of cards, title, the author's description, meta */
 .faust-listgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--sp-3); align-content: start; }
+/* A card's facts (meta lines) stand in its foot, one per line, so every foot of a row shares the bottom edge.
+   (align-self: stretch on the foot: a card that is a button gets align-items: flex-start from the browser.) */
+.faust-card__foot--lines { flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: var(--sp-half); }
 .faust-cardgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); grid-auto-rows: minmax(168px, auto); gap: var(--sp-4); align-content: start; }
+/* Cards of different kinds (a note beside a link) keep their own height: a short card is not stretched to its neighbour's */
+.faust-cardgrid--start { grid-auto-rows: auto; align-items: start; }
+/* A field inside a card grows with its text and has no resize grip: the card is its frame */
+.faust-card > .faust-textarea { resize: none; field-sizing: content; min-height: var(--sp-8); max-height: 320px; }
 
 .faust-chip {
   display: inline-flex; align-items: center; gap: var(--sp-1); height: 20px; padding: 0 var(--sp-2); flex: none;
@@ -421,10 +432,12 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-row.is-error .faust-row__meta { color: var(--error-text); }
 .faust-row:is(:disabled, [aria-disabled="true"]) :is(.faust-row__meta, .faust-row__icon) { color: var(--text-disabled); }
 
-/* A list of choices that each move on (the types of Uusi hahmo): edged rows on the content edge */
-.faust-choice-list { display: flex; flex-direction: column; gap: var(--sp-1); }
-.faust-row--choice { border: var(--bw) solid var(--border); min-height: var(--h-lg); }
-.faust-row--choice:hover { border-color: var(--border-control); }
+/* A list of choices that each move on (the types of Uusi hahmo): one framed list, the rows parted by
+   rules, each row a list row (serif name, hover fill, a trailing chevron that reads "go on") */
+.faust-choice-list { display: flex; flex-direction: column; border: var(--bw) solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+.faust-row--choice { min-height: var(--h-xl); border-radius: 0; color: var(--text); }
+.faust-row--choice + .faust-row--choice { box-shadow: inset 0 var(--bw) 0 var(--rule); }
+.faust-row--choice > .faust-row__icon:last-child { margin-left: auto; }
 
 /* A chip on a filled container (hover, pressed, selected, drop target, selected card, hovered or
    active finding) would stack its own tint on that fill: its label steps up to --text and the
@@ -441,6 +454,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-kv > :last-child.faust-serif { font: var(--type-serif); line-height: 16px; min-width: 0; overflow-wrap: anywhere; }      /* a value in the author's own words, on the mono row's 16px line, so every row has the same 24px pitch */
 /* In a wide dialog (a character's profile) the value stands next to its label, in the author's face */
 .faust-kv--profile { display: grid; grid-template-columns: 11rem minmax(0, 1fr); justify-content: start; }
+.faust-kv-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--sp-4); }
+.faust-kv-list > .faust-kv--profile { grid-column: 1 / -1; grid-template-columns: subgrid; }
 .faust-kv--profile > :last-child { font: var(--type-serif); text-align: left; overflow-wrap: anywhere; }
 .faust-stat { display: inline-flex; align-items: baseline; gap: var(--sp-1); font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .faust-stat > b { font-weight: var(--w-mono-strong); color: var(--text); }
@@ -474,7 +489,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-timeline__bar { grid-column: calc(var(--from, 0) + 2) / calc(var(--to, 0) + 3); height: 8px; border-radius: var(--radius-pill); background: var(--thread, var(--thread-1)); }
 .faust-timeline__bar.is-open { border-top-right-radius: 0; border-bottom-right-radius: 0; }       /* not yet resolved: the bar runs on, square-cut */
 .faust-timeline__status { justify-self: end; }
-.faust-timeline__name--head { font: var(--type-label); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-2); }      /* the chapter row's label in the name column: the column reads as a header column */
+.faust-timeline__name--head { align-items: flex-start; padding-top: calc(var(--sp-2) + var(--bw)); font: var(--type-label); letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--text-2); }      /* on the cards' first line (their 8px inset and 1px edge), a heading of its row */
+/* A chapter card's status chip stands at the card's foot, so the chips of the row share one line */
+.faust-timeline__grid > .faust-card > .faust-chip { align-self: flex-start; margin-top: auto; }      /* the chapter row's label in the name column: the column reads as a header column */
 
 /* ============ 7 Progress, spinner, empty state ============ */
 .faust-progress { height: 3px; border-radius: var(--radius-xs); background: var(--track); overflow: hidden; }
@@ -507,7 +524,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
   position: fixed; z-index: var(--z-toast);
   left: calc(var(--left-col-w) + (100vw - var(--left-col-w) - var(--right-col-w)) / 2); transform: translateX(-50%);
   top: calc(var(--header-h) + var(--formatbar-h) + var(--sp-2));     /* 8px under the format bar (V 4.7): a one-line toast (40px) ends on the page's 48px top margin */
-  width: min(560px, calc(100vw - var(--left-col-w) - var(--right-col-w) - 2 * var(--sp-4)));   /* a one-sentence notice stays on one line from a 1440px window */
+  width: min(440px, calc(100vw - var(--left-col-w) - var(--right-col-w) - 2 * var(--sp-4)));   /* V 4.7: inside the text column, never over its edges */
   display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-2);
   pointer-events: none; -webkit-app-region: no-drag;
 }
@@ -566,12 +583,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 }
 .faust-scrim--top { z-index: var(--z-dialog); }      /* prompt and confirm only: above any modal, legacy ones included */
 .faust-scrim.is-stacked { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }   /* a dialog over a dialog: the scrim is painted once */
-/* The dialog under it steps back: a veil of the scrim lies on its panel only, so one frame reads as active */
-.faust-scrim:has(~ .faust-scrim.is-stacked) > .faust-dialog { position: relative; }
-.faust-scrim:has(~ .faust-scrim.is-stacked) > .faust-dialog::after { content: ""; position: absolute; inset: 0; background: var(--scrim); pointer-events: none; }
-/* ...and on its frame: the ::after stops at the padding box (and the panel clips there), so an outline of
-   the scrim colour lies over the 2px frame. The covered dialog keeps no bright edge of its own. */
-.faust-scrim:has(~ .faust-scrim.is-stacked) > .faust-dialog { outline: var(--dialog-frame-w) solid var(--scrim); outline-offset: calc(-1 * var(--dialog-frame-w)); }
+/* The dialog under a stacked one is not veiled a second time: veiled to the scrim's tone, its strips above
+   and below the upper panel read as an empty frame. It stays a dialog under a dialog; the upper panel's
+   level-3 shadow parts the two. */
 .faust-dialog {
   display: flex; flex-direction: column; overflow: hidden;
   width: min(var(--dialog-w, 520px), 100%); max-height: 100%;
@@ -601,6 +615,11 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-dialog__title { display: flex; align-items: center; gap: var(--sp-3); margin: 0; font: var(--type-title-dialog); letter-spacing: 0; color: var(--text); }
 .faust-dialog__title > .faust-icon { color: var(--accent-line); }
 .faust-dialog__sub   { margin-top: var(--sp-1); font: var(--type-meta); color: var(--text-3); }
+/* With a 20px sigil before the title, title and sub line form one text block beside it, so the header has
+   two edges, the sigil's (shared with the body) and the words' */
+.faust-dialog__title:has(> .faust-icon) + .faust-dialog__sub { padding-left: calc(20px + var(--sp-3)); }
+/* A sentence the application addresses to the author in the sub slot (M gives two dialogs one) is serif (V 0.1 rule 3) */
+.faust-dialog__lede { font: var(--type-serif-sm); color: var(--text-2); text-wrap: pretty; }
 .faust-dialog__actions { flex: none; display: flex; align-items: center; gap: var(--sp-2); }      /* header slot before the close button: the create action of a list dialog */
 /* The body reserves a classic scrollbar's width (--scrollbar-w) on its right and gives it back from its
    padding, so the content ends on the header's and the footer's right edge whether or not it scrolls. */
@@ -656,6 +675,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
   .faust-popover__body { scrollbar-gutter: stable; padding-right: max(0px, calc(var(--sp-4) - var(--scrollbar-w))); overflow-x: hidden; }      /* a row's fill (8px outside the edge) never makes it scroll sideways */
 }
 .faust-popover__body .faust-row { width: calc(100% + 2 * var(--sp-2)); margin-inline: calc(-1 * var(--sp-2)); padding-inline: var(--sp-2); }
+.faust-popover__add { margin-bottom: var(--sp-3); }      /* the add action heading a list popover: 12px to the first card, so its 2px ring never meets it */
+.faust-popover__list { display: flex; flex-direction: column; gap: var(--sp-2); }
+.faust-popover__list > .faust-popover__add { margin-bottom: var(--sp-1); }      /* with the list's 8px gap: the same 12px */
 .faust-popover__foot  { flex: none; display: flex; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4); border-top: var(--bw) solid var(--rule); }      /* the body's 16px edge */
 /* Fallback place when the anchor is hidden (focus mode hides the format bar and the sigil bar):
    Popover writes no inline top and left and sets data-anchor="none"; the popover then stands
@@ -817,6 +839,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-inline-prompt[aria-busy="true"] .faust-inline-prompt__input { color: var(--text-2); }
 .faust-inline-prompt[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 2px var(--error-bg); }
 .faust-inline-prompt[aria-invalid="true"] .faust-inline-prompt__hint { color: var(--error-text); }
+.faust-inline-prompt[aria-invalid="true"]:focus-within { box-shadow: 0 0 0 1px var(--error), 0 0 0 3px var(--error-bg); }      /* focused, the error edge is one 2px line, as the accent edge is in the other states */
 .faust-inline-prompt[aria-disabled="true"] { border-color: var(--rule); box-shadow: none; }
 .faust-inline-prompt[aria-disabled="true"] :is(.faust-inline-prompt__sigil, .faust-inline-prompt__input) { color: var(--text-disabled); }
 
@@ -1102,9 +1125,12 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-panel__tabs { flex: none; padding: 0 calc(var(--sp-4) + var(--scrollbar-w)) 0 var(--sp-4); }
 .faust-panel__body { flex: 1 1 0; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; padding: var(--sp-3) var(--sp-4) var(--sp-5); }
 .faust-panel__foot { flex: none; padding: var(--sp-2) calc(var(--sp-4) + var(--scrollbar-w)) var(--sp-2) var(--sp-4); border-top: var(--bw) solid var(--rule); }
-/* The sidebar's list fades out over its last 16px, so a row or a button cut by the foot reads as
-   continuing; at the end of the list that strip is the body's own bottom padding. */
-.faust-sidebar .faust-panel__body { -webkit-mask-image: linear-gradient(to bottom, var(--surface-panel) calc(100% - var(--sp-4)), transparent); mask-image: linear-gradient(to bottom, var(--surface-panel) calc(100% - var(--sp-4)), transparent); }
+/* A scrolled body shows nothing in its first 4px and fades in up to 12px under the fixed head or tab row,
+   so text cut there never meets the tab underline or the head as a hard edge; at rest that strip is the
+   body's own top padding (--sp-3), so nothing at rest is faded. The sidebar's list also fades out over its last 16px, so a row or
+   a button cut by the foot reads as continuing; at the end of the list that strip is its bottom padding. */
+.faust-panel__body { scroll-padding-top: var(--sp-3); -webkit-mask-image: linear-gradient(to bottom, transparent var(--sp-1), var(--surface-panel) var(--sp-3)); mask-image: linear-gradient(to bottom, transparent var(--sp-1), var(--surface-panel) var(--sp-3)); }      /* scroll-padding: what is scrolled into view (focus, scrollIntoView) stops under the fade */
+.faust-sidebar .faust-panel__body { -webkit-mask-image: linear-gradient(to bottom, transparent var(--sp-1), var(--surface-panel) var(--sp-3), var(--surface-panel) calc(100% - var(--sp-4)), transparent); mask-image: linear-gradient(to bottom, transparent var(--sp-1), var(--surface-panel) var(--sp-3), var(--surface-panel) calc(100% - var(--sp-4)), transparent); }
 /* A window lower than 720px: the five tools take toolbar rows (24px) and their heading no extra
    height, so the list keeps more chapters in view */
 @media (max-height: 719px) {
@@ -1129,6 +1155,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* A row whose content has no bound (the stored AI suggestions) is a closed disclosure; open, it scrolls inside itself and never takes more than a quarter of the window from the manuscript. */
 .faust-page-row--bounded { flex: 0 1 auto; min-height: var(--h-sm); max-height: min(180px, 25vh); overflow-y: auto; overscroll-behavior: contain; }
 .faust-editor-area:has(> .faust-editor-split) .faust-page { --page-pad-top: 24px; }
+/* While a notification is shown, the page keeps the 48px top margin V 4.7 counts on ("a one-line
+   notification fits the page's 48px top margin"), also where a low window (V 6.6) or split view gives it
+   24px: the head moves down instead of being covered. Focus mode has its own 64px. */
+.faust-app:not(.faust-focus-mode):has(.faust-toast-host > .faust-toast:not(.is-leaving)) .faust-page { --page-pad-top: var(--sp-7); }
 
 /* Final page: head block and text share one centred column; the format bar lies on the desk. */
 /* Split view: two equal panes of 400px or more. Where the window-width rule cannot give the area 800px
@@ -1166,7 +1196,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
    bar's frame (26px) clears the bar's rules by 5px, as it does in the 40px bar */
 @media (max-height: 719px) { .faust-formatbar .faust-sigilbar { --h-lg: var(--h-sm); } .faust-formatbar .faust-sigilbar .faust-sigil-btn > .faust-icon { width: 18px; height: 18px; } }
 .faust-page { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; position: relative; }
-.faust-page__head { flex: none; padding: var(--page-pad-top) var(--page-edge) var(--sp-5); }
+.faust-page__head { flex: none; padding: var(--page-pad-top) var(--page-edge) var(--sp-5); transition: padding-top var(--dur-fast) var(--ease-out); }
 .faust-chapter-title {
   display: block; width: 100%; padding: 0; background: transparent;
   border: 0; border-bottom: var(--bw) solid transparent; border-radius: 0;
@@ -1239,7 +1269,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .claude-icon { color: var(--accent-line); display: inline-grid; }
 .claude-chat-controls { display: flex; align-items: center; gap: var(--sp-1); }
 .claude-chat-controls { flex: none; }
-.claude-chat-foot { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-half); padding: 0 var(--sp-3) var(--sp-2); }   /* under the field: Perusteellinen vastaus, then the key hint */
+.claude-chat-foot { flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-half); padding: 0 var(--sp-4) var(--sp-2); }      /* the head's and the messages' 16px edge */   /* under the field: Perusteellinen vastaus, then the key hint */
 /* Tyhjennä is a word button: its look is faust-btn faust-btn--quiet faust-btn--sm */
 .close-btn { width: var(--h-sm); height: var(--h-sm); display: inline-grid; place-items: center; padding: 0; background: none; border: 0; border-radius: var(--radius-sm); color: var(--text-2); font: var(--type-ui); }
 .close-btn:hover { background: var(--fill-hover); color: var(--text); }
@@ -1262,7 +1292,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .streaming-indicator .dot:nth-child(3) { animation-delay: 0.3s; }
 @media (prefers-reduced-motion: reduce) { .streaming-indicator .dot { animation: none; opacity: 0.6; } }
 .claude-chat-error { display: none; }                      /* the error is shown once, as the bubble */
-.claude-chat-input { flex: none; display: flex; align-items: flex-end; gap: var(--sp-2); padding: var(--sp-3); border-top: var(--bw) solid var(--rule); }
+.claude-chat-input { flex: none; display: flex; align-items: flex-end; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); border-top: var(--bw) solid var(--rule); }
 .claude-chat-input textarea { flex: 1; min-width: 0; padding: var(--sp-2) var(--sp-3); resize: none; background: var(--surface-sunken); color: var(--text); border: var(--bw) solid var(--border-control); border-radius: var(--radius-sm); font: var(--type-input); }
 .claude-chat-input textarea:focus-visible { border-color: var(--focus-ring); }
 /* Lähetä is a word button (faust-btn faust-btn--primary, busy through aria-busy): only its height
