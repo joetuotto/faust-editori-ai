@@ -1225,6 +1225,14 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-count { white-space: nowrap; }
 /* end I-05 */
 
+/* I-09: Kirjoita kohdistimeen (the insert block of pendingInsertView.js, the prompt in write mode) */
+/* The block's ‹ › are as high as Hyväksy: the hidden character's line box (16px of --type-meta)
+   no longer stands under the 14px icon (the prompt's own glyph buttons got the same rule at I-05) */
+.faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:is([data-role="block-prev"], [data-role="block-next"]) { line-height: 0; }
+/* Write mode: "Muokkaa tätä kappaletta" stands one gap after the Pituus select, not against it. Layout only. */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-length + .cm-faust-prompt-link { margin-left: var(--sp-3); }
+/* end I-09 */
+
 /* The page: one measure, one left edge, one scroller. The page element (.faust-page) is the
    editor content box. It carries --ms-size (and, with a manuscript face other than EB Garamond,
    --measure-face) inline, so the measure is declared here. */

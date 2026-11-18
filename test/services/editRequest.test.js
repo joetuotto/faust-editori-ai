@@ -216,6 +216,22 @@ describe('writeTask', () => {
     expect('payload' in task).toBe(false);
     expect('payloadTag' in task).toBe(false);
   });
+
+  // I-09: the context row says "oma ohje" only for what the author typed
+  test('writeTask names its own default direction ohje and leaves a typed direction to the builder\'s oma ohje', () => {
+    expect(writeTask({ direction: '' }).instructionLabel).toBe('ohje');
+    expect(writeTask({ direction: '  \n ' }).instructionLabel).toBe('ohje');
+    expect(writeTask({}).instructionLabel).toBe('ohje');
+    expect(writeTask({ direction: 'Sumu nousee' })).not.toHaveProperty('instructionLabel');
+
+    const { buildContext, describeParts } = require('../../src/services/ai/contextBuilder.js');
+    const project = { title: 'T', language: 'fi', structure: [{ id: 'c1', title: 'Yksi', content: 'Aino tuli kotiin. Ovi oli auki.' }] };
+    const rowOf = (direction) => describeParts(buildContext({
+      task: writeTask({ direction }), project, chapterId: 'c1', text: project.structure[0].content, cursor: 17
+    })).line;
+    expect(rowOf('')).toMatch(/· ohje 26$/);
+    expect(rowOf('Sumu nousee')).toMatch(/· oma ohje 19$/);
+  });
 });
 
 describe('previewUnmask', () => {

@@ -947,6 +947,8 @@ function FAUSTApp() {
       getController: () => suggestionsRef.current,
       // The chip Kielenhuolto – vain virheet guards against a model's typo with the same word list (I-06)
       getWordCheck: () => wordCheckRef.current,
+      // Kirjoita kohdistimeen (I-09): Cmd+K without a selection writes a draft into an insert block at the caret
+      writeAtCursor: true,
       // Deleting a saved prompt asks first; askConfirm is declared further down and called only later
       askConfirm: (...args) => askConfirm(...args)
     });

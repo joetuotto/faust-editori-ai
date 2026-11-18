@@ -125,7 +125,10 @@ function writeTask({ direction, length, projectKind, language } = {}) {
     role: nonfiction ? WRITE_ROLE_NONFICTION : WRITE_ROLE,
     rules,
     instruction: aim ? `Suunta: ${aim}` : 'Suunta: jatka luontevasti.',
-    answerTokens: size.answerTokens
+    answerTokens: size.answerTokens,
+    // Without a direction the instruction is this task's own wording, not the author's: the context
+    // row names it "ohje", as it does a quick action's rule text ("oma ohje" is what the author wrote)
+    ...(aim ? {} : { instructionLabel: 'ohje' })
   };
 }
 

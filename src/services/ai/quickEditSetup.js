@@ -187,7 +187,8 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
     let args;
     try {
       if (open.ui.mode === 'write') {
-        const task = writeTask({ direction: '', length: open.ui.length, projectKind: projectKind(project), language: project.language });
+        // A prompt reopened after a stop or a refusal keeps the author's direction (its draft): the row counts it
+        const task = writeTask({ direction: open.ui.draft || '', length: open.ui.length, projectKind: projectKind(project), language: project.language });
         args = { task, project, chapterId: getChapterId(), text: value, cursor: open.from, role: 'prose', answerTokens: task.answerTokens };
       } else {
         const target = value.slice(open.from, open.to);
@@ -335,6 +336,8 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
     handle(intent, view) {
       quickEdit.host.handle(intent, view);
       if (intent && (intent.type === 'prompt-closed' || intent.type === 'view-destroyed')) sweepSoon();
+      // Pituus changes the write task's length rule and answer budget: the row and Näytä kehote follow it
+      if (intent && intent.type === 'length' && row.slot) dryBuild(view);
     }
   };
 
