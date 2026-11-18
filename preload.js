@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 // ai:request chunks, routed by request id
 const aiChunkHandlers = new Map();
@@ -111,6 +111,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Open a web page in the system browser (https only, checked in the main process)
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
+
+  // Voikko, the Finnish spelling and grammar checker, runs in the main process (utils/voikko.js).
+  // Every one is an invoke: the answer is a Promise. voikkoStatus({ recheck: true }) looks again and
+  // rebuilds the menu, so an installation needs no restart (stage I-06)
+  voikkoStatus: (options) => ipcRenderer.invoke('voikko:status', options),
+  voikkoAnalyze: (payload) => ipcRenderer.invoke('voikko:analyze', payload),
+  voikkoGrammar: (payload) => ipcRenderer.invoke('voikko:grammar', payload),
+
+  // The system spell checker as the second word list of Kielenhuolto's suspect-word guard: the probe
+  // passes only when it knows a Finnish word and rejects a misspelt one (it depends on the system's
+  // languages and on Työkalut ▸ Oikoluku); at most 200 words per call
+  spellProbe: () => { try { return webFrame.isWordMisspelled('kirja') === false && webFrame.isWordMisspelled('kirrjaa') === true; } catch (e) { return false; } },
+  spellCheckWords: (words) => Object.fromEntries((Array.isArray(words) ? words : []).slice(0, 200).map(w => [String(w), !webFrame.isWordMisspelled(String(w))])),
 
   // A right click in the manuscript: where, whether text is selected, the quick actions of the
   // project; main matches it to its own context-menu event for the Tekoäly submenu (stage I-05)

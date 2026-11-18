@@ -277,6 +277,11 @@ function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// A plain search typed with straight marks also finds the curly forms that smart typing writes
+// (contracts.md 11.2 F): " finds ” “ „, ' finds ’ ‘, - finds –. Escaping never produces these three
+// characters, so every one left in an escaped term was typed by the author. Regex searches are untouched.
+const TYPED_MARK_CLASS = { '"': '["”“„]', "'": "['’‘]", '-': '[-–]' };
+
 /**
  * Build the search expression for find and replace.
  * Whole-word matching uses Unicode letter classes, so words that start or
@@ -286,7 +291,7 @@ function escapeRegExp(text) {
 function buildSearchPattern(term, { caseSensitive = false, wholeWord = false, regex = false } = {}) {
   if (!term) return null;
 
-  let source = regex ? term : escapeRegExp(term);
+  let source = regex ? term : escapeRegExp(term).replace(/["'-]/g, (mark) => TYPED_MARK_CLASS[mark]);
   if (wholeWord) {
     source = `(?<![\\p{L}\\p{N}_])(?:${source})(?![\\p{L}\\p{N}_])`;
   }

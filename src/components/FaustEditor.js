@@ -36,6 +36,12 @@
  * reaches the current one; the controller reaches the view through faustView. No facade member is
  * added for it.
  *
+ * Smart typing (src/editor/smartTyping.js, stage I-06, "Älykäs kirjoitus"): a typed " becomes ”, ' becomes ’
+ * and -- becomes – while the prop `smartTyping` ({ enabled }) says so, read through a ref, so the switch
+ * changes nothing else in the editor. The replacement is a transaction of its own after the typed
+ * character: onChange reports it with { noMerge: true, source: 'smart-typing' }, so one Cmd+Z right after
+ * it gives back exactly what was typed.
+ *
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
  */
 
@@ -55,6 +61,7 @@ import {
 } from '../editor/suggestions.js';
 import { wordDiff } from '../editor/wordDiff.js';
 import { inlinePrompt } from '../editor/inlinePrompt.js';
+import { smartTyping, SmartTyping } from '../editor/smartTyping.js';
 import { modelLabel } from '../services/format.fi.js';
 
 const { createElement: e, useRef, useLayoutEffect, forwardRef } = React;
@@ -358,6 +365,8 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
     onSuggestionsChange,
     // The quick-edit controller ({ handle(intent, view) }) that the inline prompt reports to (I-05)
     aiHost,
+    // Smart typing ({ enabled }): " → ”, ' → ’, -- → – while typing (I-06)
+    smartTyping: smartTypingOptions,
     // The text's accessible name; a read-only text is never spell-checked
     label = 'Käsikirjoitus'
   } = props;
@@ -368,6 +377,7 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
   const onSuggestionsRef = useRef(onSuggestionsChange);
   const aiHostRef = useRef(aiHost);
   const typewriterRef = useRef(!!typewriterMode);
+  const smartTypingRef = useRef(null);
   // Texts this editor has reported through onChange and not yet seen come back as `value`
   const pendingRef = useRef([]);
   const centerFrameRef = useRef(0);
@@ -377,6 +387,8 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
   onSuggestionsRef.current = onSuggestionsChange;
   aiHostRef.current = aiHost;
   typewriterRef.current = !!typewriterMode;
+  // Read at every typed character, so the switch takes effect without rebuilding the editor
+  smartTypingRef.current = smartTypingOptions || null;
 
   // Create the editor once per mount (the parent remounts it per chapter with `key`)
   useLayoutEffect(() => {
@@ -415,7 +427,9 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
         // Writing aids go inside the three readOnly spreads below, never outside them: a read-only
         // editor keeps only the Markdown, the marks, the scene breaks, the tooltips and the theme.
         extensions: [
-          ...(readOnly ? [] : []),      // typing aids (smart typing) go here, before the keymap
+          ...(readOnly ? [] : [         // typing aids go here, before the keymap
+            smartTyping(() => smartTypingRef.current)
+          ]),
           keymap.of([
             { key: 'Enter', run: continueListOnEnter },
             { key: 'Enter', run: insertNewline },
@@ -446,12 +460,14 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
           EditorView.updateListener.of((update) => {
             const external = update.transactions.some(tr => tr.annotation(External));
 
-            // onChange first: the undo step of an accept exists before the controller logs it
+            // onChange first: the undo step of an accept exists before the controller logs it.
+            // A smart-typing replacement is an undo step of its own (the typed character was the one before)
             if (update.docChanged && !external) {
               const text = update.state.doc.toString();
               pendingRef.current.push(text);
               if (pendingRef.current.length > 20) pendingRef.current.shift();
-              if (onChangeRef.current) onChangeRef.current(text, readSuggestionMeta(update));
+              const smart = update.transactions.some(tr => tr.annotation(SmartTyping) !== undefined);
+              if (onChangeRef.current) onChangeRef.current(text, smart ? { noMerge: true, source: 'smart-typing' } : readSuggestionMeta(update));
             }
 
             if (!readOnly) {

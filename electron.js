@@ -5,6 +5,8 @@ const { buildGuardIndex, findProtected, collectStrings } = require('./utils/noAI
 const manuscript = require('./utils/manuscript');
 const importFolder = require('./utils/importFolder');
 const aiContextMenu = require('./utils/aiContextMenu');
+// Voikko's command-line tools, when installed ("brew install libvoikko"); detection never delays the window
+const voikko = require('./utils/voikko').createVoikko();
 const path = require('path');
 const fs = require('fs').promises;
 
@@ -632,6 +634,8 @@ function createMenu() {
   // Every AI door of the menu goes through this: with "Tekoäly pois" on, it is absent (reconcile R-6).
   // The way back, Työkalut ▸ Tekoäly ▸ Tekoälyasetukset… and Tekoäly pois, is never inside it.
   const aiItems = (...items) => (uiPrefs.aiOff === true ? [] : items);
+  // What the last Voikko detection found (null before the first one has finished)
+  const voikkoAvailable = () => !!(voikko.status() && voikko.status().available);
 
   const template = [
     // App menu (macOS)
@@ -769,6 +773,8 @@ function createMenu() {
             insertText('Pitkä ajatusviiva —', '—'),
             insertText('Kolme pistettä …', '…'),
             insertText('Lainausmerkki ”', '”'),
+            // The path to the mark while Älykäs kirjoitus is off (I-06)
+            insertText('Heittomerkki ’', '’'),
             insertText('Kulmalainausmerkki »', '»'),
             insertText('Sitova välilyönti', ' ')
           ]
@@ -816,6 +822,16 @@ function createMenu() {
             if (!saved.success) createMenu();      // the checkbox shows what main holds
           }
         },
+        // Local language tools (I-06): never inside aiItems, they work with "Tekoäly pois" (R-6).
+        // Voikko is greyed until detection has found it; the install hint then leaves the menu.
+        item('Tarkista typografia', 'check-typography'),
+        {
+          label: 'Voikko-tarkistus…',
+          enabled: voikkoAvailable(),
+          toolTip: voikkoAvailable() ? undefined : 'Voikkoa ei löytynyt. Asenna: brew install libvoikko',
+          click: () => menuAction('voikko-check-chapter')
+        },
+        ...(voikkoAvailable() ? [] : [item('Voikon asennusohje', 'voikko-help')]),
         separator,
         item('Hahmot', 'show-characters'),
         item('Paikat', 'show-locations'),
@@ -850,6 +866,8 @@ function createMenu() {
               separator,
               item('Kirjoita tekoälyn kanssa…', 'show-ai-writing'),
               item('Muokkaa valintaa puhumalla', 'voice-edit'),
+              // The AI proofreading of the open chapter, in Kielen työkalut (I-06)
+              item('Kielenhuolto…', 'proofread-chapter'),
               separator,
               // One command stops everything: the request layer and the tracked old handlers stop in
               // main, which then refuses the old handlers for STOP_LATCH_MS, so that a batch loop
@@ -924,6 +942,8 @@ app.whenReady().then(async () => {
   await loadUiPrefs();  // v1.4.1: Load UI preferences
   applyNativeTheme(uiPrefs.theme);  // before the window and its menus exist
   createWindow();
+  // Voikko is looked for after the window exists; the menu follows what was found
+  voikko.detect().then(() => createMenu()).catch(() => {});
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -1258,6 +1278,22 @@ ipcMain.handle('open-external', async (_event, url) => {
   }
   await shell.openExternal(url);
   return { success: true };
+});
+
+// Voikko (stage I-06). The status says whether the tools were found; recheck looks again and rebuilds the
+// menu, so an installation made while FAUST runs needs no restart. Text travels only through stdin.
+ipcMain.handle('voikko:status', async (_event, { recheck = false } = {}) => {
+  const status = await voikko.detect({ force: !!recheck });
+  if (recheck) createMenu();
+  return status;
+});
+ipcMain.handle('voikko:analyze', async (_event, { words, suggest } = {}) => {
+  try { return { success: true, results: await voikko.analyze(Array.isArray(words) ? words : [], { suggest: !!suggest }) }; }
+  catch (error) { return { success: false, error: error.message }; }
+});
+ipcMain.handle('voikko:grammar', async (_event, { paragraphs } = {}) => {
+  try { return { success: true, results: await voikko.grammar(Array.isArray(paragraphs) ? paragraphs : []) }; }
+  catch (error) { return { success: false, error: error.message }; }
 });
 
 // Which keys are set: two booleans, never a value

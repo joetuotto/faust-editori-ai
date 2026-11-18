@@ -59,6 +59,8 @@ const MODULES = {
   'src/services/ai/proofreadPass.js': ['PROOFREAD_DEFAULTS', 'PROOFREAD_ROLE', 'proofreadRules', 'EXPLAIN_SYSTEM', 'proofBudget', 'selectProofLines', 'formatBatch', 'proofreadTask', 'renderProofreadRequest', 'answerTokensForBatch', 'parseNumberedLines', 'alignBatch', 'reviseLine', 'locateLines', 'guardChanges', 'runProofread', 'buildExplainRequest', 'explainChange', 'summaryLine', 'meetsProofreadThreshold', 'modelNote', 'createProofreadSelection'],
   'src/services/ai/proofreadModelNotes.js': ['testedAt', 'ownText', 'scope', 'typography', 'models'],
   'src/services/language/wordCheck.js': ['createWordCheck'],
+  // Stage I-06: the decisions of Kielen työkalut that need no React (src/components/LanguagePanel.js)
+  'src/services/language/languageTools.js': ['SET_ASIDE_REASONS', 'languageName', 'typographyView', 'excerptAround', 'proofPlan', 'batchNumberOf', 'notRunText', 'resumePlace', 'locatePassage', 'setAsideChanges', 'voikkoWordRows', 'voikkoChange'],
   'src/editor/smartTypingCore.js': ['createSmartTypingKit'],
   'utils/voikko.js': ['createVoikko', 'parseSpellOutput', 'parseGrammarOutput', 'parseSuggestions', 'codePointToUtf16', 'sanitizeLine', 'CANDIDATE_DIRS', 'GC_ARG_SETS'],
   'src/services/language/voikkoCheck.js': ['tokenizeWords', 'buildVoikkoInput', 'voikkoFindings', 'nameHits'],

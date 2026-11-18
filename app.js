@@ -14,7 +14,7 @@ import { getAIClient } from './src/services/ai/aiClient.js';
 import { useSetting } from './src/components/useSetting.js';
 import { AiModelBadge } from './src/components/AiModelSettings.js';
 import { BookBriefFields, ChapterNoAIField, useNoAIGuard } from './src/components/ContextFields.js';
-import { normalizeContextFields, MESSAGES } from './src/services/ai/contextBuilder.js';
+import { normalizeContextFields, MESSAGES, isChapterBlocked } from './src/services/ai/contextBuilder.js';
 import { modelLabel } from './src/services/format.fi.js';
 // failureReason: the reason in '<Toiminto> epäonnistui: <syy>.'; asIsNotice: a stop, the switch and
 // the wire guard shown as they are (R-21); bookRunPlan: Magnum Opus without "Ei tekoälylle" chapters;
@@ -33,6 +33,16 @@ import { getSettingsStore } from './src/services/settingsStore.js';
 import { PasteEditsDialog } from './src/components/PasteEditsDialog.js';
 // Pikamuokkaus (Cmd+K): the inline prompt, the right-click Tekoäly submenu, Kokeile toisella mallilla (stage I-05)
 import { setupQuickEdit } from './src/services/ai/quickEditSetup.js';
+// Älykäs kirjoitus, Tarkista typografia, Voikko and Kielenhuolto in Kielen työkalut, Miksi? (stage I-06)
+import { LanguagePanel } from './src/components/LanguagePanel.js';
+import { SmartTypingSwitch, LineStartDashSelect } from './src/components/TypographySettings.js';
+import { explainChange } from './src/services/ai/proofreadPass.js';
+import { createWordCheck } from './src/services/language/wordCheck.js';
+import { getContextSession } from './src/services/ai/contextSession.js';
+import { splitBlocks } from './src/editor/blocks.js';
+import { batchParagraphs } from './src/services/ai/batchParagraphs.js';
+import { maskSpans, unmaskSpans, placeholderInstruction } from './src/services/ai/maskSpans.js';
+import { trimToSentence, splitSentences } from './src/editor/sentences.js';
 import {
   TextPromptDialog, ConfirmDialog, ShortcutsDialog, ExportDialog, CollectionDialog,
   shortcut, shortcutKeys, count, countParts
@@ -214,8 +224,14 @@ const STATUS_CHIP = {
 // Menu commands that show a docked panel leave focus mode first: a panel is never open inside it
 const LEAVES_FOCUS = [
   'toggle-sidebar', 'toggle-inspector', 'toggle-ai-panel', 'toggle-chat-window', 'toggle-corkboard',
-  'toggle-split-view', 'toggle-bookmarks', 'show-snapshots', 'show-settings', 'show-ai-settings'
+  'toggle-split-view', 'toggle-bookmarks', 'show-snapshots', 'show-settings', 'show-ai-settings',
+  // I-06: the four doors of Kielen työkalut
+  'check-typography', 'proofread-chapter', 'voikko-check-chapter', 'voikko-help'
 ];
+
+// The text functions Kielenhuolto and Miksi? work with (lines, masking, batches, diff, sentences),
+// handed to them as one object so the pure modules have no hard-wired paths (stage I-06)
+const textDeps = { splitBlocks, batchParagraphs, maskSpans, unmaskSpans, placeholderInstruction, wordDiff, changeRatio, trimToSentence, splitSentences };
 
 // 16.11.2026 klo 14.32
 const formatDateTimeFi = (value) => {
@@ -349,6 +365,12 @@ const createDefaultProject = () => ({
   codex: [],
   codexLegacyHandled: [],
   aiLog: createAiLog(new Date().toISOString()),   // Tekoälyn käyttö (contracts.md 1.3)
+
+  // Kielen työkalut (contracts.md section 5, stage I-06). Rivin alun viiva: null follows the genre;
+  // Kielenhuolto skips quote lines and sends dialogue; Tahallista / huomioi is shared with Tarkistus
+  typography: { lineStartDash: null },
+  proofread: { skipQuoteLines: true, skipDialogue: false },
+  keepNote: '',
 
   // Bookmarks - quick navigation points
   bookmarks: [],  // [{id, chapterId, position, name, color, created}]
@@ -794,6 +816,8 @@ function FAUSTApp() {
   const [confirmRequest, setConfirmRequest] = useState(null); // open yes/no question, see askConfirm
   const [suggestionInfo, setSuggestionInfo] = useState(null); // the suggestion bar's BarInfo (stage I-03)
   const [pasteEditsRequest, setPasteEditsRequest] = useState(null); // open Liitä muokkauksina dialog, see pasteAsEdits (stage I-04)
+  // Kielen työkalut, the third panel of the right column: null or the tab it shows (stage I-06)
+  const [languagePanel, setLanguagePanel] = useState(null);
   const [showReplaceDialog, setShowReplaceDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [replaceTerm, setReplaceTerm] = useState('');
@@ -818,6 +842,11 @@ function FAUSTApp() {
   const refusalRef = useRef(null);            // the last old request that main refused or stopped, see asIsNotice
   const menuHandlerRef = useRef(null);        // see the menu handler
   const quickEditRef = useRef(null);          // Pikamuokkaus (Cmd+K): the quick-edit controller, created below
+  // Kielenhuolto's suspect-word guard: Voikko, else the system spell checker, else none (refreshed at start)
+  const wordCheckRef = useRef(null);
+  if (!wordCheckRef.current) wordCheckRef.current = createWordCheck(window.electronAPI || {});
+  const explainCacheRef = useRef(new Map()); // Miksi? asks once per change in a project
+  const rightDisplacedRef = useRef(false);    // Kielen työkalut closed Tietopaneeli: its Sulje brings it back
   const lastSearchRef = useRef('');           // the term the current search results belong to
   const panelsBeforeFocusRef = useRef(null);  // panel visibility to restore after focus mode
   const [focusExitIdle, setFocusExitIdle] = useState(false); // the exit button fades after 2 s without pointer movement
@@ -867,6 +896,8 @@ function FAUSTApp() {
   // aiDisabled hides every AI entry point (also while the setting is not known yet); aiHidden adds
   // focus mode for the sigil bar only; chapterNoAI is the open chapter marked "Ei tekoälylle"
   const [aiOff, , prefsLoaded] = useSetting('aiOff', false);
+  // Älykäs kirjoitus (Tietopaneeli ▸ Ulkoasu), in ui-prefs.json
+  const [smartTypingOn, setSmartTypingOn] = useSetting('typo.smartTyping', true);
   const aiDisabled = !prefsLoaded || aiOff;
   const aiHidden = aiDisabled || focusMode;
   const chapterNoAI = !!(activeChapter && activeChapter.noAI);
@@ -882,6 +913,8 @@ function FAUSTApp() {
       getProject: () => projectRef.current,
       getChapterId: () => liveContentRef.current.chapterId,
       getController: () => suggestionsRef.current,
+      // The chip Kielenhuolto – vain virheet guards against a model's typo with the same word list (I-06)
+      getWordCheck: () => wordCheckRef.current,
       // Deleting a saved prompt asks first; askConfirm is declared further down and called only later
       askConfirm: (...args) => askConfirm(...args)
     });
@@ -946,6 +979,9 @@ function FAUSTApp() {
     ai.setUsageSink(appendAiLog);
     return () => { ai.setUsageSink(null); ai.setScopeSource(null); };
   }, []);
+
+  // Which word list Kielenhuolto's guard has: the Voikko status is an invoke, so it is awaited once here
+  useEffect(() => { wordCheckRef.current.refresh(); }, []);
 
   // The tekoälyn lähde once at start-up (AIProviderSettings reports later changes)
   useEffect(() => {
@@ -1119,6 +1155,11 @@ function FAUSTApp() {
       case 'show-ai-writing': openAiWriting(); break;
       case 'voice-edit': if (voiceState === 'idle') handleVoiceEdit(); break;
       case 'show-ai-settings': openAISettings(); break;
+      // Kielen työkalut (I-06): each shows its tab; with "Tekoäly pois" the menu has no Kielenhuolto…
+      case 'check-typography': setLanguagePanel('typography'); break;
+      case 'proofread-chapter': setLanguagePanel('proofread'); break;
+      case 'voikko-check-chapter': setLanguagePanel('voikko'); break;
+      case 'voikko-help': setLanguagePanel('voikko'); break;
 
       // Pysäytä tekoäly: main has already stopped its requests; the client stops its own handles
       case 'ai-stop-all': getAIClient().cancelAll(); break;
@@ -1253,12 +1294,13 @@ function FAUSTApp() {
   // Focus mode: only the text. Leaving it brings the panels back as they were.
   const toggleFocusMode = () => {
     if (!focusMode) {
-      panelsBeforeFocusRef.current = { sidebarCollapsed, showInspector, aiAssistantOpen, claudeChatOpen, corkboardEnabled };
+      panelsBeforeFocusRef.current = { sidebarCollapsed, showInspector, aiAssistantOpen, claudeChatOpen, corkboardEnabled, languagePanel };
       setSidebarCollapsed(true);
       setShowInspector(false);
       setAiAssistantOpen(false);
       setClaudeChatOpen(false);
       setCorkboardEnabled(false);
+      setLanguagePanel(null);       // a Kielenhuolto run goes on: the panel stays mounted
       setFocusMode(true);
     } else {
       const before = panelsBeforeFocusRef.current || {};
@@ -1267,6 +1309,7 @@ function FAUSTApp() {
       setAiAssistantOpen(!!before.aiAssistantOpen);
       setClaudeChatOpen(!!before.claudeChatOpen);
       setCorkboardEnabled(!!before.corkboardEnabled);
+      setLanguagePanel(before.languagePanel || null);
       setFocusMode(false);
     }
   };
@@ -1306,6 +1349,16 @@ function FAUSTApp() {
   // The Liminal Engine panel and the keskustelu are never open together
   const openLiminalEngine = () => { setClaudeChatOpen(false); setAiAssistantOpen(true); };
   const openChat = () => { setAiAssistantOpen(false); setClaudeChatOpen(true); };
+
+  // Sulje of Kielen työkalut (Esc is not bound: a reviewed set is never thrown away by a key). When the
+  // panel had taken Tietopaneeli's place (opened from the Tarkistus tab's foot), Tietopaneeli comes back
+  // on the tab it showed; a panel closed because another opened is not reopened otherwise.
+  const closeLanguagePanel = () => {
+    const giveBack = rightDisplacedRef.current;
+    rightDisplacedRef.current = false;
+    closePanelKeepingFocus('.faust-langpanel', () => setLanguagePanel(null));
+    if (giveBack) showInspectorTab();
+  };
 
   // The header's "more" menu holds the priority-3 commands, which the header shows below 1120 px only
   // there. It closes when its button is hidden (a wider window, focus mode).
@@ -1391,30 +1444,33 @@ function FAUSTApp() {
     }
   });
 
-  // The right column holds one docked panel: Tietopaneeli or the Liminal Engine (R-42). The panel
+  // The right column holds one docked panel: Tietopaneeli, the Liminal Engine or Kielen työkalut (R-42). The panel
   // opened last stays and closes the other; closing one reopens nothing. Leaving focus mode restores
   // the panels as they were before it, so that render is compared with that state: a command given in
   // focus mode (⌘2, ⇧⌘K) then counts as the panel opened last, not the one the restore brought back.
   // The Liminal Engine is open only while AI is on (R-28): with "Tekoäly pois" it takes no room
   const engineShown = aiAssistantOpen && !aiDisabled;
-  const rightNow = { inspector: showInspector, engine: engineShown /* I-06 adds: , language: !!languagePanel */ };
+  const rightNow = { inspector: showInspector, engine: engineShown, language: !!languagePanel };
   const rightPrevRef = useRef(rightNow);
   const rightFocusRef = useRef(focusMode);
   useLayoutEffect(() => {
     const before = rightFocusRef.current && !focusMode ? (panelsBeforeFocusRef.current || {}) : null;
     const prev = before
-      ? { inspector: !!before.showInspector, engine: !!before.aiAssistantOpen /* I-06 adds: , language: !!before.languagePanel */ }
+      ? { inspector: !!before.showInspector, engine: !!before.aiAssistantOpen, language: !!before.languagePanel }
       : rightPrevRef.current;
     const opened = Object.keys(rightNow).find((key) => rightNow[key] && !prev[key]);
     if (opened) {
       if (opened !== 'inspector' && rightNow.inspector) setShowInspector(false);
       if (opened !== 'engine' && rightNow.engine) setAiAssistantOpen(false);
-      /* I-06 adds: if (opened !== 'language' && rightNow.language) setLanguagePanel(null); */
+      if (opened !== 'language' && rightNow.language) setLanguagePanel(null);
+      // Kielen työkalut remembers whether it took Tietopaneeli's place (its Sulje gives the place back);
+      // any other panel that opens forgets it
+      rightDisplacedRef.current = opened === 'language' ? !!rightNow.inspector : false;
     }
     rightPrevRef.current = rightNow;
     rightFocusRef.current = focusMode;
   });
-  const rightColumnOpen = rightNow.inspector || rightNow.engine; /* I-06 adds: || rightNow.language */
+  const rightColumnOpen = rightNow.inspector || rightNow.engine || rightNow.language;
   // Switching "Tekoäly pois" on closes the Liminal Engine and the keskustelu (their conversations stay),
   // so that switching it off again opens nothing by itself
   useEffect(() => {
@@ -1453,10 +1509,10 @@ function FAUSTApp() {
     if (focusMode) return;
     if (leavingFocus) {
       const before = panelsBeforeFocusRef.current || {};
-      prev = { left: !before.sidebarCollapsed, right: !!(before.showInspector || before.aiAssistantOpen /* I-06 adds: || before.languagePanel */), split: sidesNow.split };
+      prev = { left: !before.sidebarCollapsed, right: !!(before.showInspector || before.aiAssistantOpen || before.languagePanel), split: sidesNow.split };
     }
     const width = window.innerWidth;
-    const closeRightColumn = () => { setShowInspector(false); setAiAssistantOpen(false); /* I-06 adds: setLanguagePanel(null); */ };
+    const closeRightColumn = () => { setShowInspector(false); setAiAssistantOpen(false); setLanguagePanel(null); };
     if (sidesNow.left && !prev.left) { lastSideRef.current = 'left'; sidebarClosedByWidthRef.current = false; }
     if (sidesNow.right && !prev.right) lastSideRef.current = 'right';
     if (sidesNow.split && !prev.split && width < 1400) {
@@ -2146,6 +2202,9 @@ function FAUSTApp() {
       ...data,
       ...normalizeContextFields(data),
       targets: { ...defaults.targets, ...(data.targets || {}) },
+      typography: { ...defaults.typography, ...(data.typography || {}) },
+      proofread: { ...defaults.proofread, ...(data.proofread || {}) },
+      keepNote: typeof data.keepNote === 'string' ? data.keepNote.slice(0, 1000) : '',
       ai: {
         ...defaults.ai,
         ...(data.ai || {}),
@@ -2169,6 +2228,8 @@ function FAUSTApp() {
     setVoiceDiffView(null); setAiSuggestion(null); setContinuePreview('');
     // A Liitä muokkauksina dialog compared the previous project's text (reset() dropped its target)
     setPasteEditsRequest(null);
+    // Miksi? answers belong to the previous project's changes (Kielen työkalut remounts with the epoch)
+    explainCacheRef.current.clear();
     setProject(data);
     setCurrentFilePath(filePath || null);
     setActiveChapterId(data.structure[0]?.id || 'chapter-1');
@@ -4887,7 +4948,28 @@ ${contextPrompt}`;
   // The bottom dock of the page (R-62) holds one occupant: the voice result card, then the suggestion
   // bar while suggestions are pending, then the voice bar, then the suggestion bar's other states.
   const dockSuggestionsFirst = !!suggestionInfo && suggestionInfo.pending > 0;
-  const dockSuggestionBar = e(SuggestionBar, { info: suggestionInfo, controller: suggestionsRef.current, onOpenChapter: setActiveChapterId, focusEditor: () => editorRef.current && editorRef.current.focus() });
+  // Miksi? (I-06): one sentence on why Kielenhuolto made the current change. Only with AI on and in a
+  // chapter that may be sent (it sends the line); without the prop the bar shows no Miksi? at all
+  const explainSuggestion = (current) => {
+    const line = (current && current.meta && current.meta.line) || {};
+    return explainChange({
+      original: line.original || current.original,
+      revised: line.revised || current.insert,
+      before: current.original,
+      after: current.insert,
+      request: (opts) => getAIClient().request({ role: 'edit', ...opts }),
+      deps: textDeps,
+      cache: explainCacheRef.current
+    });
+  };
+  const explainAllowed = !aiDisabled && !!activeChapter && !isChapterBlocked(project, activeChapter.id);
+  const dockSuggestionBar = e(SuggestionBar, {
+    info: suggestionInfo,
+    controller: suggestionsRef.current,
+    onOpenChapter: setActiveChapterId,
+    focusEditor: () => editorRef.current && editorRef.current.focus(),
+    explain: explainAllowed ? explainSuggestion : undefined
+  });
 
   return e('div', {
     className: (focusMode ? 'faust-app faust-focus-mode' : 'faust-app') + (isFullScreen ? ' is-fullscreen' : ''),
@@ -4895,7 +4977,7 @@ ${contextPrompt}`;
     // (notifications, popovers, chat window); 0px for a closed panel
     style: {
       '--left-col-w': sidebarCollapsed ? '0px' : 'var(--sidebar-w)',
-      '--right-col-w': rightNow.engine /* I-06 adds: || rightNow.language */ ? 'var(--aipanel-w)' : rightNow.inspector ? 'var(--inspector-w)' : '0px'
+      '--right-col-w': rightNow.engine || rightNow.language ? 'var(--aipanel-w)' : rightNow.inspector ? 'var(--inspector-w)' : '0px'
     }
   },
     // Dialogs that can appear over anything else
@@ -6001,6 +6083,8 @@ ${contextPrompt}`;
               ...suggestionsRef.current.editorProps(activeChapter.id),
               // The Pikamuokkaus prompt reports what the author does there to the quick-edit controller
               aiHost: quickEditRef.current.host,
+              // Älykäs kirjoitus: ” ’ – while typing, in a Finnish project only (I-06)
+              smartTyping: { enabled: smartTypingOn !== false && (project.language || 'fi') === 'fi' },
               onMouseUp: handleTextSelection,
               onKeyUp: handleTextSelection,
               typewriterMode: typewriterMode, // the editor keeps the cursor line centered
@@ -6578,7 +6662,7 @@ ${contextPrompt}`;
               value: inspectorTab,
               onChange: setInspectorTab,
               items: [
-                { id: 'editor', label: 'Ulkoasu', title: 'Fontti, riviväli, zoomaus ja teema' },
+                { id: 'editor', label: 'Ulkoasu', title: 'Fontti, riviväli, zoomaus, teema ja kirjoittamisen asetukset' },
                 { id: 'chapter', label: 'Luku', title: 'Avoimen luvun tiedot ja versiot' },
                 { id: 'project', label: 'Projekti', title: 'Projektin tiedot, tavoitteet, hahmot, juonilangat ja johdonmukaisuus' },
                 { id: 'ai', label: 'Tekoäly', title: 'Tekoälyn lähde, avain ja malli sekä tekoälyn kirjoitustoiminnot' }
@@ -6694,6 +6778,13 @@ ${contextPrompt}`;
               ),
               e('div', { className: 'faust-field__hint' }, 'Kirjoitusrivi pysyy ruudun keskellä.')
             ),
+
+            // Älykäs kirjoitus (I-06): drawn like Kirjoituskonetila; only for Finnish text
+            e(SmartTypingSwitch, {
+              value: smartTypingOn !== false,
+              onChange: setSmartTypingOn,
+              disabledReason: (project.language || 'fi') === 'fi' ? null : 'Älykäs kirjoitus on tehty suomenkieliselle tekstille.'
+            }),
 
             // Theme (W23)
             e('div', { className: 'faust-field' },
@@ -7695,7 +7786,34 @@ ${contextPrompt}`;
               shortcut('CmdOrCtrl+Shift+K') + ' tai Esc kätkee paneelin · Enter lähettää')
           )
         ]
-      )))
+      ))),
+
+      // Kielen työkalut (stage I-06, R-42): the third panel of the right column. Always mounted, so a
+      // Kielenhuolto run goes on while it is closed; a new project remounts it (key: the project epoch)
+      e('aside', { className: 'faust-aipanel faust-langpanel', 'data-state': languagePanel ? 'open' : 'closed', 'aria-label': 'Kielen työkalut' },
+        e(ErrorBoundary, { label: 'Kielen työkalut', onDismiss: closeLanguagePanel },
+          e(LanguagePanel, {
+            key: projectEpoch,
+            mode: languagePanel,
+            onMode: setLanguagePanel,
+            onClose: closeLanguagePanel,
+            project,
+            chapter: activeChapter,
+            text: (activeChapter && activeChapter.content) || '',
+            editorRef,
+            onSelectChapter: setActiveChapterId,
+            updateProject: (fn) => { setProject(fn); setUnsavedChanges(true); },
+            controller: suggestionsRef.current,
+            barInfo: suggestionInfo,
+            aiClient: getAIClient(),
+            aiConfig: aiSource,
+            contextSession: getContextSession(),
+            textDeps,
+            wordCheck: wordCheckRef.current,
+            api: window.electronAPI || null,
+            aiDisabled,
+            onOpenAISettings: openAISettings
+          })))
     ),
 
     // Footer / Status bar
@@ -8527,8 +8645,17 @@ ${contextPrompt}`;
               e('option', { value: 'fi' }, 'Suomi'),
               e('option', { value: 'en' }, 'Englanti')
             ),
-            e('span', { className: 'faust-field__hint' }, 'Tekoäly kirjoittaa uudet luvut tällä kielellä. Ei vaikuta oikolukuun.')
+            e('span', { className: 'faust-field__hint' }, 'Tekoäly kirjoittaa ja vastaa tällä kielellä. Älykäs kirjoitus ja typografian tarkistus toimivat vain suomenkielisessä projektissa. Ei vaikuta oikolukuun.')
           ),
+
+          // Rivin alun viiva (I-06): how existing "- " lines are read by the checker and by Kielenhuolto
+          e(LineStartDashSelect, {
+            project,
+            onChange: (value) => {
+              setProject(prev => ({ ...prev, typography: { ...(prev.typography || {}), lineStartDash: value } }));
+              setUnsavedChanges(true);
+            }
+          }),
 
           // Ohjeet tekoälylle: Käsikirjoituksen ydin and Tyyliohje (Vältettävät sanat from I-07 on)
           e(BookBriefFields, { project, activeChapter, onChange: patchProject, showAvoidWords: false }),

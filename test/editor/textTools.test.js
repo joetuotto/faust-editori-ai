@@ -227,6 +227,45 @@ describe('search', () => {
     // The replacement is literal: $1 is not a back-reference
     expect(replaceAllMatches('a b', 'a', '$1')).toEqual({ text: '$1 b', count: 1 });
   });
+
+  // Stage I-06 (contracts.md 11.2 F): smart typing writes ” ’ –, the author types " ' -
+  test('a typed straight quote also finds ”', () => {
+    const typed = 'Hän sanoi ”Hei” ja lähti. Toinen sanoi "Hei" ja jäi.';
+    expect(findMatches(typed, '"Hei"').map(m => m.text)).toEqual(['”Hei”', '"Hei"']);
+    // The opening marks of other languages are found too; the straight mark still finds itself
+    expect(findMatches('“Hei” ja „Hei”', '"Hei"')).toHaveLength(2);
+    expect(findMatches('Hän sanoi ”Hei”', '"', { wholeWord: false }).map(m => m.start)).toEqual([10, 14]);
+    // Whole word and case still apply to the rest of the term
+    expect(findMatches('”hei” ja ”Hei”', '"Hei"', { caseSensitive: true }).map(m => m.start)).toEqual([9]);
+    expect(replaceAllMatches('Hän sanoi ”Hei”.', '"Hei"', '”Moi”')).toEqual({ text: 'Hän sanoi ”Moi”.', count: 1 });
+  });
+
+  test('a typed apostrophe also finds ’', () => {
+    expect(findMatches('vaa’an ja vaa\'an', 'vaa\'an').map(m => m.text)).toEqual(['vaa’an', 'vaa\'an']);
+    expect(findMatches('‘lainaus’', '\'lainaus\'').map(m => m.text)).toEqual(['‘lainaus’']);
+    // Whole word: the apostrophe inside a word does not end it
+    expect(findMatches('Jussi’n ja Jussi', 'Jussi\'n', { wholeWord: true }).map(m => m.start)).toEqual([0]);
+  });
+
+  test('a typed hyphen also finds –', () => {
+    expect(findMatches('vuosina 1939–1945 ja 1939-1945', '1939-1945').map(m => m.start)).toEqual([8, 21]);
+    expect(findMatches('Hän tuli – ja lähti.', 'tuli - ja')).toHaveLength(1);
+    // The long dash is another mark and is not matched by a hyphen
+    expect(findMatches('tuli — ja', 'tuli - ja')).toEqual([]);
+    // Nothing else changes: a term without these marks finds what it found before
+    expect(findMatches('a.b axb', 'a.b')).toHaveLength(1);
+  });
+
+  test('a regex search is not changed', () => {
+    // In a regular expression the three marks keep their own meaning
+    expect(findMatches('”Hei”', '"Hei"', { regex: true })).toEqual([]);
+    expect(findMatches('vaa’an', 'vaa\'an', { regex: true })).toEqual([]);
+    expect(findMatches('1939–1945', '1939-1945', { regex: true })).toEqual([]);
+    expect(findMatches('b-c', '[a-c]-c', { regex: true }).map(m => m.text)).toEqual(['b-c']);
+    expect(buildSearchPattern('[a-c]', { regex: true }).source).toBe('[a-c]');
+    // termMatch builds its expressions through the regex path
+    expect(buildSearchPattern('Marja-Liisa', { regex: true, caseSensitive: true }).source).toBe('Marja-Liisa');
+  });
 });
 
 describe('wordAt', () => {

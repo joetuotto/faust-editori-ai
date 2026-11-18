@@ -349,6 +349,15 @@ function createSuggestionController(deps = {}) {
     return state;
   }
 
+  // Where a change ends in `shown` (the text after the undo or redo), given where it starts: the
+  // common tail of the two texts is not part of it
+  function changeEnd(shown, other, start) {
+    let tail = 0;
+    const room = Math.min(shown.length, other.length) - start;
+    while (tail < room && shown.charCodeAt(shown.length - 1 - tail) === other.charCodeAt(other.length - 1 - tail)) tail += 1;
+    return Math.max(start, shown.length - tail);
+  }
+
   // What an undo or a redo means for the suggestions (afterHistory publishes)
   function afterHistoryChanges(direction, step, hasText, accepted) {
     if (direction === 'undo' && accepted && hasText) {
@@ -368,7 +377,14 @@ function createSuggestionController(deps = {}) {
 
     // Show where the text changed
     if (hasText) {
-      const pos = model.firstDifference(normalizeNewlines(step.oldContent), normalizeNewlines(step.newContent));
+      const before = normalizeNewlines(step.oldContent);
+      const after = normalizeNewlines(step.newContent);
+      let pos = model.firstDifference(before, after);
+      // A smart-typing step (" → ”, -- → –, stage I-06) leaves the caret behind the marks it touched, where
+      // the author was typing: an undo gives back "--" with the caret after it, so typing goes on there
+      if (pos >= 0 && step.meta && step.meta.source === 'smart-typing') {
+        pos = changeEnd(direction === 'undo' ? before : after, direction === 'undo' ? after : before, pos);
+      }
       if (pos >= 0) {
         const editor = openEditor(step.chapterId);
         if (editor) editor.revealPos(pos);

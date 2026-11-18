@@ -1,12 +1,15 @@
 /**
  * src/components/SuggestionBar.js — Ehdotusten läpikäynti: the bar of the suggestion layer (stage I-03).
  *
- *   SuggestionBar({ info, controller, onOpenChapter, focusEditor })
+ *   SuggestionBar({ info, controller, onOpenChapter, focusEditor, explain })
  *     info          BarInfo of the suggestion controller (contracts.md 1.1), or null
  *     controller    the suggestion controller (acceptCurrent, rejectCurrent, acceptAll, rejectAll,
  *                   restoreRejected, step, setView, dismissNotice, closeBar)
  *     onOpenChapter (chapterId) => void, for "Muissa luvuissa odottaa …"
  *     focusEditor   () => void: the bar's menu gives the focus back to the manuscript
+ *     explain       (current) => Promise<{ ok, text } | { ok: false }>: "Miksi?" for a Kielenhuolto
+ *                   suggestion (stage I-06). Passed only while AI is on and the chapter may be sent;
+ *                   without it the bar has no Miksi? at all (contracts rule 12)
  *
  * It lives in the page's bottom dock (reconcile R-62), with the anatomy of visual foundations entry
  * VF-17 and the strings of the contract: the counter, step, Hylkää, Hyväksy, Hyväksy kaikki, and a
@@ -15,6 +18,9 @@
  * itself, Esc included. Every control keeps the focus in the manuscript (preventDefault on mousedown),
  * so the keys go on working after a click.
  *
+ * Miksi? is the first item of the "more" menu for a Kielenhuolto suggestion (VF-19): the answer, one
+ * sentence, stands in a popover under the "more" button while the same suggestion is current.
+ *
  * Notices (a suggestion dropped by an edit, a restore that failed, a proposal skipped) are warning
  * notifications, never a row of the bar (VF-18). The sentence about dialogue suggestions that a bulk
  * accept leaves stands above the bar while any are pending.
@@ -22,11 +28,11 @@
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
  */
 import { icons } from './icons.js';
-import { notify, Popover, usePopover, IconButton } from './ui.js';
+import { notify, Popover, usePopover, IconButton, Callout } from './ui.js';
 import { shortcut, count } from './Dialogs.js';
 import { formatCount } from '../services/format.fi.js';
 
-const { createElement: e, useEffect } = React;
+const { createElement: e, useEffect, useRef, useState } = React;
 
 // Every control: the press does not take the focus from the manuscript
 const keep = (ev) => ev.preventDefault();
@@ -118,9 +124,27 @@ const elsewhereLabel = (info) => 'Muissa luvuissa odottaa ' + count(elsewhereCou
 const restoreLabel = (info) => `Palauta hylätyt (${formatCount(info.rejected)})`;
 const RESTORE_TITLE = 'Palauta hylätyt ehdotukset, joiden alkuperäinen teksti on yhä paikallaan';
 
-export function SuggestionBar({ info, controller, onOpenChapter, focusEditor }) {
+export function SuggestionBar({ info, controller, onOpenChapter, focusEditor, explain }) {
   const more = usePopover();
   useNotice(info ? info.notice : null, controller);
+
+  // Miksi?: the answer for one suggestion; it goes when another suggestion becomes current
+  const why = usePopover();
+  const [answer, setAnswer] = useState(null);       // { id, status: 'waiting' | 'done' | 'failed', text }
+  const askedRef = useRef(0);
+  const currentId = info && info.current ? info.current.id : null;
+  useEffect(() => {
+    if (answer && answer.id !== currentId) {
+      askedRef.current += 1;
+      setAnswer(null);
+      why.close();
+    }
+  }, [currentId]);
+  useEffect(() => {
+    if (!why.open && answer) { askedRef.current += 1; setAnswer(null); }
+  }, [why.open]);
+  // The prop goes (AI switched off, a protected chapter): so does an open answer
+  useEffect(() => { if (!explain && why.open) why.close(); }, [explain]);
 
   // The menu closes when the bar has nothing pending any more
   const pending = info ? info.pending : 0;
@@ -168,7 +192,7 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor }) 
     );
   }
 
-  const current = info.currentIndex >= 0;
+  const hasCurrent = info.currentIndex >= 0;
   // Without a current suggestion the keys and these buttons first step to one (⌘↩ does the same)
   const accept = () => { if (!controller.acceptCurrent()) controller.step(1); };
   const reject = () => { if (!controller.rejectCurrent()) controller.step(1); };
@@ -176,6 +200,24 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor }) 
   // Only dialogue suggestions left: a bulk accept would take none of them (M B.8: a reason, not a dead click)
   const onlyDialogue = dialogue && info.dialoguePending >= pending;
   const choose = (run) => () => { more.close(); run(); };
+
+  const current = info.current;
+  const canExplain = typeof explain === 'function' && !!current && !!current.meta && current.meta.action === 'proofread';
+  const askWhy = () => {
+    more.close();
+    const asked = ++askedRef.current;
+    const id = current.id;
+    setAnswer({ id, status: 'waiting', text: '' });
+    why.setOpen(true);
+    Promise.resolve()
+      .then(() => explain(current))
+      .then((result) => {
+        if (askedRef.current !== asked) return;
+        setAnswer(result && result.ok ? { id, status: 'done', text: result.text } : { id, status: 'failed', text: '' });
+      }, () => {
+        if (askedRef.current === asked) setAnswer({ id, status: 'failed', text: '' });
+      });
+  };
 
   // Every item starts with the slot of the view items' check, so all labels share one left edge (V 4.9)
   const slot = () => e('span', { className: 'faust-menu__slot', 'aria-hidden': true });
@@ -189,6 +231,8 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor }) 
     label: 'Lisää toimintoja',
     restoreFocus: focusEditor
   },
+    canExplain && menuItem('Miksi?', undefined, askWhy),
+    canExplain && e('div', { className: 'faust-menu__sep', role: 'separator' }),
     menuItem('Hylkää kaikki', 'Hylkää kaikki tämän luvun ehdotukset. Palauta hylätyt tuo ne takaisin.',
       choose(() => controller.rejectAll())),
     info.rejected > 0 && menuItem(restoreLabel(info), RESTORE_TITLE, choose(() => controller.restoreRejected())),
@@ -218,10 +262,10 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor }) 
     e('div', { className: 'faust-suggestbar', role: 'toolbar', 'aria-label': 'Ehdotusten läpikäynti' },
       e('span', { className: 'faust-suggestbar__label' },
         icons.star8({ size: 14 }),
-        current && e('span', { className: 'faust-suggestbar__name' }, 'Ehdotus')
+        hasCurrent && e('span', { className: 'faust-suggestbar__name' }, 'Ehdotus')
       ),
       e('span', { className: 'faust-suggestbar__count' },
-        current ? `${formatCount(info.currentIndex + 1)} / ${formatCount(pending)}` : count(pending, 'ehdotus')),
+        hasCurrent ? `${formatCount(info.currentIndex + 1)} / ${formatCount(pending)}` : count(pending, 'ehdotus')),
       e(IconButton, {
         icon: 'chevronUp',
         size: 'sm',
@@ -285,7 +329,22 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor }) 
         title: 'Lisää toimintoja',
         onMouseDown: keep
       }, icons.more({ size: 14 })),
-      menu
+      menu,
+      // The answer of Miksi? under the "more" button (VF-19); Esc, a press outside and another current
+      // suggestion close it, and the focus goes back to the manuscript
+      why.open && answer && e(Popover, {
+        anchorRef: more.anchorRef,
+        onClose: why.close,
+        width: 360,
+        label: 'Miksi?',
+        restoreFocus: focusEditor
+      },
+        answer.status === 'waiting'
+          ? e('div', { className: 'faust-meta', role: 'status', style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' } },
+              e('span', { className: 'faust-spinner faust-spinner--sm' }), 'Kysytään…')
+          : answer.status === 'done'
+            ? e('div', { className: 'faust-serif is-selectable' }, 'Perustelu: ' + answer.text)
+            : e(Callout, { role: 'error' }, 'Perustelua ei saatu.'))
     )
   );
 }

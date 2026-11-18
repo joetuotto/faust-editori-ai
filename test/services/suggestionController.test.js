@@ -781,6 +781,26 @@ describe('undo and redo', () => {
     expect(open('luku-1') && open('luku-2').seed.revealPos).toBeNull();
   });
 
+  test('an undo of a smart-typing replacement puts the caret after what was typed, and so does its redo (stage I-06)', () => {
+    const { controller, open } = setup();
+    const first = open('luku-1');
+    const typed = 'Toinen --';
+    const replaced = 'Toinen –';
+    const step = { chapterId: 'luku-1', oldContent: 'Alku.\n' + typed, newContent: 'Alku.\n' + replaced, meta: { noMerge: true, source: 'smart-typing' } };
+    controller.afterHistory('undo', step);
+    // After "--", not before it: typing on goes behind the marks, which are not converted again
+    expect(first.revealPos).toHaveBeenLastCalledWith(('Alku.\n' + typed).length);
+    controller.afterHistory('redo', step);
+    expect(first.revealPos).toHaveBeenLastCalledWith(('Alku.\n' + replaced).length);
+    // A quote in the middle of a line: the caret goes after the mark, the rest of the line stays after it
+    const quote = { chapterId: 'luku-1', oldContent: 'Hän sanoi "Hei ja', newContent: 'Hän sanoi ”Hei ja', meta: { noMerge: true, source: 'smart-typing' } };
+    controller.afterHistory('undo', quote);
+    expect(first.revealPos).toHaveBeenLastCalledWith(11);
+    // Every other step keeps the start of the change
+    controller.afterHistory('undo', { ...step, meta: { noMerge: true } });
+    expect(first.revealPos).toHaveBeenLastCalledWith(13);
+  });
+
   test('afterHistory for a step without text does nothing', () => {
     const { controller, env, open } = setup();
     const first = open('luku-1');

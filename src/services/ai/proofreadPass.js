@@ -1094,11 +1094,12 @@ function meetsProofreadThreshold(stats, threshold = {}) {
     && stats.rewritten / stats.paragraphs < maxRewrittenShare;
 }
 
-// STUB(src/services/format.fi.js#fiDate): replaced at I-06
-function fiDate(date) {
-  const parts = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(date));
-  const value = parts ? new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])) : new Date(date);
-  return `${value.getDate()}.${value.getMonth() + 1}.${value.getFullYear()}`;
+// The trial's day in the notes file is a calendar date ('2026-11-16'): read as that day where the
+// author is, not as midnight UTC, then written by the shared formatter (taken when the text is built)
+function trialDate(value) {
+  const { fiDate } = require('../format.fi.js');
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value));
+  return fiDate(parts ? new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])) : value);
 }
 
 const shortModelId = (id) => String(id == null ? '' : id).replace(/^[^:]*:/, '');
@@ -1125,7 +1126,7 @@ function modelNote(modelId, notes) {
   }
 
   const wrong = tested.wrong === 1 ? '1 väärän korjauksen' : `${tested.wrong} väärää korjausta`;
-  const sentence = `Mallikokeessa ${fiDate(data.testedAt)} tämä malli korjasi ${tested.fixed} / ${tested.planted} istutetusta kielivirheestä, teki ${wrong} ja kirjoitti uusiksi ${tested.rewritten} / ${tested.paragraphs} kappaletta.`;
+  const sentence = `Mallikokeessa ${trialDate(data.testedAt)} tämä malli korjasi ${tested.fixed} / ${tested.planted} istutetusta kielivirheestä, teki ${wrong} ja kirjoitti uusiksi ${tested.rewritten} / ${tested.paragraphs} kappaletta.`;
   const notOwnText = data.ownText === false ? ' Koeaineisto oli kokeeseen kirjoitettua tekstiä, ei omaa käsikirjoitustasi.' : '';
 
   if (meetsProofreadThreshold(tested)) return { kind: 'recommended', text: sentence + notOwnText };

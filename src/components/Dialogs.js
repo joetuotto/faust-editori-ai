@@ -246,6 +246,17 @@ export const EDITOR_SHORTCUT_GROUPS = [
       ['Seuraava ehdotus', 'CmdOrCtrl+Alt+Down'],
       ['Edellinen ehdotus', 'CmdOrCtrl+Alt+Up']
     ]
+  },
+  // Smart typing (I-06): sequences typed in the text, not chords. No ⌘Z row: ⌘Z is Muokkaa ▸ Kumoa (R-5);
+  // the hint of Älykäs kirjoitus on the Ulkoasu tab says that it gives back the typed marks
+  {
+    title: 'Kirjoittaessa',
+    items: [
+      ['Lainausmerkki ”', '"', 'typed'],
+      ['Heittomerkki ’', "'", 'typed'],
+      ['Ajatusviiva –', '--', 'typed'],
+      ['Vuorosanaviiva rivin alussa', '-- rivin alussa', 'typed']
+    ]
   }
 ];
 

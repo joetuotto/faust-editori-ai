@@ -1,13 +1,19 @@
 /**
  * src/services/ai/quickEditSetup.js - the quick edit (Cmd+K) assembled for the app (stage I-05)
  *
- *   setupQuickEdit({ getEditor, getProject, getChapterId, getController, writeAtCursor, askConfirm })
+ *   setupQuickEdit({ getEditor, getProject, getChapterId, getController, getWordCheck, writeAtCursor, askConfirm })
  *     → the controller of src/services/ai/quickEdit.js: { open, host, isPromptFocused, fieldOwnsUndo,
  *       blocksMenuAction, contextChanged, contextChecked, cancelAll, reset }
  *
  * The controller gets the app's real parts here: the settings store, the one AI client, the text
  * functions, the context session, the suggestion controller and the five functions of the inline
  * prompt (src/editor/inlinePrompt.js). Nothing here decides anything about an edit.
+ *
+ * From stage I-06 the chip "Kielenhuolto – vain virheet" runs Kielenhuolto's own pipeline on the lines
+ * of the target (createProofreadSelection of proofreadPass.js: the panel's batches, guards and per-change
+ * meta, so a dialogue change is never taken by "Hyväksy muutokset"), and every answer's typographic
+ * noise is written back as the original (normaliseModelText: quotes, dashes and ellipses are the
+ * typography checker's job). getWordCheck gives the suspect-word guard its word list when the chip runs.
  *
  * What this file adds is the context row ("Mitä malli näkee") in the prompt: whenever there is a
  * built request for the open prompt (a dry build when the prompt opens, the real one before
@@ -29,8 +35,11 @@ import { getSettingsStore } from '../settingsStore.js';
 import { modelLabel } from '../format.fi.js';
 import { projectKind, folderName } from '../story/codex.js';
 import { wordDiff, changeRatio } from '../../editor/wordDiff.js';
-import { trimToSentence } from '../../editor/sentences.js';
+import { trimToSentence, splitSentences } from '../../editor/sentences.js';
 import { splitBlocks, blockAt } from '../../editor/blocks.js';
+import { batchParagraphs } from './batchParagraphs.js';
+import { createProofreadSelection, proofBudget } from './proofreadPass.js';
+import { normaliseModelText, effectiveLineStartDash } from '../../editor/typography.fi.js';
 import { openPrompt, updatePrompt, closePrompt, getPrompt, focusPrompt } from '../../editor/inlinePrompt.js';
 import { mountContextRow, manualChoicesFor } from '../../components/ContextRow.js';
 
@@ -65,10 +74,10 @@ function frameScheduler() {
 
 /**
  * @param {{ getEditor: () => object | null, getProject: () => object, getChapterId: () => string | null,
- *           getController: () => object, writeAtCursor?: boolean,
+ *           getController: () => object, getWordCheck?: () => ({ current: Function } | null), writeAtCursor?: boolean,
  *           askConfirm?: (title: string, message: string, confirmLabel: string, cancelLabel: string, options: object) => Promise<boolean> }} options
  */
-export function setupQuickEdit({ getEditor, getProject, getChapterId, getController, writeAtCursor = false, askConfirm = null }) {
+export function setupQuickEdit({ getEditor, getProject, getChapterId, getController, getWordCheck = null, writeAtCursor = false, askConfirm = null }) {
   const settings = getSettingsStore();
   const ai = getAIClient();
   const getView = () => {
@@ -273,6 +282,23 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
     }
   };
 
+  // The chip's Kielenhuolto: one job, one pipeline, one name (brief I-06 step 7). Its build goes through
+  // context.build, so the prompt's row shows each batch's request and its lists apply to the batches.
+  const proofTextDeps = { splitBlocks, batchParagraphs, maskSpans, unmaskSpans, placeholderInstruction, wordDiff, changeRatio, trimToSentence, splitSentences };
+  const proofreadSelection = createProofreadSelection({
+    getProject,
+    textDeps: proofTextDeps,
+    build: (task, { chapterId, text: runText, model }) => context.build({ task: { ...task, instructionLabel: 'ohje' }, project: getProject(), chapterId, text: runText, role: 'edit', model, answerTokens: task.answerTokens }),
+    request: (opts) => client.requestEdit({ role: 'edit', ...opts }),
+    // Read when the chip runs: the checker's status was awaited by wordCheck.refresh() at start
+    getCheckWords: () => {
+      const check = typeof getWordCheck === 'function' ? getWordCheck() : null;
+      return check && typeof check.current === 'function' ? check.current() : undefined;
+    },
+    getBudget: (model) => proofBudget({ promptBudgetChars: ai.budgetFor(model || ai.modelFor('edit'), 0).promptBudgetChars }),
+    dashDialogue: (project) => effectiveLineStartDash(project || {}) === 'dialogue'
+  });
+
   const quickEdit = createQuickEdit({
     getView,
     getEditor,
@@ -286,6 +312,8 @@ export function setupQuickEdit({ getEditor, getProject, getChapterId, getControl
     projectKind,
     controller: getController(),
     ui,
+    normalizeTypography: normaliseModelText,
+    proofreadSelection,
     reportContext: (info) => {
       const api = typeof window !== 'undefined' ? window.electronAPI : null;
       if (api && typeof api.reportManuscriptContext === 'function') api.reportManuscriptContext(info);
