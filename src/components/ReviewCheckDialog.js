@@ -8,10 +8,12 @@
  *     onDone(result)   { label, instruction, suggest } | { delete: true } | null (cancelled)
  *     askConfirm   the app's question: Poista tarkistus asks it before onDone({ delete: true })
  *
- *   saveCustomCheck(result, request, controller)
+ *   saveCustomCheck(result, request, controller) → boolean
  *     writes a result of the dialog (or of the panel's own Poista tarkistus) into review.customChecks and
  *     selects the check in the review controller: a saved check is selected, a deleted one gives way to
  *     the first check of the picker. Findings a check has made stay in the chapters (they carry its name).
+ *     A new check is not added when the list already holds 30 (canAddCustomCheck): it would be stored
+ *     but never listed. Returns false when nothing was written.
  *
  * The shared Dialog of ui.js (reconcile R-81, visual foundations entry VF-24): it portals into the layer
  * host, keeps Tab inside, closes on Esc (Peruuta) and is mounted by app.js with the other stage dialogs
@@ -20,8 +22,8 @@
  *
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
  */
-import { Dialog, Field } from './ui.js';
-import { validateCustomCheck, makeCustomCheck, findCheck } from '../services/review/reviewChecks.js';
+import { Dialog, Field, Callout } from './ui.js';
+import { validateCustomCheck, makeCustomCheck, findCheck, canAddCustomCheck } from '../services/review/reviewChecks.js';
 import { getSettingsStore } from '../services/settingsStore.js';
 
 const { createElement: e, useState } = React;
@@ -62,14 +64,14 @@ const storedList = () => {
  * @param {object} [controller] the review controller (selectCheck, view)
  */
 export function saveCustomCheck(result, request, controller) {
-  if (!result || !request) return;
+  if (!result || !request) return false;
   const list = storedList();
   const own = request.check || null;
   let next;
   let selectId = null;
 
   if (result.delete) {
-    if (!own) return;
+    if (!own) return false;
     next = list.filter(entry => !(entry && entry.id === own.id));
   } else if (own) {
     next = list.map(entry => (entry && entry.id === own.id
@@ -77,13 +79,14 @@ export function saveCustomCheck(result, request, controller) {
       : entry));
     selectId = own.id;
   } else {
+    if (!canAddCustomCheck(list).ok) return false;
     const made = makeCustomCheck(result);
     next = list.concat([made]);
     selectId = made.id;
   }
   getSettingsStore().set(SETTING, next);
 
-  if (!controller) return;
+  if (!controller) return true;
   if (selectId) {
     const check = findCheck(selectId, next);
     if (check) controller.selectCheck(check);
@@ -91,6 +94,7 @@ export function saveCustomCheck(result, request, controller) {
     const shown = controller.view().check;
     if (shown && own && shown.id === own.id) controller.selectCheck(findCheck(FIRST_CHECK));
   }
+  return true;
 }
 
 function CheckForm({ check, existing, onDone, askConfirm }) {
@@ -129,6 +133,8 @@ function CheckForm({ check, existing, onDone, askConfirm }) {
       e('button', { key: 'save', type: 'button', className: 'faust-btn faust-btn--lg faust-btn--primary', onClick: save }, TEXT.save)
     ]
   },
+    // No room for another own check (the picker does not offer one then; this is the dialog's own guard)
+    errors.limit && e(Callout, { role: 'error' }, errors.limit),
     e(Field, { label: TEXT.name, error: errors.label || null },
       e('input', {
         type: 'text',

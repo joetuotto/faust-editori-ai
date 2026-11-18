@@ -66,8 +66,10 @@ const MODULES = {
   'utils/voikko.js': ['createVoikko', 'parseSpellOutput', 'parseGrammarOutput', 'parseSuggestions', 'codePointToUtf16', 'sanitizeLine', 'CANDIDATE_DIRS', 'GC_ARG_SETS'],
   'src/services/language/voikkoCheck.js': ['tokenizeWords', 'buildVoikkoInput', 'voikkoFindings', 'nameHits'],
   'src/editor/plainView.js': ['plainView', 'PLAIN_PATTERNS'],
-  'src/services/review/reviewChecks.js': ['BUILTIN_CHECKS', 'DEFAULT_CHECK_IDS', 'GROUP_LABELS', 'CUSTOM_LIMITS', 'checksFor', 'findCheck', 'describeCheck', 'makeCustomCheck', 'validateCustomCheck', 'normalizeCustomChecks'],
-  'src/services/ai/reviewPass.js': ['REVIEW', 'LABELS', 'NONE_MARKERS', 'SEVERITY_WORDS', 'buildReviewTask', 'renderReviewRequest', 'selectReviewLines', 'planBatches', 'planReview', 'parseFindings', 'judgeBatch', 'anchorQuote', 'anchorFindings', 'contextSources', 'resolveSource', 'anchorReference', 'fixChanges', 'runReview'],
+  // I-08's review fixes add canAddCustomCheck (the 30-check limit of review.customChecks)
+  'src/services/review/reviewChecks.js': ['BUILTIN_CHECKS', 'DEFAULT_CHECK_IDS', 'GROUP_LABELS', 'CUSTOM_LIMITS', 'checksFor', 'findCheck', 'describeCheck', 'makeCustomCheck', 'validateCustomCheck', 'normalizeCustomChecks', 'canAddCustomCheck'],
+  // I-08's review fixes add nothingToCompare (the panel's preview says Ei vertailtavaa before a run)
+  'src/services/ai/reviewPass.js': ['REVIEW', 'LABELS', 'NONE_MARKERS', 'SEVERITY_WORDS', 'buildReviewTask', 'renderReviewRequest', 'selectReviewLines', 'planBatches', 'planReview', 'parseFindings', 'judgeBatch', 'anchorQuote', 'anchorFindings', 'contextSources', 'resolveSource', 'anchorReference', 'fixChanges', 'runReview', 'nothingToCompare'],
   'src/services/review/localChecks.js': ['LOCAL', 'avoidWordFindings', 'longSentenceFindings', 'typographyQuestionFindings', 'runLocalCheck', 'sentenceWordCount', 'clampLimit'],
   'src/services/review/findings.js': ['STATUSES', 'STATUS_LABELS', 'STATUS_HINTS', 'FINDINGS', 'createFinding', 'normalizeFindings', 'statusesFor', 'reanchorOne', 'reanchorAll', 'mergeRun', 'shiftRanges', 'applyStatus', 'removeByCheck', 'storable', 'capStored', 'filterForList', 'countByStatus', 'highlightItems', 'runRecord', 'normalizeRuns', 'describeRun', 'textFingerprint', 'modelStats', 'feedbackGroups'],
   'src/services/review/reviewController.js': ['createReviewController', 'createDefaultReviewController'],

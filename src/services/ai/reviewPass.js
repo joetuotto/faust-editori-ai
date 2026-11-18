@@ -876,6 +876,7 @@ function fixChanges(raw, finding, deps) {
 const OVER_BUDGET_MESSAGE = 'Teksti ei mahdu mallin ikkunaan. Pienennä kontekstia tai suurenna mallin ikkunaa tietopaneelin Tekoäly-välilehdellä.';
 const UNEXPECTED_MESSAGE = 'Tarkistuspyyntö epäonnistui odottamatta.';
 
+// A continuity check with nothing to compare: the run's message, and the panel's before a run
 const nothingToCompare = (folderName) => `Ei vertailtavaa: ${folderName === 'Käsikirjoituksen kansio' ? 'Käsikirjoituksen kansiossa' : 'Tarinakansiossa'} ei ole tähän tekstiin liittyviä kohteita eikä aiemmilla luvuilla ole tiivistelmiä.`;
 
 function defaultRunId() {
@@ -1132,5 +1133,6 @@ module.exports = {
   resolveSource,
   anchorReference,
   fixChanges,
-  runReview
+  runReview,
+  nothingToCompare
 };

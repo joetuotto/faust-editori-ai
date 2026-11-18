@@ -32,7 +32,7 @@ import { AiModelBadge } from './AiModelSettings.js';
 import { ContextRow, useContextPreview } from './ContextRow.js';
 import { useSetting } from './useSetting.js';
 import { saveCustomCheck, DELETE_QUESTION } from './ReviewCheckDialog.js';
-import { checksFor, findCheck, describeCheck } from '../services/review/reviewChecks.js';
+import { checksFor, findCheck, describeCheck, canAddCustomCheck } from '../services/review/reviewChecks.js';
 import { STATUS_LABELS, STATUS_HINTS, statusesFor } from '../services/review/findings.js';
 import { plainView } from '../editor/plainView.js';
 import { projectKind, folderName } from '../services/story/codex.js';
@@ -55,7 +55,6 @@ const TEXT = Object.freeze({
   scope: 'Laajuus:',
   scopeHint: 'Valitse tekstiä, jos haluat tarkistaa vain osan.',
   scopeLocked: 'Lukupalaute annetaan aina koko luvusta.',
-  avoidEmpty: 'Vältettävien sanojen lista on tyhjä. Lisää sanat projektin asetuksissa.',
   editList: 'Muokkaa listaa',
   limit: 'Raja:',
   limitUnit: 'sanaa',
@@ -92,6 +91,7 @@ const TEXT = Object.freeze({
   noneHere: 'Ei havaintoja tällä rajauksella',
   works: 'Toimii',
   concerns: 'Huolet',
+  others: 'Muut havainnot',
   tools: 'Kielen työkalut',
   typography: 'Tarkista typografia',
   proofread: 'Kielenhuolto…',
@@ -209,6 +209,9 @@ export function ReviewPanel(props) {
 
   // --- 1 Check ---
   const groups = checksFor(projectKind(project), { customChecks, aiOff });
+  // review.customChecks holds at most 30 (contracts 6): with 30, no new one can be made
+  const room = canAddCustomCheck(customChecks);
+  const offerNew = !aiOff && !!onEditCheck;
   const storedOwn = isOwn ? (Array.isArray(customChecks) ? customChecks : []).find(entry => entry && entry.id === check.id) || null : null;
   const removeOwn = async () => {
     if (!storedOwn || typeof askConfirm !== 'function') return;
@@ -222,7 +225,7 @@ export function ReviewPanel(props) {
       onChange: (ev) => {
         const id = ev.target.value;
         if (id === NEW_CHECK) {
-          if (onEditCheck) onEditCheck({ check: null });
+          if (onEditCheck && room.ok) onEditCheck({ check: null });
           return;
         }
         const next = findCheck(id, customChecks);
@@ -231,10 +234,11 @@ export function ReviewPanel(props) {
     },
       groups.map(group => e('optgroup', { key: group.group, label: group.label },
         group.checks.map(item => e('option', { key: item.id, value: item.id }, item.label)))),
-      !aiOff && onEditCheck && e('option', { value: NEW_CHECK }, TEXT.newCheck)));
+      offerNew && e('option', { value: NEW_CHECK, disabled: !room.ok }, TEXT.newCheck)));
 
   const checkPart = e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
     picker,
+    offerNew && !room.ok && e('div', { className: 'faust-field__hint' }, room.message),
     storedOwn && e('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)' } },
       e('button', { type: 'button', className: 'faust-btn faust-btn--quiet faust-btn--sm', onClick: () => onEditCheck && onEditCheck({ check: storedOwn }) }, TEXT.edit),
       e('button', { type: 'button', className: 'faust-btn faust-btn--quiet faust-btn--sm', onClick: removeOwn }, TEXT.remove)),
@@ -269,11 +273,20 @@ export function ReviewPanel(props) {
       : !view.hasSelection && e('div', { className: 'faust-field__hint' }, TEXT.scopeHint));
 
   // --- 3 Settings of the check ---
+  const avoidWords = wordsOn(project);
+  // With an empty avoid list the local check's own sentence (localChecks) belongs to the list's settings
+  const listMessage = check.id === 'avoid-words' && avoidWords === 0 ? view.localMessage : null;
+  // What the plan already refuses (Ei vertailtavaa of Jatkuvuus, nothing to check, no selection): Tarkista is
+  // disabled with it as the reason, and the row says nothing about sending unless it can change the outcome
+  // (an entry to add by hand, or something the author left out of the request)
+  const planBlocked = plan && plan.blocked ? plan.blocked : null;
+  const rowCanHelp = !!rowProps
+    && (rowProps.exclude.length > 0 || rowProps.include.length > 0 || rowProps.manualChoices.length > 0);
   let settings = null;
   if (check.id === 'avoid-words') {
-    const words = wordsOn(project);
     settings = e('div', { style: { display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 'var(--sp-1) var(--sp-2)' } },
-      words > 0 && e('span', { className: 'faust-meta' }, `Listalla ${count(words, 'sana')}.`),
+      avoidWords > 0 && e('span', { className: 'faust-meta' }, `Listalla ${count(avoidWords, 'sana')}.`),
+      listMessage && e('span', { className: 'faust-meta' }, listMessage),
       e('button', { type: 'button', className: 'faust-btn faust-btn--quiet faust-btn--sm', onClick: onOpenProjectSettings }, TEXT.editList));
   } else if (check.id === 'long-sentences') {
     const commit = (raw) => {
@@ -315,9 +328,8 @@ export function ReviewPanel(props) {
           onChange: (ev) => controller.setNote(ev.target.value)
         })),
       e(AiModelBadge, { role: 'analysis', onOpenSettings: onOpenAISettings, config: aiConfig }),
-      !view.blocked && rowProps && e(ContextRow, rowProps),
-      !view.blocked && plan && plan.blocked && e('div', { className: 'faust-meta' }, plan.blocked),
-      !view.blocked && plan && plan.batches > 1 && e('div', { className: 'faust-field__hint' }, `Teksti lähetetään ${formatCount(plan.batches)} osassa.`));
+      !view.blocked && rowProps && (!planBlocked || rowCanHelp) && e(ContextRow, rowProps),
+      !view.blocked && !planBlocked && plan && plan.batches > 1 && e('div', { className: 'faust-field__hint' }, `Teksti lähetetään ${formatCount(plan.batches)} osassa.`));
   }
 
   // --- 4 Action ---
@@ -349,6 +361,9 @@ export function ReviewPanel(props) {
       } else if (!view.hasText) {
         reason = TEXT.empty;
         callout = e(Callout, { role: 'hint' }, TEXT.empty);
+      } else if (planBlocked) {
+        reason = planBlocked;
+        callout = e(Callout, { role: 'hint' }, planBlocked);
       } else if (view.scope === 'selection' && !view.hasSelection && !view.scopeLocked) {
         reason = 'Valitse ensin tekstiä tai vaihda laajuudeksi Luku.';
       }
@@ -369,14 +384,17 @@ export function ReviewPanel(props) {
   const last = view.lastRun;
   if (last && !runningHere) {
     const lines = last.lines.map((line, index) => e('div', { key: index }, line));
-    const canRetry = !running && !view.blocked && view.hasText;
+    // A refusal (Ei vertailtavaa) sent nothing and would only be refused again
+    const refused = last.outcome === 'blocked';
+    const canRetry = !refused && !running && !view.blocked && view.hasText && !planBlocked;
     const retry = canRetry && e('button', {
       type: 'button',
       className: 'faust-btn faust-btn--sm',
       onMouseDown: keepEditor,
       onClick: startRun
     }, TEXT.retry);
-    if (last.kind === 'error') result.push(e(Callout, { key: 'run', role: 'error', actions: retry || null }, lines));
+    if (refused) result.push(e(Callout, { key: 'run', role: 'hint' }, lines));
+    else if (last.kind === 'error') result.push(e(Callout, { key: 'run', role: 'error', actions: retry || null }, lines));
     else if (last.kind === 'warn') result.push(e(Callout, { key: 'run', role: 'warning', actions: retry || null }, lines));
     else result.push(e('div', { key: 'run', className: 'faust-meta' }, lines));
     if (last.failed && last.failed.length > 0) {
@@ -390,7 +408,7 @@ export function ReviewPanel(props) {
             row.answer && e('div', { className: 'faust-meta is-selectable' }, row.answer))))));
     }
   }
-  if (view.localMessage) result.push(e('div', { key: 'local', className: 'faust-meta' }, view.localMessage));
+  if (view.localMessage && !listMessage) result.push(e('div', { key: 'local', className: 'faust-meta' }, view.localMessage));
   if (view.notice) {
     result.push(e(Callout, {
       key: 'notice',
@@ -512,14 +530,16 @@ export function ReviewPanel(props) {
   // --- 8 The list, or why it is empty ---
   let list;
   if (view.findings.length === 0) {
-    if (isLocal && counts.all === 0) list = e(EmptyState, { size: 'compact', title: TEXT.noHits });
+    if (isLocal && counts.all === 0) list = view.localMessage ? null : e(EmptyState, { size: 'compact', title: TEXT.noHits });
     else if (counts.all > 0) list = e(EmptyState, { size: 'compact', title: TEXT.noneHere });
     else list = null;
   } else if (view.feedback) {
-    const { works, concerns } = view.feedback;
+    // The two groups are this check's; the other checks' findings (Vain valittu tarkistus off) follow them
+    const { works, concerns, others } = view.feedback;
     list = e(React.Fragment, null,
       works.length > 0 && e(Section, { title: TEXT.works }, e('div', { className: 'faust-findings' }, works.map(card))),
-      concerns.length > 0 && e(Section, { title: TEXT.concerns }, e('div', { className: 'faust-findings' }, concerns.map(card))));
+      concerns.length > 0 && e(Section, { title: TEXT.concerns }, e('div', { className: 'faust-findings' }, concerns.map(card))),
+      others.length > 0 && e(Section, { title: TEXT.others }, e('div', { className: 'faust-findings' }, others.map(card))));
   } else {
     list = e('div', { className: 'faust-findings' }, view.findings.map(card));
   }

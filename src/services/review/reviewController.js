@@ -21,7 +21,9 @@ const {
   applyStatus, removeByCheck, storable, capStored, filterForList, countByStatus, highlightItems, runRecord,
   normalizeRuns, describeRun, textFingerprint, modelStats, feedbackGroups
 } = require('./findings.js');
-const { REVIEW, planReview, runReview, renderReviewRequest, buildReviewTask, fixChanges } = require('../ai/reviewPass.js');
+const {
+  REVIEW, planReview, runReview, renderReviewRequest, buildReviewTask, fixChanges, contextSources, nothingToCompare
+} = require('../ai/reviewPass.js');
 
 const NOTICES = Object.freeze({
   running: 'Edellinen tarkistus on vielä käynnissä.',
@@ -85,9 +87,21 @@ const freshState = () => ({
   filter: { status: 'open', onlyCheck: true },
   selectedId: null,
   selectedBy: null,
+  // The selected hit of a local check as it was last listed: { id, from, to, text } (see followSelectedHit)
+  selectedHit: null,
   notice: null,
   run: null
 });
+
+// The part of a text that one edit changed: the common start and end are left out
+function changedSpan(before, after) {
+  const shorter = Math.min(before.length, after.length);
+  let start = 0;
+  while (start < shorter && before.charCodeAt(start) === after.charCodeAt(start)) start += 1;
+  let end = 0;
+  while (end < shorter - start && before.charCodeAt(before.length - 1 - end) === after.charCodeAt(after.length - 1 - end)) end += 1;
+  return { from: start, to: before.length - end, delta: after.length - before.length };
+}
 
 /**
  * @param {object} deps
@@ -225,6 +239,7 @@ function createReviewController(deps) {
     }
 
     const all = stored.concat(fresh);
+    followSelectedHit(all, liveText);
     const checkId = state.filter.onlyCheck ? check.id : null;
     const findings = filterForList(all, { status: state.filter.status, checkId });
     const counts = countByStatus(filterForList(all, { status: 'all', checkId }));
@@ -238,7 +253,8 @@ function createReviewController(deps) {
         if (entry.answer) row.answer = entry.answer;
         return row;
       });
-      lastRun = { ...describeRun(record, { stale, formatTime: given.formatTime }), failed };
+      // outcome: a refusal ('blocked') is not shown as a failure that could be tried again
+      lastRun = { ...describeRun(record, { stale, formatTime: given.formatTime }), outcome: record ? record.outcome : null, failed };
     }
 
     const run = state.run;
@@ -278,9 +294,45 @@ function createReviewController(deps) {
       longSentenceWords: clampLimit(project && project.review ? project.review.longSentenceWords : undefined),
       modelName: modelLabelOf(analysisModel),
       modelStats: modelStats(project ? project.structure : []),
-      feedback: check.feedback ? feedbackGroups(findings) : null
+      feedback: check.feedback ? feedbackList(findings, check.id) : null
     };
     return { view, all, liveText, chapter };
+  }
+
+  // A hit of a local check has its place in its id (checkId@from), so an edit above it gives it a new
+  // id. The selected one keeps its selection: its place is carried over the edit, and the hit found
+  // there now is the selected one. A model finding keeps its id; nothing is done for it.
+  function followSelectedHit(all, liveText) {
+    if (state.selectedId === null) {
+      state.selectedHit = null;
+      return;
+    }
+    const listed = all.find(finding => finding.id === state.selectedId);
+    if (listed) {
+      state.selectedHit = listed.kind === 'local' && listed.located
+        ? { id: listed.id, checkId: listed.checkId, from: listed.from, to: listed.to, text: liveText }
+        : null;
+      return;
+    }
+    const hit = state.selectedHit;
+    if (!hit || hit.id !== state.selectedId || hit.text === liveText) return;
+    const span = changedSpan(hit.text, liveText);
+    // An edit inside the hit: it is another passage now, and nothing is selected
+    if (span.from < hit.to && span.to > hit.from) return;
+    const from = span.from <= hit.from && span.to <= hit.from ? hit.from + span.delta : hit.from;
+    const moved = all.find(finding => finding.kind === 'local' && finding.status === 'open'
+      && finding.checkId === hit.checkId && finding.from === from);
+    if (!moved) return;
+    state.selectedId = moved.id;
+    state.selectedHit = { id: moved.id, checkId: moved.checkId, from: moved.from, to: moved.to, text: liveText };
+  }
+
+  // The reading feedback's two groups hold the findings of the selected feedback check only; with
+  // "Vain valittu tarkistus" off the other checks' findings follow them as an ordinary list
+  function feedbackList(findings, checkId) {
+    const own = findings.filter(finding => finding.checkId === checkId);
+    const groups = feedbackGroups(own);
+    return { works: groups.works, concerns: groups.concerns, others: findings.filter(finding => finding.checkId !== checkId) };
   }
 
   function current() {
@@ -332,6 +384,12 @@ function createReviewController(deps) {
         touch(true);
       }
     }
+    // The chapter of the running check was deleted: the request would be for nothing
+    const active = state.run;
+    if (active && !active.orphaned && active.handle && env.project && !findChapter(env.project, active.chapterId)) {
+      active.orphaned = true;
+      active.handle.cancel();
+    }
     if (env.aiOff && state.check && state.check.kind !== 'local') {
       // Controller state only: the view() of the same render already shows it
       state.check = builtinCheck('avoid-words');
@@ -382,6 +440,9 @@ function createReviewController(deps) {
   function setLongSentenceWords(n) {
     if (!env || typeof env.updateProject !== 'function') return;
     const limit = clampLimit(n);
+    // The same limit again (the field left without a change) does not make the project changed
+    const project = latestProject();
+    if (limit === clampLimit(project && project.review ? project.review.longSentenceWords : undefined)) return;
     env.updateProject(project => ({ ...project, review: { ...(project ? project.review : null), longSentenceWords: limit } }));
   }
 
@@ -431,7 +492,8 @@ function createReviewController(deps) {
     const note = asText(project.keepNote);
     const selection = env.selection ? toRange(env.selection.from, env.selection.to, text.length) : null;
     const key = [
-      check, scope, note, text, chapterId,
+      // The project too: whether Jatkuvuus has anything to compare with follows its entries and summaries
+      check, scope, note, text, chapterId, latestProject(),
       selection ? selection.from : null,
       selection ? selection.to : null,
       JSON.stringify([options && options.exclude ? options.exclude : null, options && options.include ? options.include : null])
@@ -442,20 +504,32 @@ function createReviewController(deps) {
     if (scope === 'selection' && !selection) {
       value = { task: buildReviewTask({ check, note }), payload: '', batches: 0, blocked: NOTICES.noSelection };
     } else {
+      const build = builderFor(chapterId, text, options);
       const plan = planReview({
         check,
         text,
         range: scope === 'selection' ? selection : null,
         note,
-        build: builderFor(chapterId, text, options),
+        build,
         deps: textDeps,
         noAIMessage: noAIMessage()
       });
+      let blocked = plan.blocked ? plan.blocked.message : null;
+      // Jatkuvuus skips a part that has nothing to be compared with (runReview); when every part
+      // would be skipped, the run would send nothing and end in Ei vertailtavaa. Said here first,
+      // so that the panel does not offer a run that cannot happen.
+      if (!blocked && check.kind === 'continuity' && plan.batches.length > 0) {
+        const skipped = (batch) => {
+          const built = build({ ...plan.task, payload: batch.text }) || {};
+          return !built.blocked && !built.overBudget && contextSources(built).length === 0;
+        };
+        if (plan.batches.every(skipped)) blocked = nothingToCompare(folderOf(project));
+      }
       value = {
         task: plan.task,
         payload: plan.batches.length > 0 ? plan.batches[0].text : '',
         batches: plan.batches.length,
-        blocked: plan.blocked ? plan.blocked.message : null
+        blocked
       };
     }
     previewMemo = { key, value };
@@ -597,7 +671,9 @@ function createReviewController(deps) {
       note: asText(project.keepNote),
       folderName: folderOf(project),
       build: builderFor(chapterId, text, options),
-      request: (request) => given.ai.request({ role: 'analysis', ...request }),
+      // retryOnEmpty: when a reasoning model used the whole limit before its first word, the request
+      // layer sends once more with a doubled limit (CLIENT_CONSTANTS.RETRY_ON_REASONING_EXHAUSTED)
+      request: (request) => given.ai.request({ role: 'analysis', ...request, retryOnEmpty: true }),
       meta: { chapterId },
       deps: textDeps,
       makeId: () => makeId('r'),

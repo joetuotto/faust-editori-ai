@@ -722,6 +722,50 @@ describe('local checks', () => {
     expect(english.view().localMessage).toBe('Typografian tarkistus on tehty suomenkieliselle tekstille.');
   });
 
+  // I-08 review fixes (live-6): a local hit's id holds its place, so typing above it gives it a new
+  // id; the author's selection stays on the same hit
+  test('the selected hit of a local check stays selected when text is typed above it', () => {
+    const h = setup();
+    const second = h.view().findings[1];
+    h.controller.select(second.id);
+    expect(h.view().position).toEqual({ index: 2, total: 3 });
+
+    h.type(`Yö. ${CHAPTER_1}`);
+    const view = h.view();
+    expect(view.findings[1].id).toBe(`avoid-words@${second.from + 4}`);
+    expect(view.selectedId).toBe(view.findings[1].id);
+    expect(view.position).toEqual({ index: 2, total: 3 });
+    expect(h.controller.highlightProps().activeId).toBe(view.findings[1].id);
+
+    // Typing after it changes nothing; a deletion above it moves it back
+    h.type(`Yö. ${CHAPTER_1} Loppu.`);
+    expect(h.view().selectedId).toBe(view.findings[1].id);
+    h.type(`${CHAPTER_1} Loppu.`);
+    expect(h.view().selectedId).toBe(second.id);
+
+    // A hit that is gone (vaino is not on the list) leaves nothing selected in the list
+    h.type(CHAPTER_1.replace('vain katsoi', 'vaino katsoi'));
+    expect(h.view().findings.some(finding => finding.id === h.view().selectedId)).toBe(false);
+    expect(h.view().position).toBeNull();
+  });
+
+  // I-08 review fixes (conformance-2): leaving the Raja field without a change is no change of the project
+  test('setLongSentenceWords writes only a limit that differs from the project\'s', () => {
+    const h = setup();
+    h.controller.selectCheck(check('long-sentences'));
+    h.controller.setLongSentenceWords(30);
+    h.controller.setLongSentenceWords('30');
+    expect(h.counters.updateProject).toBe(0);
+
+    h.controller.setLongSentenceWords(12);
+    expect(h.counters.updateProject).toBe(1);
+    expect(h.store.project.review.longSentenceWords).toBe(12);
+    // A value that clamps to the limit already set is no change either
+    h.controller.setLongSentenceWords(8);
+    h.controller.setLongSentenceWords(3);
+    expect(h.counters.updateProject).toBe(2);
+  });
+
   test('a local check with the scope Valinta lists the hits of the selection of this render', () => {
     const h = setup();
     h.controller.setScope('selection');
@@ -861,7 +905,7 @@ describe('running a model check', () => {
   test('a finished run writes findings and the run record with one updateChapter call', async () => {
     const h = setup();
     h.controller.selectCheck(check('filler'));
-    expect(h.view().lastRun).toEqual({ kind: 'none', lines: ['Tätä tarkistusta ei ole vielä ajettu tässä luvussa.'], failed: [] });
+    expect(h.view().lastRun).toEqual({ kind: 'none', lines: ['Tätä tarkistusta ei ole vielä ajettu tässä luvussa.'], outcome: null, failed: [] });
 
     const projectAtStart = h.store.project;
     h.queue.push(answer(FILLER_ANSWER));
@@ -901,13 +945,14 @@ describe('running a model check', () => {
     const view = h.view();
     expect(view.running).toBeNull();
     expect(view.findings.map(finding => finding.id)).toEqual(['f-1', 'f-2']);
-    expect(view.lastRun).toEqual({ kind: 'ok', lines: ['Tarkistettu <17:02>. 2 havaintoa.'], failed: [] });
+    expect(view.lastRun).toEqual({ kind: 'ok', lines: ['Tarkistettu <17:02>. 2 havaintoa.'], outcome: 'ok', failed: [] });
     expect(view.modelStats).toEqual([{ model: 'deepseek-test', total: 2, invalid: 0 }]);
 
     // The request: role analysis, the builder's two strings, the answer budget and the log meta
     expect(h.ai.request).toHaveBeenCalledTimes(1);
     const sent = h.ai.request.mock.calls[0][0];
-    expect(Object.keys(sent).sort()).toEqual(['maxTokens', 'messages', 'meta', 'role', 'system']);
+    // retryOnEmpty: the request layer's one resend when reasoning used the whole limit (I-08 review fixes)
+    expect(Object.keys(sent).sort()).toEqual(['maxTokens', 'messages', 'meta', 'retryOnEmpty', 'role', 'system']);
     expect(sent).toMatchObject({
       role: 'analysis',
       maxTokens: 1500,
@@ -958,6 +1003,7 @@ describe('running a model check', () => {
     expect(view.lastRun).toEqual({
       kind: 'error',
       lines: ['Tarkistus epäonnistui <17:02>.', 'Yhdyskäytävä ei vastannut (502).'],
+      outcome: 'failed',
       failed: [{ index: 0, message: 'Yhdyskäytävä ei vastannut (502).' }]
     });
     // A failure never reads as "no findings"
@@ -973,7 +1019,7 @@ describe('running a model check', () => {
 
     // The next good run clears the failure details
     await h.runWith(answer('EI HAVAINTOJA'));
-    expect(h.view().lastRun).toEqual({ kind: 'ok', lines: ['Tarkistettu <17:02>. Ei havaintoja.'], failed: [] });
+    expect(h.view().lastRun).toEqual({ kind: 'ok', lines: ['Tarkistettu <17:02>. Ei havaintoja.'], outcome: 'ok', failed: [] });
     expect(h.chapter().findings).toEqual([]);
   });
 
@@ -1139,7 +1185,8 @@ describe('running a model check', () => {
       message: 'Ei vertailtavaa: Tarinakansiossa ei ole tähän tekstiin liittyviä kohteita eikä aiemmilla luvuilla ole tiivistelmiä.'
     });
     h.render();
-    expect(h.view().lastRun).toMatchObject({ kind: 'error', lines: [h.chapter().reviewRuns.continuity.message] });
+    // The panel tells a refusal from a failure by the outcome: no Yritä uudelleen for it
+    expect(h.view().lastRun).toMatchObject({ kind: 'error', outcome: 'blocked', lines: [h.chapter().reviewRuns.continuity.message] });
 
     // A nonfiction project calls the folder by its other name
     const nonfiction = setup({ project: makeProject({ genre: 'nonfiction' }) });
@@ -1147,6 +1194,73 @@ describe('running a model check', () => {
     nonfiction.controller.run();
     await settle();
     expect(nonfiction.chapter().reviewRuns.continuity.message).toContain('Käsikirjoituksen kansiossa ei ole');
+  });
+
+  // I-08 review fixes (conformance-4, live-2, live-3): the panel knows before a run that Jatkuvuus
+  // has nothing to compare with, and offers no Tarkista that would only be refused
+  test('preview says Ei vertailtavaa for Jatkuvuus when no part has anything to compare with', () => {
+    const h = setup();
+    h.controller.selectCheck(check('continuity'));
+    expect(h.controller.preview()).toMatchObject({
+      batches: 1,
+      blocked: 'Ei vertailtavaa: Tarinakansiossa ei ole tähän tekstiin liittyviä kohteita eikä aiemmilla luvuilla ole tiivistelmiä.'
+    });
+    expect(h.ai.request).not.toHaveBeenCalled();
+    expect(h.counters.updateChapter).toBe(0);
+
+    // An entry the text mentions: something to compare with, and nothing refused
+    const withEntry = setup({
+      built: { parts: [{ id: 'codexMentioned', state: 'sent', items: [{ key: 'codex:liisa', label: 'Liisa', text: 'Liisa: siniset silmät.' }] }] }
+    });
+    withEntry.controller.selectCheck(check('continuity'));
+    expect(withEntry.controller.preview()).toMatchObject({ batches: 1, blocked: null });
+
+    // Another check is never refused for this
+    h.controller.selectCheck(check('filler'));
+    expect(h.controller.preview().blocked).toBeNull();
+    // A nonfiction project names its folder
+    const nonfiction = setup({ project: makeProject({ genre: 'nonfiction' }) });
+    nonfiction.controller.selectCheck(check('continuity'));
+    expect(nonfiction.controller.preview().blocked).toContain('Käsikirjoituksen kansiossa ei ole');
+  });
+
+  // I-08 review fixes (live-1): a reasoning model that spends the whole limit before its first word
+  // gets one resend with a doubled limit from the request layer (CLIENT_CONSTANTS.RETRY_ON_REASONING_EXHAUSTED)
+  test('a model check asks the request layer for its one resend when reasoning used the whole limit', async () => {
+    const h = setup();
+    h.controller.selectCheck(check('filler'));
+    await h.runWith(answer(FILLER_ANSWER));
+    expect(h.ai.request.mock.calls[0][0]).toMatchObject({ role: 'analysis', maxTokens: 1500, retryOnEmpty: true });
+  });
+
+  // I-08 review fixes (live-5): a check of a deleted chapter is not left running
+  test('a run whose chapter is deleted is cancelled at the next render', async () => {
+    const h = setup();
+    h.controller.selectCheck(check('filler'));
+    const pending = deferred();
+    h.queue.push(pending);
+    expect(h.controller.run()).toBe(true);
+    await settle();
+    expect(h.view().running).toMatchObject({ chapterId: 'c1' });
+
+    // Another chapter is open and the checked one is deleted
+    h.open('c2');
+    expect(h.handles[0].cancel).not.toHaveBeenCalled();
+    h.set({ project: { ...h.store.project, structure: h.store.project.structure.filter(entry => entry.id !== 'c1') } });
+    expect(h.handles[0].cancel).toHaveBeenCalledTimes(1);
+    // Later renders do not cancel it again
+    h.render();
+    expect(h.handles[0].cancel).toHaveBeenCalledTimes(1);
+
+    await settle();
+    h.render();
+    expect(h.view().running).toBeNull();
+    // Nothing was written to the chapter that is left
+    expect(h.chapter('c2').findings).toBeUndefined();
+    expect(h.chapter('c2').reviewRuns).toBeUndefined();
+    // A new check can start at once
+    h.queue.push(answer('EI HAVAINTOJA'));
+    expect(h.controller.run()).toBe(true);
   });
 
   test('without a context builder the plain layout is used', async () => {
@@ -1228,7 +1342,8 @@ describe('reading feedback', () => {
     expect(view.feedback.concerns.map(finding => finding.quote)).toEqual(['Aika tuntui pysähtyvän.', 'Lopuksi hän vain lähti kotiin.', 'Hän vain katsoi merta.']);
     // The list itself stays in reading order, and nothing in the view is a number about the text
     expect(view.findings.map(finding => finding.from)).toEqual([...view.findings.map(finding => finding.from)].sort((a, b) => a - b));
-    expect(Object.keys(view.feedback)).toEqual(['works', 'concerns']);
+    expect(Object.keys(view.feedback)).toEqual(['works', 'concerns', 'others']);
+    expect(view.feedback.others).toEqual([]);
 
     // "Näytä ehdotus" has nothing to show for these
     expect(h.controller.showFix(view.findings[0].id)).toBe(false);
@@ -1236,6 +1351,28 @@ describe('reading feedback', () => {
     // The groups follow the filter: a concern marked Eri mieltä leaves the open list
     h.controller.setStatus(view.feedback.concerns[0].id, 'disagree');
     expect(h.view().feedback.concerns.map(finding => finding.quote)).toEqual(['Lopuksi hän vain lähti kotiin.', 'Hän vain katsoi merta.']);
+  });
+
+  // I-08 review fixes (conformance-3): with Vain valittu tarkistus off the other checks' findings are
+  // not drawn as concerns (where they would also offer Näytä ehdotus)
+  test('the reading feedback groups hold its own findings and the other checks\' findings follow', async () => {
+    const h = await withFillerFindings();
+    h.controller.selectCheck(check('reading-feedback'));
+    await h.runWith(answer(FEEDBACK_ANSWER));
+    h.controller.setFilter({ onlyCheck: false });
+
+    const view = h.view();
+    expect(view.feedback.works.map(finding => finding.checkId)).toEqual(['reading-feedback']);
+    expect(view.feedback.concerns.map(finding => finding.checkId)).toEqual(['reading-feedback', 'reading-feedback', 'reading-feedback']);
+    expect(view.feedback.others.map(finding => [finding.checkId, finding.quote])).toEqual([
+      ['filler', 'Hän vain katsoi merta.'],
+      ['filler', 'Lopuksi hän vain lähti kotiin.']
+    ]);
+    // Nothing is lost: the groups and the rest are the listed findings
+    expect(view.feedback.works.length + view.feedback.concerns.length + view.feedback.others.length).toBe(view.findings.length);
+
+    h.controller.setFilter({ onlyCheck: true });
+    expect(h.view().feedback.others).toEqual([]);
   });
 });
 
@@ -1728,7 +1865,7 @@ describe('the session', () => {
     expect(h.chapter().findings.map(finding => finding.checkId)).toEqual(['avoid-words', 'cliche']);
     expect(Object.keys(h.chapter().reviewRuns)).toEqual(['cliche']);
     expect(h.view()).toMatchObject({ findings: [], selectedId: null });
-    expect(h.view().lastRun).toEqual({ kind: 'none', lines: ['Tätä tarkistusta ei ole vielä ajettu tässä luvussa.'], failed: [] });
+    expect(h.view().lastRun).toEqual({ kind: 'none', lines: ['Tätä tarkistusta ei ole vielä ajettu tässä luvussa.'], outcome: null, failed: [] });
   });
 
   test('reset cancels a run and forgets the session', async () => {

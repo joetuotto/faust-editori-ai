@@ -11,7 +11,8 @@ const {
   describeCheck,
   makeCustomCheck,
   validateCustomCheck,
-  normalizeCustomChecks
+  normalizeCustomChecks,
+  canAddCustomCheck
 } = require('../../src/services/review/reviewChecks');
 
 const byId = (id) => BUILTIN_CHECKS.find(check => check.id === id);
@@ -193,8 +194,8 @@ describe('own checks', () => {
   });
 
   test('validateCustomCheck rejects an instruction under 10 or over 1000 characters', () => {
-    expect(validateCustomCheck({ label: 'Nimi', instruction: 'Etsi nää.' }).errors.instruction).toBe('Kirjoita ohje mallille (vähintään 10 merkkiä).');
-    expect(validateCustomCheck({ label: 'Nimi', instruction: '' }).errors.instruction).toBe('Kirjoita ohje mallille (vähintään 10 merkkiä).');
+    expect(validateCustomCheck({ label: 'Nimi', instruction: 'Etsi nää.' }).errors.instruction).toBe('Kirjoita ohje tekoälylle (vähintään 10 merkkiä).');
+    expect(validateCustomCheck({ label: 'Nimi', instruction: '' }).errors.instruction).toBe('Kirjoita ohje tekoälylle (vähintään 10 merkkiä).');
     expect(validateCustomCheck({ label: 'Nimi', instruction: 'Etsi nämä.' }).ok).toBe(true);
 
     expect(validateCustomCheck({ label: 'Nimi', instruction: 'ä'.repeat(1000) }).ok).toBe(true);
@@ -203,7 +204,7 @@ describe('own checks', () => {
     // Both fields can be wrong at once
     expect(validateCustomCheck({ label: '', instruction: '' })).toEqual({
       ok: false,
-      errors: { label: 'Anna tarkistukselle nimi.', instruction: 'Kirjoita ohje mallille (vähintään 10 merkkiä).' }
+      errors: { label: 'Anna tarkistukselle nimi.', instruction: 'Kirjoita ohje tekoälylle (vähintään 10 merkkiä).' }
     });
     expect(CUSTOM_LIMITS).toEqual({ labelMax: 40, instructionMin: 10, instructionMax: 1000, max: 30 });
   });
@@ -212,6 +213,28 @@ describe('own checks', () => {
     expect(validateCustomCheck({ ...valid, label: 'Aikamuodot' }, OWN, 'custom:a').ok).toBe(true);
     // Another check's name is still taken
     expect(validateCustomCheck({ ...valid, label: 'Näkökulman vaihdot' }, OWN, 'custom:a').errors.label).toBe('Samanniminen tarkistus on jo olemassa.');
+  });
+
+  // I-08 review fixes (conformance-1): review.customChecks holds at most 30; a 31st would be stored
+  // and never listed, so none is made
+  const ownChecks = (n) => Array.from({ length: n }, (_unused, index) => ({
+    id: `custom:${index}`, label: `Oma ${index}`, instruction: 'Etsi kohdat, joissa jotain tapahtuu.', suggest: false, created: '2026-11-18T10:00:00.000Z'
+  }));
+  const FULL = 'Omia tarkistuksia voi olla enintään 30. Poista ensin jokin niistä.';
+
+  test('canAddCustomCheck makes room for 30 own checks and no more, counting only the ones that are listed', () => {
+    expect(canAddCustomCheck(undefined)).toEqual({ ok: true, message: null });
+    expect(canAddCustomCheck(ownChecks(29))).toEqual({ ok: true, message: null });
+    expect(canAddCustomCheck(ownChecks(30))).toEqual({ ok: false, message: FULL });
+    expect(canAddCustomCheck(ownChecks(31))).toEqual({ ok: false, message: FULL });
+    // Malformed entries and a second entry with one id are not listed, so they take no room
+    expect(canAddCustomCheck([...ownChecks(29), { id: 'custom:x', label: '', instruction: 'x' }, ownChecks(1)[0], 'rikki']).ok).toBe(true);
+  });
+
+  test('validateCustomCheck refuses a new check when 30 are stored and lets one of them be edited', () => {
+    expect(validateCustomCheck(valid, ownChecks(30))).toEqual({ ok: false, errors: { limit: FULL } });
+    expect(validateCustomCheck(valid, ownChecks(29))).toEqual({ ok: true, errors: {} });
+    expect(validateCustomCheck(valid, ownChecks(30), 'custom:4')).toEqual({ ok: true, errors: {} });
   });
 
   test('normalizeCustomChecks drops entries without custom: id, label or instruction and keeps at most 30', () => {

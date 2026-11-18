@@ -193,6 +193,21 @@ function normalizeCustomChecks(value) {
   return checks;
 }
 
+// Shown when no more own checks fit: under the picker, whose "Uusi oma tarkistus…" is then disabled,
+// and by the dialog (stage I-08 review fixes; the settings key holds at most CUSTOM_LIMITS.max)
+const CUSTOM_FULL_MESSAGE = `Omia tarkistuksia voi olla enintään ${CUSTOM_LIMITS.max}. Poista ensin jokin niistä.`;
+
+/**
+ * Is there room for one more own check? Counted as normalizeCustomChecks counts, so a check
+ * that would be saved is also one that is listed.
+ * @param {Array} value the stored own checks
+ * @returns {{ok: boolean, message: string|null}}
+ */
+function canAddCustomCheck(value) {
+  const full = normalizeCustomChecks(value).length >= CUSTOM_LIMITS.max;
+  return { ok: !full, message: full ? CUSTOM_FULL_MESSAGE : null };
+}
+
 /**
  * The picker of the tab: groups in the order local, model, custom, other.
  * An empty group is left out; with aiOff only the local group is returned.
@@ -269,8 +284,9 @@ function makeCustomCheck(fields, options) {
  * Check the two fields of the own-check dialog.
  * @param {{label: string, instruction: string}} fields
  * @param {Array} existing the stored own checks
- * @param {string|null} ownId the check being edited keeps its own name
- * @returns {{ok: boolean, errors: {label?: string, instruction?: string}}}
+ * @param {string|null} ownId the check being edited keeps its own name; null for a new check, which
+ *   needs room in the list (canAddCustomCheck)
+ * @returns {{ok: boolean, errors: {label?: string, instruction?: string, limit?: string}}}
  */
 function validateCustomCheck(fields, existing = [], ownId = null) {
   const label = asText(fields && fields.label).trim();
@@ -288,9 +304,14 @@ function validateCustomCheck(fields, existing = [], ownId = null) {
   else if (taken) errors.label = 'Samanniminen tarkistus on jo olemassa.';
 
   if (instruction.length < CUSTOM_LIMITS.instructionMin) {
-    errors.instruction = 'Kirjoita ohje mallille (vähintään 10 merkkiä).';
+    errors.instruction = 'Kirjoita ohje tekoälylle (vähintään 10 merkkiä).';
   } else if (instruction.length > CUSTOM_LIMITS.instructionMax) {
     errors.instruction = 'Ohje on liian pitkä (enintään 1 000 merkkiä).';
+  }
+
+  if (ownId == null) {
+    const room = canAddCustomCheck(existing);
+    if (!room.ok) errors.limit = room.message;
   }
 
   return { ok: Object.keys(errors).length === 0, errors };
@@ -306,5 +327,6 @@ module.exports = {
   describeCheck,
   makeCustomCheck,
   validateCustomCheck,
-  normalizeCustomChecks
+  normalizeCustomChecks,
+  canAddCustomCheck
 };
