@@ -1245,6 +1245,12 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-editor-host .cm-editor .cm-faust-sugg-point::before { content: ""; display: inline-block; width: 0; height: calc(var(--ms-size) * 0.9); margin: 0 1px; vertical-align: text-bottom; border-left: var(--bw-strong) solid var(--accent-line); }
 .faust-editor-host .cm-editor .cm-faust-sugg-point.cm-faust-sugg-current::before { box-shadow: 0 0 0 2px var(--hl-ai-bg); }
 .faust-editor-host .cm-editor :is(.cm-faust-sugg-del, .cm-faust-sugg-ins, .cm-faust-sugg-new, .cm-faust-sugg-orig, .cm-faust-target, .cm-faust-avoid, .cm-faust-mention) *:not(.cm-faust-match, .cm-faust-match-current, .faust-mark--search, .faust-mark--search-current) { color: inherit; }
+/* Wrap gaps (wrapGapsCore.js). The editor wraps with break-spaces, so the space at a soft wrap is a box at the
+   end of the upper line, and a mark's line would run on under it, past the last word. That space carries a
+   mark of the lowest precedence, so it is the outermost element there and the piece of every other mark over
+   the space lies inside it: here that piece loses its line and its ground. Two classes above the rules of the
+   marks, so their severity, hover and under-review rules do not bring the line or the ground back. */
+.faust-editor-host .cm-editor .cm-content .cm-line .cm-faust-wrapgap :is(.cm-faust-finding, .cm-faust-sugg-del, .cm-faust-sugg-orig, .cm-faust-avoid, .cm-faust-mention) { text-decoration-line: none; border-bottom-color: transparent; background-color: transparent; }
 /* The suggestion block is a CodeMirror block widget: no vertical margin (CodeMirror does not
    measure it); the space above and below is a transparent border, which it does measure.
    A well in the paper with the gold bar of "FAUST proposes this"; under review, the tint. */

@@ -697,6 +697,185 @@ describe('drawing', () => {
     expect(v.contentDOM.querySelector(`.cm-faust-sugg-del[data-sugg-id="${mennyt}"]`).classList.contains('cm-faust-sugg-current')).toBe(true);
   });
 
+  // F4: the strike and the dotted line are drawn from the first to the last character that is not white space
+  // (trimmedRange of markDrawing.js). Only the drawing is cut: the suggestion keeps its range.
+  test('a deletion is struck from its first to its last letter, and the space of its range is still deleted on accept', () => {
+    const doc = 'Hän oli hyvin väsynyt ja aina myöhässä.';
+    const { v, el, text } = mount(doc);
+    el.proposeChanges([
+      { from: 8, to: 14, insert: '', original: 'hyvin ' },
+      { from: 24, to: 29, insert: '', original: ' aina' }
+    ], { meta: META });
+    const struck = () => [...v.contentDOM.querySelectorAll('.cm-faust-sugg-del')].map(node => node.textContent);
+    expect(struck()).toEqual(['hyvin', 'aina']);
+    expect(v.contentDOM.querySelector('.cm-faust-sugg-del').getAttribute('data-sugg-id')).toBe(idOf(el, 'hyvin '));
+    // The ranges, the count and the current suggestion are the model's, as before
+    expect(el.getSuggestions().pending.map(item => [item.from, item.to, item.original])).toEqual([[8, 14, 'hyvin '], [24, 29, ' aina']]);
+    v.dispatch({ selection: { anchor: 25 } });   // between the space that is not struck and "aina"
+    expect(el.getSuggestions().currentId).toBe(idOf(el, ' aina'));
+    v.dispatch({ selection: { anchor: 14 } });   // right after the space of "hyvin "
+    expect(el.getSuggestions().currentId).toBe(idOf(el, 'hyvin '));
+
+    // "Alkuperäinen" underlines the same letters; "Uusi" hides the whole range, the space included
+    el.setSuggestionView('original');
+    expect([...v.contentDOM.querySelectorAll('.cm-faust-sugg-orig')].map(node => node.textContent)).toEqual(['hyvin', 'aina']);
+    el.setSuggestionView('new');
+    expect(v.contentDOM.querySelector('.cm-line').textContent).toBe('Hän oli väsynyt ja myöhässä.');
+    el.setSuggestionView('changes');
+
+    expect(el.acceptSuggestion(idOf(el, 'hyvin '))).toBe(true);
+    expect(text()).toBe('Hän oli väsynyt ja aina myöhässä.');
+    expect(struck()).toEqual(['aina']);
+    expect(el.rejectSuggestion(idOf(el, ' aina'))).toBe(true);
+    expect(text()).toBe('Hän oli väsynyt ja aina myöhässä.');
+    expect(struck()).toEqual([]);
+    expect(el.getSuggestions().rejected.map(item => item.original)).toEqual([' aina']);
+  });
+
+  test('a replacement whose range ends in a space is struck up to its last letter, and its insertion stands after the space', () => {
+    const doc = 'Hän oli hyvin väsynyt.';
+    const { v, el, text } = mount(doc);
+    el.proposeChanges([{ from: 8, to: 14, insert: 'tosi ', original: 'hyvin ' }], { meta: META });
+    const line = v.contentDOM.querySelector('.cm-line');
+    expect(line.querySelector('.cm-faust-sugg-del').textContent).toBe('hyvin');
+    expect(line.querySelector('.cm-faust-sugg-ins').textContent).toBe('tosi ');
+    expect(line.textContent).toBe('Hän oli hyvin tosi väsynyt.');
+    el.acceptGroup();
+    expect(text()).toBe('Hän oli tosi väsynyt.');
+  });
+
+  test('a deletion of white space only keeps its mark, or nothing would show it', () => {
+    const doc = 'Hän oli  väsynyt.\n\nToinen kappale.';
+    const { v, el, text } = mount(doc);
+    el.proposeChanges([{ from: 7, to: 8, insert: '', original: ' ' }], { meta: META });
+    expect([...v.contentDOM.querySelectorAll('.cm-faust-sugg-del')].map(node => node.textContent)).toEqual([' ']);
+    el.setSuggestionView('original');
+    expect(v.contentDOM.querySelector('.cm-faust-sugg-orig').textContent).toBe(' ');
+    el.setSuggestionView('changes');
+    el.acceptGroup();
+    expect(text()).toBe('Hän oli väsynyt.\n\nToinen kappale.');
+  });
+
+  test('a deletion over a paragraph break keeps its ¶ and is struck up to the last letter of each end', () => {
+    const doc = 'Eka kappale. \n\nToka virke.';
+    const { v, el, text } = mount(doc);
+    el.proposeChanges([{ from: 4, to: 20, insert: 'ja', original: 'kappale. \n\nToka ' }], { meta: META });
+    const lines = [...v.contentDOM.querySelectorAll('.cm-line')];
+    // The letters under the strike: the mark's own text, without the ¶ sign CodeMirror draws inside it
+    const struckOn = (line) => [...line.querySelectorAll('.cm-faust-sugg-del:not(.cm-faust-sugg-break)')].map(node => {
+      const copy = node.cloneNode(true);
+      copy.querySelectorAll('.cm-faust-sugg-break').forEach(sign => sign.remove());
+      return copy.textContent;
+    });
+    // The first line still ends in its space, struck: the range is cut at its two ends only
+    expect(struckOn(lines[0])).toEqual(['kappale. ']);
+    expect(struckOn(lines[lines.length - 1])).toEqual(['Toka']);
+    expect(v.contentDOM.querySelectorAll('.cm-faust-sugg-break')).toHaveLength(2);
+    el.acceptGroup();
+    expect(text()).toBe('Eka javirke.');
+  });
+
+  // F4: an insertion is a widget, which the highlighter never sets. The editor says what face its place has
+  // (faceAt of the extension's config: the classes real text gets there) and the widget carries them.
+  describe('the face of an insertion', () => {
+    const DOC = '# Saapuminen yöllä\n\nJuna. *Hän käveli hitaasti kotiin.* Laituri.';
+    // A stand-in for FaustEditor's faceClassesAt: the heading line, and between the two asterisks of the text
+    const faceAt = jest.fn((editorState, pos) => {
+      const text = editorState.doc.toString();
+      const line = editorState.doc.lineAt(pos);
+      if (line.text.startsWith('# ') && pos > line.from) return 'face-h1';
+      const open = text.indexOf('*');
+      const close = text.indexOf('*', open + 1);
+      return open !== -1 && close !== -1 && pos > open && pos <= close ? 'face-em' : '';
+    });
+    const inserted = (v) => [...v.contentDOM.querySelectorAll('.cm-faust-sugg-ins, .cm-faust-sugg-new')];
+    const classesOf = (v) => inserted(v).map(node => [node.textContent, node.className]);
+
+    beforeEach(() => faceAt.mockClear());
+
+    test('an insertion carries the classes of its place, at the end of what it replaces', () => {
+      const { v, el } = mount(DOC, { faceAt });
+      el.proposeChanges([at(DOC, 'yöllä', 'aamulla'), at(DOC, 'hitaasti', 'nopeasti'), at(DOC, 'Laituri', 'Asema')], { meta: META });
+      expect(classesOf(v)).toEqual([
+        ['aamulla', 'cm-faust-sugg-ins cm-faust-sugg-current face-h1'],
+        ['nopeasti', 'cm-faust-sugg-ins face-em'],
+        ['Asema', 'cm-faust-sugg-ins']
+      ]);
+      // Asked with the editor's state and the place of the insertion
+      const places = faceAt.mock.calls.map(call => call[1]);
+      expect(places).toEqual(expect.arrayContaining([18, DOC.indexOf('hitaasti') + 8, DOC.indexOf('Laituri') + 7]));
+      expect(faceAt.mock.calls.every(call => call[0] && typeof call[0].doc.lineAt === 'function')).toBe(true);
+      // "Uusi" draws the same text in the same face; the deletion's own mark has no face class
+      el.setSuggestionView('new');
+      expect(classesOf(v).map(([, className]) => className)).toEqual(['cm-faust-sugg-new cm-faust-sugg-current face-h1', 'cm-faust-sugg-new face-em', 'cm-faust-sugg-new']);
+      el.setSuggestionView('changes');
+      expect([...v.contentDOM.querySelectorAll('.cm-faust-sugg-del')].every(node => !/face-/.test(node.className))).toBe(true);
+    });
+
+    test('the face follows the text: when the author takes the emphasis away, the insertion is plain again', () => {
+      const { v, el, text } = mount(DOC, { faceAt });
+      el.proposeChanges([at(DOC, 'hitaasti', 'nopeasti')], { meta: META });
+      expect(classesOf(v)).toEqual([['nopeasti', 'cm-faust-sugg-ins cm-faust-sugg-current face-em']]);
+      // The author deletes the closing asterisk, far from the suggestion
+      const close = DOC.lastIndexOf('*');
+      v.dispatch({ changes: { from: close, to: close + 1 } });
+      expect(text()).toBe(DOC.replace('kotiin.*', 'kotiin.'));
+      expect(el.getSuggestions().pending).toHaveLength(1);
+      expect(classesOf(v)).toEqual([['nopeasti', 'cm-faust-sugg-ins cm-faust-sugg-current']]);
+    });
+
+    test('after a paragraph break the inserted text is plain: only its first line has the face of the place', () => {
+      const { v, el } = mount(DOC, { faceAt });
+      el.proposeChanges([{ from: 18, to: 18, insert: ' ja aamulla\n\nUusi kappale.' }, { from: 18 + 2 + 5, to: 18 + 2 + 5, insert: '\nRivi' }], { meta: META });
+      const [heading, plain] = inserted(v);
+      expect(heading.className).toBe('cm-faust-sugg-ins cm-faust-sugg-current');
+      expect(heading.textContent).toBe(' ja aamulla¶¶Uusi kappale.');
+      expect([...heading.querySelectorAll('.face-h1')].map(node => node.textContent)).toEqual([' ja aamulla']);
+      // An insertion that starts with a break has no text on the line of its place
+      expect(plain.textContent).toBe('¶Rivi');
+      expect(plain.querySelector('span')).toBeNull();
+      expect(plain.className).toBe('cm-faust-sugg-ins');
+    });
+
+    // An insertion's ground and line are the box of its element. Its text was kept with pre-wrap, so the space
+    // at a soft wrap inside it stayed in the box. Now its single spaces are ordinary ones (they take no room at
+    // a wrap), and only white space that must be shown exactly stands in an element that keeps it.
+    test('the single spaces of an insertion are plain text; other white space is kept as it is', () => {
+      const { v, el, text } = mount('Hän käveli kotiin.');
+      el.proposeChanges([
+        { from: 3, to: 3, insert: ' hyvin nopeasti ja' },      // starts with a space
+        { from: 10, to: 10, insert: ' ' },                       // white space only
+        { from: 11, to: 11, insert: 'suoraan  ja \tkatsomatta\n taakseen ' }
+      ], { meta: META });
+      const [first, blank, last] = inserted(v);
+      const keptIn = (node) => [...node.querySelectorAll('.cm-faust-sugg-kept')].map(span => span.textContent);
+      // The usual insertion is one text node, as it always was
+      expect(first.textContent).toBe(' hyvin nopeasti ja');
+      expect(first.childNodes).toHaveLength(1);
+      expect(first.firstChild.nodeType).toBe(3);
+      // A lone space is the whole insertion: kept, or a wrap would hide it
+      expect(blank.textContent).toBe(' ');
+      expect(keptIn(blank)).toEqual([' ']);
+      // Two spaces in a row and a space beside a tab are the text's own
+      expect(last.textContent).toBe('suoraan  ja \tkatsomatta¶ taakseen ');
+      expect(keptIn(last)).toEqual(['  ', ' \t']);
+      expect([...last.childNodes].filter(node => node.nodeType === 3).map(node => node.data)).toEqual(['suoraan', 'ja', 'katsomatta', '¶', ' taakseen ']);
+      // The widget is drawing only
+      el.acceptGroup();
+      expect(text()).toBe('Hän hyvin nopeasti ja käveli  suoraan  ja \tkatsomatta\n taakseen kotiin.');
+    });
+
+    test('without faceAt, and with one that gives nothing, the widget is as it was', () => {
+      const plain = mount(DOC);
+      plain.el.proposeChanges([at(DOC, 'hitaasti', 'nopeasti')], { meta: META });
+      expect(classesOf(plain.v)).toEqual([['nopeasti', 'cm-faust-sugg-ins cm-faust-sugg-current']]);
+      const empty = mount(DOC, { faceAt: () => null });
+      empty.el.proposeChanges([at(DOC, 'hitaasti', 'nopeasti')], { meta: META });
+      expect(classesOf(empty.v)).toEqual([['nopeasti', 'cm-faust-sugg-ins cm-faust-sugg-current']]);
+      expect(inserted(empty.v)[0].childNodes).toHaveLength(1);
+    });
+  });
+
   test('the theme leaves the bar of the block to the stylesheet, current or not', () => {
     // VF-11: the bar is the gradient of the binding block in styles/faust-components.css, and the
     // block under review is drawn there too (VF-6). Only selectors and property names are read here.
@@ -712,6 +891,10 @@ describe('drawing', () => {
     expect(leftBorder).toEqual([]);
     expect(Object.keys(theme).filter(selector => /^\.cm-faust-block(?![\w-])/.test(selector))).toEqual(['.cm-faust-block']);
     expect(Object.keys(theme['.cm-faust-block']).filter(name => name.startsWith('border'))).toEqual([]);
+    // F4: an insertion's single spaces collapse at a soft wrap; white space to be shown exactly is kept apart
+    expect(theme['.cm-faust-sugg-ins'].whiteSpace).toBe('normal');
+    expect(theme['.cm-faust-sugg-new'].whiteSpace).toBe('normal');
+    expect(theme['.cm-faust-sugg-kept']).toEqual({ whiteSpace: 'pre-wrap' });
   });
 });
 

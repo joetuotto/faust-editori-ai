@@ -60,6 +60,10 @@
  * marks exactly; `onExternalChange()` is called after a change made outside the editor has been put into it,
  * so the app can measure the marks' lines again.
  *
+ * How the marks are drawn (src/editor/markDrawing.js, F4): an insertion suggestion stands in the face of its
+ * place (faceClassesAt below, given to the suggestion layer as `faceAt`), and no line of a suggestion, a
+ * finding, an avoid word or a mention lies under the space at a soft wrap (src/editor/wrapGaps.js).
+ *
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
  */
 
@@ -69,7 +73,10 @@ import {
   Decoration, MatchDecorator, ViewPlugin, tooltips
 } from '@codemirror/view';
 import { standardKeymap, insertNewline } from '@codemirror/commands';
-import { Language, defineLanguageFacet, syntaxHighlighting, HighlightStyle } from '@codemirror/language';
+import {
+  Language, defineLanguageFacet, syntaxHighlighting, HighlightStyle,
+  syntaxTree, ensureSyntaxTree, highlightingFor
+} from '@codemirror/language';
 import { parser as markdownParser, Strikethrough } from '@lezer/markdown';
 import { tags } from '@lezer/highlight';
 import { continueList, TODO_PATTERN_SOURCE, UNDERLINE_PATTERN_SOURCE } from '../editor/textTools.js';
@@ -82,6 +89,8 @@ import { inlinePrompt } from '../editor/inlinePrompt.js';
 import { smartTyping, SmartTyping } from '../editor/smartTyping.js';
 import { termHighlight, setTermHighlightConfig } from '../editor/termHighlight.js';
 import { reviewHighlights, setFindingHighlights } from '../editor/reviewHighlights.js';
+import { wrapGaps } from '../editor/wrapGaps.js';
+import { faceAt } from '../editor/markDrawing.js';
 import { modelLabel } from '../services/format.fi.js';
 
 const { createElement: e, useRef, useLayoutEffect, forwardRef } = React;
@@ -127,6 +136,24 @@ const proseHighlight = HighlightStyle.define([
   // The markers themselves (**, #, >, ***) stay visible but step back: dimmed, regular, upright
   { tag: [tags.processingInstruction, tags.contentSeparator, tags.url], color: 'var(--text-3)', fontWeight: '400', fontStyle: 'normal' }
 ]);
+
+// The face of the manuscript at a position, as the classes proseHighlight gives real text there: an
+// insertion suggestion is a widget, which the highlighter never sets, so the suggestion layer asks here and
+// draws it in the face of its place (italic inside emphasis, bold inside strong, the heading's or the
+// quotation's face). The tree is the editor's own, parsed to the end of the text first (CodeMirror parses
+// only the part on screen at once), so the answer depends on the text alone.
+const FACE_PARSE_MS = 50;
+const HEADING_TAGS = [null, tags.heading1, tags.heading2, tags.heading3, tags.heading4, tags.heading5, tags.heading6];
+
+function faceClassesAt(state, pos) {
+  const face = faceAt(ensureSyntaxTree(state, state.doc.length, FACE_PARSE_MS) || syntaxTree(state), pos);
+  const faceTags = [];
+  if (face.heading) faceTags.push(HEADING_TAGS[face.heading]);
+  if (face.quote) faceTags.push(tags.quote);
+  if (face.strong) faceTags.push(tags.strong);
+  if (face.emphasis) faceTags.push(tags.emphasis);
+  return faceTags.length ? highlightingFor(state, faceTags) || '' : '';
+}
 
 // --- Search highlights: set from outside with setHighlights(), follow edits ---
 
@@ -498,10 +525,15 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
           syntaxHighlighting(proseHighlight),
           highlightField,
           ...(readOnly ? [] : [         // suggestion and review marks go here
-            suggestionExtension({ external: External, diff: (a, b) => wordDiff(a, b, { raw: true }), seed: seed && seed.state, modelLabel }),
+            suggestionExtension({
+              external: External, diff: (a, b) => wordDiff(a, b, { raw: true }), seed: seed && seed.state, modelLabel,
+              faceAt: faceClassesAt
+            }),
             settledField,
             // The Tarkistus tab's findings: a field of their own, never shared with the search marks (I-08)
-            reviewHighlights({ onFindingClick: (id) => onFindingClickRef.current && onFindingClickRef.current(id) })
+            reviewHighlights({ onFindingClick: (id) => onFindingClickRef.current && onFindingClickRef.current(id) }),
+            // No line of a suggestion, a finding, an avoid word or a mention under the space at a soft wrap (F4)
+            wrapGaps()
           ]),
           underlinePlugin,
           todoPlugin,

@@ -10,12 +10,20 @@
  * transaction: it does not count as a document change, so onChange, undo and
  * the typewriter centring are not triggered.
  *
+ * The field keeps each finding's own range. What is drawn is cut to the
+ * characters that are not white space (trimmedRange of markDrawing.js), from
+ * the field and the text as they are now, so the line never lies under the
+ * space after a sentence; `trimAtWrap` on a mark asks the wrap gaps
+ * (wrapGapsCore.js) to keep the line off the space at a soft wrap.
+ *
  * This file never loads CodeMirror itself: a second copy of the editor state
  * package in the bundle breaks the editor at run time. The classes arrive as
  * the argument of the factory; the ESM shell reviewHighlights.js imports them
  * and calls it once (test/editor/reviewHighlights.view.test.js runs it with a
  * real editor view).
  */
+
+const { trimmedRange } = require('./markDrawing.js');
 
 const FINDING_CLASS = 'cm-faust-finding';
 const ACTIVE_CLASS = 'cm-faust-finding-active';
@@ -52,7 +60,8 @@ function createReviewHighlightsKit(cm) {
       marks.push(Decoration.mark({
         class: id === activeId ? `${FINDING_CLASS} ${ACTIVE_CLASS}` : FINDING_CLASS,
         attributes,
-        findingId: id
+        findingId: id,
+        trimAtWrap: true
       }).range(from, to));
     }
     return marks.length > 0 ? Decoration.set(marks, true) : Decoration.none;
@@ -67,8 +76,24 @@ function createReviewHighlightsKit(cm) {
       }
       return marks;
     },
-    provide: field => EditorView.decorations.from(field)
+    provide: field => EditorView.decorations.compute([field, 'doc'], state => drawnMarks(state.field(field), state.doc))
   });
+
+  // The marks as they are drawn: each on the part of its range from the first to the last character that
+  // is not white space. The field's own set is given back when no range has white space at an end.
+  function drawnMarks(marks, doc) {
+    if (marks.size === 0) return marks;
+    const drawn = [];
+    let cut = false;
+    const cursor = marks.iter();
+    while (cursor.value) {
+      const range = trimmedRange(doc.sliceString(cursor.from, cursor.to), cursor.from);
+      if (range.from !== cursor.from || range.to !== cursor.to) cut = true;
+      drawn.push(cursor.value.range(range.from, range.to));
+      cursor.next();
+    }
+    return cut ? Decoration.set(drawn, true) : marks;
+  }
 
   // An underline, not a fill: fills are taken by search, avoid words and
   // suggestions. Colours come only from the design tokens (lead, VF-11).

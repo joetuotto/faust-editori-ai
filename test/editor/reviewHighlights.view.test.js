@@ -314,10 +314,62 @@ test('the kit has the four documented members and the core never loads CodeMirro
   expect(reviewHighlights()).toHaveLength(3);
   expect(reviewHighlights()[0]).toBe(findingField);
 
-  // A second copy of the editor state package in the bundle breaks the editor at run time
+  // A second copy of the editor state package in the bundle breaks the editor at run time. Its one require
+  // is the pure drawing rule (F4: until then the file had none, and this case said "no require at all")
   const source = fs.readFileSync(path.join(__dirname, '../../src/editor/reviewHighlightsCore.js'), 'utf8');
-  expect(source).not.toMatch(/require\(/);
+  expect(source).not.toMatch(/require\(\s*['"]@(?:codemirror|lezer)\//);
+  expect(source.match(/require\(([^)]*)\)/g)).toEqual(["require('./markDrawing.js')"]);
   expect(source).not.toMatch(/\bimport\b[^\n]*from/);
+});
+
+// F4: a finding's range may hold the space after its sentence (a model's quotation, a selection). The line is
+// drawn from the first to the last character that is not white space; the range itself stays whole.
+describe('the underline is drawn on the words, the range stays whole', () => {
+  const from = DOC.indexOf(' ja Liisa');
+  const WIDE = { id: 'f-9', from, to: from + ' ja Liisa seisoi '.length };
+
+  test('white space at the ends of a finding is not underlined', () => {
+    const editor = mount();
+    show(editor, { items: [WIDE, ITEMS[1]], activeId: 'f-9' });
+    expect(marked(editor)).toEqual([['f-9', 'ja Liisa seisoi'], ['f-2', 'vihaisesti']]);
+    // The class of the selected finding and the severity stay on the drawn mark
+    expect(marks(editor)[0].classList.contains('cm-faust-finding-active')).toBe(true);
+    show(editor, { items: [{ ...WIDE, severity: 'note' }], activeId: null });
+    expect(marks(editor).map(element => [element.textContent, element.getAttribute('data-severity')])).toEqual([['ja Liisa seisoi', 'note']]);
+    // What the field keeps and gives out is the finding's own range
+    expect(findingRanges(editor.state)).toEqual([WIDE]);
+    expect(editor.state.sliceDoc(WIDE.from, WIDE.to)).toBe(' ja Liisa seisoi ');
+  });
+
+  test('the cut follows the text: when the last word of the range is deleted, the line ends at the word before it', () => {
+    const editor = mount();
+    show(editor, { items: [WIDE], activeId: null });
+    const word = DOC.indexOf('seisoi');
+    editor.dispatch({ changes: { from: word, to: word + 'seisoi'.length } });
+    expect(editor.state.sliceDoc(findingRanges(editor.state)[0].from, findingRanges(editor.state)[0].to)).toBe(' ja Liisa  ');
+    expect(marked(editor)).toEqual([['f-9', 'ja Liisa']]);
+    // Typed at the edge of the range the text stays outside, as before
+    type(editor, WIDE.from, 'XX');
+    expect(marked(editor)).toEqual([['f-9', 'ja Liisa']]);
+  });
+
+  test('a finding of white space only keeps its mark (two spaces in a row are the finding)', () => {
+    const editor = mount();
+    type(editor, DOC.indexOf(' harmaa'), ' ');
+    const at = editor.state.doc.toString().indexOf('  harmaa');
+    show(editor, { items: [{ id: 'f-10', from: at, to: at + 2 }], activeId: null });
+    expect(marked(editor)).toEqual([['f-10', '  ']]);
+  });
+
+  test('a finding without white space at its ends is drawn on its own range, and every mark asks for wrap gaps', () => {
+    const editor = mount();
+    show(editor, { items: ITEMS, activeId: null });
+    expect(marked(editor)).toEqual([['f-1', 'jotenkin'], ['f-2', 'vihaisesti'], ['f-3', 'tavallaan']]);
+    const flags = [];
+    const cursor = editor.state.field(findingField).iter();
+    while (cursor.value) { flags.push(cursor.value.spec.trimAtWrap); cursor.next(); }
+    expect(flags).toEqual([true, true, true]);
+  });
 });
 
 test('the finding marks take their colours from the design tokens only', () => {

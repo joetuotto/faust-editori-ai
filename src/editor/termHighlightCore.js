@@ -44,7 +44,10 @@ function createTermHighlightKit(cm) {
   // Effect value: { avoid: string[], codex: Entry[] } or null
   const setTermHighlightConfig = StateEffect.define();
 
-  const avoidMark = Decoration.mark({ class: AVOID_CLASS });
+  // A term's pattern is cut at word boundaries, so the line of a mark never starts or ends on white space.
+  // `trimAtWrap` asks the wrap gaps (wrapGapsCore.js) to keep it off the space at a soft wrap as well, where
+  // a term of several words goes on to the next visual line.
+  const avoidMark = Decoration.mark({ class: AVOID_CLASS, trimAtWrap: true });
 
   // null or empty lists compile to nothing to draw
   function compileConfig(config) {
@@ -64,7 +67,8 @@ function createTermHighlightKit(cm) {
         if (!entry.terms.pattern) continue;
         marks.set(entry.id, Decoration.mark({
           class: MENTION_CLASS,
-          attributes: { [ENTRY_ATTRIBUTE]: String(entry.id), title: `${entry.label}. ${hint}` }
+          attributes: { [ENTRY_ATTRIBUTE]: String(entry.id), title: `${entry.label}. ${hint}` },
+          trimAtWrap: true
         }));
       }
       config.marksByHint.set(hint, marks);

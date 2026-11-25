@@ -294,6 +294,36 @@ test('a word in italics is marked like any other', () => {
   expect(texts(editor, 'cm-faust-avoid')).toEqual(['jotenkin']);
 });
 
+// F4: a term is cut at word boundaries by its own pattern, so its line never starts or ends on white space; the
+// space inside a name of two words is where a line can turn, and there the wrap gaps (wrapGapsCore.js) take
+// the line off. A mark says so with `trimAtWrap`.
+test('a name of two words is one mark without white space at its ends, and every mark asks for wrap gaps', () => {
+  const editor = new view.EditorView({
+    doc: 'Illalla  Aino Lehto  tuli kotiin, jotenkin myöhään. Aino Lehtoa odotti takki, joka oli märkä.',
+    extensions: [kit.termHighlight({ avoid: ['jotenkin', 'oli märkä'], codex: [{ id: 'cx-aino', type: 'hahmo', name: 'Aino Lehto', state: 'mentioned' }] })],
+    parent: document.body
+  });
+  views.push(editor);
+  expect(texts(editor, 'cm-faust-mention')).toEqual(['Aino Lehto', 'Aino Lehtoa']);
+  expect(texts(editor, 'cm-faust-avoid')).toEqual(['jotenkin', 'oli märkä']);
+
+  const flags = [];
+  for (const source of editor.state.facet(view.EditorView.decorations)) {
+    const set = typeof source === 'function' ? source(editor) : source;
+    const cursor = set.iter();
+    while (cursor.value) {
+      flags.push([editor.state.sliceDoc(cursor.from, cursor.to), cursor.value.spec.class, cursor.value.spec.trimAtWrap]);
+      cursor.next();
+    }
+  }
+  expect(flags).toEqual([
+    ['Aino Lehto', 'cm-faust-mention', true],
+    ['jotenkin', 'cm-faust-avoid', true],
+    ['Aino Lehtoa', 'cm-faust-mention', true],
+    ['oli märkä', 'cm-faust-avoid', true]
+  ]);
+});
+
 test('the theme has the two rules of the highlight', () => {
   // A second kit whose EditorView records what the theme is made of
   const baseTheme = jest.fn(view.EditorView.baseTheme);

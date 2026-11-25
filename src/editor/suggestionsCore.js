@@ -15,6 +15,7 @@
 
 const model = require('./suggestionModel.js');
 const { createBlockView } = require('./pendingInsertView.js');
+const { trimmedRange } = require('./markDrawing.js');
 
 // Shift+Cmd+. and Shift+Cmd+, step by physical key. Switch off if the live
 // check on a Finnish keyboard shows a clash; the arrow keys remain.
@@ -40,15 +41,20 @@ const THEME = {
     backgroundColor: 'var(--sugg-del-bg)',
     color: 'var(--sugg-del-text)'
   },
+  // An insertion's ground and line are the box of its element. Its single spaces are ordinary ones, which
+  // take no room at a soft wrap, so the box ends at the last word of a visual line (a preserved space is a
+  // part of the box there, and the line ran on under it). White space that must be shown exactly (several
+  // spaces, a tab, an insertion of white space only) stands in .cm-faust-sugg-kept.
   '.cm-faust-sugg-ins': {
-    whiteSpace: 'pre-wrap',
+    whiteSpace: 'normal',
     backgroundColor: 'var(--sugg-ins-bg)',
     borderBottom: '1px solid var(--sugg-ins-line)'
   },
   '.cm-faust-sugg-new': {
-    whiteSpace: 'pre-wrap',
+    whiteSpace: 'normal',
     borderBottom: '1px dotted var(--sugg-ins-line)'
   },
+  '.cm-faust-sugg-kept': { whiteSpace: 'pre-wrap' },
   '.cm-faust-sugg-orig': { borderBottom: `1px dotted ${ACCENT}` },
   '.cm-faust-sugg-point': { color: ACCENT },
   '.cm-faust-sugg-break': { textDecoration: 'line-through' },
@@ -96,7 +102,7 @@ function createSuggestionKit(cm) {
   const runtimeByView = new WeakMap();
   const decorationCache = new WeakMap();
 
-  const DEFAULT_CONFIG = { external: null, diff: undefined, modelLabel: (modelId) => modelId };
+  const DEFAULT_CONFIG = { external: null, diff: undefined, modelLabel: (modelId) => modelId, faceAt: null };
 
   // What suggestionExtension was given, per editor. A field, because the kit takes no Facet.
   const configField = StateField.define({ create: () => DEFAULT_CONFIG, update: (value) => value });
@@ -208,10 +214,10 @@ function createSuggestionKit(cm) {
     },
 
     provide: (field) => [
-      EditorView.decorations.compute([field, 'doc'], state => buildDecorations(state.field(field), configOf(state), state.doc).all),
+      EditorView.decorations.compute([field, 'doc'], state => buildDecorations(state.field(field), state).all),
       EditorView.atomicRanges.of(view => {
         const value = view.state.field(field, false);
-        return value ? buildDecorations(value, configOf(view.state), view.state.doc).atomic : Decoration.none;
+        return value ? buildDecorations(value, view.state).atomic : Decoration.none;
       })
     ]
   });
@@ -224,29 +230,75 @@ function createSuggestionKit(cm) {
 
   const currentClass = (name, current) => name + (current ? ' cm-faust-sugg-current' : '');
 
+  // The text of one line of an insertion, in an element whose white space collapses (THEME): words and the
+  // single spaces between them as plain text; every other run of white space, and a text of white space
+  // only, in an element that keeps it as it is.
+  function appendInsertText(doc, parent, text) {
+    const kept = (value) => {
+      const span = doc.createElement('span');
+      span.className = 'cm-faust-sugg-kept';
+      span.textContent = value;
+      parent.appendChild(span);
+    };
+    if (!text.trim()) {
+      kept(text);
+      return;
+    }
+    let plain = '';
+    const flush = () => {
+      if (plain) parent.appendChild(doc.createTextNode(plain));
+      plain = '';
+    };
+    for (const part of text.split(/(\s+)/)) {
+      if (!part) continue;
+      if (part === ' ' || /\S/.test(part)) {
+        plain += part;
+      } else {
+        flush();
+        kept(part);
+      }
+    }
+    flush();
+  }
+
+  // An insertion is not document text, so the highlighter never sets it: `face` is the classes that real
+  // text gets at its place (italic inside emphasis, bold inside strong, the heading's face), so it reads as
+  // part of its line and is told apart by its ground and line only. The face holds for the text on the line
+  // of the place: what follows a paragraph break in the insertion is plain text.
   class InsertWidget extends WidgetType {
-    constructor(id, text, current, plain) {
+    constructor(id, text, current, plain, face) {
       super();
       this.id = id;
       this.text = text;
       this.current = current;
       this.plain = plain;
+      this.face = face || '';
     }
 
     eq(other) {
-      return other.id === this.id && other.text === this.text && other.current === this.current && other.plain === this.plain;
+      return other.id === this.id && other.text === this.text && other.current === this.current && other.plain === this.plain &&
+        other.face === this.face;
     }
 
     toDOM(view) {
       const doc = view.dom.ownerDocument;
       const span = doc.createElement('span');
-      span.className = currentClass(this.plain ? 'cm-faust-sugg-new' : 'cm-faust-sugg-ins', this.current);
+      const lines = this.text.split('\n');
+      const oneLine = lines.length === 1;
+      span.className = currentClass(this.plain ? 'cm-faust-sugg-new' : 'cm-faust-sugg-ins', this.current) +
+        (this.face && oneLine ? ` ${this.face}` : '');
       span.setAttribute('data-sugg-id', this.id);
       span.setAttribute('aria-label', `Lisäysehdotus: ${this.text}`);
 
-      const lines = this.text.split('\n');
       lines.forEach((line, index) => {
-        if (line) span.appendChild(doc.createTextNode(line));
+        if (line && this.face && !oneLine && index === 0) {
+          const first = doc.createElement('span');
+          first.className = this.face;
+          appendInsertText(doc, first, line);
+          span.appendChild(first);
+        } else if (line) {
+          appendInsertText(doc, span, line);
+        }
         if (index === lines.length - 1) return;
         // Every view marks a new paragraph break the same way (cluster C 3.2)
         span.appendChild(doc.createTextNode('¶'));
@@ -355,31 +407,48 @@ function createSuggestionKit(cm) {
     return pos + /^[ \t]*/.exec(rest)[0].length;
   }
 
-  function buildDecorations(value, config, doc) {
+  // The drawing reads the text as well as the suggestions (where a line is drawn, what face a place has), so
+  // it is kept per document: a change of the text anywhere builds it again.
+  function buildDecorations(value, state) {
+    const config = configOf(state);
+    const doc = state.doc;
     const modelName = modelNameOf(value, config);
     const blockAt = value.block ? blockShownAt(doc, value.block.pos) : null;
     const cached = decorationCache.get(value.items);
-    if (cached && cached.block === value.block && cached.ranges === value.ranges && cached.blockAt === blockAt &&
+    if (cached && cached.doc === doc && cached.block === value.block && cached.ranges === value.ranges && cached.blockAt === blockAt &&
         cached.viewMode === value.viewMode && cached.currentId === value.currentId && cached.modelName === modelName) {
       return cached.result;
     }
 
+    // A strike or a dotted line runs from the first to the last character of the range that is not white
+    // space (markDrawing.js); `trimAtWrap` asks the wrap gaps (wrapGapsCore.js) to keep it off the space at
+    // a soft wrap. The suggestion keeps its whole range: accept and reject work on the model, not on this.
+    const lineMark = (className, spec) => {
+      const drawn = trimmedRange(doc.sliceString(spec.from, spec.to), spec.from);
+      return Decoration.mark({
+        class: currentClass(className, spec.current), attributes: { 'data-sugg-id': spec.id }, trimAtWrap: true
+      }).range(drawn.from, drawn.to);
+    };
+    const faceOf = (pos) => {
+      const face = config.faceAt ? config.faceAt(state, pos) : '';
+      return typeof face === 'string' ? face : '';
+    };
+
     const all = [];
     const atomic = [];
     for (const spec of model.decorationSpecs(value)) {
-      const idAttribute = { 'data-sugg-id': spec.id };
       switch (spec.kind) {
         case 'del':
-          all.push(Decoration.mark({ class: currentClass('cm-faust-sugg-del', spec.current), attributes: idAttribute }).range(spec.from, spec.to));
+          all.push(lineMark('cm-faust-sugg-del', spec));
           break;
         case 'ins':
-          all.push(Decoration.widget({ widget: new InsertWidget(spec.id, spec.text, spec.current, spec.plain), side: 1 }).range(spec.pos));
+          all.push(Decoration.widget({ widget: new InsertWidget(spec.id, spec.text, spec.current, spec.plain, faceOf(spec.pos)), side: 1 }).range(spec.pos));
           break;
         case 'break':
           all.push(Decoration.widget({ widget: new MarkWidget(spec.id, 'cm-faust-sugg-del cm-faust-sugg-break', '¶', false), side: 1 }).range(spec.pos));
           break;
         case 'orig':
-          all.push(Decoration.mark({ class: currentClass('cm-faust-sugg-orig', spec.current), attributes: idAttribute }).range(spec.from, spec.to));
+          all.push(lineMark('cm-faust-sugg-orig', spec));
           break;
         case 'point':
           all.push(Decoration.widget({ widget: new MarkWidget(spec.id, 'cm-faust-sugg-point', '‸', spec.current), side: 1 }).range(spec.pos));
@@ -403,7 +472,7 @@ function createSuggestionKit(cm) {
 
     const result = { all: Decoration.set(all, true), atomic: Decoration.set(atomic, true) };
     decorationCache.set(value.items, {
-      block: value.block, blockAt, ranges: value.ranges, viewMode: value.viewMode, currentId: value.currentId, modelName, result
+      doc, block: value.block, blockAt, ranges: value.ranges, viewMode: value.viewMode, currentId: value.currentId, modelName, result
     });
     return result;
   }
@@ -795,12 +864,15 @@ function createSuggestionKit(cm) {
    *   diff: finest word diff, for rebasing after such a change
    *   seed: model state from the session store, already rebased onto the initial document
    *   modelLabel: turns a model id into the name shown in the block's header
+   *   faceAt: (state, pos) => the classes of the manuscript's face at a position ('' for the plain face); an
+   *     insertion is drawn in the face of its place. It may read nothing but the state it is given.
    */
   function suggestionExtension(config = {}) {
     const settings = {
       external: config.external || null,
       diff: typeof config.diff === 'function' ? config.diff : undefined,
-      modelLabel: typeof config.modelLabel === 'function' ? config.modelLabel : DEFAULT_CONFIG.modelLabel
+      modelLabel: typeof config.modelLabel === 'function' ? config.modelLabel : DEFAULT_CONFIG.modelLabel,
+      faceAt: typeof config.faceAt === 'function' ? config.faceAt : null
     };
     return [
       configField.init(() => settings),

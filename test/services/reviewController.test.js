@@ -2030,7 +2030,9 @@ describe('createDefaultReviewController', () => {
     // None of this feature's modules loads CodeMirror or React, and the pure ones load only plainView
     const files = {
       'src/editor/plainView.js': [],
-      'src/editor/reviewHighlightsCore.js': [],
+      // F4: the finding marks are drawn by the pure drawing rule (until then this file had no require)
+      'src/editor/reviewHighlightsCore.js': ['./markDrawing.js'],
+      'src/editor/markDrawing.js': [],
       'src/services/review/reviewChecks.js': [],
       'src/services/review/findings.js': [],
       'src/services/review/localChecks.js': ['../../editor/plainView.js'],

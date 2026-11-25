@@ -89,7 +89,10 @@ const MODULES = {
   // F1 (25 Nov 2026): margin marks follow edits; the mapper is suggestionModel's (mapRange, planRebase exported for it)
   'src/editor/annotationMapping.js': ['changesFit', 'mapAnnotations', 'mapAnnotationsBetween', 'followEdits'],
   // F2 (25 Nov 2026): the pattern rules of the consistency checker (app.js hands them to the plain script)
-  'src/services/validation/consistencyRules.js': ['readable', 'mentionSentences', 'differsByDoubledLetter', 'nameFindings', 'planNameFix', 'extractDates', 'timelineFindings', 'locationFindings']
+  'src/services/validation/consistencyRules.js': ['readable', 'mentionSentences', 'differsByDoubledLetter', 'nameFindings', 'planNameFix', 'extractDates', 'timelineFindings', 'locationFindings'],
+  // F4 (25 Nov 2026): how a mark is drawn (the trimmed range, the gaps at soft wraps, the face of an insertion)
+  'src/editor/markDrawing.js': ['trimmedRange', 'softWrapGaps', 'faceAt'],
+  'src/editor/wrapGapsCore.js': ['createWrapGapKit', 'GAP_CLASS']
 };
 
 // The editor cores: the factory is called with CodeMirror and must return these names.
@@ -122,6 +125,12 @@ const KITS = {
     factory: 'createReviewHighlightsKit',
     cm: ['StateField', 'StateEffect', 'EditorView', 'Decoration'],
     returns: ['setFindingHighlights', 'findingField', 'reviewHighlights', 'findingRanges']
+  },
+  // F4: no line of a mark under the space at a soft wrap
+  'src/editor/wrapGapsCore.js': {
+    factory: 'createWrapGapKit',
+    cm: ['StateField', 'StateEffect', 'EditorView', 'Decoration', 'ViewPlugin', 'Prec'],
+    returns: ['wrapGaps', 'setWrapGaps', 'wrapGapField', 'wrapGapRanges', 'measureWrapGaps']
   }
 };
 
@@ -131,7 +140,8 @@ const SHELLS = {
   'src/editor/inlinePrompt.js': 'src/editor/inlinePromptCore.js',
   'src/editor/smartTyping.js': 'src/editor/smartTypingCore.js',
   'src/editor/termHighlight.js': 'src/editor/termHighlightCore.js',
-  'src/editor/reviewHighlights.js': 'src/editor/reviewHighlightsCore.js'
+  'src/editor/reviewHighlights.js': 'src/editor/reviewHighlightsCore.js',
+  'src/editor/wrapGaps.js': 'src/editor/wrapGapsCore.js'
 };
 
 // contracts.md section 8.1, column "Not": wordings that were replaced and must not come back
