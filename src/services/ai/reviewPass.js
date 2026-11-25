@@ -15,9 +15,18 @@
 const { plainView } = require('../../editor/plainView.js');
 
 const REVIEW = Object.freeze({
+  // The visible answer: the list of findings
   ANSWER_TOKENS: 1500,
   CONTINUITY_ANSWER_TOKENS: 2000,
   FEEDBACK_ANSWER_TOKENS: 2000,
+  // A reasoning model reads the whole batch before its first word. The model's
+  // own Päättelyvara (2 000 by default) is sized for short tasks: on a full
+  // batch of 8 927 characters the default model used 8 978 tokens in all
+  // (25 Nov 2026), and with 1 500 + 2 000 the answer was cut. A check reserves
+  // this much more, but never more than this share of what the model's window
+  // leaves for the prompt, so that a small window still has room for text.
+  REASONING_TOKENS: 10000,
+  REASONING_SHARE: 0.5,
   BATCH_MAX_CHARS: 9000,
   BATCH_MIN_CHARS: 1200,
   CONTINUITY_BATCH_MAX_CHARS: 6000,
@@ -249,6 +258,18 @@ function planBatches(lines, maxChars, deps, options) {
 }
 
 /**
+ * The tokens a check adds to its answer for the model's reasoning: REASONING_TOKENS,
+ * or REASONING_SHARE of the prompt room the probe reports when that is less.
+ * Without a reported room (a builder without a budget) the whole reserve.
+ * @param {{budgetTokens?: number}} probe the request built without text, with the visible answer only
+ * @returns {number}
+ */
+function reasoningReserve(probe) {
+  if (!probe || !Number.isFinite(probe.budgetTokens)) return REVIEW.REASONING_TOKENS;
+  return Math.min(REVIEW.REASONING_TOKENS, Math.floor(Math.max(0, probe.budgetTokens) * REVIEW.REASONING_SHARE));
+}
+
+/**
  * Everything that is decided before the first request. The run and the
  * panel's preview both use it, so they agree.
  * @param {object} input
@@ -261,11 +282,12 @@ function planBatches(lines, maxChars, deps, options) {
  * @param {string} [input.noAIMessage] the builder's sentence for a protected chapter
  * @returns {{task: object, view: object, batches: Array, maxChars: number,
  *   blocked: null|{reason: string, message: string}, message: string|null}}
+ *   task.answerTokens includes the reasoning reserve (reasoningReserve): every batch is built and sent with it
  */
 function planReview({ check, text, range = null, note = '', build, deps, noAIMessage } = {}) {
   const view = plainView(text);
-  const task = buildReviewTask({ check, note });
-  const plan = { task, view, batches: [], maxChars: 0, blocked: null, message: null };
+  const base = buildReviewTask({ check, note });
+  const plan = { task: base, view, batches: [], maxChars: 0, blocked: null, message: null };
 
   // The reading feedback is always about the whole chapter
   const plainRange = range && !isFeedback(check)
@@ -278,7 +300,7 @@ function planReview({ check, text, range = null, note = '', build, deps, noAIMes
   }
 
   // Built once without the text: what is left of the window is the room for it
-  const probe = build({ ...task, payload: '' }) || {};
+  const probe = build({ ...base, payload: '' }) || {};
   if (probe.blocked === 'noAI') {
     plan.blocked = { reason: 'noAI', message: noAIMessage || NO_AI_MESSAGE };
     return plan;
@@ -288,10 +310,16 @@ function planReview({ check, text, range = null, note = '', build, deps, noAIMes
     return plan;
   }
 
+  // The reasoning reserve comes out of the same room. Every batch is built and
+  // sent with it; the room is counted without the builder's uncalibrated
+  // margin on the reserve, so the plan errs on the small side.
+  const reserve = reasoningReserve(probe);
+  plan.task = { ...base, answerTokens: base.answerTokens + reserve };
+
   const hasBudget = Number.isFinite(probe.budgetTokens) && probe.budgetTokens > 0
     && Number.isFinite(probe.charsPerToken) && probe.charsPerToken > 0;
   const used = Number.isFinite(probe.totalChars) ? probe.totalChars : 0;
-  const available = hasBudget ? Math.floor(probe.budgetTokens * probe.charsPerToken) - used - 40 : Infinity;
+  const available = hasBudget ? Math.floor((probe.budgetTokens - reserve) * probe.charsPerToken) - used - 40 : Infinity;
 
   if (isFeedback(check)) {
     plan.maxChars = clamp(available, REVIEW.BATCH_MIN_CHARS, REVIEW.FEEDBACK_BATCH_MAX_CHARS);
@@ -494,8 +522,9 @@ function judgeBatch(result, parsed) {
     return verdict('failed', 'unparsed', 'Mallin vastausta ei voitu tulkita. Se ei ollut pyydetyssä muodossa.');
   }
   // A cut list of findings cannot damage the text; the caller drops a last
-  // finding that was cut mid-way
-  if (given.truncated) return verdict('truncated', 'max-tokens', 'Vastaus katkesi kesken. Havaintoja voi puuttua.');
+  // finding that was cut mid-way. What follows for the run (Havaintoja voi
+  // puuttua.) is said once, by the run's own line (findings.js describeRun).
+  if (given.truncated) return verdict('truncated', 'max-tokens', 'Vastaus katkesi kesken.');
   return verdict('ok', null, null);
 }
 

@@ -1129,15 +1129,17 @@ describe('what is sent', () => {
       check: check(id), text, range: null, note: '', deps, build: () => ({ blocked: null, parts: [], ...numbers })
     }).maxChars;
 
-    // available = floor(budgetTokens × charsPerToken) − totalChars − 40
-    expect(sized('filler', { budgetTokens: 2000, charsPerToken: 3, totalChars: 1000 })).toBe(4960);
-    expect(sized('filler', { budgetTokens: 2000, charsPerToken: 2.7, totalChars: 1000 })).toBe(4360);
+    // available = floor((budgetTokens − reserve) × charsPerToken) − totalChars − 40, where the reasoning
+    // reserve is min(10 000, ⌊budgetTokens / 2⌋). Changed in the final pass (T-065): the reserve comes out of
+    // the room (before: floor(budgetTokens × charsPerToken) − totalChars − 40, so 4960 and 4360 here)
+    expect(sized('filler', { budgetTokens: 2000, charsPerToken: 3, totalChars: 1000 })).toBe(1960);
+    expect(sized('filler', { budgetTokens: 4000, charsPerToken: 2.7, totalChars: 1000 })).toBe(4360);
     expect(sized('filler', { budgetTokens: 30000, charsPerToken: 3, totalChars: 1000 })).toBe(9000);
     expect(sized('filler', { budgetTokens: 500, charsPerToken: 3, totalChars: 1000 })).toBe(1200);
     expect(sized('filler', { budgetTokens: 100, charsPerToken: 3, totalChars: 5000 })).toBe(1200);
 
     // Continuity keeps half of the room for the entries the batch mentions
-    expect(sized('continuity', { budgetTokens: 2000, charsPerToken: 3, totalChars: 1000 })).toBe(2480);
+    expect(sized('continuity', { budgetTokens: 4000, charsPerToken: 3, totalChars: 1000 })).toBe(2480);
     expect(sized('continuity', { budgetTokens: 30000, charsPerToken: 3, totalChars: 1000 })).toBe(6000);
     expect(sized('continuity', { budgetTokens: 500, charsPerToken: 3, totalChars: 1000 })).toBe(1200);
 
@@ -1145,6 +1147,50 @@ describe('what is sent', () => {
     expect(sized('filler', {})).toBe(9000);
     expect(sized('continuity', {})).toBe(6000);
     expect([REVIEW.BATCH_MIN_CHARS, REVIEW.BATCH_MAX_CHARS, REVIEW.CONTINUITY_BATCH_MAX_CHARS]).toEqual([1200, 9000, 6000]);
+  });
+
+  // Final pass T-065: with the default model a full batch of 8 927 characters took 8 978 tokens of
+  // reasoning and answer, and 1 500 + the model's Päättelyvara 2 000 cut it every time
+  test('a check reserves 10 000 tokens beyond its answer for the model\'s reasoning, at most half of the window\'s room (T-065)', () => {
+    const text = 'Hän vain katsoi.';
+    const plan = (id, numbers) => planReview({
+      check: check(id), text, range: null, note: '', deps, build: () => ({ blocked: null, parts: [], ...numbers })
+    });
+    expect([REVIEW.REASONING_TOKENS, REVIEW.REASONING_SHARE]).toEqual([10000, 0.5]);
+    // The task of a check still names its visible answer
+    expect([check('filler'), check('continuity'), check('reading-feedback')].map(item => buildReviewTask({ check: item }).answerTokens))
+      .toEqual([1500, 2000, 2000]);
+
+    // A window of the default size (32 000 tokens, about 25 000 left for the prompt): the whole reserve
+    const roomy = { budgetTokens: 25000, charsPerToken: 2.43, totalChars: 1300 };
+    expect(plan('filler', roomy).task.answerTokens).toBe(11500);
+    expect(plan('continuity', roomy).task.answerTokens).toBe(12000);
+    expect(plan('reading-feedback', roomy).task.answerTokens).toBe(12000);
+    // and a full batch still fits: (25 000 − 10 000) × 2.43 − 1 300 − 40 is more than 9 000
+    expect(plan('filler', roomy).maxChars).toBe(9000);
+
+    // A small window keeps room for text: half of its room is reserved
+    const small = plan('filler', { budgetTokens: 4000, charsPerToken: 3, totalChars: 500 });
+    expect(small.task.answerTokens).toBe(3500);
+    expect(small.maxChars).toBe((4000 - 2000) * 3 - 500 - 40);
+    // No room left: nothing to reserve; no room reported (a builder without a budget): the whole reserve
+    expect(plan('filler', { budgetTokens: 0, charsPerToken: 3 }).task.answerTokens).toBe(1500);
+    expect(plan('filler', {}).task.answerTokens).toBe(11500);
+
+    // A refused plan sends nothing and keeps the task as built
+    const refused = planReview({ check: check('filler'), text, range: null, deps, build: () => ({ blocked: 'noAI' }) });
+    expect(refused.task.answerTokens).toBe(1500);
+  });
+
+  test('every batch of a run is built and sent with the reserve the plan made; the probe asks with the answer alone (T-065)', async () => {
+    const build = fakeBuild({ budgetTokens: 1000, charsPerToken: 3 });
+    const request = fakeRequest(answerByParagraph);
+    const result = await startRun({ build, request }).done;
+
+    expect(result.batches).toBe(3);
+    expect(build.mock.calls[0][0]).toMatchObject({ payload: '', answerTokens: 1500 });
+    expect(build.mock.calls.slice(1).map(call => call[0].answerTokens)).toEqual([2000, 2000, 2000]);
+    expect(request.mock.calls.map(call => call[0].maxTokens)).toEqual([2000, 2000, 2000]);
   });
 
   test('planReview maps a raw selection onto the plain text and plans its lines only', () => {
@@ -1169,7 +1215,8 @@ describe('what is sent', () => {
     // 120 short lines and about 16 000 characters: over the line limit and the 9 000 limit of the other checks
     const chapter = Array.from({ length: 120 }, (_unused, index) => `– Repliikki ${index}, hän sanoi. ${filler('sana', 14)}.`).join('\n');
     expect(chapter.length).toBeGreaterThan(REVIEW.BATCH_MAX_CHARS);
-    const roomy = { budgetTokens: 30000, charsPerToken: 2.7 };
+    // 40 000 tokens: 30 000 are left for the prompt after the reasoning reserve (final pass T-065; was 30 000)
+    const roomy = { budgetTokens: 40000, charsPerToken: 2.7 };
 
     const plan = planReview({
       check: check('reading-feedback'), text: chapter, range: { from: 10, to: 40 }, note: '', build: fakeBuild(roomy), deps
@@ -1186,18 +1233,20 @@ describe('what is sent', () => {
     const selected = planReview({ check: check('filler'), text: chapter, range: { from: 10, to: 40 }, note: '', build: fakeBuild(roomy), deps });
     expect(selected.batches.map(batch => batch.text)).toEqual([chapter.split('\n')[0]]);
 
-    // The window, not the constant, is the limit when it is smaller
+    // The window, not the constant, is the limit when it is smaller: (16 000 − 8 000 reserve) × 3 − 2 000 − 40
+    // (final pass T-065: the reserve comes out of the room; was 10 000 tokens and 27 960)
     const medium = planReview({
       check: check('reading-feedback'), text: chapter, range: null, note: '', deps,
-      build: () => ({ blocked: null, parts: [], budgetTokens: 10000, charsPerToken: 3, totalChars: 2000 })
+      build: () => ({ blocked: null, parts: [], budgetTokens: 16000, charsPerToken: 3, totalChars: 2000 })
     });
-    expect(medium.maxChars).toBe(27960);
+    expect(medium.maxChars).toBe(21960);
     expect(medium.batches).toHaveLength(1);
   });
 
   test('a chapter that does not fit is planned in parts and the message says so', () => {
     const chapter = Array.from({ length: 30 }, (_unused, index) => `Kappale ${index} ${filler('sana', 60)}.`).join('\n\n');
-    const small = () => ({ blocked: null, parts: [], budgetTokens: 3000, charsPerToken: 3, totalChars: 2000 });
+    // (6 000 − 3 000 reserve) × 3 − 2 000 − 40 (final pass T-065; was 3 000 tokens without a reserve)
+    const small = () => ({ blocked: null, parts: [], budgetTokens: 6000, charsPerToken: 3, totalChars: 2000 });
 
     const plan = planReview({ check: check('reading-feedback'), text: chapter, range: null, note: '', build: small, deps });
     expect(plan.maxChars).toBe(6960);
@@ -1755,7 +1804,8 @@ describe('judging', () => {
 
   test('max_tokens with parsed findings is truncated, not failed', () => {
     expect(judge(answer(`${FINDINGS_TEXT}\n\nLAINAUS: Aika tuntui pys`, { truncated: true })))
-      .toEqual({ status: 'truncated', reason: 'max-tokens', message: 'Vastaus katkesi kesken. Havaintoja voi puuttua.', fatal: false });
+      // The run's own line says Havaintoja voi puuttua. once (final pass T-069; the message repeated it)
+      .toEqual({ status: 'truncated', reason: 'max-tokens', message: 'Vastaus katkesi kesken.', fatal: false });
     expect(judge(answer('EI HAVAINTOJA', { truncated: true })).status).toBe('truncated');
   });
 
@@ -2625,7 +2675,8 @@ describe('the run', () => {
     }).done;
 
     expect(request).toHaveBeenCalledTimes(1);
-    expect(request.mock.calls[0][0].maxTokens).toBe(2000);
+    // The answer and the reasoning reserve (final pass T-065; was 2000)
+    expect(request.mock.calls[0][0].maxTokens).toBe(REVIEW.CONTINUITY_ANSWER_TOKENS + REVIEW.REASONING_TOKENS);
     expect(result.outcome).toBe('ok');
     expect(result.drafts).toHaveLength(6);
     expect(result.drafts.every(draft => draft.located && draft.ref.located && draft.suggestion === null)).toBe(true);
@@ -2660,7 +2711,8 @@ describe('the run', () => {
     expect(sent.meta).toEqual({ action: 'review', actionLabel: 'Tarkistus: Täytesanat', instruction: '', chapterId: 'chapter-7', runId: 'run-1' });
     // Exactly what the builder made, and nothing a feature must not send
     const built = build.mock.results[1].value;
-    expect(sent).toEqual({ system: built.system, messages: built.messages, maxTokens: 1500, meta: sent.meta });
+    // The answer and the reasoning reserve (final pass T-065; was 1500)
+    expect(sent).toEqual({ system: built.system, messages: built.messages, maxTokens: 11500, meta: sent.meta });
     expect(Object.keys(sent).sort()).toEqual(['maxTokens', 'messages', 'meta', 'system']);
     expect(sent).not.toHaveProperty('thinking');
     expect(sent).not.toHaveProperty('stopSequences');
@@ -2725,7 +2777,7 @@ describe('the run', () => {
 
     expect(result.outcome).toBe('partial');
     expect(result.drafts.map(draft => draft.quote)).toEqual(['Hän vain katsoi merta.']);
-    expect(result.failed).toEqual([{ index: 0, reason: 'max-tokens', message: 'Vastaus katkesi kesken. Havaintoja voi puuttua.' }]);
+    expect(result.failed).toEqual([{ index: 0, reason: 'max-tokens', message: 'Vastaus katkesi kesken.' }]);
     // What was read was read: the batch counts as covered
     expect(result.covered).toEqual([{ from: 0, to: PARAGRAPHS[0].length }]);
 
@@ -2774,7 +2826,8 @@ describe('the run', () => {
     }).done;
 
     expect(request).toHaveBeenCalledTimes(1);
-    expect(request.mock.calls[0][0].maxTokens).toBe(2000);
+    // The answer and the reasoning reserve (final pass T-065; was 2000)
+    expect(request.mock.calls[0][0].maxTokens).toBe(12000);
     expect(request.mock.calls[0][0].meta.actionLabel).toBe('Tarkistus: Lukupalaute');
     // The selection was ignored: every paragraph went out
     expect(payloadOf(request.mock.calls[0][0])).toBe(RECORDED_TEXTS.feedback);

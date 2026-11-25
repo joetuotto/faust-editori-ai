@@ -487,6 +487,11 @@ function feedbackGroups(findings) {
 const OUTCOMES = ['ok', 'partial', 'failed', 'stopped', 'blocked'];
 const count = (value) => (Number.isInteger(value) && value > 0 ? value : 0);
 
+// What a run cut short means for its list: said once, by the run's own line
+const MAY_MISS = 'Havaintoja voi puuttua.';
+// A record stored before 25 Nov 2026 also ends a cut answer's message with it
+const withoutSentence = (text, sentence) => text.split(sentence).map(part => part.trim()).filter(Boolean).join(' ');
+
 /**
  * The record of a finished run.
  * @param {object} result the run's result
@@ -561,11 +566,12 @@ function describeRun(record, options) {
   } else if (record.outcome === 'partial') {
     kind = 'warn';
     const failed = count(record.failedBatches);
-    lines.push(`Tarkistus jäi kesken ${time}: ${failed} ${failed > 1 ? 'osaa' : 'osa'} ${count(record.batches)}:stä epäonnistui. Havaintoja voi puuttua.`);
-    if (message) lines.push(message);
+    lines.push(`Tarkistus jäi kesken ${time}: ${failed} ${failed > 1 ? 'osaa' : 'osa'} ${count(record.batches)}:stä epäonnistui. ${MAY_MISS}`);
+    const reason = withoutSentence(message, MAY_MISS);
+    if (reason) lines.push(reason);
   } else if (record.outcome === 'stopped') {
     kind = 'warn';
-    lines.push(`Tarkistus pysäytettiin ${time}. Havaintoja voi puuttua.`);
+    lines.push(`Tarkistus pysäytettiin ${time}. ${MAY_MISS}`);
   } else if (record.outcome === 'blocked') {
     kind = 'error';
     if (message) lines.push(message);

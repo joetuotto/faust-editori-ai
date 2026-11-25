@@ -878,6 +878,27 @@ describe('run records', () => {
     expect(hasNoFindingsClaim(stopped.lines)).toBe(false);
   });
 
+  // Final pass T-069 (I-08 For the lead 6): the callout said it twice
+  test('describeRun: a run with a cut answer says Havaintoja voi puuttua. once, also from a record stored before the fix (T-069)', () => {
+    const line = 'Tarkistus jäi kesken 16.11.2026 klo 19.02: 1 osa 2:stä epäonnistui. Havaintoja voi puuttua.';
+    const times = (lines) => lines.join(' ').split('Havaintoja voi puuttua.').length - 1;
+
+    // The message of a cut answer today
+    const cut = describe1({ outcome: 'partial', batches: 2, failedBatches: 1, found: 4, message: 'Vastaus katkesi kesken.' });
+    expect(cut).toEqual({ kind: 'warn', lines: [line, 'Vastaus katkesi kesken.'] });
+
+    // A record written before: the message repeats the sentence, alone or before another one
+    const old = describe1({ outcome: 'partial', batches: 2, failedBatches: 1, found: 4, message: 'Vastaus katkesi kesken. Havaintoja voi puuttua.' });
+    expect(old.lines).toEqual([line, 'Vastaus katkesi kesken.']);
+    const parts = 'Luku ei mahtunut yhteen pyyntöön. Palaute on annettu 2 osassa, eikä malli nähnyt lukua kokonaisena.';
+    const both = describe1({ outcome: 'partial', batches: 2, failedBatches: 1, found: 4, message: `Vastaus katkesi kesken. Havaintoja voi puuttua. ${parts}` });
+    expect(both.lines).toEqual([line, `Vastaus katkesi kesken. ${parts}`]);
+    for (const described of [cut, old, both]) expect(times(described.lines)).toBe(1);
+
+    // A message that was nothing but the sentence adds no line
+    expect(describe1({ outcome: 'partial', batches: 2, failedBatches: 1, message: 'Havaintoja voi puuttua.' }).lines).toEqual([line]);
+  });
+
   test('describeRun: failed shows the message and never says Ei havaintoja', () => {
     const failed = describe1({ outcome: 'failed', found: 0, failedBatches: 2, message: 'Mallin vastausta ei voitu tulkita. Se ei ollut pyydetyssä muodossa.' });
     expect(failed).toEqual({

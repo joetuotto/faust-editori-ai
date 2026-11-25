@@ -953,14 +953,16 @@ describe('running a model check', () => {
     const sent = h.ai.request.mock.calls[0][0];
     // retryOnEmpty: the request layer's one resend when reasoning used the whole limit (I-08 review fixes)
     expect(Object.keys(sent).sort()).toEqual(['maxTokens', 'messages', 'meta', 'retryOnEmpty', 'role', 'system']);
+    // maxTokens: the answer and the reasoning reserve (final pass T-065; was 1500); the builder gives no
+    // room here, so the whole reserve. The batch is built with the same number
     expect(sent).toMatchObject({
       role: 'analysis',
-      maxTokens: 1500,
+      maxTokens: 11500,
       meta: { action: 'review', actionLabel: 'Tarkistus: Täytesanat', instruction: '', chapterId: 'c1', runId: 'r-1' }
     });
     expect(payloadOf(sent)).toBe(CHAPTER_1);
     const builderCall = h.context.build.mock.calls[1][0];
-    expect(builderCall).toMatchObject({ chapterId: 'c1', text: CHAPTER_1, role: 'analysis', answerTokens: 1500, exclude: undefined, include: undefined });
+    expect(builderCall).toMatchObject({ chapterId: 'c1', text: CHAPTER_1, role: 'analysis', answerTokens: 11500, exclude: undefined, include: undefined });
     expect(builderCall.task).toMatchObject({ id: 'review', payload: CHAPTER_1, payloadTag: 'teksti', parts: ['style', 'brief'] });
     // The project as it was when the batch was built
     expect(builderCall.project).toBe(projectAtStart);
@@ -1230,7 +1232,53 @@ describe('running a model check', () => {
     const h = setup();
     h.controller.selectCheck(check('filler'));
     await h.runWith(answer(FILLER_ANSWER));
-    expect(h.ai.request.mock.calls[0][0]).toMatchObject({ role: 'analysis', maxTokens: 1500, retryOnEmpty: true });
+    // maxTokens with the reasoning reserve (final pass T-065; was 1500)
+    expect(h.ai.request.mock.calls[0][0]).toMatchObject({ role: 'analysis', maxTokens: 11500, retryOnEmpty: true });
+  });
+
+  // Final pass T-065: the default model needed 8 978 tokens on a full batch; 1 500 + Päättelyvara cut it
+  test('a model check sends its answer and the reasoning reserve, and the preview row counts with the same numbers (T-065)', async () => {
+    // About what a 32 000-token window leaves for the prompt
+    const roomy = setup({ built: { budgetTokens: 25000, charsPerToken: 2.43 } });
+    roomy.controller.selectCheck(check('filler'));
+    expect(roomy.controller.preview().task.answerTokens).toBe(11500);
+    await roomy.runWith(answer(FILLER_ANSWER));
+    expect(roomy.ai.request.mock.calls[0][0].maxTokens).toBe(11500);
+    expect(roomy.context.build.mock.calls.slice(-1)[0][0].answerTokens).toBe(11500);
+
+    // A small window keeps room for the text: half of its room
+    const small = setup({ built: { budgetTokens: 4000, charsPerToken: 3 } });
+    small.controller.selectCheck(check('cliche'));
+    await small.runWith(answer('EI HAVAINTOJA'));
+    expect(small.ai.request.mock.calls[0][0].maxTokens).toBe(3500);
+    expect(small.view().lastRun.lines).toEqual(['Tarkistettu <17:02>. Ei havaintoja.']);
+  });
+
+  // Final pass T-069 (I-08 For the lead 6): the cut answer's message repeated the run line's sentence
+  test('a run with a cut answer says Havaintoja voi puuttua. once and keeps the cut part\'s complete findings (T-069)', async () => {
+    const long = (start, word) => `${start} ${Array.from({ length: 110 }, (_unused, index) => `${word}${index}`).join(' ')}.`;
+    const content = [long('Hän vain katsoi merta.', 'alku'), long('Aika tuntui pysähtyvän.', 'loppu')].join('\n\n');
+    const h = setup({
+      project: makeProject({ structure: [{ id: 'c1', title: 'Laituri', content }] }),
+      built: { budgetTokens: 400, charsPerToken: 3 }
+    });
+    h.controller.selectCheck(check('filler'));
+    await h.runWith(
+      answer('LAINAUS: Hän vain katsoi merta.\nHUOMIO: Täytesana.\nEHDOTUS: Hän katsoi merta.\n\nLAINAUS: alku1 alku2 al', { truncated: true }),
+      answer('EI HAVAINTOJA')
+    );
+
+    expect(h.ai.request).toHaveBeenCalledTimes(2);
+    expect(h.chapter().findings.map(finding => finding.quote)).toEqual(['Hän vain katsoi merta.']);
+    expect(h.chapter().reviewRuns.filler).toMatchObject({ outcome: 'partial', batches: 2, failedBatches: 1, message: 'Vastaus katkesi kesken.' });
+    const last = h.view().lastRun;
+    expect(last).toMatchObject({
+      kind: 'warn',
+      outcome: 'partial',
+      lines: ['Tarkistus jäi kesken <17:02>: 1 osa 2:stä epäonnistui. Havaintoja voi puuttua.', 'Vastaus katkesi kesken.'],
+      failed: [{ index: 0, message: 'Vastaus katkesi kesken.' }]
+    });
+    expect(last.lines.join(' ').split('Havaintoja voi puuttua.')).toHaveLength(2);
   });
 
   // I-08 review fixes (live-5): a check of a deleted chapter is not left running
@@ -1313,7 +1361,8 @@ describe('reading feedback', () => {
 
     expect(h.ai.request).toHaveBeenCalledTimes(1);
     expect(payloadOf(h.ai.request.mock.calls[0][0])).toBe(CHAPTER_1);
-    expect(h.ai.request.mock.calls[0][0]).toMatchObject({ maxTokens: 2000, meta: { actionLabel: 'Tarkistus: Lukupalaute', instruction: '' } });
+    // maxTokens with the reasoning reserve (final pass T-065; was 2000)
+    expect(h.ai.request.mock.calls[0][0]).toMatchObject({ maxTokens: 12000, meta: { actionLabel: 'Tarkistus: Lukupalaute', instruction: '' } });
     expect(h.chapter().reviewRuns['reading-feedback']).toMatchObject({ scope: 'chapter', outcome: 'ok', found: 4 });
 
     // With another check the author's own choice of scope is back
