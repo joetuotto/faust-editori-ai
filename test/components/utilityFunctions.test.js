@@ -1,5 +1,4 @@
 // Tests for utility functions from app.js
-const React = require('react');
 
 describe('Utility Functions', () => {
   describe('Word Counting', () => {

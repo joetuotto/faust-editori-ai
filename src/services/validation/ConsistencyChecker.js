@@ -451,7 +451,7 @@ If no contradictions found, return: {"contradictions": []}`;
     const dates = [];
 
     // Pattern 1: DD.MM.YYYY or DD/MM/YYYY
-    const pattern1 = /(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})/g;
+    const pattern1 = /(\d{1,2})[./](\d{1,2})[./](\d{4})/g;
     let match;
     while ((match = pattern1.exec(text)) !== null) {
       const day = parseInt(match[1]);

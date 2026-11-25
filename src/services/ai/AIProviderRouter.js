@@ -37,8 +37,6 @@
         return await window.electronAPI.deepseekAPI(apiParams);
       case 'gemini':
         return await window.electronAPI.geminiAPI(apiParams);
-      case 'cursor':
-        return await window.electronAPI.cursorAPI(apiParams);
       default:
         console.warn(`[AI Provider] Unknown provider: ${provider}, falling back to Anthropic`);
         return await window.electronAPI.claudeAPI(apiParams);

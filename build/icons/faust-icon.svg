@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  FAUST app icon (source). Apple icon grid: 1024 canvas, 824 x 824 rounded
+  square with a transparent margin, so the Dock shows it at the same size
+  and shape as other apps. Rendered to every format by scripts/build-icons.cjs.
+-->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8f4ec"/>
+      <stop offset="1" stop-color="#ebe3d4"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <!-- Body: the standard macOS app icon shape -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#paper)" filter="url(#shadow)"/>
+  <rect x="100.5" y="100.5" width="823" height="823" rx="184.5" fill="none" stroke="#000" stroke-opacity="0.08"/>
+
+  <!-- The original FAUST mark (star and name), scaled into the body -->
+  <g transform="translate(100 100) scale(0.8047)">
+    <g transform="translate(512 470)">
+      <path d="
+        M 0,-280 C 20,-200 40,-120 60,-80 L 200,-200 C 160,-140 120,-80 80,-60
+        L 280,0 C 200,20 120,40 80,60 L 200,200 C 140,160 80,120 60,80
+        L 0,280 C -20,200 -40,120 -60,80 L -200,200 C -160,140 -120,80 -80,60
+        L -280,0 C -200,-20 -120,-40 -80,-60 L -200,-200 C -140,-160 -80,-120 -60,-80 Z"
+        fill="#1a1a1a"/>
+    </g>
+    <text x="512" y="880" font-family="'EB Garamond', Georgia, serif" font-size="150" font-weight="600"
+          letter-spacing="6" text-anchor="middle" fill="#b68b5c" stroke="#1a1a1a" stroke-width="3">FAUST</text>
+  </g>
+</svg>

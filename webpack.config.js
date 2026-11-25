@@ -1,8 +1,10 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
-module.exports = {
+module.exports = (env, argv) => ({
   entry: './app.js',
+  // No eval-based source maps: the CSP does not allow 'unsafe-eval'
+  devtool: argv.mode === 'development' ? 'source-map' : false,
   output: {
     path: path.resolve(__dirname, 'dist'),
     filename: 'bundle.js'
@@ -31,4 +33,4 @@ module.exports = {
       template: './index.html'
     })
   ]
-};
+});

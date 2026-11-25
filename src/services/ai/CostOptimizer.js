@@ -35,30 +35,32 @@ class CostOptimizer {
   }
 
   /**
-   * Pricing per 1M tokens (as of 2025-01)
-   * Input / Output pricing
+   * Pricing per 1M tokens, input / output (USD).
+   * Anthropic prices as of 2026-06; other providers as last published by them.
+   * Unknown models fall back to the provider's default model price.
    */
   static PRICING = {
     anthropic: {
-      'claude-sonnet-4-5': { input: 3.00, output: 15.00 }, // Claude 4.5 Sonnet
-      'claude-3-5-sonnet-20241022': { input: 3.00, output: 15.00 },
-      'claude-3-opus-20240229': { input: 15.00, output: 75.00 },
-      'claude-3-sonnet-20240229': { input: 3.00, output: 15.00 },
-      'claude-3-haiku-20240307': { input: 0.25, output: 1.25 }
+      'claude-fable-5-1': { input: 10.00, output: 50.00 },
+      'claude-opus-5-5': { input: 4.00, output: 20.00 },
+      'claude-opus-5': { input: 5.00, output: 25.00 },
+      'claude-opus-4-8': { input: 5.00, output: 25.00 },
+      'claude-sonnet-5': { input: 2.00, output: 10.00 },
+      'claude-sonnet-4-6': { input: 3.00, output: 15.00 },
+      'claude-sonnet-4-5': { input: 3.00, output: 15.00 },
+      'claude-haiku-4-5': { input: 1.00, output: 5.00 }
     },
     openai: {
-      'gpt-4-turbo-preview': { input: 10.00, output: 30.00 },
-      'gpt-4': { input: 30.00, output: 60.00 },
-      'gpt-4o': { input: 5.00, output: 15.00 },
-      'gpt-3.5-turbo': { input: 0.50, output: 1.50 }
+      'gpt-5': { input: 1.25, output: 10.00 }
     },
     grok: {
-      'grok-2-1212': { input: 2.00, output: 10.00 },
-      'grok-beta': { input: 5.00, output: 15.00 }
+      'grok-4': { input: 3.00, output: 15.00 }
+    },
+    gemini: {
+      'gemini-2.5-pro': { input: 1.25, output: 10.00 }
     },
     deepseek: {
-      'deepseek-chat': { input: 0.14, output: 0.28 },
-      'deepseek-coder': { input: 0.14, output: 0.28 }
+      'deepseek-chat': { input: 0.28, output: 0.42 }
     }
   };
 
@@ -225,7 +227,7 @@ class CostOptimizer {
    */
   estimateGenerationCost(numChapters, wordsPerChapter = 2500) {
     const provider = this.project.ai.provider || 'anthropic';
-    const model = this.project.ai.models?.[provider] || 'claude-3-5-sonnet-20241022';
+    const model = window.FAUST_MODELS.resolveModel(provider, this.project.ai.models?.[provider]);
 
     // Rough estimate: 2500 words ≈ 3300 tokens output
     // Context (previous chapters + prompt) ≈ 2000 tokens input

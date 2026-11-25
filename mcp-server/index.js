@@ -99,10 +99,14 @@ async function listProjects() {
                   modified: stat.mtime.toISOString(),
                 });
               }
-            } catch {}
+            } catch {
+              // Unreadable file: skip it
+            }
           }
         }
-      } catch {}
+      } catch {
+        // Directory missing or unreadable: skip it
+      }
     }
 
     return projects;

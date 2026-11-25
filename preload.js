@@ -20,9 +20,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openaiAPI: (prompt) => ipcRenderer.invoke('openai-api', prompt),
   geminiAPI: (prompt) => ipcRenderer.invoke('gemini-api', prompt),
   grokAPI: (prompt) => ipcRenderer.invoke('grok-api', prompt),
-  cursorAPI: (prompt) => ipcRenderer.invoke('cursor-api', prompt),
   deepseekAPI: (payload) => ipcRenderer.invoke('deepseek-api', payload),
   webSearch: (query) => ipcRenderer.invoke('web-search', query),
+  listModels: (provider) => ipcRenderer.invoke('ai:list-models', provider),
 
   // Claude Streaming API - Real-time responses
   claudeAPIStream: (options) => {
@@ -73,6 +73,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('claude-api-thinking', {
         prompt: options.prompt,
         messages: options.messages,
+        model: options.model,
+        system: options.system,
+        effort: options.effort,
         budgetTokens: options.budgetTokens,
         maxTokens: options.maxTokens,
         stream: options.stream || false
