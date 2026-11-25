@@ -28,17 +28,17 @@
 <link rel="stylesheet" href="./styles/faust-components.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400..800;1,400..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 /* ---- page-only layout (tn-): tokens only ---- */
 [hidden] { display: none !important; }      /* the recipes set display; the live dialogs are closed with the hidden attribute */
-.tn-top { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: var(--sp-2) var(--sp-5); padding: var(--sp-2) var(--sp-5); background: var(--surface-panel); border-bottom: var(--bw) solid var(--rule); }
+.tn-top { position: sticky; top: 0; z-index: var(--z-sticky); display: flex; align-items: center; gap: var(--sp-2) var(--sp-5); padding: var(--sp-2) var(--sp-5); background: var(--surface-panel); border-bottom: var(--bw) solid var(--rule); }      /* above every sample while scrolled: the samples stack inside .tn-main */
 .tn-top h1 { font: var(--type-title-panel); letter-spacing: 0; white-space: nowrap; }
 .tn-nav { display: flex; flex-wrap: wrap; gap: 0 var(--sp-3); font: var(--type-meta); min-width: 0; }      /* wraps to a second line rather than cutting a label: horizontal scrolling is the timeline's alone (V 6.3) */
 .tn-nav a { flex: none; padding: var(--sp-1) 0; color: var(--text-2); text-decoration: none; white-space: nowrap; border-bottom: 2px solid transparent; }
 .tn-nav a:hover { color: var(--text); }
 .tn-nav a[aria-current="true"] { color: var(--text); border-bottom-color: var(--accent-line); }      /* the section in view: the selected tab's underline (V 4.3) */
-.tn-main { max-width: 1280px; margin: 0 auto; padding: 0 var(--sp-5) var(--sp-8); }
+.tn-main { max-width: 1280px; margin: 0 auto; padding: 0 var(--sp-5) var(--sp-8); isolation: isolate; }      /* the samples keep their layers' z-index (100 to 15100) inside main, so the sticky bar stays above them and the live layers after main (notification, dialogs) above both */
 .tn-section { padding: var(--sp-6) 0 var(--sp-5); border-top: var(--bw) solid var(--rule); scroll-margin-top: calc(var(--tn-top-h, 40px) + var(--sp-4)); }      /* under the sticky bar, however many lines its nav takes */
 .tn-section:first-child { border-top: 0; }
 .tn-section > h2 { font: var(--type-title-view); letter-spacing: var(--tracking-title); margin-bottom: var(--sp-1); }

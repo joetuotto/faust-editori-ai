@@ -36,10 +36,10 @@ const walk = (dir, exts, out = []) => {
 const noComments = (t, css) => css ? t.replace(/\/\*[\s\S]*?\*\//g, '') : t;
 const TOKEN_FILES = ['faust-tokens.css', 'faust-components.css'].map(f => path.join(CSS, f)).filter(fs.existsSync);
 const files = [path.join(ROOT, 'app.js'), ...walk(path.join(ROOT, 'src'), ['.js', '.jsx', '.css']), ...walk(path.join(ROOT, 'styles'), ['.css'])]
-  .filter(fs.existsSync).filter(f => !f.endsWith('faust-theme.css'));          // the legacy theme file (emptied in XR-15, still linked by index.html)
+  .filter(fs.existsSync).filter(f => !f.endsWith('faust-theme.css'));          // the legacy theme file (emptied in XR-15, deleted with its link in the final pass): matches nothing now
 
 // 1. undefined custom properties. Declarations count from the token and component files, from the
-//    legacy theme file while it still exists, and from names the JS sets inline ('--fe-pad-top': ...).
+//    legacy theme file if it exists (it no longer does), and from names the JS sets inline ('--fe-pad-top': ...).
 const declared = new Set();
 const LEGACY_THEME = path.join(ROOT, 'styles', 'faust-theme.css');
 for (const f of [...TOKEN_FILES, ...(fs.existsSync(LEGACY_THEME) ? [LEGACY_THEME] : [])])

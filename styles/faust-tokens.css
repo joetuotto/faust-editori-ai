@@ -1,12 +1,10 @@
 /* styles/faust-tokens.css : FAUST design tokens, NOX and DEIS
  *
  * The single source of colour, type and scale. It replaced styles/faust-theme.css, which the
- * clean-up (XR-15) emptied: index.html still links that file, so it stays on disk as a comment
- * until index.html may change.
+ * clean-up (XR-15) emptied and the final pass deleted with its link.
  *
  * Load order in index.html:
- *   faust-theme.css (empty) -> faust-tokens.css -> faust-simple-layout.css
- *   -> faust-components.css -> Google Fonts link
+ *   faust-tokens.css -> faust-simple-layout.css -> faust-components.css -> Google Fonts link
  * The CSS has no prefers-color-scheme query: the theme is data-theme alone. The main process
  * mirrors it into nativeTheme.themeSource, so native menus and select lists follow it.
  *

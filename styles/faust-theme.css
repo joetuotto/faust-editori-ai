@@ -1,8 +1,0 @@
-/* styles/faust-theme.css : emptied in the clean-up (XR-15).
- *
- * Its colours, base styles and utility classes were superseded by faust-tokens.css (which
- * overrode every one of them), and nothing uses its classes. The file stays on disk only
- * because index.html links it and index.html is not changed in this pass. Delete it together
- * with that <link> in index.html and its rows in scripts/post-build.js and
- * scripts/verify-assets.js.
- */

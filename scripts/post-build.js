@@ -7,8 +7,8 @@
 const fs = require('fs-extra');
 const path = require('path');
 
+// The stylesheets are the ones index.html links, in its order (test/scripts/buildAssets.test.js)
 const CRITICAL_FILES = [
-  { src: 'styles/faust-theme.css', dst: 'dist/styles/faust-theme.css' },
   { src: 'styles/faust-tokens.css', dst: 'dist/styles/faust-tokens.css' },
   { src: 'styles/faust-simple-layout.css', dst: 'dist/styles/faust-simple-layout.css' },
   { src: 'styles/faust-components.css', dst: 'dist/styles/faust-components.css' },
@@ -81,7 +81,11 @@ async function main() {
   console.log('✅ Post-build: Complete!');
 }
 
-main().catch(error => {
-  console.error('❌ Post-build failed:', error);
-  process.exit(1);
-});
+module.exports = { CRITICAL_FILES };
+
+if (require.main === module) {
+  main().catch(error => {
+    console.error('❌ Post-build failed:', error);
+    process.exit(1);
+  });
+}

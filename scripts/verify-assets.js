@@ -7,8 +7,8 @@
 const fs = require('fs-extra');
 const path = require('path');
 
+// The stylesheets are the ones index.html links, in its order (test/scripts/buildAssets.test.js)
 const REQUIRED_ASSETS = [
-  'dist/styles/faust-theme.css',
   'dist/styles/faust-tokens.css',
   'dist/styles/faust-simple-layout.css',
   'dist/styles/faust-components.css',
@@ -72,8 +72,12 @@ async function main() {
   console.log('✅ Build verification: PASS');
 }
 
-main().catch(error => {
-  console.error('❌ Verification failed:', error);
-  process.exit(1);
-});
+module.exports = { REQUIRED_ASSETS };
+
+if (require.main === module) {
+  main().catch(error => {
+    console.error('❌ Verification failed:', error);
+    process.exit(1);
+  });
+}
 
