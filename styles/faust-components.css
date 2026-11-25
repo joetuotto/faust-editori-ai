@@ -227,13 +227,15 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 
 /* native check and radio: themed by color-scheme + accent-color, not redrawn */
 .faust-check { display: inline-flex; align-items: flex-start; gap: var(--sp-2); min-height: var(--h-sm); padding-block: calc((var(--h-sm) - 16px) / 2); font: var(--type-ui); color: var(--text-2); cursor: pointer; }
-/* the box stands on the label's first line (16px), also when the label wraps; one line keeps the 24px row */
-.faust-check > :is(input, .faust-radio) { margin-top: 1px; }
+/* One first-line alignment for every check and radio, in a row and in the grid below: the 14px box stands at the
+   top of its row, moved down by half of what the label's line has more (a UI line 16px, a serif line 22px), so it
+   sits on the label's first line also when the label or its hint wraps; one line keeps the 24px row */
+.faust-check > :is(input, .faust-radio) { align-self: start; margin-top: calc((16px - 14px) / 2); }
 .faust-check:hover, .faust-check:has(:checked) { color: var(--text); }
 .faust-check:has(:disabled) { color: var(--text-disabled); cursor: default; }
 .faust-check:has(:focus-visible) { color: var(--text); }
 .faust-check--serif { font: var(--type-serif); color: var(--text); align-items: baseline; padding-block: 0; }      /* a choice inside a dialog body: a sentence the application addresses to the author */
-.faust-check--serif > :is(input, .faust-radio) { align-self: center; margin-top: 0; }
+.faust-check--serif > :is(input, .faust-radio) { margin-top: calc((22px - 14px) / 2); }
 .faust-check__hint { font: var(--type-meta); color: var(--text-3); margin-left: var(--sp-1); }
 .faust-check-group { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); }
 .faust-check-group--column { flex-direction: column; align-items: flex-start; gap: 0; }      /* one option per line */
@@ -245,8 +247,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 /* choices with hints: box, label and hint in three columns, so the hints share one left edge */
 .faust-check-group--grid { display: grid; grid-template-columns: 14px max-content minmax(0, 1fr); align-items: baseline; gap: var(--sp-2) var(--sp-2); }
 .faust-check-group--grid > .faust-check { display: contents; }
-.faust-check-group--grid .faust-check__hint { margin-left: var(--sp-2); }
-.faust-check-group--grid .faust-check > :is(input, .faust-radio) { margin-top: 0; }      /* the grid aligns box and label by their baseline */
+.faust-check-group--grid .faust-check__hint { margin-left: var(--sp-2); }      /* label and hint share their baseline; the box keeps the first-line rule above */
 .faust-dialog .faust-check-group--grid { grid-template-columns: 14px minmax(10rem, max-content) minmax(0, 1fr); }   /* the groups of one dialog share their hint column */
 .faust-dialog__body > .faust-section:last-child { padding-bottom: 0; }      /* the body's own padding closes it */
 .faust-slider { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--sp-1) var(--sp-3); max-width: 360px; }
@@ -529,7 +530,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 
 /* ============ 8 Notification (replaces alert) and inline message ============ */
 /* Centred on the editor pane, not on the window: the notification shares the axis of the
-   chapter title and the text. --left-col-w and --right-col-w are set on .faust-app. */
+   chapter title and the text. --left-col-w and --right-col-w are set on .faust-app. A notification never
+   covers an open popover: while one lies over this place, ToastHost (ui.js) writes the host's left, top and
+   width inline, beside the popover in the pane or under it, and removes them when nothing covers the place. */
 .faust-toast-host {
   position: fixed; z-index: var(--z-toast);
   left: calc(var(--left-col-w) + (100vw - var(--left-col-w) - var(--right-col-w)) / 2); transform: translateX(-50%);
@@ -654,12 +657,6 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-dialog > .faust-dialog__body--fixed { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 .faust-dialog[aria-busy="true"] :is(.faust-dialog__body, .faust-dialog--plain) { cursor: progress; }
 .faust-dialog > .faust-progress { flex: none; border-radius: 0; }
-
-/* I-04: Liitä muokkauksina */
-/* In the 480px dialog the hint of Tekoäly muualla wraps to two lines. The radio stays on its label's first
-   line (serif line 22px, radio 14px) instead of centring on the two-line row (align-self: center above). */
-.faust-paste .faust-check-group--grid .faust-check > .faust-radio { align-self: start; margin-top: calc((22px - 14px) / 2); }
-/* end I-04 */
 
 /* ============ 10 Popover, menu, tooltip ============ */
 /* The layer host: one plain element, the last child of .faust-app, outside every size
@@ -834,6 +831,16 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
   .faust-suggestbar { padding-left: var(--sp-3); }
   .faust-suggestbar__count { margin: 0 var(--sp-1); }
 }
+/* With nothing pending in this chapter the bar has no count: Kaikki ehdotukset käsitelty. · Palauta hylätyt (17) ·
+   Muissa luvuissa odottaa … · close (about 670px). It never runs past the dock and its close button is never cut: below
+   a 720px page the sentence goes, as the name does in the compact forms, and the last text button (Muissa luvuissa …,
+   the longest) ends in an ellipsis when it still does not fit; its whole text stays its name for a screen reader. */
+.faust-suggestbar:not(:has(.faust-suggestbar__count)) > :nth-last-child(1 of .faust-btn--quiet) {
+  display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+@container page (max-width: 720px) {
+  .faust-suggestbar:not(:has(.faust-suggestbar__count)) .faust-suggestbar__name { display: none; }
+}
 /* voice bar: the anatomy of the suggestion bar: state word, the heard text, cancel */
 .faust-voicebar__state { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text); }
 .faust-voicebar[data-state="listening"] .faust-voicebar__state { color: var(--error-text); }
@@ -986,10 +993,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-import__target .faust-section { display: flex; flex-direction: column; gap: var(--sp-2); padding-bottom: 0; }
 .faust-import__target .faust-section__head { margin-bottom: 0; }
 .faust-import__target .faust-field + .faust-check { margin-top: var(--sp-1); }
-/* a choice of two lines (label, then its hint): the radio stands on the label's line, at every width
-   (the serif recipe centres it on the whole block); 22px is the line of --type-serif, 14px the radio */
-.faust-check.faust-import__choice { align-items: flex-start; }
-.faust-check.faust-import__choice > input { align-self: flex-start; margin-top: calc((22px - 14px) / 2); }
+/* a choice of two lines (label, then its hint); the radio stands on the label's line by the shared first-line rule */
 .faust-import__choice > span { display: flex; flex-direction: column; }
 .faust-import__choice .faust-check__hint { margin-left: 0; }
 .faust-import--table .faust-import__preview { flex: 1 1 0; border-top: var(--bw) solid var(--rule); }
@@ -1050,9 +1054,6 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* The model's name (gateway names run to 36 characters) takes a line of its own under the check's name:
    beside it in the auto column it squeezed the name's column to nothing and the two were drawn over each other */
 .faust-review .faust-finding__where { grid-column: 2 / -1; overflow-wrap: anywhere; }
-/* Oma tarkistus: the checkbox stands on the first line of its two-line label (the shared serif check centres it) */
-.faust-review-check .faust-check--serif { align-items: flex-start; }
-.faust-review-check .faust-check--serif > input { align-self: flex-start; margin-top: calc((22px - 14px) / 2); }
 /* end I-08 */
 
 /* ============ 14 Editor (CodeMirror) ============
@@ -1096,7 +1097,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* avoid-word and story mention (termHighlightCore.js): the marks of section 11 */
 .faust-editor-host .cm-editor .cm-faust-avoid { background-color: transparent; border-radius: var(--radius-xs); text-decoration: underline dashed var(--hl-avoid-line); text-decoration-thickness: var(--mark-line); text-underline-offset: 0.2em; }
 .faust-editor-host .cm-editor .cm-faust-avoid:hover { background-color: var(--hl-avoid-bg); }
-.faust-editor-host .cm-editor .cm-faust-mention { text-decoration: underline dotted var(--border-control); text-decoration-thickness: var(--mark-line); text-underline-offset: 0.2em; }
+/* The mention's dotted line lies under the spelling dots of Oikoluku (R-78, VF-41): a misspelt name shows two lines apart */
+.faust-editor-host .cm-editor .cm-faust-mention { text-decoration: underline dotted var(--border-control); text-decoration-thickness: var(--mark-line); text-underline-offset: 0.35em; }
 .faust-editor-host .cm-editor .cm-faust-mention:hover { text-decoration-color: var(--accent-line); }
 /* review findings (reviewHighlightsCore.js): the wavy line of section 11; the module's border becomes a text decoration */
 .faust-editor-host .cm-editor .cm-faust-finding { border-bottom: 0; color: var(--ink); text-decoration: underline wavy var(--hl-finding-line); text-decoration-thickness: var(--mark-line); text-underline-offset: 0.2em; text-decoration-skip-ink: none; }

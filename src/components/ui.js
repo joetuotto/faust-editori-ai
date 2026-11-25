@@ -108,14 +108,99 @@ function Toast({ item }) {
   );
 }
 
+// A notification never covers an open popover (lead, final pass: "Notifications vs. Etsi"). The host's own place is
+// the stylesheet's: under the format bar, centred on the editor pane (faust-components.css section 8). While a
+// popover, the inline prompt or the dock's bar lies over that place, the host stands beside it in the pane, on the
+// side nearer the pane's axis, or under it, and the stylesheet's place comes back when nothing covers it.
+const TOAST_AVOID = '.faust-popover, .cm-tooltip.cm-faust-prompt, .faust-dock > *';
+const TOAST_GAP = 8;              // between the notifications and what they give way to (--sp-2)
+const TOAST_EDGE = 16;            // from the editor pane's edges and the status bar (--sp-4), as the stylesheet keeps it
+const TOAST_BESIDE_W = 280;       // beside a popover only with this much room; else under it
+const TOAST_NARROW_W = 200;       // the last choice: beside it in a narrower column
+
+function placeToastHost(host) {
+  const style = host.style;
+  ['left', 'top', 'width', 'transform'].forEach(name => style.removeProperty(name));
+  if (!host.childElementCount) return;
+  const own = host.getBoundingClientRect();
+  const blocks = Array.from(document.querySelectorAll(TOAST_AVOID))
+    .filter(el => !host.contains(el))
+    .map(el => el.getBoundingClientRect())
+    .filter(r => r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight);
+  const meets = (r, b) => r.left < b.right && r.right > b.left && r.top < b.bottom && r.bottom > b.top;
+  const over = blocks.filter(b => meets(own, b));
+  if (over.length === 0) return;
+
+  // The editor pane, as the stylesheet reads it: between the open side columns, above the status bar. The
+  // properties hold expressions (a right column is clamp(360px, 30vw, 440px)), so a probe resolves them.
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position: fixed; visibility: hidden; pointer-events: none; top: auto; height: 0; '
+    + 'left: var(--left-col-w, 0px); right: var(--right-col-w, 0px); bottom: var(--footer-h, 0px);';
+  (host.parentElement || document.body).appendChild(probe);
+  const pane = probe.getBoundingClientRect();
+  probe.remove();
+  const paneLeft = pane.left + TOAST_EDGE;
+  const paneRight = pane.right - TOAST_EDGE;
+  const floor = pane.bottom - TOAST_EDGE;
+  const axis = own.left + own.width / 2;
+  const at = (left, top, width) => ({ left, top, width, right: left + width, bottom: top + own.height });
+  const start = Math.min(...over.map(b => b.left));
+  const end = Math.max(...over.map(b => b.right));
+  const beside = (least) => {
+    const found = [];
+    const leftRoom = start - TOAST_GAP - paneLeft;
+    if (leftRoom >= least) {
+      const width = Math.min(own.width, leftRoom);
+      found.push(at(Math.max(paneLeft, Math.min(axis - width / 2, start - TOAST_GAP - width)), own.top, width));
+    }
+    const rightRoom = paneRight - end - TOAST_GAP;
+    if (rightRoom >= least) {
+      const width = Math.min(own.width, rightRoom);
+      found.push(at(Math.min(paneRight - width, Math.max(axis - width / 2, end + TOAST_GAP)), own.top, width));
+    }
+    return found.sort((a, b) => Math.abs(a.left + a.width / 2 - axis) - Math.abs(b.left + b.width / 2 - axis));
+  };
+  const under = at(own.left, Math.max(...over.map(b => b.bottom)) + TOAST_GAP, own.width);
+  const place = [...beside(TOAST_BESIDE_W), under, ...beside(TOAST_NARROW_W)]
+    .find(r => r.bottom <= floor && !blocks.some(b => meets(r, b)));
+  if (!place) return;             // nowhere free (a popover as high as the pane): the stylesheet's place
+  style.transform = 'none';
+  style.left = Math.round(place.left) + 'px';
+  style.top = Math.round(place.top) + 'px';
+  style.width = Math.round(place.width) + 'px';
+}
+
 export function ToastHost() {
   const [list, setList] = useState(items);
+  const hostRef = useRef(null);
   useEffect(() => {
     listeners.add(setList);
     setList(items);               // a notify() between the first render and this effect is not lost
     return () => { listeners.delete(setList); };
   }, []);
-  return e('div', { className: 'faust-toast-host' }, list.map(item => e(Toast, { key: item.id, item })));
+  // Placed again whenever the notifications change, and while any is shown, when something opens, closes or
+  // moves in the layer host (a popover follows its anchor, the prompt its text) and when the window is resized
+  useLayoutEffect(() => { if (hostRef.current) placeToastHost(hostRef.current); }, [list]);
+  const showing = list.length > 0;
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!showing || !host) return undefined;
+    let frame = 0;
+    const again = () => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => { frame = 0; placeToastHost(host); });
+    };
+    const layer = document.querySelector('.faust-layer');
+    const observer = layer && typeof MutationObserver !== 'undefined' ? new MutationObserver(again) : null;
+    if (observer) observer.observe(layer, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    window.addEventListener('resize', again);
+    return () => {
+      if (observer) observer.disconnect();
+      window.removeEventListener('resize', again);
+      cancelAnimationFrame(frame);
+    };
+  }, [showing]);
+  return e('div', { className: 'faust-toast-host', ref: hostRef }, list.map(item => e(Toast, { key: item.id, item })));
 }
 
 // ===================================================================== Part 2: controls

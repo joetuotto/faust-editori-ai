@@ -492,8 +492,16 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
           // Spell checking is switched on and off for the whole window (Työkalut → Oikoluku)
           // A read-only reference text has its own name (label) and no spelling marks (lead, 18 Nov 2026)
           EditorView.contentAttributes.of({ 'aria-label': label, spellcheck: readOnly ? 'false' : 'true' }),
-          // The page is a size container that clips: tooltips (the inline prompt) render in the layer host
-          tooltips({ parent: document.querySelector('.faust-layer') }),
+          // The page is a size container that clips: tooltips (the inline prompt) render in the layer host.
+          // They keep a 16px gutter at the window's edges (lead, final pass: I-05 live-14): CodeMirror places them
+          // inside this rectangle, and the prompt's room (positioned() in inlinePromptCore.js) is measured in it
+          tooltips({
+            parent: document.querySelector('.faust-layer'),
+            tooltipSpace: (view) => {
+              const root = view.dom.ownerDocument.documentElement;
+              return { top: 16, left: 16, right: root.clientWidth - 16, bottom: root.clientHeight - 16 };
+            }
+          }),
           editorTheme,
           ...(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
           EditorView.updateListener.of((update) => {

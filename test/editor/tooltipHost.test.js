@@ -129,8 +129,22 @@ describe('the tooltip host of the editor in the layer host (stage I-05)', () => 
     expect(z('popover') + 1).toBeLessThan(z('dropdown'));
   });
 
-  test('the editor still renders its tooltips in the layer host', () => {
+  // Changed by the final pass (T-003, lead decision on I-05 live-14): the one tooltips() call also gives the
+  // tooltips a 16px gutter at the window's edges, so the line it matched is now a call of several lines.
+  test('the editor still renders its tooltips in the layer host, in one tooltips() call', () => {
     const editor = fs.readFileSync(path.join(__dirname, '../../src/components/FaustEditor.js'), 'utf8');
-    expect(editor).toMatch(/tooltips\(\{ parent: document\.querySelector\('\.faust-layer'\) \}\)/);
+    expect(editor.match(/\btooltips\(/g)).toHaveLength(1);
+    expect(editor).toMatch(/tooltips\(\{\s*parent: document\.querySelector\('\.faust-layer'\),\s*tooltipSpace:/);
+  });
+
+  test('the prompt keeps a 16px gutter at every window edge: the tooltip space of the editor (T-003)', () => {
+    const editor = fs.readFileSync(path.join(__dirname, '../../src/components/FaustEditor.js'), 'utf8');
+    const source = /tooltipSpace: (\(view\) => \{[^}]*\{[^}]*\};\s*\})/.exec(editor);
+    expect(source).not.toBeNull();
+    // The function as written in FaustEditor.js, called as CodeMirror calls it: with the view
+    const tooltipSpace = new Function(`return ${source[1]};`)();
+    const viewIn = (clientWidth, clientHeight) => ({ dom: { ownerDocument: { documentElement: { clientWidth, clientHeight } } } });
+    expect(tooltipSpace(viewIn(1024, 640))).toEqual({ top: 16, left: 16, right: 1008, bottom: 624 });
+    expect(tooltipSpace(viewIn(1400, 900))).toEqual({ top: 16, left: 16, right: 1384, bottom: 884 });
   });
 });
