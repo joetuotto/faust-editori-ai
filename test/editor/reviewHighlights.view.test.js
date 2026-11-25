@@ -57,6 +57,16 @@ afterEach(() => {
   while (views.length > 0) views.pop().destroy();
 });
 
+// Final polish round 1: a note's and an error's mark say so (the stylesheet draws a double line and a heavier wave)
+test('a mark carries data-severity for a note and an error, and nothing for a warning', () => {
+  const editor = mount();
+  show(editor, { items: [{ ...ITEMS[0], severity: 'note' }, { ...ITEMS[1], severity: 'error' }, { ...ITEMS[2], severity: 'loud' }], activeId: null });
+  expect(marks(editor).map(element => element.getAttribute('data-severity'))).toEqual(['note', 'error', null]);
+  const css = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'styles', 'faust-components.css'), 'utf8');
+  expect(css).toContain('.cm-faust-finding[data-severity="note"] { text-decoration-style: double; text-decoration-color: var(--hl-finding-note-line); }');
+  expect(css).toContain('.cm-faust-finding[data-severity="error"] { text-decoration-color: var(--hl-finding-error-line);');
+});
+
 test('setFindingHighlights draws one mark per finding and gives the active one its class', () => {
   const editor = mount();
   expect(marks(editor)).toHaveLength(0);

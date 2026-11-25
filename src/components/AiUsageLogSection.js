@@ -48,16 +48,18 @@ export function AiUsageLogSection({ log, projectTitle, chapters }) {
   const row = (label, value) => e('div', { className: 'faust-kv' }, e('span', null, label), e('span', null, formatCount(value)));
 
   return e(Section, { title: 'Tekoälyn käyttö' },
-    e('div', { className: 'faust-meta' }, `Loki on ollut käytössä ${fiDate(data.startedAt)} alkaen.`),
+    e('div', { className: 'faust-meta', style: { marginBottom: 'var(--sp-2)' } }, `Loki on ollut käytössä ${fiDate(data.startedAt)} alkaen.`),
     empty
       ? e('div', { className: 'faust-meta' }, 'Ei vielä tapahtumia')
       : e('div', null,
-        row('Pyyntöjä', summary.requests),
+        // Each row names what it counts. Ehdotukset come from requests and from Liitä muokkauksina (a text
+        // edited elsewhere), so decisions can stand beside zero requests: the hint says so
+        row('Tekoälypyyntöjä', summary.requests),
         row('Hyväksyttyjä ehdotuksia', summary.accepted.count),
-        row('Hylättyjä', summary.rejected.count)
+        row('Hylättyjä ehdotuksia', summary.rejected.count)
       ),
     e('div', { className: 'faust-field__hint' },
-      'Loki kattaa uudet tekoälytoiminnot. Vanhat generointi- ja analyysitoiminnot eivät kirjaudu lokiin.'),
+      'Loki kattaa uudet tekoälytoiminnot ja Liitä muokkauksina -toiminnon ehdotukset. Vanhat generointi- ja analyysitoiminnot eivät kirjaudu lokiin.'),
     e('div', { className: 'faust-field__row' },
       e('button', { type: 'button', className: 'faust-btn faust-btn--sm', onClick: exportLog }, 'Vie tekstinä…')
     )

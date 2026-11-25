@@ -51,6 +51,12 @@ test('done shows Hyväksy, Uusi yritys and Hylkää and each sends its intent', 
     .toEqual(['Hyväksy', 'Uusi yritys', 'Hylkää']);
   expect(find('block-stop')).toBeNull();
   expect(find('block-note')).toBeNull();
+  // Final polish round 1: reject first, the primary accept last, as in the dock's bar and the prompt
+  const bar = find('block-bar');
+  expect(Array.from(bar.querySelectorAll('button'), node => node.getAttribute('data-role')))
+    .toEqual(['block-reject', 'block-retry', 'block-accept']);
+  expect(find('block-accept').classList.contains('cm-faust-block-primary')).toBe(true);
+  expect(bar.querySelectorAll('.cm-faust-block-primary')).toHaveLength(1);
   expect(find('block-hint').textContent).toBe(platformHint());
   // One attempt: nothing to switch between
   expect(find('block-prev')).toBeNull();

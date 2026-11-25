@@ -20,6 +20,10 @@
 const FINDING_CLASS = 'cm-faust-finding';
 const ACTIVE_CLASS = 'cm-faust-finding-active';
 const FINDING_ATTRIBUTE = 'data-finding-id';
+// 'note' or 'error' on a mark that is not the default warning (visual foundations 9.4: a double
+// line for a note, a wave for a warning, a heavier wave for an error; drawn by the stylesheet)
+const SEVERITY_ATTRIBUTE = 'data-severity';
+const SEVERITIES = ['note', 'error'];
 
 /**
  * @param {object} cm { StateField, StateEffect, EditorView, Decoration }
@@ -28,7 +32,7 @@ const FINDING_ATTRIBUTE = 'data-finding-id';
 function createReviewHighlightsKit(cm) {
   const { StateField, StateEffect, EditorView, Decoration } = cm;
 
-  // Effect value: { items: Array<{ id, from, to }>, activeId: string | null } or null
+  // Effect value: { items: Array<{ id, from, to, severity? }>, activeId: string | null } or null
   const setFindingHighlights = StateEffect.define();
 
   // One mark per finding with a place inside the document. Marks are not
@@ -43,9 +47,11 @@ function createReviewHighlightsKit(cm) {
       const to = Math.max(0, Math.min(item.to, docLength));
       if (!(to > from)) continue;
       const id = String(item.id);
+      const attributes = { [FINDING_ATTRIBUTE]: id };
+      if (SEVERITIES.includes(item.severity)) attributes[SEVERITY_ATTRIBUTE] = item.severity;
       marks.push(Decoration.mark({
         class: id === activeId ? `${FINDING_CLASS} ${ACTIVE_CLASS}` : FINDING_CLASS,
-        attributes: { [FINDING_ATTRIBUTE]: id },
+        attributes,
         findingId: id
       }).range(from, to));
     }

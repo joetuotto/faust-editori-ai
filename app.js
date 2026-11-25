@@ -6285,14 +6285,39 @@ ${contextPrompt}`;
             // Find is a tool of the text: closed, it gives the focus back to the manuscript at its caret,
             // not to the bar's Etsi button (typing goes on in the text)
             restoreFocus: () => { if (editorRef.current) editorRef.current.focus(); },
+            // The current hit is never under the popover: where the text cannot scroll it clear (the
+            // first lines of a chapter, scrollTop 0), the popover goes under the hit until the next one
+            avoid: () => {
+              const scroller = editorRef.current;
+              const view = scroller && scroller.faustView;
+              const current = searchResults[currentSearchIndex];
+              if (!view || !current || !activeChapter || current.chapterId !== activeChapter.id) return null;
+              const from = Math.min(current.start, view.state.doc.length);
+              const to = Math.min(Number.isFinite(current.end) ? current.end : from, view.state.doc.length);
+              const first = view.coordsAtPos(from, 1);
+              const last = view.coordsAtPos(to, -1) || first;
+              if (!first || !last) return null;
+              // A hit that wraps takes the whole column's width between its first and last line
+              const oneLine = Math.abs(first.top - last.top) < 2;
+              const column = scroller.querySelector('.cm-content');
+              const col = column ? column.getBoundingClientRect() : null;
+              return {
+                left: oneLine || !col ? Math.min(first.left, last.left) : col.left,
+                right: oneLine || !col ? Math.max(first.right, last.right) : col.right,
+                top: Math.min(first.top, last.top),
+                bottom: Math.max(first.bottom, last.bottom)
+              };
+            },
+            placeKey: `${currentSearchIndex}:${searchResults.length}:${activeChapterId}`,
             className: 'faust-popover--find',
             // 460 px: the option Myös hahmot, paikat ja juonilangat stays on one line in its column
             width: 460,
             title: showReplaceDialog ? 'Etsi ja korvaa' : 'Etsi',
             closeLabel: 'Sulje',
             closeTitle: 'Sulje (Esc)',
-            // The foot holds the actions on the text: Etsi alone, or Etsi, Korvaa and Korvaa kaikki… with the
-            // replacing one at the right end (B.10). Edellinen and Seuraava stand on the hit line in the body.
+            // The foot holds the actions on the text: Etsi alone, or Etsi, Korvaa kaikki… and Korvaa. The step
+            // the author repeats, Korvaa, is the primary at the right end (B.10); the bulk action that rewrites
+            // every hit is an outline beside it. Edellinen and Seuraava stand on the hit line in the body.
             footer: showReplaceDialog
               ? [
                   e('button', {
@@ -6301,6 +6326,14 @@ ${contextPrompt}`;
                     className: 'faust-btn faust-btn--sm',
                     onClick: () => performSearch()
                   }, 'Etsi'),
+                  e('button', {
+                    key: 'replace-all',
+                    type: 'button',
+                    className: 'faust-btn faust-btn--sm',
+                    onClick: replaceAll,
+                    disabled: searchResults.length === 0,
+                    title: searchResults.length === 0 ? 'Etsi ensin osumat' : undefined
+                  }, 'Korvaa kaikki…'),
                   (() => {
                     // A hit in a character, place or thread has no text in the manuscript to replace
                     const current = searchResults[currentSearchIndex];
@@ -6308,20 +6341,12 @@ ${contextPrompt}`;
                     return e('button', {
                       key: 'replace',
                       type: 'button',
-                      className: 'faust-btn faust-btn--sm',
+                      className: 'faust-btn faust-btn--sm faust-btn--primary',
                       onClick: replaceCurrent,
                       disabled: !current || outsideChapters,
                       title: outsideChapters ? 'Korvaus koskee vain lukujen tekstiä' : (!current ? 'Etsi ensin osumat' : undefined)
                     }, 'Korvaa');
-                  })(),
-                  e('button', {
-                    key: 'replace-all',
-                    type: 'button',
-                    className: 'faust-btn faust-btn--sm faust-btn--primary',
-                    onClick: replaceAll,
-                    disabled: searchResults.length === 0,
-                    title: searchResults.length === 0 ? 'Etsi ensin osumat' : undefined
-                  }, 'Korvaa kaikki…')
+                  })()
                 ]
               : e('button', {
                   type: 'button',
@@ -7222,14 +7247,13 @@ ${contextPrompt}`;
                     )
                   )
                 ),
-                e('div', { className: 'faust-field__row' },
-                  // flush: the quiet button's label ends on the field's right edge
-                  e('button', {
-                    className: 'faust-btn faust-btn--sm faust-btn--quiet faust-btn--flush-end',
-                    title: 'Aloita kirjoituskerran sanalaskenta alusta',
-                    onClick: resetSession
-                  }, 'Nollaa sanalaskuri')
-                )
+                // A section action of a side panel tab: the block button, as Nollaa kustannuslaskuri (V 4.1)
+                e('button', {
+                  type: 'button',
+                  className: 'faust-btn faust-btn--block',
+                  title: 'Aloita kirjoituskerran sanalaskenta alusta',
+                  onClick: resetSession
+                }, 'Nollaa sanalaskuri')
               );
             })()
           ),
@@ -7612,7 +7636,7 @@ ${contextPrompt}`;
 
                 return e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
                   e('div', { className: 'faust-meta' },
-                    `${count(stats.total, 'juonilanka')} · ${stats.active} avoinna · ${stats.resolved} ratkaistu`),
+                    `${count(stats.total, 'juonilanka')} · ${stats.active} avoinna · ${stats.resolved} ratkaistu${stats.abandoned > 0 ? ` · ${stats.abandoned} hylätty` : ''}`),
 
                   // Threads list
                   plotThreads.slice(0, 5).map((thread, idx) => {
@@ -8015,8 +8039,9 @@ ${contextPrompt}`;
         };
         const [totalNum, totalNoun] = countParts(totalWords, 'sana');
         const [pageNum, pageNoun] = countParts(estimatePages(totalWords), 'sivu');
-        // The save state has a fixed slot, so the row never jumps
-        const saveKey = savingState !== 'idle' ? savingState : unsavedChanges ? 'unsaved' : undefined;
+        // The save state has a fixed slot, so the row never jumps. A project that equals its file says so
+        // in words (Tallennettu): an empty slot left a hole at the bar's end and the state unsaid
+        const saveKey = savingState !== 'idle' ? savingState : unsavedChanges ? 'unsaved' : currentFilePath ? 'saved' : undefined;
         const saveWord = { saving: 'Tallennetaan…', saved: 'Tallennettu', error: 'Tallennus epäonnistui', unsaved: 'Muokattu' }[saveKey] || '';
         return e('div', {
           className: 'faust-statusbar__end',
@@ -8715,6 +8740,8 @@ ${contextPrompt}`;
     e(ErrorBoundary, { label: 'Projektin asetukset', onDismiss: () => setShowProjectSettings(false) }, showProjectSettings && e(Dialog, {
       title: 'Projektin asetukset',
       size: 'md',
+      // A long form that scrolls: the header carries the rule the fields are cut at
+      className: 'faust-dialog--ruled',
       onClose: () => setShowProjectSettings(false),
       // One button: the fields already apply; saving stays with Tallenna and the menu
       footerStart: e('span', { className: 'faust-meta' },
@@ -9307,11 +9334,14 @@ ${contextPrompt}`;
                   },
                     e('span', { className: 'faust-meta' }, `Luku ${idx + 1}`),
                     // The chapter's title is the author's words: serif, as the thread names beside it. A title that
-                    // only repeats the number line (Luku 4) is not shown twice.
-                    (chapter.title || '').trim() !== `Luku ${idx + 1}` && e('span', {
-                      className: 'faust-card__title faust-card__title--author',
-                      style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
-                    }, chapter.title || 'Nimetön luku'),
+                    // only repeats the number line (Luku 4) is not shown twice; its line stays (empty), so the
+                    // word counts of the row share one line
+                    (chapter.title || '').trim() !== `Luku ${idx + 1}`
+                      ? e('span', {
+                          className: 'faust-card__title faust-card__title--author',
+                          style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+                        }, chapter.title || 'Nimetön luku')
+                      : e('span', { className: 'faust-card__title faust-card__title--author', 'aria-hidden': true }, '\u00a0'),
                     e('span', { className: 'faust-meta' }, count(words, 'sana')),
                     // The chip stands at the card's foot (stylesheet), so the chips of the row share one line
                     e('span', { className: 'faust-chip ' + (STATUS_CHIP[status] || 'faust-chip--hollow') }, labelOf('status', status)),

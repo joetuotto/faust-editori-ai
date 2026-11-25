@@ -591,6 +591,22 @@ describe('counting and the bar', () => {
     first.proposeChanges([at(SAMPLE, 'mennyt', 'lähtenyt')], { meta: META });
     expect(lastInfo()).toMatchObject({ closed: false, pending: 1 });
   });
+
+  // Final polish round 1: the done state closes itself after a while (SuggestionBar). Restored suggestions
+  // are a new round of decisions: when they are rejected again, the done state is there again.
+  test('restoring the rejected suggestions clears the closed flag too', () => {
+    const { controller, open, lastInfo } = setup();
+    const first = open('luku-1');
+    first.proposeChanges([at(SAMPLE, 'sanoi', 'kuiskasi')], { meta: META });
+    first.rejectGroup();
+    controller.closeBar();
+    expect(lastInfo()).toMatchObject({ closed: true, rejected: 1, pending: 0 });
+
+    controller.restoreRejected();
+    expect(lastInfo()).toMatchObject({ closed: false, pending: 1, rejected: 0 });
+    first.rejectGroup();
+    expect(lastInfo()).toMatchObject({ closed: false, pending: 0, rejected: 1 });
+  });
 });
 
 describe('usage log', () => {

@@ -6,7 +6,7 @@ const {
   createFinding, normalizeFindings, statusesFor,
   reanchorOne, reanchorAll,
   mergeRun, shiftRanges, applyStatus, removeByCheck, storable, capStored,
-  filterForList, countByStatus, highlightItems,
+  filterForList, countByStatus, highlightItems, findingSeverity,
   runRecord, normalizeRuns, describeRun, textFingerprint, modelStats, feedbackGroups
 } = require('../../src/services/review/findings');
 
@@ -700,6 +700,22 @@ describe('lists and highlights', () => {
     ]);
     expect(highlightItems(list, 30).map(item => item.id)).toEqual(['second']);
     expect(highlightItems(list, 10)).toEqual([]);
+  });
+
+  // Final polish round 1: every mark was the warning wave, also under a note's card
+  test('highlightItems carries the severity of a finding that is not a warning; findingSeverity is the one rule', () => {
+    const at = (quote, extra) => findingAt(TEXT, quote, extra);
+    const list = [
+      { ...at('Hän vain katsoi merta.', { id: 'local' }), kind: 'local' },
+      { ...at('jotenkin', { id: 'works' }), data: { severity: 'works' } },
+      { ...at('vain', { id: 'low' }), data: { severity: 'low' } },
+      { ...at('Lopuksi hän vain lähti kotiin.', { id: 'high' }), data: { severity: 'high' } },
+      { ...at('Aamu', { id: 'medium' }), data: { severity: 'medium' } }
+    ];
+    expect(list.map(findingSeverity)).toEqual(['note', 'note', 'note', 'error', 'warning']);
+    expect(findingSeverity(at('Aamu', { id: 'plain' }))).toBe('warning');
+    const bySeverity = Object.fromEntries(highlightItems(list, TEXT.length).map(item => [item.id, item.severity]));
+    expect(bySeverity).toEqual({ local: 'note', works: 'note', low: 'note', high: 'error', medium: undefined });
     expect(highlightItems(undefined, 10)).toEqual([]);
   });
 

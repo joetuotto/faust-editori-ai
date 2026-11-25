@@ -71,6 +71,9 @@ const STATE_HINTS = {
 // Slice A alone (mentionsEnabled false): "Kun mainitaan" cannot be told from "Vain käsin" yet
 const MENTIONED_SLICE_A = 'Mainintoja ei vielä tunnisteta. Toimii nyt kuten Vain käsin.';
 
+// The sigils of menu spec A.2 for the three kinds that have one (sol, terra, lemniscate)
+const TYPE_SIGILS = { hahmo: 'sol', paikka: 'terra', juonilanka: 'lemniscate' };
+const EMPTY_DESCRIPTION = 'Kuvaus on tyhjä, joten kohteesta ei lähetetä mitään.';
 const UNNAMED = 'Nimetön kohde';
 const COUNT_DELAY = 500;          // the mention counts follow the text 500 ms after the last change
 const WRITE_DELAY = 300;          // a typed field is written 300 ms after the last keystroke
@@ -281,6 +284,7 @@ function CodexSheet({
   const forms = mentions ? mentions.forms[entry.id] || NONE : NONE;
 
   const field = (label, control, hint) => e(Field, { label, hint }, control);
+  const unnamedNew = isNew && !draft.name.trim();
   const input = (name, ref) => e('input', {
     ref,
     className: 'faust-input faust-input--sm' + (name === 'name' ? ' faust-input--author' : ''),
@@ -289,8 +293,10 @@ function CodexSheet({
     onChange: (ev) => edit(name, ev.target.value),
     onBlur: flush
   });
+  // The texts grow with their content up to a cap (stylesheet), so the sheet is the one scroller: a
+  // five-row box with its own bar and resize grip stood 15px from the sheet's bar
   const textarea = (name, rows) => e('textarea', {
-    className: 'faust-textarea faust-textarea--author',
+    className: 'faust-textarea faust-textarea--author faust-textarea--fit faust-textarea--capped',
     rows,
     value: draft[name],
     onChange: (ev) => edit(name, ev.target.value),
@@ -347,8 +353,11 @@ function CodexSheet({
         'Pilkulla erotettuna. Osuma lasketaan sanan alusta: Mari löytää myös muodot Maria ja Marin. Jos sanan alku muuttuu taivutettaessa, lisää vartalo: Pekka → Peka (Pekan, Pekalle).'),
       field('Älä laske näitä', input('exclude', excludeRef),
         'Sanat, jotka alkavat samoin mutta tarkoittavat muuta, esimerkiksi Marianne.'),
-      field('Kuvaus (tekoäly lukee tämän)', textarea('description', 5)),
-      !draft.description.trim() && state !== 'never' && e(Callout, { role: 'warning' }, 'Kuvaus on tyhjä, joten kohteesta ei lähetetä mitään.'),
+      // An entry that has no name yet has nothing wrong with it: the same sentence is the field's hint
+      // there, and a warning once the entry is named and still has nothing to send
+      field('Kuvaus (tekoäly lukee tämän)', textarea('description', 5),
+        !draft.description.trim() && state !== 'never' && unnamedNew ? EMPTY_DESCRIPTION : undefined),
+      !draft.description.trim() && state !== 'never' && !unnamedNew && e(Callout, { role: 'warning' }, EMPTY_DESCRIPTION),
       field('Omat muistiinpanot (ei lähetetä koskaan)', textarea('notes', 3)),
       e(Field, { label: 'Lähetys tekoälylle' },
         e('div', { className: 'faust-check-group faust-check-group--grid', role: 'radiogroup', 'aria-label': 'Lähetys tekoälylle' },
@@ -366,7 +375,11 @@ function CodexSheet({
               value === 'mentioned' && !mentionsEnabled ? MENTIONED_SLICE_A : STATE_HINTS[value]))))),
       mentionsBlock),
     e('div', { className: 'faust-popover__foot' },
-      e('button', { type: 'button', className: 'faust-btn faust-btn--sm faust-btn--danger faust-codex__delete', onClick: remove }, 'Poista kohde'),
+      // A new entry with nothing typed does not exist yet: there is nothing to delete, only to leave
+      // (close() drops it without a question)
+      isNew && isBlank(draft)
+        ? e('button', { type: 'button', className: 'faust-btn faust-btn--sm faust-btn--quiet faust-codex__delete', onClick: close }, 'Peruuta')
+        : e('button', { type: 'button', className: 'faust-btn faust-btn--sm faust-btn--danger faust-codex__delete', onClick: remove }, 'Poista kohde'),
       e('button', { type: 'button', className: 'faust-btn faust-btn--sm faust-btn--primary', onClick: close }, 'Valmis'))
   );
 
@@ -564,6 +577,8 @@ export function CodexPanel({
   const totals = mentions ? mentions.total : null;
   const list = useMemo(() => groups.map(group => e('div', { key: group.type, className: 'faust-codex__group' },
     e('div', { className: 'faust-label faust-codex__grouphead' },
+      // The type's sigil, as the Työkalut list under it shows for the same nouns (V 9.5: type icons)
+      TYPE_SIGILS[group.type] && icons[TYPE_SIGILS[group.type]]({ size: 14 }),
       TYPE_PLURALS[group.type] || group.type,
       e('span', { className: 'faust-chip faust-chip--count' }, formatCount(group.items.length))),
     group.items.map(entry => {

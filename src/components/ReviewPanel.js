@@ -33,7 +33,7 @@ import { ContextRow, useContextPreview } from './ContextRow.js';
 import { useSetting } from './useSetting.js';
 import { saveCustomCheck, DELETE_QUESTION } from './ReviewCheckDialog.js';
 import { checksFor, findCheck, describeCheck, canAddCustomCheck } from '../services/review/reviewChecks.js';
-import { STATUS_LABELS, STATUS_HINTS, statusesFor } from '../services/review/findings.js';
+import { STATUS_LABELS, STATUS_HINTS, statusesFor, findingSeverity } from '../services/review/findings.js';
 import { plainView } from '../editor/plainView.js';
 import { projectKind, folderName } from '../services/story/codex.js';
 import { MESSAGES } from '../services/ai/contextBuilder.js';
@@ -124,19 +124,27 @@ const isFeedbackFinding = (finding) => !!(finding.data && Object.prototype.hasOw
 
 // The card's data-severity and icon (VF-2): local hits and what works are notes, a serious concern an
 // error, the other findings the default (warning)
+// (one rule with the mark in the manuscript: findings.js findingSeverity)
 function severityOf(finding) {
-  if (finding.kind === 'local') return { attr: 'note', icon: 'info' };
-  if (isFeedbackFinding(finding)) {
-    const severity = finding.data.severity;
-    if (severity === 'works' || severity === 'low') return { attr: 'note', icon: 'info' };
-    if (severity === 'high') return { attr: 'error', icon: 'error' };
-  }
+  const severity = findingSeverity(finding);
+  if (severity === 'note') return { attr: 'note', icon: 'info' };
+  if (severity === 'error') return { attr: 'error', icon: 'error' };
   return { attr: undefined, icon: 'warning' };
 }
 
-// A quote as the card shows it: notes and <u> tags left out, one line, at most 160 characters
+// The app's own text markers, which a quote in a card does not show: emphasis around words (also a
+// half that the model's quote cut loose, "Aino** nosti"), a heading's, a quotation line's and a list
+// line's start. The stored quote keeps them: it is what the text is searched for.
+function withoutMarkers(text) {
+  return text
+    .replace(/^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+(?=\S))/gm, '')
+    .replace(/\*\*|__/g, '')
+    .replace(/(?<![\p{L}\p{N}])[*_](?=\S)|(?<=\S)[*_](?![\p{L}\p{N}])/gu, '');
+}
+
+// A quote as the card shows it: notes, <u> tags and Markdown markers left out, one line, at most 160 characters
 function shownQuote(quote) {
-  const plain = plainView(String(quote || '')).text.replace(/\s+/g, ' ').trim();
+  const plain = withoutMarkers(plainView(String(quote || '')).text).replace(/\s+/g, ' ').trim();
   if (!plain) return null;
   return plain.length > QUOTE_MAX ? plain.slice(0, QUOTE_MAX).trimEnd() + '…' : plain;
 }
@@ -559,9 +567,12 @@ export function ReviewPanel(props) {
       }, TEXT.proofread)),
       e('div', { className: 'faust-field__hint' }, TEXT.toolsHint),
       misjudged.length > 0 && e('div', { className: 'faust-meta', title: TEXT.modelLineTitle },
-        TEXT.modelLine + misjudged.map(row => `${row.model} ${formatCount(row.invalid)} / ${formatCount(row.total)}`).join(', ')),
-      stored && e('div', null,
-        e('button', { type: 'button', className: 'faust-btn faust-btn--quiet faust-btn--sm faust-btn--flush-start', onClick: () => controller.clearCheck() }, TEXT.clear))));
+        TEXT.modelLine + misjudged.map(row => `${row.model} ${formatCount(row.invalid)} / ${formatCount(row.total)}`).join(', '))));
+  // Tyhjennä … belongs to the list it empties: it stands under the findings, above the rule that starts
+  // Kielen työkalut (under that section's hint it read as one of the language tools), and it is a button
+  // with an edge, not a line of text
+  const clear = stored && e('div', { className: 'faust-review__part' },
+    e('button', { type: 'button', className: 'faust-btn faust-btn--sm', onClick: () => controller.clearCheck() }, TEXT.clear));
 
   return e('div', { ref: rootRef, className: 'faust-review' },
     e(Section, null,
@@ -572,6 +583,7 @@ export function ReviewPanel(props) {
       result.length > 0 && e('div', { className: 'faust-review__part' }, result)),
     e(Section, null,
       e('div', { className: 'faust-review__part' }, filterPart),
-      list && e('div', { className: 'faust-review__part' }, list)),
+      list && e('div', { className: 'faust-review__part' }, list),
+      clear),
     foot);
 }

@@ -131,8 +131,18 @@ function placeToastHost(host) {
   const scrolled = { newest: lastScroll.get(host), top: host.scrollTop };
   lastScroll.delete(host);
   ['left', 'top', 'width', 'transform', 'max-height', 'overflow-y'].forEach(name => style.removeProperty(name));
-  if (!host.childElementCount) return;
+  // The stack's height for the stylesheet (section 15: the page head moves down under a notification of
+  // two lines or a stack, instead of lying half under it). Only in the stylesheet's own place: a host
+  // moved beside or under a popover is not over the head.
+  const app = host.closest('.faust-app');
+  const tell = (height) => {
+    if (!app) return;
+    if (height > 0) app.style.setProperty('--toast-h', Math.ceil(height) + 'px');
+    else app.style.removeProperty('--toast-h');
+  };
+  if (!host.childElementCount) { tell(0); return; }
   const own = host.getBoundingClientRect();
+  tell(own.height);
   const avoided = Array.from(document.querySelectorAll(TOAST_AVOID))
     .filter(el => !host.contains(el))
     .map(el => ({ rect: el.getBoundingClientRect(), dock: el.matches(TOAST_DOCK) }))
@@ -143,6 +153,7 @@ function placeToastHost(host) {
   const meets = (r, b) => r.left < b.right && r.right > b.left && r.top < b.bottom && r.bottom > b.top;
   const over = blocks.filter(b => meets(own, b));
   if (over.length === 0) return;
+  tell(0);
 
   // The editor pane, as the stylesheet reads it: between the open side columns, above the status bar. The
   // properties hold expressions (a right column is clamp(360px, 30vw, 440px)), so a probe resolves them.
@@ -640,15 +651,21 @@ function onLayerKeyDown(ev) {
   top.onEscape(ev);
 }
 export const layerStack = {
-  push(onEscape) {
+  // meta.covers: the layer is a full dialog panel, which hides a dialog lying under it (see covered)
+  push(onEscape, meta) {
     if (!layerKeysOn && typeof window !== 'undefined') {
       window.addEventListener('keydown', onLayerKeyDown, true);
       layerKeysOn = true;
     }
     const token = ++layerSeq;
-    layers.push({ token, onEscape });
+    layers.push({ token, onEscape, covers: !!(meta && meta.covers) });
     emitLayers();
     return token;
+  },
+  // Does a full dialog lie over this layer? A question, a prompt and a popover over it do not count.
+  covered(token) {
+    const index = layers.findIndex(layer => layer.token === token);
+    return index !== -1 && layers.slice(index + 1).some(layer => layer.covers);
   },
   remove(token) {
     const index = layers.findIndex(layer => layer.token === token);
@@ -779,10 +796,14 @@ function DialogFrame({ title, sub, icon, size = 'md', width, actions, bodyMode, 
   // Its place in the layer stack: how many layers are open under it. Before the layout effect
   // has pushed it, it is the newest, so the top.
   const [below, setBelow] = useState(() => layerStack.size());
+  const [covered, setCovered] = useState(false);
 
   useLayoutEffect(() => {
-    const token = layerStack.push(() => { if (onCloseRef.current) onCloseRef.current(); });
-    const follow = () => setBelow(Math.max(0, layerStack.place(token)));
+    const token = layerStack.push(() => { if (onCloseRef.current) onCloseRef.current(); }, { covers: size !== 'sm' });
+    const follow = () => {
+      setBelow(Math.max(0, layerStack.place(token)));
+      setCovered(layerStack.covered(token));
+    };
     follow();
     const stop = layerStack.subscribe(follow);
     return () => {
@@ -809,7 +830,10 @@ function DialogFrame({ title, sub, icon, size = 'md', width, actions, bodyMode, 
 
   return inLayer(e('div', {
     ref: scrimRef,
-    className: cx('faust-scrim', below > 0 && 'is-stacked'),
+    // is-covered: a full dialog is stacked on this one. Its panel is not drawn while that lasts: a
+    // wider, lower panel over it (Versioiden vertailu over Luvun versiot) left the covered dialog's
+    // frame showing above and below as a doubled, broken edge
+    className: cx('faust-scrim', below > 0 && 'is-stacked', covered && 'is-covered'),
     style: { zIndex: `calc(var(--z-modal) + ${below + 1})` },
     onMouseDown: (ev) => scrimPress(ev, dismissOnScrim && !busy ? close : null)
   },
@@ -891,8 +915,13 @@ export function Popover(props) {
 }
 
 function PopoverFrame({ anchorRef, alignRef, title, width, onClose, footer, layer, menu = false, label, restoreFocus,
-  closeLabel = 'Sulje', closeTitle, className, children }) {
+  closeLabel = 'Sulje', closeTitle, className, avoid, placeKey, children }) {
   const ref = useRef(null);
+  // avoid: () => DOMRect-like | null, a box in the page the popover must not lie over (Etsi: the
+  // current hit). placeKey: a value that changes when that box does without a scroll or a resize.
+  const avoidRef = useRef(avoid);
+  avoidRef.current = avoid;
+  const placeRef = useRef(null);
   const titleId = useId();
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -933,8 +962,24 @@ function PopoverFrame({ anchorRef, alignRef, title, width, onClose, footer, laye
       const edgeRect = edge ? edge.getBoundingClientRect() : null;
       if (edgeRect && edgeRect.width > 0) left = Math.max(margin, Math.min(window.innerWidth - margin, edgeRect.right - margin) - width);
       el.style.left = left + 'px';
-      el.style.top = (upwards ? rect.top - gap - el.offsetHeight : rect.bottom + gap) + 'px';
+      let top = upwards ? rect.top - gap - el.offsetHeight : rect.bottom + gap;
+      // The box to keep clear (the current search hit, when the text cannot scroll it from under the
+      // popover: the first lines of a chapter): the popover goes 16px under it for as long as it
+      // would cover it, and back to its own place with the next hit
+      const box = typeof avoidRef.current === 'function' ? avoidRef.current() : null;
+      if (box) {
+        const height = el.offsetHeight;
+        const covers = box.left < left + width && box.right > left && box.top < top + height && box.bottom > top;
+        const under = box.bottom + margin;
+        const room = window.innerHeight - margin - under;
+        if (covers && room >= Math.min(height, 240)) {
+          top = under;
+          el.style.setProperty('--popover-max-h', Math.max(0, room) + 'px');
+        }
+      }
+      el.style.top = top + 'px';
     };
+    placeRef.current = place;
     // The anchor moves without a window resize when a panel opens or closes beside it, or when a
     // container rule changes its bar: the popover also follows the anchor and every box around it.
     // The ref may give another anchor later (a "more" button while the own button is hidden); the
@@ -964,8 +1009,14 @@ function PopoverFrame({ anchorRef, alignRef, title, width, onClose, footer, laye
       window.removeEventListener('scroll', place, true);
       cancelAnimationFrame(frame);
       if (observer) observer.disconnect();
+      placeRef.current = null;
     };
   }, []);
+
+  // The avoided box changed in place (another hit on a page that did not scroll)
+  useLayoutEffect(() => {
+    if (placeRef.current) placeRef.current();
+  }, [placeKey]);
 
   // Esc: inside a dialog through the layer stack; elsewhere in the bubble phase on document, so
   // that a dialog, the focused element and the editor's own keys come first

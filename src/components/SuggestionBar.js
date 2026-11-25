@@ -38,6 +38,9 @@ const { createElement: e, useEffect, useRef, useState } = React;
 const keep = (ev) => ev.preventDefault();
 
 const NOTICE_MS = 8000;
+// How long "Kaikki ehdotukset käsitelty." stays when nothing touches it
+const DONE_MS = 8000;
+const MODIFIER_KEYS = ['Shift', 'Meta', 'Control', 'Alt', 'CapsLock', 'Tab'];
 
 // contracts.md / brief 6.2, "Notice" rows
 const NOTICE_TEXT = {
@@ -170,22 +173,66 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor, ex
     if (pending === 0 && more.open) more.close();
   }, [pending]);
 
+  // The done state (nothing pending, the rejected ones restorable) is a passing word, not a fixture of
+  // the dock (visual foundations 9.2 "last one handled: the bar leaves"; 6.5: nothing permanent floats
+  // over the text). It goes after 8 s, at the next key and at a press in the manuscript or in the
+  // Pikamuokkaus prompt; the pointer on the bar holds it. Palauta hylätyt stays in Muokkaa ▸ Ehdotukset.
+  // A draft of this chapter that still waits (Tekoälyn luonnos) is an ehdotus too: no done sentence over it.
+  const doneShown = !!info && !!controller && pending === 0 && info.rejected > 0 && !info.closed && !info.blockStatus;
+  const doneRef = useRef(null);
+  const holdRef = useRef({ start: () => {}, stop: () => {} });
+  const doneKey = doneShown ? `${info.chapterId}:${info.rejected}` : '';
+  useEffect(() => {
+    if (!doneShown) return undefined;
+    let timer = 0;
+    const leave = () => controller.closeBar();
+    const stop = () => clearTimeout(timer);
+    const start = () => { stop(); timer = setTimeout(leave, DONE_MS); };
+    const inBar = (target) => !!(doneRef.current && target instanceof Node && doneRef.current.contains(target));
+    const onKey = (ev) => {
+      if (ev.repeat || MODIFIER_KEYS.includes(ev.key) || inBar(ev.target)) return;
+      leave();
+    };
+    const onPress = (ev) => {
+      if (ev.target instanceof Element && ev.target.closest('.faust-editor-host, .cm-faust-prompt')) leave();
+    };
+    holdRef.current = { start, stop };
+    start();
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('mousedown', onPress, true);
+    return () => {
+      stop();
+      holdRef.current = { start: () => {}, stop: () => {} };
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('mousedown', onPress, true);
+    };
+  }, [doneKey]);
+
   if (!info || !controller) return null;
 
   const openElsewhere = () => {
     if (info.elsewhere.length && onOpenChapter) onOpenChapter(info.elsewhere[0].chapterId);
   };
 
-  // Nothing pending in this chapter: all decided (rejected ones can come back), or other chapters wait.
+  // Nothing pending in this chapter: all decided (rejected ones can come back; this form leaves by itself,
+  // see doneShown), or other chapters wait.
   // A notice alone and a block alone show no bar: the notice is a notification, the block has its buttons.
   if (pending === 0) {
-    const done = info.rejected > 0 && !info.closed;
+    const done = doneShown;
     const elsewhere = info.elsewhere.length > 0;
     if (!done && !elsewhere) return null;
     // The other chapters' line names a draft beside the suggestions: the long form, which needs a wider page before
     // the sentence Kaikki ehdotukset käsitelty. may stay (faust-components.css section 12)
     const long = elsewhere && elsewhereSum(info, 'blocks') > 0 && elsewhereSum(info, 'count') > 0;
-    return e('div', { className: 'faust-suggestbar', role: 'toolbar', 'aria-label': 'Ehdotusten läpikäynti', 'data-elsewhere': long ? 'long' : undefined },
+    return e('div', {
+      ref: doneRef,
+      className: 'faust-suggestbar',
+      role: 'toolbar',
+      'aria-label': 'Ehdotusten läpikäynti',
+      'data-elsewhere': long ? 'long' : undefined,
+      onMouseEnter: () => holdRef.current.stop(),
+      onMouseLeave: () => holdRef.current.start()
+    },
       e('span', { className: 'faust-suggestbar__label' },
         icons.star8({ size: 14 }),
         done && e('span', { className: 'faust-suggestbar__name' }, 'Kaikki ehdotukset käsitelty.')

@@ -239,6 +239,47 @@ class ConsistencyChecker {
   }
 
   /**
+   * The words a character goes by in the text: the whole name, each of its words of at least
+   * three letters ("Aino", "Lehto") and the aliases of the Tarinakansio entry of the same name.
+   * A novel calls its people by first name, so the whole name alone finds almost nothing.
+   */
+  nameWords(character) {
+    const letters = (word) => word.replace(/[^\p{L}]/gu, '').length;
+    const name = String((character && character.name) || '').trim();
+    const own = name.split(/\s+/).filter(word => letters(word) >= 3);
+    const entry = (Array.isArray(this.project.codex) ? this.project.codex : []).find(item =>
+      item && typeof item.name === 'string' && item.name.trim().toLowerCase() === name.toLowerCase());
+    const aliases = entry && Array.isArray(entry.aliases)
+      ? entry.aliases.filter(alias => typeof alias === 'string').map(alias => alias.replace(/^["”“»]|["”“»]$/g, '').trim())
+      : [];
+    return [...new Set([name, ...own, ...aliases].filter(word => letters(word) >= 3))];
+  }
+
+  /**
+   * Finds a mention: one of the name words at the start of a word, any ending allowed
+   * ("Ainon", "Eerolle"), as the Tarinakansio matcher does. null for a character without a name.
+   */
+  mentionPattern(character) {
+    const words = this.nameWords(character).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return words.length > 0 ? new RegExp(`(?<![\\p{L}\\p{N}])(?:${words.join('|')})`, 'u') : null;
+  }
+
+  /**
+   * Is the word a name word itself or an inflected form of it? "Ainon" and "Eerolle" start with
+   * the name; "Koskisen" (Koskinen) and "Lehdon" (Lehto) change the end of the stem, so a longer
+   * word that keeps all but the last two letters and ends like a case form counts too.
+   */
+  isFormOfName(word, nameWord) {
+    const w = String(word).toLowerCase();
+    const n = String(nameWord).toLowerCase();
+    if (w.startsWith(n)) return true;
+    if (n.endsWith('nen') && w.startsWith(n.slice(0, -3) + 's')) return true;
+    const stem = n.slice(0, Math.max(3, n.length - 2));
+    return w.length > n.length && w.startsWith(stem) &&
+      /(?:n|a|ä|lla|llä|lta|ltä|lle|ksi|tta|ttä)(?:ni|si|nsa|nsä|mme|nne)?(?:kin|kaan|kään|ko|kö|han|hän|pa|pä)?$/.test(w);
+  }
+
+  /**
    * Check character consistency using AI
    */
   async checkCharacterConsistency() {
@@ -253,12 +294,15 @@ class ConsistencyChecker {
       // Collect all mentions of this character
       const mentions = [];
 
+      // By any word the character goes by: with the whole name only ("Aino Lehto"), a text that
+      // uses first names never reached two chapters and the check was skipped without a word
+      const mentioned = this.mentionPattern(character);
+      if (!mentioned) continue;
+
       (this.project.structure || []).forEach((chapter, idx) => {
-        if (chapter.content && chapter.content.includes(character.name)) {
+        if (chapter.content && mentioned.test(chapter.content)) {
           const sentences = chapter.content.match(/[^.!?]+[.!?]+/g) || [];
-          const characterSentences = sentences.filter(s =>
-            s.toLowerCase().includes(character.name.toLowerCase())
-          );
+          const characterSentences = sentences.filter(s => mentioned.test(s));
 
           if (characterSentences.length > 0) {
             mentions.push({
@@ -393,19 +437,23 @@ If no contradictions found, return: {"contradictions": []}${this.languageRule ? 
     for (const character of this.project.characters || []) {
       const variations = new Set();
       const baseName = character.name;
+      if (typeof baseName !== 'string' || baseName.trim().length < 3) continue;
+      const nameWords = this.nameWords(character);
 
       // Look for variations like "Maria" vs "Marja", "Jussi" vs "Juhani"
       (this.project.structure || []).forEach(chapter => {
         if (!chapter.content) return;
 
-        // Find words similar to character name
-        const words = chapter.content.match(/\b[A-ZÄÖÅ][a-zäöå]+\b/g) || [];
+        // A capitalised word in the middle of a sentence is a name; at the start of a sentence
+        // every word is capitalised ("Aina", "Asia"), so those places say nothing
+        const words = chapter.content.match(/(?<=[\p{Ll},;:][ \t]+)\p{Lu}\p{Ll}+(?![\p{L}\p{N}])/gu) || [];
         words.forEach(word => {
           // Simple similarity check (first 3 letters match)
-          if (word !== baseName &&
-              baseName.substring(0, 3).toLowerCase() === word.substring(0, 3).toLowerCase()) {
-            variations.add(word);
-          }
+          if (baseName.substring(0, 3).toLowerCase() !== word.substring(0, 3).toLowerCase()) return;
+          // The first name alone and an inflected form ("Aino", "Ainon", "Eerolle") are the same
+          // spelling of the name, not variations of it
+          if (nameWords.some(nameWord => this.isFormOfName(word, nameWord))) return;
+          variations.add(word);
         });
       });
 

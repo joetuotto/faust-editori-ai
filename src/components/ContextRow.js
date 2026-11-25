@@ -18,6 +18,7 @@
  * Bundled with app.js by webpack. Uses the global React and ReactDOM like the rest of the app.
  */
 import { Dialog, Callout, Field } from './ui.js';
+import { icons } from './icons.js';
 import { count } from './Dialogs.js';
 import { getContextSession } from '../services/ai/contextSession.js';
 import { getAIClient } from '../services/ai/aiClient.js';
@@ -27,7 +28,12 @@ import { formatCount } from '../services/format.fi.js';
 
 const { createElement: e, useState, useMemo } = React;
 
-const NUMBERS_TITLE = 'Rivin luvut ovat merkkejä. Oikealla on arvio kehotteen koosta ja mallille varattu tila tokeneina.';
+const NUMBERS_TITLE = 'Rivin luvut ovat merkkejä. Alla on arvio kehotteen koosta ja mallille varattu tila tokeneina.';
+// The line's numbers are characters and the total under it tokens: the unit is named once, in the
+// row (the pure module's line, 'Lähetetään: valinta 38 · …', is the contract's and stays as it is)
+const withUnit = (line) => String(line || '').replace(/^Lähetetään: /, 'Lähetetään (merkkiä): ');
+// A part's name standing alone on its row (menu spec B.1): 'tehtävän säännöt' → 'Tehtävän säännöt'
+const alone = (label) => { const text = String(label || ''); return text.charAt(0).toLocaleUpperCase('fi') + text.slice(1); };
 const ORDER_NOTE = 'Jos tila loppuu, osat jätetään pois tässä järjestyksessä: aiempien lukujen tiivistelmät, teksti valinnan jälkeen, mainitut kohteet, teksti ennen valintaa, aina mukana olevat kohteet, käsin lisätyt kohteet, erisnimet, vältettävät sanat, käsikirjoituksen ydin, tyyliohje. Käsiteltävä teksti ja oma ohjeesi lähetetään aina.';
 
 const STATE_TEXT = { dropped: 'ei mahtunut', cut: 'osa ei mahtunut', excluded: 'pois' };
@@ -107,10 +113,12 @@ export function PromptDialog({ open, built, promptText, systemAsUser, sent, onCl
   },
     systemAsUser && typeof promptText !== 'string' && e('div', { style: { marginBottom: 'var(--sp-4)' } },
       e(Callout, { role: 'info' }, 'Tälle mallille järjestelmäviesti lähetetään käyttäjäviestin alussa.')),
+    // Each text is as tall as its content: the dialog's body is the one scroller (4.8: no scroller
+    // inside the body scroller), no resize grip, no half line at a field's lower edge
     system && e(Field, { label: 'Järjestelmäviesti' },
-      e('textarea', { className: 'faust-textarea', readOnly: true, rows: 8, value: system, spellCheck: false })),
+      e('textarea', { className: 'faust-textarea faust-textarea--fit', readOnly: true, rows: 2, value: system, spellCheck: false })),
     turns.map((turn, index) => e(Field, { key: index, label: TURN_LABELS[turn.role] },
-      e('textarea', { className: 'faust-textarea', readOnly: true, rows: turns.length > 1 ? 6 : 12, value: turn.content, spellCheck: false })))
+      e('textarea', { className: 'faust-textarea faust-textarea--fit', readOnly: true, rows: 2, value: turn.content, spellCheck: false })))
   );
 }
 
@@ -137,9 +145,10 @@ export function ContextRow(props) {
     setExclude(next);
   };
 
+  // flush-end: the last action's text ends on the column's edge, where the fields end
   const promptButton = (built || typeof promptText === 'string') && e('button', {
     type: 'button',
-    className: 'faust-btn faust-btn--quiet faust-btn--sm',
+    className: 'faust-btn faust-btn--quiet faust-btn--sm faust-btn--flush-end',
     onClick: () => setShowPrompt(true)
   }, 'Näytä kehote');
   const dialog = e(PromptDialog, { open: showPrompt, built, promptText, systemAsUser, sent, onClose: () => setShowPrompt(false) });
@@ -147,13 +156,13 @@ export function ContextRow(props) {
   // Plain mode: a description given by the caller (a batch of several requests)
   if (!built) {
     const list = Array.isArray(parts) ? parts : [];
-    const line = 'Lähetetään: ' + list.filter(p => p && p.chars > 0).map(p => `${p.label} ${formatCount(p.chars)}`).join(' · ');
-    return e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
+    const line = withUnit('Lähetetään: ' + list.filter(p => p && p.chars > 0).map(p => `${p.label} ${formatCount(p.chars)}`).join(' · '));
+    return e('div', { className: 'faust-context-row' },
       notice
         ? e(Callout, { role: 'warning' }, notice)
-        : e('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 'var(--sp-1) var(--sp-2)' } },
-            e('span', { className: 'faust-meta', title: NUMBERS_TITLE }, ...lineParts(line), note ? ' ' + note : null),
-            promptButton && e('span', { style: { marginLeft: 'auto' } }, promptButton)),
+        : e(React.Fragment, null,
+            e('div', { className: 'faust-meta', title: NUMBERS_TITLE }, ...lineParts(line), note ? ' ' + note : null),
+            promptButton && e('div', { className: 'faust-context-row__foot' }, e('span', null), promptButton)),
       dialog
     );
   }
@@ -179,19 +188,24 @@ export function ContextRow(props) {
     const off = part.state === 'excluded';
     const stateText = locked ? 'aina mukana' : STATE_TEXT[part.state] || '';
     const size = count(part.state === 'excluded' ? part.fullChars : part.chars, 'merkki');
+    // The size and state on their own line under the label, so a label that wraps in the
+    // 288px column keeps its hint under it instead of in a column of its own
+    const words = e('span', { style: { display: 'flex', flexDirection: 'column' } },
+      alone(part.label),
+      e('span', { className: 'faust-check__hint', style: { marginLeft: 0 } }, stateText ? `${size} · ${stateText}` : size));
     return e('div', { key: part.id, style: { display: 'flex', flexDirection: 'column' } },
-      e('label', { className: 'faust-check' },
-        e('input', {
-          type: 'checkbox',
-          checked: locked || !off,
-          disabled: locked,
-          onChange: (ev) => toggle(part.id, ev.target.checked)
-        }),
-        // The size and state on their own line under the label, so a label that wraps in the
-        // 288px column keeps its hint under it instead of in a column of its own
-        e('span', { style: { display: 'flex', flexDirection: 'column' } },
-          part.label,
-          e('span', { className: 'faust-check__hint', style: { marginLeft: 0 } }, stateText ? `${size} · ${stateText}` : size))),
+      // A part that is always sent is information to read, not a control that is switched off: a plain
+      // row with a check mark, its name in the reading colour (a disabled box made the name dimmer
+      // than its own hint)
+      locked
+        ? e('div', { className: 'faust-check faust-check--fixed' }, icons.check({ size: 14 }), words)
+        : e('label', { className: 'faust-check' },
+            e('input', {
+              type: 'checkbox',
+              checked: !off,
+              onChange: (ev) => toggle(part.id, ev.target.checked)
+            }),
+            words),
       // The entries of a Tarinakansio part, one by one
       Array.isArray(part.items) && /^codex/.test(part.id) && part.items.map(item => e('label', {
         key: item.key,
@@ -211,20 +225,23 @@ export function ContextRow(props) {
     );
   };
 
-  return e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
-    replaced || e('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: 'var(--sp-1) var(--sp-2)' } },
-      e('span', { className: 'faust-meta', title: NUMBERS_TITLE }, ...lineParts(described.line)),
-      e('span', { className: 'faust-stat', title: NUMBERS_TITLE, style: { marginLeft: 'auto' } }, described.total),
-      // The two buttons wrap as one group, right-aligned, in a narrow column
-      e('span', { style: { display: 'flex', gap: 'var(--sp-1)', marginLeft: 'auto' } },
-        e('button', {
-          type: 'button',
-          className: 'faust-btn faust-btn--quiet faust-btn--sm',
-          title: expanded ? undefined : 'Muuta, mitä pyynnön mukana lähetetään',
-          'aria-expanded': expanded,
-          onClick: () => setExpanded(open => !open)
-        }, expanded ? 'Valmis' : 'Muuta'),
-        promptButton)),
+  return e('div', { className: 'faust-context-row' },
+    // Two fixed lines: what is sent; under it the total at the left edge and the two actions at the
+    // right one. (One wrapping row with two auto margins left the total afloat in the middle of its
+    // line, or run into the summary: final polish round 1.)
+    replaced || e(React.Fragment, null,
+      e('div', { className: 'faust-meta', title: NUMBERS_TITLE }, ...lineParts(withUnit(described.line))),
+      e('div', { className: 'faust-context-row__foot' },
+        e('span', { className: 'faust-stat', title: NUMBERS_TITLE }, described.total),
+        e('span', { className: 'faust-context-row__actions' },
+          e('button', {
+            type: 'button',
+            className: 'faust-btn faust-btn--quiet faust-btn--sm',
+            title: expanded ? undefined : 'Muuta, mitä pyynnön mukana lähetetään',
+            'aria-expanded': expanded,
+            onClick: () => setExpanded(open => !open)
+          }, expanded ? 'Valmis' : 'Muuta'),
+          promptButton))),
     !replaced && described.dropped && e('div', { className: 'faust-meta' }, described.dropped),
     expanded && !replaced && e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)', marginTop: 'var(--sp-1)' } },
       e('div', { className: 'faust-label' }, 'Mukana tässä pyynnössä'),

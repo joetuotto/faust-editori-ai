@@ -530,9 +530,11 @@ export function LanguagePanel(props) {
     ? e(Callout, {
       role: 'info',
       actions: blockButton('Tarkista typografia', () => onMode('typography'))
+    // Who treats them how: the Typografia tab says of the same lines that FAUST handles and exports them
+    // as a list, and the two sentences read as a contradiction without their subjects
     }, n === 1
-      ? 'Luvussa on 1 yhdysmerkillä alkava rivi. Se käsitellään vuorosanana.'
-      : `Luvussa on ${formatCount(n)} yhdysmerkillä alkavaa riviä. Ne käsitellään vuorosanoina.`)
+      ? 'Luvussa on 1 yhdysmerkillä alkava rivi. Kielenhuolto käsittelee sen vuorosanana; muualla FAUST pitää sitä luettelona.'
+      : `Luvussa on ${formatCount(n)} yhdysmerkillä alkavaa riviä. Kielenhuolto käsittelee ne vuorosanoina; muualla FAUST pitää niitä luettelona.`)
     : null);
 
   const modelLines = () => {
@@ -715,7 +717,8 @@ export function LanguagePanel(props) {
     const findings = mine && mine.status === 'done' ? mine.findings : [];
     const words = voikkoWordRows(findings, ignored);
     const grammar = findings.filter(finding => finding.kind === 'kielioppi');
-    const where = [voikko.version ? `Voikko ${voikko.version}` : 'Voikko', voikko.binDir].filter(Boolean).join(' · ');
+    // The state in words; where the tools were found is a path, which belongs in the tooltip
+    const where = (voikko.version ? `Voikko ${voikko.version}` : 'Voikko') + ' käytössä';
     const offer = (finding, suggestion) => propose([voikkoChange(finding, suggestion)], mine.baseText, VOIKKO_META);
     const showFinding = (finding) => revealPassage(finding.quote, finding.from);
 

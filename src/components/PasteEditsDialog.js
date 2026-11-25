@@ -49,14 +49,16 @@ export function PasteEditsDialog({ request, onDone }) {
   const done = (choice) => { if (onDone) onDone(choice); };
   const paste = () => done({ source });
 
-  // An inline row: the label and its value on one line (menu-spec B.19)
-  const row = (item) => e('div', { className: 'faust-kv' }, e('span', null, item.key), e('span', null, item.value));
+  // An inline row: the label and its value on one line (menu-spec B.19). The rows are one grid: the
+  // labels in one column, every value on the same left edge beside them (as flush-right rows the
+  // three values shared no edge, and the result stood without a label)
+  const row = (item) => e('div', { className: 'faust-kv faust-kv--pair' }, e('span', null, item.key), e('span', null, item.value));
 
   const counts = text.target && e('div', null,
-    row(text.target),
-    text.clipboard && row(text.clipboard),
-    // The result stands under the two counts, in their value column
-    text.result && e('div', { className: 'faust-kv', style: { justifyContent: 'flex-end' } }, e('span', null, text.result)),
+    e('div', { className: 'faust-kv-list', style: { '--kv-label': '0px' } },
+      row(text.target),
+      text.clipboard && row(text.clipboard),
+      text.result && row({ key: 'Tulos:', value: text.result })),
     text.protectedLine && e('div', { className: 'faust-meta' }, text.protectedLine)
   );
 

@@ -78,6 +78,36 @@ function stripFence(text, notes) {
   return text;
 }
 
+// A fence run the model left at one end of the text without its pair: "…laiturille. ```",
+// a last line that is only a fence although no fence opened before it, "``` Hän veti…" at the
+// very start. A run that has a pair inside the text (a code block, "``` a ```") stays, and
+// so does a run the text that was sent for editing had at that end.
+const FENCE_RUN_END = /[ \t]*(`{3,}|~{3,})[ \t]*$/;
+const FENCE_RUN_START = /^(`{3,}|~{3,})(?:(?:text|txt|plaintext|markdown|md)(?=[ \t]))?[ \t]+(?=\S)/i;
+
+function stripDanglingFence(text, original, notes) {
+  const source = typeof original === 'string' ? original.trim() : '';
+  const body = text.trim();
+  if (body === '') return text;
+
+  const end = FENCE_RUN_END.exec(body);
+  const start = FENCE_RUN_START.exec(body);
+  const runsOf = (value, char) => (value.match(char === '`' ? /`{3,}/g : /~{3,}/g) || []).length;
+  const inner = body.slice(start ? start[0].length : 0, end ? end.index : body.length);
+  // A run stands alone when the rest of the text holds an even number of its kind
+  // (none, or blocks that open and close); the run at the other end is not counted
+  const alone = (match) => runsOf(inner, match[1][0]) % 2 === 0;
+
+  let from = 0;
+  let to = body.length;
+  if (end && end.index > 0 && alone(end) && !/(?:`{3,}|~{3,})$/.test(source)) to = end.index;
+  if (start && alone(start) && !/^(?:`{3,}|~{3,})/.test(source)) from = start[0].length;
+  if (from === 0 && to === body.length) return text;
+
+  notes.add('fence');
+  return body.slice(from, to);
+}
+
 // The block inside the one closed backtick fence of a reply, or null
 function singleFencedBlock(text) {
   const lines = text.split('\n');
@@ -239,11 +269,12 @@ function cleanModelOutput(raw, options) {
   }
 
   // 4. Fences, and 5. chatter. Inside tags nothing is guessed: only a fence around
-  // the whole text goes. An untagged reply never becomes a suggestion, so the
+  // the whole text and a fence run left alone at one end of it go. An untagged reply never becomes a suggestion, so the
   // keyword heuristics may run there. A reply with only the closing tag is complete
   // and can become suggestions, so it is not guessed at either
   if (hadOpenTag || hadCloseTag) {
     text = stripFence(text, notes);
+    text = stripDanglingFence(text, original, notes);
   } else {
     const fenced = singleFencedBlock(text);
     if (fenced !== null) {
@@ -255,6 +286,7 @@ function cleanModelOutput(raw, options) {
         text = stripPreface(text, original, notes);
         text = stripTrailingRemarks(text, original, notes);
       }
+      text = stripDanglingFence(text, original, notes);
     }
   }
 

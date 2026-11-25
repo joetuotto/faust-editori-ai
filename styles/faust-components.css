@@ -141,6 +141,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 .faust-btn--danger.faust-btn--primary:not(:disabled):is(:hover, :active) { background: var(--danger-hover); border-color: var(--danger-hover); color: var(--on-danger); }
 /* sizes */
 .faust-btn--sm { height: var(--h-sm); min-width: var(--h-sm); padding: 0 var(--sp-2); gap: var(--sp-1); font: var(--type-meta); }
+.faust-btn--primary.faust-btn--sm:not(:disabled, [aria-disabled="true"]) { font-weight: 600; }      /* the --sm font shorthand reset the primary's weight: one weight for every primary (the dock's Hyväksy beside the prompt's) */
 .faust-btn--lg { height: var(--h-lg); min-width: 80px; padding: 0 var(--sp-4); }
 .faust-btn--icon.faust-btn--sm { width: var(--h-sm); padding: 0; }
 .faust-btn--icon.faust-btn--lg { width: var(--h-lg); min-width: var(--h-lg); padding: 0; }
@@ -155,7 +156,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 /* disabled: one look on every ground. Shape and label stay; nothing is dimmed twice. */
 .faust-btn:disabled, .faust-btn[aria-disabled="true"] { background: transparent; border-color: var(--rule); color: var(--text-disabled); cursor: default; }
 .faust-btn[aria-disabled="true"] { pointer-events: none; }
-.faust-btn--primary:disabled, .faust-btn--primary[aria-disabled="true"] { background: var(--fill-subtle); border-color: transparent; font-weight: var(--w-mono); }
+.faust-btn--primary:disabled, .faust-btn--primary[aria-disabled="true"] { font-weight: var(--w-mono); }      /* the one disabled look: transparent ground, --rule edge (on --fill-subtle the NOX label measured under 3:1 on a raised surface) */
 :is(.faust-btn--quiet, .faust-btn--icon, .faust-btn--glyph):disabled { border-color: transparent; }
 /* busy: aria-busy="true" together with disabled; reads as working, never as unavailable */
 .faust-btn[aria-busy="true"] { background: transparent; border-color: var(--accent-line); color: var(--accent-text); cursor: progress; }
@@ -218,9 +219,14 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 :is(.faust-input, .faust-textarea, .faust-select)[aria-invalid="true"] { border-color: var(--error); box-shadow: 0 0 0 2px var(--error-bg); }
 :is(.faust-input, .faust-textarea, .faust-select):disabled { background: transparent; border-color: var(--rule); color: var(--text-disabled); cursor: default; }
 :is(.faust-input, .faust-textarea)[readonly] { background: transparent; border-style: dashed; }
+:is(.faust-input, .faust-textarea)[readonly]:focus-visible { border-style: solid; }      /* under the solid focus ring a dashed edge drew a stitched double line */
 .faust-input--sm, .faust-select--sm { height: var(--h-md); padding: 0 var(--sp-2); font: var(--type-ui); }
 .faust-input--author, .faust-textarea--author { font: var(--type-serif); }      /* the author's words are serif */
 .faust-textarea { height: auto; min-height: 96px; padding: var(--sp-2) var(--sp-3); resize: vertical; }
+/* A text that is as tall as its content (Kehote; the Tarinakansio sheet's Kuvaus up to its cap): the
+   surface around it is the one scroller, so it has no bar and no resize grip of its own */
+.faust-textarea--fit { field-sizing: content; min-height: 0; resize: none; overflow: hidden; }
+.faust-textarea--fit.faust-textarea--capped { min-height: 96px; max-height: 288px; overflow-y: auto; }
 .faust-select { appearance: none; padding-right: var(--sp-6); cursor: pointer;
   background-image: var(--select-chevron); background-repeat: no-repeat; background-position: right 10px center; background-size: 12px 12px; }
 .faust-select--sm { padding-right: 28px; background-position: right 8px center; }
@@ -237,6 +243,15 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 .faust-check--serif { font: var(--type-serif); color: var(--text); align-items: baseline; padding-block: 0; }      /* a choice inside a dialog body: a sentence the application addresses to the author */
 .faust-check--serif > :is(input, .faust-radio) { margin-top: calc((22px - 14px) / 2); }
 .faust-check__hint { font: var(--type-meta); color: var(--text-3); margin-left: var(--sp-1); }
+/* A row of the same list that is not a choice (a part that is always sent): a check mark in the box's
+   place, the name in the reading colour */
+.faust-check--fixed, .faust-check--fixed:hover { color: var(--text-2); cursor: default; }
+.faust-check--fixed > .faust-icon { flex: none; width: 14px; height: 14px; margin-top: calc((16px - 14px) / 2); color: var(--text-3); }
+/* "Mitä malli näkee": the summary on its own line; under it the total at the left edge and the two
+   actions at the right one */
+.faust-context-row { display: flex; flex-direction: column; gap: var(--sp-1); }
+.faust-context-row__foot { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
+.faust-context-row__actions { display: flex; gap: var(--sp-1); }
 .faust-check-group { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); }
 .faust-check-group--column { flex-direction: column; align-items: flex-start; gap: 0; }      /* one option per line */
 .faust-ai-provider .faust-field + .faust-field { margin-top: 0; }      /* the block's column gap already parts its fields */
@@ -250,6 +265,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 .faust-check-group--grid .faust-check__hint { margin-left: var(--sp-2); }      /* label and hint share their baseline; the box keeps the first-line rule above */
 .faust-dialog .faust-check-group--grid { grid-template-columns: 14px minmax(10rem, max-content) minmax(0, 1fr); }   /* the groups of one dialog share their hint column */
 .faust-dialog__body > .faust-section:last-child { padding-bottom: 0; }      /* the body's own padding closes it */
+.faust-dialog__body > :not(.faust-section) + .faust-section { margin-top: var(--sp-4); }      /* fields before the first section keep a section's distance to its rule (a hint stood 2px above it) */
 .faust-slider { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--sp-1) var(--sp-3); max-width: 360px; }
 .faust-slider > input[type="range"] { width: 100%; }
 .faust-field > input[type="range"] { width: 100%; max-width: 360px; }      /* a small range (1–5) gets a track of its own size, not the dialog's width */
@@ -305,7 +321,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
    Two classes, so the rule wins over section 15's .faust-panel__tabs. The row gives up the classic-scrollbar
    reserve of the other panel rows: with it the five labels (284px, 294px with the busy dot) overflow the
    281px left in the 320px panel; without it they have 296px. */
-.faust-panel__tabs.faust-panel__tabs--dense { padding: 0 var(--sp-3); }
+.faust-panel__tabs.faust-panel__tabs--dense { padding: 0 var(--sp-1) 0 var(--sp-4); }      /* the left edge is the title's and the content's (16px); only the right side gives up the reserve */
 .faust-panel__tabs--dense > .faust-tabs { gap: var(--sp-2); }
 /* The busy dot stays on its label's line (in a row 2px narrower it went under the label and the row grew) */
 .faust-panel__tabs--dense .faust-tab { white-space: nowrap; }
@@ -366,7 +382,7 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 .faust-chip--count { min-width: 20px; justify-content: center; padding: 0 var(--sp-1); border-radius: var(--radius-pill); background: var(--fill-active); font: var(--w-mono-strong) var(--fs-micro)/1 var(--font-mono); letter-spacing: 0; font-variant-numeric: tabular-nums; }
 button.faust-chip { cursor: pointer; transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
 button.faust-chip:not(:disabled):hover { background: var(--fill-active); color: var(--text); }
-button.faust-chip[aria-pressed="true"], button.faust-chip[aria-pressed="true"]:not(:disabled):hover { background: var(--accent-tint-strong); color: var(--text); }
+button.faust-chip[aria-pressed="true"], button.faust-chip[aria-pressed="true"]:not(:disabled):hover { background: var(--accent-tint-strong); color: var(--text); box-shadow: inset 0 0 0 var(--bw) var(--accent-line); }      /* the chosen one of a set has an edge: the fill alone differed from its neighbours by 1.2:1 (rule 6: nothing by colour alone) */
 button.faust-chip:disabled { color: var(--text-disabled); cursor: default; }
 button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle); box-shadow: inset 0 0 0 1px var(--text-disabled); }
 .faust-dot { display: inline-block; flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -413,6 +429,16 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-sidebar .faust-row.is-selected > .faust-row__actions { opacity: 0; }
 .faust-sidebar .faust-row:is(:hover, :focus-within) > .faust-row__actions { opacity: 1; }
 .faust-sidebar .faust-row:is(:hover, :focus-within) > .faust-row__actions > .faust-btn { pointer-events: auto; }
+/* The same in a popover's list (Kirjanmerkit): the hidden Poista kept a third of each row empty at rest
+   and broke the quotation early. The actions lie on the title line, over the row's end. */
+.faust-popover .faust-row--two { position: relative; }
+.faust-popover .faust-row--two > .faust-row__actions {
+  position: absolute; top: var(--sp-2); right: var(--sp-2); margin-left: 0; padding-left: var(--sp-3);
+  background: var(--surface-raised); pointer-events: none;
+  -webkit-mask-image: linear-gradient(to right, transparent, var(--surface-raised) var(--sp-3));
+  mask-image: linear-gradient(to right, transparent, var(--surface-raised) var(--sp-3));
+}
+.faust-popover .faust-row--two:is(:hover, :focus-within) > .faust-row__actions > .faust-btn { pointer-events: auto; }
 /* The name may take two lines; it is cut only past the second (lead decision of 18 Nov 2026) */
 .faust-sidebar .faust-row > .faust-row__text > .faust-row__title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; overflow-wrap: anywhere; }
 /* A collection row: the chevron hangs in the row's left padding, so the name stands on the chapter
@@ -465,9 +491,12 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-kv > :last-child.faust-serif { font: var(--type-serif); line-height: 16px; min-width: 0; overflow-wrap: anywhere; }      /* a value in the author's own words, on the mono row's 16px line, so every row has the same 24px pitch */
 /* In a wide dialog (a character's profile) the value stands next to its label, in the author's face */
 .faust-kv--profile { display: grid; grid-template-columns: 11rem minmax(0, 1fr); justify-content: start; }
-.faust-kv-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--sp-4); }
+.faust-kv-list { display: grid; grid-template-columns: minmax(var(--kv-label, 12rem), max-content) minmax(0, 1fr); column-gap: var(--sp-4); }      /* one label column for every list of the sheet: with max-content alone each section's values started at their own x */
 .faust-kv-list > .faust-kv--profile { grid-column: 1 / -1; grid-template-columns: subgrid; }
 .faust-kv--profile > :last-child { font: var(--type-serif); text-align: left; overflow-wrap: anywhere; }
+/* --pair: the same grid row for the application's own values (Liitä muokkauksina): value beside its label, on one left edge */
+.faust-kv-list > .faust-kv--pair { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; justify-content: start; }
+.faust-kv--pair > :last-child { text-align: left; overflow-wrap: anywhere; }
 .faust-stat { display: inline-flex; align-items: baseline; gap: var(--sp-1); font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .faust-stat > b { font-weight: var(--w-mono-strong); color: var(--text); }
 .faust-stat--hero > b { font-size: 16px; }
@@ -598,8 +627,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-scrim--top { z-index: var(--z-dialog); }      /* prompt and confirm only: above any modal, legacy ones included */
 .faust-scrim.is-stacked { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }   /* a dialog over a dialog: the scrim is painted once */
 /* The dialog under a stacked one is not veiled a second time: veiled to the scrim's tone, its strips above
-   and below the upper panel read as an empty frame. It stays a dialog under a dialog; the upper panel's
-   level-3 shadow parts the two. */
+   and below the upper panel read as an empty frame. Under a question or a prompt it stays a dialog under
+   a dialog; under another full dialog (Versioiden vertailu over Luvun versiot) its panel is not drawn at
+   all while that one is open, so no strip of it shows above or below a wider, lower panel. */
+.faust-scrim.is-covered > .faust-dialog { visibility: hidden; }
 .faust-dialog {
   display: flex; flex-direction: column; overflow: hidden;
   width: min(var(--dialog-w, 520px), 100%); max-height: 100%;
@@ -646,8 +677,10 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-dialog__body--lines { white-space-collapse: preserve-breaks; }      /* a message's own line breaks; unlike white-space: pre-line it keeps the body's text-wrap: pretty */
 .faust-dialog__footer-start { margin-right: auto; display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
 .faust-dialog :is(.faust-dialog__header, .faust-dialog__footer) { user-select: none; }
-.faust-dialog--lg > .faust-dialog__header, .faust-dialog--xl > .faust-dialog__header { border-bottom: var(--bw) solid var(--rule); padding-bottom: var(--sp-4); }
-.faust-dialog--lg > .faust-dialog__body, .faust-dialog--xl > .faust-dialog__body { padding-top: var(--sp-4); }
+.faust-dialog--lg > .faust-dialog__header, .faust-dialog--xl > .faust-dialog__header, .faust-dialog--ruled > .faust-dialog__header { border-bottom: var(--bw) solid var(--rule); padding-bottom: var(--sp-4); }
+.faust-dialog--lg > .faust-dialog__body, .faust-dialog--xl > .faust-dialog__body, .faust-dialog--ruled > .faust-dialog__body { padding-top: var(--sp-4); }
+/* --ruled: a smaller dialog whose body is a long form and scrolls (Projektin asetukset): its fields
+   are cut at the header's rule, as in the large dialogs, not at an invisible line under the title */
 /* --flush: no padding, the body still scrolls (the version comparison: one scroller, sticky column heads).
    --fixed: no padding and no scrolling; the content brings its own scrolling columns (the import preview).
    Both come after the size rules above, which have the same specificity. */
@@ -655,7 +688,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* In a flush body the comparison's columns keep the dialog's own inset, so title and text share one left edge */
 .faust-dialog__body--flush .faust-diff__col { padding-inline: var(--dialog-pad); }
 .faust-dialog__body--flush .faust-diff__colhead { margin-inline: calc(-1 * var(--dialog-pad)); padding-inline: var(--dialog-pad); }
-.faust-dialog > .faust-dialog__body--fixed { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+.faust-dialog > .faust-dialog__body--fixed { padding: 0; overflow: hidden; scrollbar-gutter: auto; display: flex; flex-direction: column; }      /* the body does not scroll, so it reserves no bar: with the reserve, the import preview's paper and its rule stopped 15px short of the frame */
 .faust-dialog[aria-busy="true"] :is(.faust-dialog__body, .faust-dialog--plain) { cursor: progress; }
 .faust-dialog > .faust-progress { flex: none; border-radius: 0; }
 
@@ -807,6 +840,14 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
    no pointer events. */
 .faust-dock { position: absolute; inset: 0 0 var(--sp-4) 0; z-index: var(--z-float); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 0 var(--sp-4); pointer-events: none; }
 .faust-dock > * { pointer-events: auto; max-width: 100%; }
+/* While the dock has an occupant, the page's last lines dissolve into the paper before they reach it:
+   the bar floats 16px above the pane's edge, and half a line showing in that strip read as clipped
+   text. The veil lies behind the occupant, takes no press and leaves the page's scrollbar free. */
+.faust-dock:has(> *)::before {
+  content: ""; position: absolute; z-index: -1; pointer-events: none;
+  left: var(--scrollbar-w); right: var(--scrollbar-w); bottom: calc(-1 * var(--sp-4)); height: calc(var(--h-xl) + var(--sp-4) + var(--sp-7));
+  background: linear-gradient(to bottom, transparent, var(--surface-page) var(--sp-7));
+}
 .faust-suggestbar, .faust-voicebar {
   display: flex; align-items: center; gap: var(--sp-1); height: var(--h-xl); padding: 0 var(--sp-2) 0 var(--sp-4); flex: none;
   background: var(--surface-raised); color: var(--text-2);
@@ -858,6 +899,13 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-voicebar > div { min-width: 0; }
 .faust-voicebar > div > * { overflow: hidden; text-overflow: ellipsis; }
 .faust-voicebar__hint { font: var(--type-serif-sm); color: var(--text-2); }
+/* At rest the bar stacks two lines (the name and what to do): it takes their height instead of
+   squeezing them into the one-line bar's 40px */
+.faust-voicebar:not([data-state]) { height: auto; min-height: var(--h-xl); padding-block: var(--sp-2); }
+/* One AI surface for a selection at a time: while the Pikamuokkaus prompt is open, the bar that only
+   offers the other way to edit the same selection steps aside (the two overlapped at the pane's foot) */
+.faust-app:has(.cm-faust-prompt) .faust-voicebar:not([data-state]) { display: none; }
+.faust-app:has(.cm-faust-prompt) .faust-dock:has(> .faust-voicebar:not([data-state]):only-child)::before { display: none; }      /* and the dock's veil goes with its only occupant */
 
 /* The inline prompt is a block in the text column (a CodeMirror block widget): it pushes
    the lines apart and covers nothing, so it has no elevation: one frame, no shadow. The
@@ -973,8 +1021,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-import__list > .faust-row > .faust-import__cell { grid-row: 1; }
 .faust-import__list > .faust-row > .faust-row__text { display: contents; }
 .faust-import__list > .faust-row > .faust-row__text > .faust-input { grid-row: 1; grid-column: 4; align-self: center; }
-.faust-import__head { flex: none; align-items: center; min-height: var(--h-sm); padding: 0 var(--sp-3); margin-left: calc(-1 * var(--sp-3)); }
-.faust-import--table .faust-import__list { flex: 1 1 auto; padding: 0; margin-left: calc(-1 * var(--sp-3)); }
+.faust-import__head { flex: none; align-items: center; min-height: var(--h-sm); padding: 0 calc(var(--sp-3) + var(--scrollbar-w)) 0 var(--sp-3); margin-left: calc(-1 * var(--sp-3)); }
+.faust-import--table .faust-import__list { flex: 1 1 auto; padding: 0; margin-left: calc(-1 * var(--sp-3)); scrollbar-gutter: stable; }      /* the list always keeps its bar's width and the head keeps the same: one grid for both (SANOJA and TIIVISTELMÄ stood 15px right of their values) */
 .faust-import__cell { display: flex; align-items: center; min-width: 0; min-height: var(--h-md); }
 .faust-import__head .faust-import__cell { min-height: 0; }
 .faust-import__all { gap: var(--sp-1); cursor: pointer; }
@@ -1003,6 +1051,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* a choice of two lines (label, then its hint); the radio stands on the label's line by the shared first-line rule */
 .faust-import__choice > span { display: flex; flex-direction: column; }
 .faust-import__choice .faust-check__hint { margin-left: 0; }
+.faust-import__target .faust-check-group--column { gap: var(--sp-3); }      /* each hint belongs to the option above it, not midway between two */
 .faust-import--table .faust-import__preview { flex: 1 1 0; border-top: var(--bw) solid var(--rule); }
 .faust-import__preview .faust-editor-host { font-family: var(--font-serif); font-size: var(--ms-size); line-height: var(--ms-leading); color: var(--ink); }
 /* the empty state of a folder without chapter files: its sub-folders as buttons, under the notices */
@@ -1114,6 +1163,12 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-editor-host .cm-editor .cm-faust-finding { border-bottom: 0; color: var(--ink); text-decoration: underline wavy var(--hl-finding-line); text-decoration-thickness: var(--mark-line); text-underline-offset: 0.2em; text-decoration-skip-ink: none; }
 .faust-editor-host .cm-editor .cm-faust-finding:hover,
 .faust-editor-host .cm-editor .cm-faust-finding.cm-faust-finding-active { background-color: var(--hl-finding-bg); border-radius: var(--radius-xs); }
+/* The line says how heavy the finding is, as its card does (9.4): a note (a local hit, what works,
+   a small concern) a double line, a warning the wave above, an error a heavier wave */
+.faust-editor-host .cm-editor .cm-faust-finding[data-severity="note"] { text-decoration-style: double; text-decoration-color: var(--hl-finding-note-line); }
+.faust-editor-host .cm-editor .cm-faust-finding[data-severity="note"]:is(:hover, .cm-faust-finding-active) { background-color: var(--hl-finding-note-bg); }
+.faust-editor-host .cm-editor .cm-faust-finding[data-severity="error"] { text-decoration-color: var(--hl-finding-error-line); text-decoration-thickness: calc(var(--mark-line) * 1.5); }
+.faust-editor-host .cm-editor .cm-faust-finding[data-severity="error"]:is(:hover, .cm-faust-finding-active) { background-color: var(--hl-finding-error-bg); }
 .faust-editor-host .cm-editor .cm-faust-finding *:not(.cm-faust-match, .cm-faust-match-current, .faust-mark--search, .faust-mark--search-current) { color: inherit; }
 /* a finding on an avoid-word or a mention: one line, the finding's (CodeMirror nests the two spans either way) */
 .faust-editor-host .cm-editor .cm-faust-finding :is(.cm-faust-avoid, .cm-faust-mention),
@@ -1124,6 +1179,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
    to as the AI anchor's heavy dotted line, and the block. */
 .faust-editor-host .cm-editor .cm-faust-sugg-del { text-decoration-color: var(--diff-del-line); text-decoration-thickness: var(--mark-line); border-radius: var(--radius-xs); }
 .faust-editor-host .cm-editor .cm-faust-sugg-ins { color: var(--ink); border-bottom-width: var(--mark-line); border-radius: var(--radius-xs) var(--radius-xs) 0 0; }
+.faust-editor-host .cm-editor .cm-faust-sugg-del + .cm-faust-sugg-ins,
+.faust-editor-host .cm-editor .cm-faust-sugg-del + .cm-widgetBuffer + .cm-faust-sugg-ins { margin-left: 0.2em; }      /* "hiemanvähän": the struck word and its replacement read as one word at rest */
 .faust-editor-host .cm-editor .cm-faust-sugg-new { color: var(--ink); border-bottom-style: solid; border-bottom-width: var(--mark-line); }      /* new text that replaces nothing: the insertion's line */
 .faust-editor-host .cm-editor .cm-faust-sugg-new { background-color: var(--diff-ins-bg); }      /* and its ground: for new text the ground is the meaning, and a line alone would read as the author's own underline */
 .faust-editor-host .cm-editor .cm-faust-sugg-orig { border-bottom: calc(var(--mark-line) * 2) dotted var(--hl-ai-line); }
@@ -1159,6 +1216,16 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button { min-height: var(--h-sm); padding: 0 var(--sp-2); background: transparent; color: var(--text); border: var(--bw) solid var(--border); border-radius: var(--radius-sm); font: var(--type-meta); }
 .faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:not(:disabled):hover { background: var(--fill-hover); border-color: var(--border-control); }
 .faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button:disabled { opacity: 1; color: var(--text-disabled); border-color: var(--rule); }
+/* Hyväksy is the block's one primary, as in the dock's bar and the prompt */
+.faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button.cm-faust-block-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button.cm-faust-block-primary:not(:disabled):hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.faust-editor-host .cm-editor .cm-faust-block .cm-faust-block-button.cm-faust-block-primary:not(:disabled):active { background: var(--accent-active); border-color: var(--accent-active); }
+/* The caption hangs beside its star; the model's name stands at the row's end, or alone on the next
+   line, never after a loose separator at a line's end (the separator is text for a reader of the line) */
+.faust-editor-host .cm-editor .cm-faust-block-head { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--sp-3); padding-left: calc(14px + var(--sp-1)); }
+.faust-editor-host .cm-editor .cm-faust-block-head::before { position: absolute; left: 0; top: 1px; margin-right: 0; }
+.faust-editor-host .cm-editor .cm-faust-block-head > .cm-faust-block-sep { display: none; }
+.faust-editor-host .cm-editor .cm-faust-block-head > .cm-faust-block-model { margin-left: auto; }
 
 /* The inline prompt as it is built (inlinePromptCore.js): a CodeMirror tooltip at the caret,
    role="dialog". It floats, so it is a popover: raised, 1px border, 8px, level-2 shadow. It
@@ -1180,7 +1247,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-chips button:not(:disabled):hover { background: var(--fill-active); border-color: transparent; color: var(--text); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-primary:not(:disabled):hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
-:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-primary:disabled { background: var(--fill-subtle); border-color: transparent; color: var(--text-disabled); font-weight: var(--w-mono); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-primary:disabled { background: transparent; border-color: var(--rule); color: var(--text-disabled); font-weight: var(--w-mono); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-link { min-height: 0; padding: 0; background: none; border: 0; color: var(--text-2); text-decoration: underline; }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button.cm-faust-prompt-link:not(:disabled):hover { background: none; color: var(--text); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(.cm-faust-prompt-caption, .cm-faust-prompt-keys, .cm-faust-prompt-hint, .cm-faust-prompt-model) { color: var(--text-3); }
@@ -1235,6 +1302,16 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt:focus-within { z-index: calc(var(--z-popover) + 1); }
 /* "2 muutosta" stays on one line: the summary may wrap before it, never inside it */
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-count { white-space: nowrap; }
+/* Final polish round 1. The four quick actions stand on one row (they were 6px too wide); an empty
+   status line takes no room; the write form's help line and its Pituus row keep the rhythm of the
+   other rows; the labels Pituus: and Malli: share the meta colour; the sticky foot has a rule, so a
+   list scrolled under it is cut at a line and not in the middle of a sentence */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-chips { gap: var(--sp-1); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-chips button { padding: 0 calc(var(--sp-2) - 2px); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-status:empty { display: none; }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-hint { margin: var(--sp-2) 0; }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(.cm-faust-prompt-length, .cm-faust-prompt-picker label) > span { color: var(--text-3); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-foot { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: var(--bw) solid var(--rule); }
 /* end I-05 */
 
 /* I-09: Kirjoita kohdistimeen (the insert block of pendingInsertView.js, the prompt in write mode) */
@@ -1353,7 +1430,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
    body's own top padding (--sp-3), so nothing at rest is faded. The sidebar's list also fades out over its last 16px, so a row or
    a button cut by the foot reads as continuing; at the end of the list that strip is its bottom padding. */
 .faust-panel__body { scroll-padding-top: var(--sp-3); -webkit-mask-image: linear-gradient(to bottom, transparent var(--sp-1), var(--surface-panel) var(--sp-3)); mask-image: linear-gradient(to bottom, transparent var(--sp-1), var(--surface-panel) var(--sp-3)); }      /* scroll-padding: what is scrolled into view (focus, scrollIntoView) stops under the fade */
-.faust-sidebar .faust-panel__body { -webkit-mask-image: linear-gradient(to bottom, transparent var(--sp-1), var(--surface-panel) var(--sp-3), var(--surface-panel) calc(100% - var(--sp-4)), transparent); mask-image: linear-gradient(to bottom, transparent var(--sp-1), var(--surface-panel) var(--sp-3), var(--surface-panel) calc(100% - var(--sp-4)), transparent); }
+.faust-sidebar .faust-panel__body { -webkit-mask-image: linear-gradient(to bottom, transparent var(--sp-1), var(--surface-panel) var(--sp-3), var(--surface-panel) calc(100% - var(--sp-6)), transparent); mask-image: linear-gradient(to bottom, transparent var(--sp-1), var(--surface-panel) var(--sp-3), var(--surface-panel) calc(100% - var(--sp-6)), transparent); }      /* 32px: a heading at the fold dissolves instead of being sliced through its letters */
 /* A window lower than 720px: the five tools take toolbar rows (24px) and their heading no extra
    height, so the list keeps more chapters in view */
 @media (max-height: 719px) {
@@ -1375,7 +1452,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* While a notification is shown, the page keeps the 48px top margin V 4.7 counts on ("a one-line
    notification fits the page's 48px top margin"), also where a low window (V 6.6) or split view gives it
    24px: the head moves down instead of being covered. Focus mode has its own 64px. */
-.faust-app:not(.faust-focus-mode):has(.faust-toast-host > .faust-toast:not(.is-leaving)) .faust-page { --page-pad-top: var(--sp-7); }
+.faust-app:not(.faust-focus-mode):has(.faust-toast-host > .faust-toast:not(.is-leaving)) .faust-page { --page-pad-top: max(var(--sp-7), calc(var(--toast-h, 0px) + var(--sp-2))); }   /* --toast-h: the stack's measured height (ToastHost); a two-line notification is 61px and lay over the title's upper half */
 
 /* Final page: head block and text share one centred column; the format bar lies on the desk. */
 /* Split view: two equal panes of 400px or more. Where the window-width rule cannot give the area 800px
@@ -1462,9 +1539,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
    conversation uses the same message classes (.chat-message.user / .assistant / .error,
    .message-role, .streaming-indicator), so there is one conversation look. */
 .claude-chat-container {
-  position: fixed; right: calc(var(--right-col-w) + var(--sp-4)); bottom: calc(var(--footer-h) + 60px); z-index: var(--z-dock);
+  position: fixed; right: calc(var(--right-col-w) + var(--sp-4)); bottom: calc(var(--footer-h) + var(--sp-4)); z-index: var(--z-dock);
   width: min(400px, calc(100vw - 2 * var(--sp-4)));
-  max-height: min(560px, calc(100vh - var(--header-h) - var(--footer-h) - 92px));
+  max-height: min(560px, calc(100vh - var(--header-h) - var(--footer-h) - 2 * var(--sp-4)));      /* 16px above the status bar: the 60px were the reserve of the round launcher, which is now the header's Keskustelu button */
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--surface-raised); color: var(--text);
   border: var(--bw) solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow-2);

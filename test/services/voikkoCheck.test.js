@@ -195,6 +195,35 @@ describe('voikkoFindings', () => {
     expect(findings.map(finding => [finding.code, finding.quote])).toEqual([[8, 'kotiin'], [2, '  ']]);
     expect(findings[1].from).toBe(text.indexOf('meni') + 4);
   });
+
+  // Final polish round 1: voikkogc 4.3.3 answers `[code=7 … stpos=24, len=3, suggs={"Hän"}]` for the
+  // first line below (run live). The speech tag after ? or ! of a dialogue line is correct in lower case.
+  test('voikkoFindings drops the capital-letter error on a speech tag after ? or ! of a dialogue line', () => {
+    const capital = 'Sana on kirjoitettava isolla alkukirjaimella.';
+    const text = [
+      '– Onko tämä pääteasema? hän kysyi konduktööriltä.',
+      '— Tule tänne! hän huusi.',
+      'Onko tämä pääteasema? hän kysyi.',
+      '– Niin. hän sanoi.',
+      '– Tästä ei mennä pidemmälle. Miksi? hän ihmetteli.'
+    ].join('\n\n');
+    const input = buildVoikkoInput(text, deps);
+    expect(input.paragraphs).toHaveLength(5);
+    const error = (line) => {
+      const start = input.paragraphs[line].text.indexOf('hän');
+      return [{ code: 7, start, end: start + 3, suggestions: ['Hän'], explanation: capital }];
+    };
+    const findings = voikkoFindings({
+      text,
+      tokens: input.tokens,
+      wordResults: [],
+      paragraphs: input.paragraphs,
+      grammarResults: [error(0), error(1), error(2), error(3), error(4)]
+    });
+    // Kept: prose outside a dialogue line, and a tag after a full stop
+    expect(findings.map(finding => text.slice(0, finding.from).split('\n\n').length - 1)).toEqual([2, 3]);
+    expect(findings.every(finding => finding.code === 7 && finding.quote === 'hän')).toBe(true);
+  });
 });
 
 describe('nameHits', () => {

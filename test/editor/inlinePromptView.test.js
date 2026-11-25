@@ -504,7 +504,8 @@ describe('result', () => {
     const next = prompt.role('attempt-next');
     expect(previous.textContent).toBe('‹');
     expect(previous.getAttribute('aria-label')).toBe('Edellinen yritys');
-    expect(prompt.role('attempt-label').textContent).toBe('2/3');
+    // Final polish round 1: the counter names what it counts
+    expect(prompt.role('attempt-label').textContent).toBe('Yritys 2/3');
     expect(next.textContent).toBe('›');
     expect(next.getAttribute('aria-label')).toBe('Seuraava yritys');
     expect(prompt.role('summary').textContent).toBe('Tiivistä · deepseek-v4.1-flash · 7 muutosta');
@@ -514,9 +515,11 @@ describe('result', () => {
     expect(prompt.intents).toEqual([{ type: 'select', index: 0 }, { type: 'select', index: 2 }]);
   });
 
-  test('one attempt shows 1/1 without arrows, and 1 muutos in the singular', () => {
+  // Changed in final polish round 1 (the rule changed): one attempt has no counter at all; a bare
+  // "1/1" stood beside the bar's "Ehdotus 1 / 1"
+  test('one attempt shows no counter and no arrows, and 1 muutos in the singular', () => {
     const prompt = mount({ attempts: [attempt(1, { changeCount: 1 })] });
-    expect(prompt.role('attempt-label').textContent).toBe('1/1');
+    expect(prompt.role('attempt-label')).toBeNull();
     expect(prompt.role('attempt-prev')).toBeNull();
     expect(prompt.role('attempt-next')).toBeNull();
     expect(prompt.role('summary').textContent).toBe('Tiivistä · deepseek-v4.1-flash · 1 muutos');
@@ -544,6 +547,27 @@ describe('result', () => {
     reject.click();
     prompt.click('close');
     expect(prompt.intents).toEqual([{ type: 'accept-all' }, { type: 'reject-all' }, { type: 'close', reason: 'button' }]);
+  });
+
+  // Final polish round 1
+  test('reject stands before the primary accept, the pair last in the row', () => {
+    const prompt = mount({ attempts: [attempt(1)] });
+    const row = prompt.role('refine').parentNode;
+    expect(Array.from(row.querySelectorAll('button'), node => node.getAttribute('data-role')))
+      .toEqual(['refine', 'other-model', 'reject-all', 'accept-all']);
+    expect(prompt.role('accept-all').parentNode).toBe(prompt.role('reject-all').parentNode);
+    expect(prompt.role('accept-all').parentNode.className).toBe('cm-faust-prompt-decide');
+    expect(prompt.role('accept-all').className).toBe('cm-faust-prompt-primary');
+  });
+
+  test('Tarkenna on an empty field sends nothing, says why and puts the focus into the field', () => {
+    const prompt = mount({ attempts: [attempt(1)] });
+    prompt.view.field.value = '   ';
+    prompt.click('refine');
+    expect(prompt.intents).toEqual([]);
+    expect(prompt.role('status').textContent).toBe('Kirjoita ensin, mitä haluat muuttaa.');
+    expect(prompt.view.field.getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement).toBe(prompt.view.field);
   });
 
   test('accept and reject buttons are hidden when the attempt has no changes', () => {

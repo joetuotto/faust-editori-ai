@@ -48,3 +48,20 @@ describe('the done state\'s buttons', () => {
     expect(css).toMatch(/@container page \(max-width: 900px\) \{\s*\.faust-suggestbar\[data-elsewhere="long"\]:not\(:has\(\.faust-suggestbar__count\)\) \.faust-suggestbar__name \{ display: none; \}/);
   });
 });
+
+// Final polish round 1: the done state stayed in the dock over the text for as long as the app ran, and it
+// said "Kaikki ehdotukset käsitelty." under a draft (Tekoälyn luonnos) that still waited for its answer.
+describe('the done state leaves by itself', () => {
+  test('it is not shown while a draft of this chapter is pending', () => {
+    expect(SOURCE).toContain('pending === 0 && info.rejected > 0 && !info.closed && !info.blockStatus;');
+    expect(SOURCE).toContain('const done = doneShown;');
+  });
+
+  test('a timer, the next key and a press in the manuscript close it through the controller', () => {
+    expect(SOURCE).toContain('const DONE_MS = 8000;');
+    expect(SOURCE).toContain('timer = setTimeout(leave, DONE_MS);');
+    expect(SOURCE).toContain("document.addEventListener('keydown', onKey, true);");
+    expect(SOURCE).toContain("ev.target.closest('.faust-editor-host, .cm-faust-prompt')");
+    expect(SOURCE).toContain('const leave = () => controller.closeBar();');
+  });
+});

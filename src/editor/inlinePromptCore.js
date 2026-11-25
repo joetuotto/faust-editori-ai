@@ -208,6 +208,8 @@ function createInlinePromptKit(cm, options = {}) {
       gap: '6px',
       margin: '6px 0'
     },
+    // Hylkää muutokset · Hyväksy muutokset: one group at the end of the row, also when it wraps
+    '.cm-faust-prompt-decide': { display: 'inline-flex', gap: '6px', marginLeft: 'auto' },
     '.cm-faust-prompt-own': { display: 'inline-flex', gap: '2px' },
     '.cm-faust-prompt-caption, .cm-faust-prompt-keys, .cm-faust-prompt-hint, .cm-faust-prompt-model': { color: 'var(--text-3)' },
     '.cm-faust-prompt-length, .cm-faust-prompt-picker label': { display: 'inline-flex', alignItems: 'center', gap: '6px' },
@@ -286,12 +288,22 @@ function createInlinePromptKit(cm, options = {}) {
           const value = current.state.field(promptField, false);
           const range = value ? rangeOf(current.state, value.rangeId) : null;
           if (!range || !promptView.dom.isConnected || promptView.dom.classList.contains('cm-tooltip-above')) return 0;
-          return roomDelta(current, range, promptView.dom.getBoundingClientRect().height);
+          // The whole content, also the part a capped prompt scrolls inside itself
+          const dom = promptView.dom;
+          return roomDelta(current, range, Math.max(dom.getBoundingClientRect().height, dom.scrollHeight || 0));
         },
         write(delta, current) {
           if (delta > 0) current.scrollDOM.scrollTop += delta;
         }
       });
+
+      // The "Mitä malli näkee" row grows when the author opens its list (Muuta): the text gives the
+      // prompt room again, as far as it can scroll, so the list is not squeezed to one row above the foot
+      const ownerWindow = doc.defaultView;
+      const slotWatch = ownerWindow && typeof ownerWindow.ResizeObserver === 'function'
+        ? new ownerWindow.ResizeObserver(() => { if (promptView.dom.isConnected) roomAgain(); })
+        : null;
+      if (slotWatch) slotWatch.observe(promptView.contextSlot);
 
       return {
         dom: promptView.dom,
@@ -334,6 +346,7 @@ function createInlinePromptKit(cm, options = {}) {
           }
         },
         destroy() {
+          if (slotWatch) slotWatch.disconnect();
           if (tickTimer !== null) clearTimeout(tickTimer);
           tickTimer = null;
           const hadFocus = entry.focused === true;

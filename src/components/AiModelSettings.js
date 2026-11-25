@@ -4,7 +4,7 @@
  *
  *   AiRoleModels({ config, models, onSave })                 Malli tehtävittäin (Cherry Studio only)
  *   AiModelSettings({ config, modelIds, calibration, onSave })  Mallin asetukset
- *   AiModelBadge({ role, onOpenSettings, config })           Malli: <name> and the link Tekoälyasetukset
+ *   AiModelBadge({ role, onOpenSettings, config })           Malli: <name> and the link Tekoälyasetukset…
  *
  * config is the public config of the main process (ai:get-provider, never a key); onSave(patch)
  * sends a patch through ai:set-provider. No model id is written by the app itself: ids come
@@ -79,7 +79,9 @@ function NumberSetting({ label, stored, fallback, onSave }) {
     if (text !== '' && next === null) { setDraft(shown(stored)); return; }
     onSave(next);
   };
-  return e(Field, { label },
+  // An empty field shows the default as its placeholder; the hint says so in words, so the number in
+  // the placeholder's ink is not read as an empty or disabled field
+  return e(Field, { label, hint: draft.trim() === '' && Number.isFinite(fallback) ? `Oletus: ${shown(fallback)}` : undefined },
     e('input', {
       type: 'text',
       inputMode: 'numeric',
@@ -115,7 +117,7 @@ export function AiModelSettings({ config, modelIds, calibration, onSave }) {
               ? Number(sample.charsPerToken).toLocaleString('fi-FI', { maximumFractionDigits: 2 })
               : null;
             return e('div', { key: id, style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
-              e('div', { className: 'faust-ui', title: id }, modelLabel(id)),
+              e('div', { className: 'faust-stat', title: id }, 'Malli: ', e('b', null, modelLabel(id))),
               e(NumberSetting, {
                 label: 'Ikkuna (tokenia)',
                 stored: Number.isFinite(stored.window) ? stored.window : undefined,
@@ -168,13 +170,14 @@ export function AiModelBadge({ role = 'prose', onOpenSettings, config }) {
     : role === 'default'
       ? textOf(cfg.provider === 'cherry' ? cfg.model : cfg.anthropicModel)
       : client.modelFor(role, { ...cfg, roles: isRecord(cfg.roles) ? cfg.roles : {} });
-  // flush-start: when the link wraps under 'Malli: …', its text starts on the same edge
+  // A text link (underlined), with the command's menu name (menu spec B.5: Tekoälyasetukset…). As a
+  // quiet button it stood as plain text after the model id and read as a label without a value
   const link = e('button', {
     type: 'button',
-    className: 'faust-btn faust-btn--quiet faust-btn--sm faust-btn--flush-start',
+    className: 'faust-link',
     title: 'Vaihda malli tietopaneelin Tekoäly-välilehdellä',
     onClick: onOpenSettings
-  }, 'Tekoälyasetukset');
+  }, 'Tekoälyasetukset…');
 
   return e('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--sp-1) var(--sp-2)' } },
     model

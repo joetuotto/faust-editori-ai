@@ -443,7 +443,26 @@ function countByStatus(findings) {
   return counts;
 }
 
-/** What the editor underlines: open findings with a place. Decided findings are not highlighted. */
+/**
+ * How heavy a finding is for the eye: 'note' | 'warning' | 'error' (visual foundations 9.4, entry VF-2).
+ * A local hit, what works and a small concern are notes, a serious concern is an error, every other
+ * finding a warning. The card (ReviewPanel) and the mark in the manuscript read the same rule.
+ */
+function findingSeverity(finding) {
+  if (!finding) return 'warning';
+  if (finding.kind === 'local') return 'note';
+  if (finding.data && Object.prototype.hasOwnProperty.call(finding.data, 'severity')) {
+    const severity = finding.data.severity;
+    if (severity === 'works' || severity === 'low') return 'note';
+    if (severity === 'high') return 'error';
+  }
+  return 'warning';
+}
+
+/**
+ * What the editor underlines: open findings with a place. Decided findings are not highlighted.
+ * An item carries `severity` when it is not the default warning ('note' or 'error').
+ */
 function highlightItems(findings, docLength) {
   const length = Number.isFinite(docLength) ? docLength : Infinity;
   const items = [];
@@ -451,7 +470,9 @@ function highlightItems(findings, docLength) {
     if (!finding.located || finding.status !== 'open') continue;
     const from = Math.max(0, Math.min(finding.from, length));
     const to = Math.max(0, Math.min(finding.to, length));
-    if (to > from) items.push({ id: finding.id, from, to });
+    if (!(to > from)) continue;
+    const severity = findingSeverity(finding);
+    items.push(severity === 'warning' ? { id: finding.id, from, to } : { id: finding.id, from, to, severity });
   }
   return items.sort((a, b) => a.from - b.from || a.to - b.to);
 }
@@ -634,6 +655,7 @@ module.exports = {
   filterForList,
   countByStatus,
   highlightItems,
+  findingSeverity,
   runRecord,
   normalizeRuns,
   describeRun,

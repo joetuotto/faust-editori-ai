@@ -212,7 +212,7 @@ export function AiTestRequest({ config, getEditorContext }) {
         }, Object.keys(ROLE_LABELS).map(id => e('option', { key: id, value: id }, ROLE_LABELS[id])))),
       e(Field, { label: 'Ohjeet mallille' },
         e('textarea', {
-          className: 'faust-textarea',
+          className: 'faust-textarea faust-textarea--author',
           rows: 3,
           value: system,
           disabled: running,

@@ -87,9 +87,15 @@ function createBlockView(doc, options = {}) {
       return made;
     }
 
-    if (status !== 'error') bar.appendChild(button('block-accept', TEXT.accept, () => send({ type: 'block-accept' })));
-    bar.appendChild(button('block-retry', TEXT.retry, () => send({ type: 'block-retry' })));
+    // One order on every surface that decides a change: reject first, the primary accept last
+    // (the dock's bar, the Pikamuokkaus prompt; menu spec B.10). Hyväksy is the block's one primary.
     bar.appendChild(button('block-reject', TEXT.reject, () => send({ type: 'block-reject' })));
+    bar.appendChild(button('block-retry', TEXT.retry, () => send({ type: 'block-retry' })));
+    if (status !== 'error') {
+      const accept = button('block-accept', TEXT.accept, () => send({ type: 'block-accept' }));
+      accept.classList.add('cm-faust-block-primary');
+      bar.appendChild(accept);
+    }
 
     // A failed attempt offers only Uusi yritys and Hylkää (contracts 8.6)
     if (status === 'error') return made;
@@ -135,11 +141,20 @@ function createBlockView(doc, options = {}) {
     const attemptCount = Math.max(1, next.attemptCount | 0);
     const attempt = Math.max(0, Math.min(attemptCount - 1, next.attempt | 0));
 
-    // The model's name is its own span, so a narrow block wraps it whole and never at its hyphen
+    // The model's name is its own span, so a narrow block wraps it whole and never at its hyphen.
+    // The caption and the separator are spans too: the stylesheet hangs the caption beside the star
+    // and sets the name apart (the row's end, or the next line), so no line ends in a loose "·";
+    // the separator stays in the text for whoever reads the line as one string
     const headText = TEXT.head + (next.modelName ? ` · ${next.modelName}` : '');
     if (head.textContent !== headText) {
-      head.textContent = next.modelName ? `${TEXT.head} · ` : TEXT.head;
+      while (head.firstChild) head.removeChild(head.firstChild);
+      const caption = element('span', null, 'cm-faust-block-caption');
+      caption.textContent = TEXT.head;
+      head.appendChild(caption);
       if (next.modelName) {
+        const separator = element('span', null, 'cm-faust-block-sep');
+        separator.textContent = ' · ';
+        head.appendChild(separator);
         const name = element('span', 'block-model', 'cm-faust-block-model');
         name.textContent = next.modelName;
         head.appendChild(name);

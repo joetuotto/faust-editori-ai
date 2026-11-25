@@ -34,6 +34,9 @@ const FIRST_CHECK = 'avoid-words';
 
 const TEXT = Object.freeze({
   title: 'Oma tarkistus',
+  // A new one (menu spec B.2: the dialog of a new thing confirms with Luo X, an edit with Tallenna)
+  titleNew: 'Uusi oma tarkistus',
+  create: 'Luo tarkistus',
   name: 'Nimi',
   namePlaceholder: 'Esimerkiksi: Näkökulman vaihdot',
   instruction: 'Ohje tekoälylle',
@@ -120,7 +123,7 @@ function CheckForm({ check, existing, onDone, askConfirm }) {
   };
 
   return e(Dialog, {
-    title: TEXT.title,
+    title: check ? TEXT.title : TEXT.titleNew,
     size: 'md',
     className: 'faust-review-check',
     dismissOnScrim: false,
@@ -130,7 +133,7 @@ function CheckForm({ check, existing, onDone, askConfirm }) {
       : null,
     footer: [
       e('button', { key: 'cancel', type: 'button', className: 'faust-btn faust-btn--lg', onClick: cancel }, TEXT.cancel),
-      e('button', { key: 'save', type: 'button', className: 'faust-btn faust-btn--lg faust-btn--primary', onClick: save }, TEXT.save)
+      e('button', { key: 'save', type: 'button', className: 'faust-btn faust-btn--lg faust-btn--primary', onClick: save }, check ? TEXT.save : TEXT.create)
     ]
   },
     // No room for another own check (the picker does not offer one then; this is the dialog's own guard)
@@ -138,7 +141,7 @@ function CheckForm({ check, existing, onDone, askConfirm }) {
     e(Field, { label: TEXT.name, error: errors.label || null },
       e('input', {
         type: 'text',
-        className: 'faust-input',
+        className: 'faust-input faust-input--author',
         value: label,
         placeholder: TEXT.namePlaceholder,
         onChange: (ev) => {

@@ -101,3 +101,74 @@ describe('the thread detection asks for the answer language and reads the text w
     expect(app).toContain("detectThreads(window.electronAPI, {\n        languageRule: answerLanguageRule(project.language, ['type', 'priority']),\n        readText: stripTodos\n      })");
   });
 });
+
+// Final polish round 1. The sample project calls its people by first name ("Aino", "Eerolle"), its
+// character list holds the whole names. Before: the name check listed the first name and every
+// inflected form as spelling variations, and the model step never ran (it looked for the whole name).
+describe('the checker knows a character by its first name and inflected forms', () => {
+  const sample = () => ({
+    title: 'Lumen alla',
+    language: 'fi',
+    ai: { provider: 'anthropic', models: {} },
+    characters: [
+      { id: 'c1', name: 'Aino Lehto' },
+      { id: 'c2', name: 'Eero Salmi' },
+      { id: 'c3', name: 'Asianajaja Koskinen' }
+    ],
+    codex: [{ id: 'k1', type: 'hahmo', name: 'Eero Salmi', aliases: ['Eki'] }],
+    structure: [
+      { id: 'ch1', title: 'Saapuminen', content: 'Illalla Aino nosti laukkunsa. Aina satoi. Asia oli selvä. Hän kirjoitti Eerolle.', annotations: [] },
+      { id: 'ch2', title: 'Talo', content: 'Aamulla Ainon huoneessa oli kylmä. Sitten Eki soitti. Hän kävi Asianajajan luona ja tapasi Koskisen.', annotations: [] }
+    ]
+  });
+
+  test('the first name, an alias and inflected forms are not spelling variations', async () => {
+    const checker = new window.ConsistencyChecker(sample(), null, null);
+    expect(await checker.checkNamingConsistency()).toEqual([]);
+    expect(checker.isFormOfName('Lehdon', 'Lehto')).toBe(true);
+    expect(checker.isFormOfName('Koskisen', 'Koskinen')).toBe(true);
+    expect(checker.isFormOfName('Marja', 'Maria')).toBe(false);
+  });
+
+  test('a different spelling in the middle of a sentence is still listed', async () => {
+    const project = sample();
+    project.characters = [{ id: 'c1', name: 'Maria' }];
+    project.structure[0].content = 'Illalla Maria tuli kotiin. Marketta ei ollut paikalla, mutta sitten Marja soitti.';
+    const errors = await new window.ConsistencyChecker(project, null, null).checkNamingConsistency();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ type: 'name_variation', characterName: 'Maria', variations: ['Maria', 'Marja'] });
+  });
+
+  test('the model step runs for a character the text calls by first name or alias', async () => {
+    const prompts = [];
+    const call = async (prompt) => { prompts.push(prompt); return { success: true, data: '{"contradictions": []}' }; };
+    const checker = new window.ConsistencyChecker(sample(), {}, call);
+    await checker.runFullCheck();
+    // Aino (Aino, Ainon) and Eero (Eerolle, the alias Eki); Koskinen is in one chapter only, so no request
+    expect(prompts).toHaveLength(2);
+    expect(prompts[0]).toContain('Illalla Aino nosti laukkunsa.');
+    expect(prompts[0]).toContain('Aamulla Ainon huoneessa oli kylmä.');
+    expect(prompts[1]).toContain('Sitten Eki soitti.');
+  });
+});
+
+describe('thread statistics add up', () => {
+  test('every thread is open, resolved or abandoned; planned, open and developing count as open', () => {
+    const tracker = new window.PlotThreadTracker({
+      plotThreads: [
+        { id: 't1', status: 'developing' }, { id: 't2', status: 'open' }, { id: 't3', status: 'planned' },
+        { id: 't4', status: 'active' }, { id: 't5' }, { id: 't6', status: 'resolved' }, { id: 't7', status: 'abandoned' }
+      ]
+    });
+    const stats = tracker.getStats();
+    expect(stats).toMatchObject({ total: 7, active: 5, resolved: 1, abandoned: 1 });
+    expect(stats.active + stats.resolved + stats.abandoned).toBe(stats.total);
+  });
+
+  test('the Projekti tab names abandoned threads only when there are some', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const app = fs.readFileSync(path.join(__dirname, '..', '..', 'app.js'), 'utf8');
+    expect(app).toContain("${stats.abandoned > 0 ? ` · ${stats.abandoned} hylätty` : ''}");
+  });
+});

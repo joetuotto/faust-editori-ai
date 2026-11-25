@@ -15,6 +15,17 @@ const SPELLING_MESSAGE = 'Voikko ei tunne sanaa.';
 // libvoikko: 1 = spelling, 2 = extra whitespace, 3 = space before punctuation
 const GC_SPELLING = 1;
 const GC_WHITESPACE = new Set([2, 3]);
+// libvoikko: 7 = "Sana on kirjoitettava isolla alkukirjaimella."
+const GC_CAPITAL = 7;
+
+// A speech tag continues its line of dialogue in lower case after ? or !:
+// "– Onko tämä pääteasema? hän kysyi konduktööriltä." Voikko reads the mark as the end
+// of a sentence and proposes a capital, which would put an error into the text.
+function isSpeechTag(source, start) {
+  const lineStart = source.lastIndexOf('\n', start - 1) + 1;
+  const before = source.slice(lineStart, start);
+  return /^[ \t]*(?:[–—][ \t\u00a0]|[”"»])/u.test(before) && /[?!][”"»]?[ \t\u00a0]+$/u.test(before);
+}
 
 const overlaps = (ranges, from, to) => ranges.some(([start, end]) => from < end && to > start);
 
@@ -164,6 +175,7 @@ function voikkoFindings({ text, tokens, wordResults, paragraphs, grammarResults 
         for (let pos = error.start - 1; pos <= error.end && !touches; pos++) touches = blanked(pos);
         if (touches) continue;
       }
+      if (error.code === GC_CAPITAL && isSpeechTag(source, error.start)) continue;
       const from = paragraph.from + error.start;
       const to = paragraph.from + error.end;
       findings.push({

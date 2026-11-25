@@ -292,10 +292,16 @@ Return ONLY valid JSON in this format:
   getStats() {
     const threads = this.project.plotThreads || [];
 
+    // Every thread is in exactly one of the three, so total = active + resolved + abandoned.
+    // 'active' is every thread still open: planned, active, open, developing or without a status
+    const resolved = threads.filter(t => t.status === 'resolved').length;
+    const abandoned = threads.filter(t => t.status === 'abandoned').length;
+
     return {
       total: threads.length,
-      active: threads.filter(t => t.status === 'active').length,
-      resolved: threads.filter(t => t.status === 'resolved').length,
+      active: threads.length - resolved - abandoned,
+      resolved,
+      abandoned,
       byType: {
         main_plot: threads.filter(t => t.type === 'main_plot').length,
         subplot: threads.filter(t => t.type === 'subplot').length,

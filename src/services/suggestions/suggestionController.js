@@ -378,7 +378,9 @@ function createSuggestionController(deps = {}) {
               runBlockHandlers(event.action, snapshot ? snapshot.block : null, chapterId);
               break;
             case 'proposed':
-              // New suggestions bring the bar back
+            case 'restored':
+              // New suggestions bring the bar back, and so do restored ones: the done state leaves by
+              // itself after a while (SuggestionBar), and the next round of decisions ends with it again
               closed.delete(chapterId);
               break;
             default:

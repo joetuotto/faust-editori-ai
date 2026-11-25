@@ -306,6 +306,31 @@ describe('cleanModelOutput: code fences and quotation marks', () => {
     expect(text('<teksti>~~~yli~~ jäi\nToka rivi.</teksti>')).toBe('~~~yli~~ jäi\nToka rivi.');
   });
 
+  // Final polish round 1: the answer of a write-at-cursor request as it arrived (the text,
+  // then a fence run on the same last line). The three backticks went into the draft.
+  test('a fence run left alone at the end of the text is removed', () => {
+    const observed = '<teksti>Hän veti henkeä, ja asema tuoksui märältä kiveltä, Aino sanoi ja astui ulos laiturille. ```\n\n</teksti>';
+    expect(cleanModelOutput(observed)).toMatchObject({
+      text: 'Hän veti henkeä, ja asema tuoksui märältä kiveltä, Aino sanoi ja astui ulos laiturille.',
+      complete: true,
+      notes: ['tags', 'fence']
+    });
+    expect(cleanModelOutput('<teksti>Kissa istui.\n```\n</teksti>')).toMatchObject({ text: 'Kissa istui.', notes: ['tags', 'fence'] });
+    expect(text('<teksti>Kissa istui. ~~~</teksti>')).toBe('Kissa istui.');
+    expect(text('Kissa istui. ```', { tag: null })).toBe('Kissa istui.');
+    // an opening fence line and a closing run on the last text line
+    expect(text('<teksti>```\nKissa istui. ```</teksti>')).toBe('Kissa istui.');
+    // a run at the very start, when a space parts it from the text
+    expect(text('<teksti>``` Kissa istui. ```</teksti>')).toBe('Kissa istui.');
+    expect(text('<teksti>```text Kissa istui.</teksti>')).toBe('Kissa istui.');
+  });
+
+  test('a fence run that has its pair in the text, or that the author wrote, stays', () => {
+    expect(text('<teksti>Eka:\n```\nA\n```</teksti>')).toBe('Eka:\n```\nA\n```');
+    expect(text('<teksti>Koodi: ```</teksti>', { original: 'Koodi: ```' })).toBe('Koodi: ```');
+    expect(text('<teksti>Näin: ``` a ```</teksti>')).toBe('Näin: ``` a ```');
+  });
+
   test('two fenced blocks, or text after a fence inside tags, are left as they are', () => {
     const two = 'Eka:\n```\nA\n```\nToka:\n```\nB\n```';
     expect(text(two, { tag: null })).toBe(two);

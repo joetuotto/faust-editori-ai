@@ -32,6 +32,8 @@ const ISOLATED_EVENTS = [
 ];
 
 const INVALID_TEXT = 'Kirjoita ohje tai valitse pikavalinta.';
+// Tarkenna pressed on an empty field (menu spec B.8: a reason, not a dead click)
+const REFINE_EMPTY_TEXT = 'Kirjoita ensin, mitä haluat muuttaa.';
 // Esc closes the prompt too, so the close button's tooltip names the key
 const CLOSE_TITLE = 'Sulje (Esc)';
 const MIN_ROWS = 2;
@@ -128,7 +130,9 @@ function createPromptView(doc, options = {}) {
     invalid = on;
     if (on) field.setAttribute('aria-invalid', 'true');
     else field.removeAttribute('aria-invalid');
-    if (statusNode && state && state.phase !== 'sending') statusNode.textContent = on ? INVALID_TEXT : '';
+    if (statusNode && state && state.phase !== 'sending') {
+      statusNode.textContent = on ? (state.phase === 'result' ? REFINE_EMPTY_TEXT : INVALID_TEXT) : '';
+    }
   }
 
   function placeholderFor(current) {
@@ -253,15 +257,15 @@ function createPromptView(doc, options = {}) {
     const count = current.attempts.length;
     const attempt = current.attempts[current.index] || null;
 
-    const nav = make('div', { class: 'cm-faust-prompt-attempts' });
+    // The attempts are counted only when there are several: a lone "1/1" beside the bar's
+    // "Ehdotus 1 / 1" was a second counter without a noun (final polish round 1)
     if (count > 1) {
+      const nav = make('div', { class: 'cm-faust-prompt-attempts' });
       nav.appendChild(button('attempt-prev', '‹', { 'aria-label': 'Edellinen yritys', title: 'Edellinen yritys', disabled: current.index <= 0 }));
-    }
-    nav.appendChild(make('span', { 'data-role': 'attempt-label' }, attemptLabel(current.index, count)));
-    if (count > 1) {
+      nav.appendChild(make('span', { 'data-role': 'attempt-label' }, `Yritys ${attemptLabel(current.index, count)}`));
       nav.appendChild(button('attempt-next', '›', { 'aria-label': 'Seuraava yritys', title: 'Seuraava yritys', disabled: current.index >= count - 1 }));
+      head.appendChild(nav);
     }
-    head.appendChild(nav);
 
     if (attempt) {
       // An attempt of "Kokeile toisella mallilla" is titled with the model: say the name once.
@@ -275,17 +279,23 @@ function createPromptView(doc, options = {}) {
     const note = noteNode([attempt && attempt.note, current.note]);
     if (note) head.appendChild(note);
 
+    statusNode = make('div', { class: 'cm-faust-prompt-status', 'data-role': 'status', role: 'status' }, invalid ? REFINE_EMPTY_TEXT : '');
+    body.appendChild(statusNode);
     const actions = make('div', { class: 'cm-faust-prompt-actions' });
     actions.appendChild(button('refine', 'Tarkenna'));
+    actions.appendChild(button('other-model', 'Kokeile toisella mallilla', { 'aria-expanded': current.pickerOpen ? 'true' : 'false' }));
     if (attempt && attempt.changeCount > 0) {
-      // "Hyväksy kaikki" is the bar's button and means the whole chapter; these two mean this attempt
-      actions.appendChild(button('accept-all', 'Hyväksy muutokset', {
+      // "Hyväksy kaikki" is the bar's button and means the whole chapter; these two mean this attempt.
+      // One order on every surface that decides a change: reject first, the primary accept last, at
+      // the row's end (the dock's bar, the draft block; menu spec B.10)
+      const decide = make('span', { class: 'cm-faust-prompt-decide' });
+      decide.appendChild(button('reject-all', 'Hylkää muutokset', { title: 'Hylkää tämän yrityksen muutokset.' }));
+      decide.appendChild(button('accept-all', 'Hyväksy muutokset', {
         class: 'cm-faust-prompt-primary',
         title: 'Hyväksy tämän yrityksen muutokset. Luvun muut ehdotukset jäävät odottamaan.'
       }));
-      actions.appendChild(button('reject-all', 'Hylkää muutokset', { title: 'Hylkää tämän yrityksen muutokset.' }));
+      actions.appendChild(decide);
     }
-    actions.appendChild(button('other-model', 'Kokeile toisella mallilla', { 'aria-expanded': current.pickerOpen ? 'true' : 'false' }));
     body.appendChild(actions);
     if (current.pickerOpen) body.appendChild(pickerNode(current));
 
@@ -448,7 +458,13 @@ function createPromptView(doc, options = {}) {
         return;
       }
       emit({ type: 'submit', instruction: value });
-    } else if (state.phase === 'result' && hasText()) {
+    } else if (state.phase === 'result') {
+      if (!hasText()) {
+        // Nothing to refine with: the field takes the focus and says what it waits for
+        setInvalid(true);
+        field.focus({ preventScroll: true });
+        return;
+      }
       emit({ type: 'refine', instruction: value });
     }
   }
