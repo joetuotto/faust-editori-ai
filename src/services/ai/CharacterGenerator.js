@@ -31,7 +31,10 @@
         characterType = '',
         realPeople = '',
         answers = {},
-        archetypeInfo = {}
+        archetypeInfo = {},
+        // The answer-language sentence of the old prompts (oldPaths.answerLanguageRule), built by the caller
+        // from the project's language and CharacterGenerator.FIXED_VALUES
+        languageRule = ''
       } = params;
 
       if (!window.electronAPI) {
@@ -39,11 +42,14 @@
       }
 
       try {
-        const prompt = this._buildCharacterPrompt(name, role, characterType, realPeople, answers, archetypeInfo);
+        const prompt = this._buildCharacterPrompt(name, role, characterType, realPeople, answers, archetypeInfo, languageRule);
+        // The profile is a long JSON object and a reasoning model spends part of max_tokens before it:
+        // room for both, as Analysoi luku has (the router's default of 2 000 cut the answer, E-19)
         const response = await window.callAIProvider({
           provider: this.provider,
           prompt,
-          model: this.model
+          model: this.model,
+          max_tokens: CharacterGenerator.ANSWER_TOKENS
         });
 
         if (!response.success) {
@@ -80,7 +86,7 @@
       }
     }
 
-    _buildCharacterPrompt(name, role, characterType, realPeople, answers, archetypeInfo) {
+    _buildCharacterPrompt(name, role, characterType, realPeople, answers, archetypeInfo, languageRule = '') {
       const answersText = Object.entries(answers || {})
         .map(([qId, answer]) => `Q: ${answer}`)
         .join('\n');
@@ -199,7 +205,7 @@ Return ONLY valid JSON matching this EXACT structure:
     "end": "Final transformation",
     "transformationType": "positive"
   }
-}`;
+}${languageRule ? `\n\n${languageRule}` : ''}`;
     }
 
     _parseAIResponse(aiResponse) {
@@ -343,6 +349,17 @@ Return ONLY valid JSON matching this EXACT structure:
       };
     }
   }
+
+  // The answer budget of one profile request (max_tokens)
+  CharacterGenerator.ANSWER_TOKENS = 8000;
+
+  // The fields of the profile whose values are fixed choices: the app shows them through its Finnish
+  // labels (or as codes), so the model keeps them in English while it writes the free text in the
+  // project's language (menu spec D.7)
+  CharacterGenerator.FIXED_VALUES = Object.freeze([
+    'dsmCategory', 'copingMechanism', 'type', 'worldview', 'dominantState', 'game', 'communicationStyle',
+    'attachmentStyle', 'primaryArchetype', 'secondaryArchetypes', 'stage', 'transformationType', 'mbti', 'enneagram'
+  ]);
 
   window.CharacterGenerator = CharacterGenerator;
 })(window);

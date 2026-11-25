@@ -7,7 +7,9 @@
  * wire guard), the plan of a whole-book run of Magnum Opus that leaves the
  * chapters marked "Ei tekoälylle" out, and the guard that sends a result of
  * voice editing, the Hybrid rewrite or the Liminal Engine back to the text it
- * was made for (contracts.md 10.2 and 11.2 C, rule 14).
+ * was made for (contracts.md 10.2 and 11.2 C, rule 14). Also the answer
+ * language of the old prompts (menu spec D.7) and the summary fields that
+ * Analysoi luku and Tee tiivistelmä write, with Tee tiivistelmä's note.
  *
  * Pure functions, no DOM (test/services/oldPaths.test.js).
  */
@@ -116,4 +118,64 @@ function placeSentText(liveText, target, here, revised) {
   return text.slice(0, place.from) + String(revised == null ? '' : revised) + text.slice(place.to);
 }
 
-module.exports = { failureReason, asIsNotice, bookRunPlan, sentTarget, placeSentText };
+// The names of the project languages in the old prompts, which are written in English
+const LANGUAGE_NAMES = { fi: 'Finnish', en: 'English' };
+
+const quotedList = (names) => {
+  const quoted = names.map(name => `"${name}"`);
+  return quoted.length > 1 ? `${quoted.slice(0, -1).join(', ')} and ${quoted[quoted.length - 1]}` : quoted[0];
+};
+
+/**
+ * The one sentence that tells the model of an old prompt its answer language
+ * (menu spec D.7): free text in the project's language (Projektin asetukset ▸
+ * Käsikirjoituksen kieli, `fi` when unset), while the JSON keys and the fixed
+ * values the app maps to Finnish labels (`slow`, `adult`, `motivation` …) stay
+ * as the prompt gives them. Without `fixed` the answer is plain text; with an
+ * array (empty too) it is JSON, and `fixed` names the fields whose values are
+ * fixed. The sentence refers to the format "above": it goes after the format.
+ */
+function answerLanguageRule(language, fixed) {
+  const code = String(language == null ? '' : language).trim() || 'fi';
+  const name = Object.prototype.hasOwnProperty.call(LANGUAGE_NAMES, code)
+    ? LANGUAGE_NAMES[code]
+    : `the language whose code is "${code}"`;
+  if (!Array.isArray(fixed)) return `Write the answer in ${name}.`;
+  const names = fixed.filter(field => typeof field === 'string' && field !== '');
+  const values = names.length > 0 ? ` and the values of ${quotedList(names)}` : '';
+  return `Write every free-text value in ${name}, names as they are. Keep the JSON keys${values} exactly as given above, in English.`;
+}
+
+// Tee tiivistelmä's line under the summary (menu spec C.4 row 26; lead decision of the final pass)
+const SUMMARY_NOTES = {
+  onCard: 'Se näkyy myös luvun kortissa korttinäkymässä.',
+  ownKept: 'Luvun kortissa korttinäkymässä näkyy edelleen oma tiivistelmäsi, joten tämä näkyy vain tässä.'
+};
+
+/** The author's own summary of a chapter (typed in Luvun tiedot or imported), or ''. */
+function ownSummary(chapter) {
+  const own = chapter && typeof chapter.synopsisManual === 'string' ? chapter.synopsisManual : '';
+  return own.trim() ? own : '';
+}
+
+/**
+ * The fields Analysoi luku and Tee tiivistelmä write (menu spec W22): the AI
+ * summary always goes to `synopsisAI`; `synopsis`, which the card and the split
+ * view's summaries show, keeps the author's own summary when there is one.
+ */
+function summaryFields(chapter, aiSummary) {
+  return { synopsisAI: aiSummary, synopsis: ownSummary(chapter) || aiSummary };
+}
+
+/**
+ * The line under a finished Tee tiivistelmä: the summary is on the card too,
+ * or, when the author's own summary keeps its place there, only in the result.
+ */
+function summaryNote(chapter) {
+  return ownSummary(chapter) ? SUMMARY_NOTES.ownKept : SUMMARY_NOTES.onCard;
+}
+
+module.exports = {
+  failureReason, asIsNotice, bookRunPlan, sentTarget, placeSentText,
+  answerLanguageRule, SUMMARY_NOTES, ownSummary, summaryFields, summaryNote
+};

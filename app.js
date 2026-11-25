@@ -18,8 +18,10 @@ import { normalizeContextFields, MESSAGES, isChapterBlocked } from './src/servic
 import { modelLabel } from './src/services/format.fi.js';
 // failureReason: the reason in '<Toiminto> epäonnistui: <syy>.'; asIsNotice: a stop, the switch and
 // the wire guard shown as they are (R-21); bookRunPlan: Magnum Opus without "Ei tekoälylle" chapters;
-// sentTarget / placeSentText: an old path's result goes back to the text it was made for (R-18, R-19)
-import { failureReason, asIsNotice, bookRunPlan, sentTarget, placeSentText } from './src/services/ai/oldPaths.js';
+// sentTarget / placeSentText: an old path's result goes back to the text it was made for (R-18, R-19);
+// answerLanguageRule: the old prompts' answer language (menu spec D.7); summaryFields / summaryNote: the
+// AI summary next to the author's own and Tee tiivistelmä's line about the card
+import { failureReason, asIsNotice, bookRunPlan, sentTarget, placeSentText, answerLanguageRule, summaryFields, summaryNote } from './src/services/ai/oldPaths.js';
 // The suggestion layer, the undo history from the first keystroke and the usage log (stage I-03)
 import { SuggestionBar } from './src/components/SuggestionBar.js';
 import { AiUsageLogSection } from './src/components/AiUsageLogSection.js';
@@ -541,7 +543,7 @@ function FAUSTApp() {
 
   // Handler to save chapter data from modal
   // A tiivistelmä the author edits here is theirs: it goes to synopsisManual too, so that
-  // Analysoi luku and Tee tiivistelmä (synopsis: ch.synopsisManual || ...) keep it next time.
+  // Analysoi luku and Tee tiivistelmä (summaryFields: synopsisManual before their own) keep it next time.
   const handleChapterSheetSave = (chapterData) => {
     setProject(prev => ({
       ...prev,
@@ -1447,7 +1449,7 @@ function FAUSTApp() {
   // then, the result is a notification that stays until closed instead. Never both, and never a popover
   // at the fallback place: an open result closes when its tile loses its box or the chapter changes.
   const resultPop = usePopover();
-  const [sigilResult, setSigilResult] = useState(null); // { kind: 'quick' | 'summary', chapterId, score, suggestions, synopsis }
+  const [sigilResult, setSigilResult] = useState(null); // { kind: 'quick' | 'summary', chapterId, score, suggestions, synopsis, note }
   const sigilBarRef = useRef(null);
   const resultFocusRef = useRef(null);
   const sigilTile = (kind) => {
@@ -1462,7 +1464,7 @@ function FAUSTApp() {
         notify('success', `Pika-arvio valmis. Laatuarvio: ${formatScore(result.score)}/10.`, { duration: 0 });
       } else {
         notify('success', 'Tiivistelmä valmis', {
-          detail: result.synopsis + '\n\nSe näkyy myös luvun kortissa korttinäkymässä.',
+          detail: result.synopsis + '\n\n' + result.note,
           duration: 0
         });
       }
@@ -2784,7 +2786,7 @@ Return ONLY valid JSON (no markdown, no extra text):
 {
   "suggestions": [
     {
-      "type": "character type from input",
+      "type": "the character type exactly as written above",
       "archetypeFamily": "The Sage/Hermit",
       "examples": ["Marcus Aurelius", "Epictetus", "Miyamoto Musashi"],
       "functionInStory": "Mentor who teaches through detachment",
@@ -2799,11 +2801,15 @@ Return ONLY valid JSON (no markdown, no extra text):
     ]
   },
   "warnings": ["warning messages"]
-}`;
+}
+
+${answerLanguageRule(project.language, [])}`;
 
     try {
       console.log('[AI] Analyzing cast...');
-      const result = await callAIWithMode(prompt);
+      // A JSON object per type in the project's language, after a reasoning model's own share of
+      // max_tokens: the mode's 2 048 or 4 096 cut it (measured 2 589 for two types), as Analysoi luku's
+      const result = await callAIWithMode(prompt, { max_tokens: 8000 });
 
       if (result.success) {
         try {
@@ -2895,7 +2901,8 @@ Provide detailed analysis in JSON format:
   }
 }
 
-Return ONLY valid JSON.`;
+Return ONLY valid JSON.
+${answerLanguageRule(project.language, ['type', 'severity', 'readiness', 'speed'])}`;
 
     try {
       console.log('[AI Editor] Analyzing chapter:', chapterId);
@@ -2915,8 +2922,7 @@ Return ONLY valid JSON.`;
               ch.id === chapterId
                 ? {
                     ...ch,
-                    synopsisAI: analysis.synopsis,
-                    synopsis: ch.synopsisManual || analysis.synopsis,
+                    ...summaryFields(ch, analysis.synopsis),
                     notesAI: analysis.notesAI,
                     aiQuality: {
                       ...analysis.aiQuality,
@@ -2957,32 +2963,30 @@ Return ONLY valid JSON.`;
 
     if (!window.electronAPI) return null;
 
-    const prompt = `Summarize this chapter in 2-3 sentences (in Finnish):
+    const prompt = `Summarize this chapter in 2-3 sentences:
 
 ${chapter.content}
 
-Return ONLY the summary, no extra text.`;
+Return ONLY the summary, no extra text. ${answerLanguageRule(project.language)}`;
 
     try {
       const result = await callAIWithMode(prompt);
       if (result.success) {
         const synopsis = result.data.trim();
+        if (!synopsis) return null;
+        // The note says whether the card shows this summary or keeps the author's own (lead decision,
+        // final pass): read from the chapter as it is when the answer arrives, as the write below is
+        const live = (projectRef.current || project).structure.find(ch => ch.id === chapterId);
 
         setProject(prev => ({
           ...prev,
           structure: prev.structure.map(ch =>
-            ch.id === chapterId
-              ? {
-                  ...ch,
-                  synopsisAI: synopsis,
-                  synopsis: ch.synopsisManual || synopsis
-                }
-              : ch
+            ch.id === chapterId ? { ...ch, ...summaryFields(ch, synopsis) } : ch
           )
         }));
 
         setUnsavedChanges(true);
-        return synopsis;
+        return { synopsis, note: summaryNote(live) };
       }
     } catch (error) {
       console.error('[AI Synopsis] Error:', error);
@@ -3003,7 +3007,8 @@ Return ONLY the summary, no extra text.`;
 
 ${chapter.content.substring(0, 2000)}...
 
-Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
+Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}
+${answerLanguageRule(project.language, [])}`;
 
     try {
       const result = await callAIWithMode(prompt);
@@ -3093,9 +3098,9 @@ Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}`;
     }
   });
 
-  const runSummary = () => runChapterAnalysis('summary', 'Tekoäly tekee tiivistelmää…', generateSynopsis, (synopsis, chapterId) => {
-    if (synopsis) {
-      showSigilResult({ kind: 'summary', chapterId, synopsis });
+  const runSummary = () => runChapterAnalysis('summary', 'Tekoäly tekee tiivistelmää…', generateSynopsis, (result, chapterId) => {
+    if (result) {
+      showSigilResult({ kind: 'summary', chapterId, synopsis: result.synopsis, note: result.note });
     } else {
       notify('error', 'Tiivistelmän tekeminen epäonnistui.', { detail: ANALYSIS_DETAIL });
     }
@@ -3686,16 +3691,19 @@ Return ONLY valid JSON:
   "questions": [
     {
       "id": 1,
-      "category": "motivation",
+      "category": "motivation|shadow|relationships|voice|arc",
       "question": "What is this character's deepest fear?"
     },
     ...
   ]
-}`;
+}
+
+${answerLanguageRule(project.language, ['category'])}`;
 
     try {
       console.log('[Character Builder] Generating questions...');
-      const result = await callAIWithMode(prompt);
+      // The same room as the profile and Analysoi luku: a JSON list after the model's reasoning
+      const result = await callAIWithMode(prompt, { max_tokens: 8000 });
 
       if (result.success) {
         try {
@@ -3739,7 +3747,9 @@ Return ONLY valid JSON:
         characterType: characterType,
         realPeople: realPeople,
         answers: answers,
-        archetypeInfo: archetypeInfo || {}
+        archetypeInfo: archetypeInfo || {},
+        // Free text in the project's language, the profile's fixed values in English (menu spec D.7)
+        languageRule: answerLanguageRule(project.language, window.CharacterGenerator.FIXED_VALUES)
       });
 
       if (result.success) {
@@ -6042,7 +6052,7 @@ ${contextPrompt}`;
                   )
                 : e('div', { className: 'faust-result', style: { gap: 'var(--sp-3)', padding: '0 var(--sp-2) var(--sp-2)' } },
                     e('p', { className: 'faust-serif', style: { margin: 0, whiteSpace: 'pre-wrap' } }, sigilResult.synopsis),
-                    e('div', { className: 'faust-meta' }, 'Se näkyy myös luvun kortissa korttinäkymässä.')
+                    e('div', { className: 'faust-meta' }, sigilResult.note)
                   )
             )
           );
