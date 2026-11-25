@@ -155,6 +155,27 @@ describe('the old-path guard (voice editing, Hybrid rewrite, Liminal Engine)', (
   test('openProject leaves no old-path result or target behind (X-25)', () => {
     expect(body('openProject')).toMatch(/suggestionsRef\.current\.reset\(\);[\s\S]*oldPathTargetRef\.current = \{ voice: null, rewrite: null, liminal: null \};\s*setVoiceDiffView\(null\); setAiSuggestion\(null\); setContinuePreview\(''\);/);
   });
+
+  // Final-pass review (T-101, measured): Vie… opened from the menu over the start-up recovery question held it inert
+  // while it was drawn on top; a click on Palauta muutokset changed Vie's format instead
+  test('the menu does nothing while a question that only a button answers is open', () => {
+    const from = app.indexOf('menuHandlerRef.current = (action, arg) => {');
+    expect(from).toBeGreaterThan(-1);
+    const head = app.slice(from, app.indexOf('switch (action) {', from));
+    expect(head).toMatch(/^menuHandlerRef\.current = \(action, arg\) => \{\n(\s*\/\/[^\n]*\n)+\s*if \(confirmRequest && confirmRequest\.requireChoice\) return;/);
+    // The recovery question is that question
+    expect(app.match(/\{ requireChoice: true, dangerCancel: true \}/g)).toHaveLength(2);
+  });
+
+  // Final-pass review: Uusi hahmo stayed open over the next project, and Tallenna hahmo would have saved there
+  test('openProject closes Uusi hahmo and Suunnittele hahmot and drops their running requests', () => {
+    const open = body('openProject');
+    expect(open).toMatch(/resetCharacterBuilder\(\);\s*setShowCharacterBuilder\(false\);\s*castPlanRunRef\.current \+= 1;\s*setShowCastPlanDialog\(false\);\s*setSelectedCharacter\(null\);\s*setCharacterSheetMode\('list'\);/);
+    // Its question (Hylätäänkö keskeneräinen hahmo?) goes too, answered as its cancel; never the recovery question
+    expect(open).toMatch(/setConfirmRequest\(prev => \{\s*if \(!prev \|\| prev\.requireChoice\) return prev;\s*prev\.resolve\(false\);\s*return null;\s*\}\);\s*setProject\(data\);/);
+    // The builder's reset makes a running request's number stale, as Peruuta does
+    expect(body('resetCharacterBuilder')).toContain('builderRunRef.current += 1;');
+  });
 });
 
 // app.js is one component that Jest cannot render: the blocks below read how it uses the functions
@@ -214,6 +235,17 @@ describe('answerLanguageRule: the old prompts ask for free text in the project l
     expect(appBody('generateCharacterProfile')).toContain(
       'languageRule: answerLanguageRule(project.language, window.CharacterGenerator.FIXED_VALUES)'
     );
+  });
+
+  test('☿ analysis, 🜍 summary and ⚗ quick check read the chapter without the author\'s [TODO: …] notes (report section 5)', () => {
+    // Final-pass review: a Pika-arvio commented on a note; the new paths strip them through the context builder
+    expect(appBody('analyzeChapterContent')).toContain('TEXT:\n${stripTodos(chapter.content)}\n');
+    expect(appBody('generateSynopsis')).toContain('Summarize this chapter in 2-3 sentences:\n\n${stripTodos(chapter.content)}\n');
+    expect(appBody('quickQualityCheck')).toContain('${stripTodos(chapter.content).substring(0, 2000)}...');
+    ['analyzeChapterContent', 'generateSynopsis', 'quickQualityCheck'].forEach(name => {
+      expect(appBody(name)).not.toMatch(/\$\{chapter\.content(\.substring\([^)]*\))?\}/);
+    });
+    expect(APP).toMatch(/import \{[^}]*\bstripTodos\b[^}]*\} from '\.\/src\/services\/ai\/contextBuilder\.js';/);
   });
 
   test('the old JSON paths leave room for reasoning and the Finnish answer: max_tokens 8 000 (T-062)', () => {

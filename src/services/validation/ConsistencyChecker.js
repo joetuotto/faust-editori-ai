@@ -16,14 +16,18 @@ class ConsistencyChecker {
   }
 
   /**
-   * Run full consistency check and generate annotations
+   * Run full consistency check and generate annotations.
+   * @param {{ languageRule?: string }} [options] languageRule: the last line of the character check's
+   *   prompt, the answer language of the project (oldPaths.answerLanguageRule, built by app.js: this
+   *   file is a plain script and cannot import it). Without it the prompt ends with its format.
    */
-  async runFullCheck() {
+  async runFullCheck(options = {}) {
     const errors = [];
     const annotations = [];
     // AI calls that failed during this run. An empty result with failures is
     // "could not check", not "no contradictions".
     this.failures = [];
+    this.languageRule = options && typeof options.languageRule === 'string' ? options.languageRule.trim() : '';
 
     try {
       // Run all checks in parallel
@@ -314,7 +318,7 @@ Return ONLY valid JSON in this format:
   ]
 }
 
-If no contradictions found, return: {"contradictions": []}`;
+If no contradictions found, return: {"contradictions": []}${this.languageRule ? '\n' + this.languageRule : ''}`;
 
     try {
       let result;
@@ -475,7 +479,7 @@ If no contradictions found, return: {"contradictions": []}`;
               context: curr.context
             }
           ],
-          suggestedFix: `Tarkista aikajana - tapahtumat ovat väärässä järjestyksessä`,
+          suggestedFix: 'Tarkista aikajana – tapahtumat ovat väärässä järjestyksessä.',
           autoFixable: false
         });
       }
@@ -625,7 +629,7 @@ If no contradictions found, return: {"contradictions": []}`;
                   content: `Location: ${currLoc}`
                 }
               ],
-              suggestedFix: `Lisää kohtaus jossa ${character.name} siirtyy paikasta ${prevLoc} paikkaan ${currLoc}, tai korjaa sijaintiviittaukset`,
+              suggestedFix: `Lisää kohtaus, jossa ${character.name} siirtyy paikasta ${prevLoc} paikkaan ${currLoc}, tai korjaa sijaintiviittaukset.`,
               autoFixable: false
             });
           }

@@ -543,6 +543,13 @@ function pendingDetail({ suggestions, blocks }) {
   return `Ehdotukset ja ${drafts} eivät ${lasting} ne eivät ole muuttaneet.`;
 }
 
+// The buttons name the suggestions while there is one; a draft alone is named itself, as the message names it
+// (the suggestion controller's in-app question says the same: Palaa luonnokseen / Hylkää luonnos)
+function pendingButtons({ suggestions, blocks }) {
+  if (suggestions > 0) return ['Palaa ehdotuksiin', 'Sulje ja hylkää ehdotukset'];
+  return blocks === 1 ? ['Palaa luonnokseen', 'Sulje ja hylkää luonnos'] : ['Palaa luonnoksiin', 'Sulje ja hylkää luonnokset'];
+}
+
 // Pending suggestions live in memory only: the question comes before the unsaved-changes one (R-24)
 const pendingSuggestionsDialog = (pending) => {
   const counts = pendingCountsOf(pending);
@@ -550,7 +557,7 @@ const pendingSuggestionsDialog = (pending) => {
     type: 'warning',
     message: `Käsikirjoituksessa on ${pendingWords(counts)}.`,
     detail: pendingDetail(counts),
-    buttons: ['Palaa ehdotuksiin', 'Sulje ja hylkää ehdotukset'],
+    buttons: pendingButtons(counts),
     defaultId: 0,
     cancelId: 0
   };
@@ -559,7 +566,8 @@ const pendingSuggestionsDialog = (pending) => {
 // Ask before a window with unsaved changes closes (also covers Cmd+Q)
 function attachCloseGuard(win) {
   win.on('close', (event) => {
-    // "Palaa ehdotuksiin" stops the close before any save question; after "Sulje ja hylkää ehdotukset"
+    // "Palaa ehdotuksiin" (a draft alone: "Palaa luonnokseen") stops the close before any save question; after
+    // "Sulje ja hylkää ehdotukset" ("… luonnos")
     // the unsaved-changes flow runs as before, and the close that follows a save does not ask again
     if (hasPending(pendingSuggestions) && !discardSuggestionsOnClose) {
       const answer = dialog.showMessageBoxSync(win, pendingSuggestionsDialog(pendingSuggestions));

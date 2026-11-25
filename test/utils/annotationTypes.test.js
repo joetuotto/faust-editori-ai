@@ -77,7 +77,7 @@ describe('the consistency checker puts its marks into the chapters (T-004)', () 
     message: 'Timeline contradiction',
     description: 'Saapuminen (1.3.2024) tapahtuu ennen Lähtö (5.3.2024)',
     occurrences: [{ chapterId, chapterTitle: 'Lähtö', content: '5.3.2024', context: '' }],
-    suggestedFix: 'Tarkista aikajana - tapahtumat ovat väärässä järjestyksessä',
+    suggestedFix: 'Tarkista aikajana – tapahtumat ovat väärässä järjestyksessä.',
     autoFixable: false
   });
 
@@ -102,7 +102,7 @@ describe('the consistency checker puts its marks into the chapters (T-004)', () 
       source: 'ai',
       // The margin never shows the checker's English message
       content: 'Saapuminen (1.3.2024) tapahtuu ennen Lähtö (5.3.2024)',
-      aiSuggestion: 'Tarkista aikajana - tapahtumat ovat väärässä järjestyksessä'
+      aiSuggestion: 'Tarkista aikajana – tapahtumat ovat väärässä järjestyksessä.'
     });
 
     const before = checker.project;
@@ -155,6 +155,22 @@ describe('the consistency checker puts its marks into the chapters (T-004)', () 
     expect(result.success).toBe(true);
     expect(result.annotations).toHaveLength(1);
     expect(checker.project.structure.find(ch => ch.id === 'ch-a').annotations).toEqual(result.annotations);
+  });
+
+  test('the fix texts the local checks write: an en dash, the relative clause in commas, a full stop (final-pass review)', async () => {
+    // Shown on the margin card and the Projekti tab as "Korjausehdotus: …" (menu spec A, B.13)
+    const checker = new window.ConsistencyChecker({
+      characters: [{ id: 'c1', name: 'Aino' }],
+      structure: [
+        { id: 'ch-a', title: 'Eka', content: 'Aino oli Helsingissä 1.5.2020.', annotations: [] },
+        { id: 'ch-b', title: 'Toka', content: 'Aino oli Turussa 1.3.2019.', annotations: [] }
+      ]
+    }, null, null);
+    const [timeline] = await checker.checkTimeline();
+    expect(timeline.suggestedFix).toBe('Tarkista aikajana – tapahtumat ovat väärässä järjestyksessä.');
+    expect(window.ConsistencyChecker.markFix(timeline)).toBe('Tarkista aikajana – tapahtumat ovat väärässä järjestyksessä.');
+    const [location] = await checker.checkLocationConsistency();
+    expect(location.suggestedFix).toMatch(/^Lisää kohtaus, jossa Aino siirtyy paikasta \S+ paikkaan \S+, tai korjaa sijaintiviittaukset\.$/);
   });
 
   test('the English texts the checker writes itself become Finnish in the margin', () => {

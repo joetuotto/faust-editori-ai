@@ -3,7 +3,7 @@
  */
 // The own undo and redo of the app's text fields (final pass, T-049): Cmd+Z in a chapter title, the notes
 // or Etsi undoes the field step by step and never reaches the manuscript.
-const { createFieldHistory, fieldHistoryFor, isTextField, MERGE_MS } = require('../../src/editor/fieldHistory');
+const { createFieldHistory, createStepLog, fieldHistoryFor, isTextField, MERGE_MS } = require('../../src/editor/fieldHistory');
 
 let clock = 0;
 let history = null;
@@ -160,17 +160,32 @@ describe('field history', () => {
     expect(title.value).toBe('Aamu ');
   });
 
-  test('isTextField: text fields only; password, checkbox, read-only and disabled fields are not', () => {
+  // A number field counts since the final-pass review (it was false: Kumoa did nothing in Tarkistus's Raja: field)
+  test('isTextField: text and number fields; password, checkbox, read-only and disabled fields are not', () => {
     expect(isTextField(field('<textarea></textarea>'))).toBe(true);
     expect(isTextField(field('<input>'))).toBe(true);
     expect(isTextField(field('<input type="search">'))).toBe(true);
     expect(isTextField(field('<input type="password">'))).toBe(false);
     expect(isTextField(field('<input type="checkbox">'))).toBe(false);
-    expect(isTextField(field('<input type="number">'))).toBe(false);
+    expect(isTextField(field('<input type="number">'))).toBe(true);
     expect(isTextField(field('<input readonly>'))).toBe(false);
     expect(isTextField(field('<textarea disabled></textarea>'))).toBe(false);
     expect(isTextField(field('<div contenteditable="true"></div>'))).toBe(false);
     expect(isTextField(null)).toBe(false);
+  });
+
+  test('a number field (Tarkistus ▸ Pitkät virkkeet ▸ Raja:) undoes its typing and redoes it', () => {
+    const limit = field('<input type="number" min="10" max="80">');
+    limit.value = '30';
+    limit.dispatchEvent(new Event('input', { bubbles: true }));     // the app's value, no edit: no step
+    // The author selects 30 and types 12
+    clock += 50; edit(limit, 'insertText', '1', '1');
+    clock += 50; edit(limit, 'insertText', '12', '2');
+    expect(history.step(limit, 'undo')).toBe(true);
+    expect(limit.value).toBe('30');
+    expect(history.step(limit, 'undo')).toBe(false);
+    expect(history.step(limit, 'redo')).toBe(true);
+    expect(limit.value).toBe('12');
   });
 
   test('a password field and a field with its own history (the Pikamuokkaus prompt) are left alone', () => {
@@ -212,5 +227,34 @@ describe('field history', () => {
     expect(first.step(title, 'undo')).toBe(true);
     expect(title.value).toBe('');
     detach = () => {};
+  });
+});
+
+// The step rule without the DOM: the Pikamuokkaus prompt's field keeps one (final-pass review)
+describe('createStepLog', () => {
+  test('typing by words, a delete run, a paste; rebase keeps the steps; step answers null when none is left', () => {
+    let now = 0;
+    const log = createStepLog('', { now: () => now });
+    const typeInto = (text) => {
+      let value = log.last;
+      for (const ch of text) { now += 50; value += ch; log.record(value, 'insertText', ch); }
+      return value;
+    };
+    let shown = typeInto('Tee tästä');
+    shown = typeInto(' lyhyempi');
+    expect(log.canStep('undo')).toBe(true);
+    expect(shown = log.step('undo', shown)).toBe('Tee tästä ');
+    expect(shown = log.step('undo', shown)).toBe('Tee ');
+    expect(shown = log.step('undo', shown)).toBe('');
+    expect(log.step('undo', shown)).toBeNull();
+    expect(shown = log.step('redo', shown)).toBe('Tee ');
+    // The program puts the text back (a stop): the next edit is one step from it, the old steps stay
+    log.rebase('Tee tästä');
+    now += 50;
+    expect(log.record('Tee tästä!', 'insertFromPaste', '!')).toBe(true);
+    expect(log.step('undo', 'Tee tästä!')).toBe('Tee tästä');
+    expect(log.step('undo', 'Tee tästä')).toBe('');
+    // Nothing changed: no step
+    expect(log.record(log.last, 'insertText', 'x')).toBe(false);
   });
 });

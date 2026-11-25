@@ -1592,7 +1592,8 @@ describe('block', () => {
     const stay = M.reduce(rejected, { type: 'restore', docText: changedText });
     expect(stay.block.state).toBe('rejected');
     expect(stay.event).toMatchObject({ type: 'restored', ids: [], failed: 1 });
-    expect(stay.notice).toEqual({ kind: 'restore-failed', count: 1 });
+    // The notice says the draft is the one that failed (final-pass review; was { kind, count } only)
+    expect(stay.notice).toEqual({ kind: 'restore-failed', count: 1, block: true });
   });
 });
 

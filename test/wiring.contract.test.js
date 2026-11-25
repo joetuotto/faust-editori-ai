@@ -28,7 +28,7 @@ const MODULES = {
   'src/services/ai/batchParagraphs.js': ['batchParagraphs'],
   'scripts/score-step0.js': ['scoreParagraph', 'scoreModel', 'loadTrials', 'report', 'maskSheet', 'REWRITTEN_RATIO'],
   'scripts/step0/score.js': ['parseResponse', 'isFixed', 'scoreModel'],
-  'src/services/format.fi.js': ['formatCount', 'fiDate', 'fiDateTime', 'modelLabel', 'plural', 'pendingSuggestions', 'AI_OFF_SENTENCE'],
+  'src/services/format.fi.js': ['formatCount', 'fiDate', 'fiDateTime', 'modelLabel', 'plural', 'pendingSuggestions', 'pendingWords', 'AI_OFF_SENTENCE'],
   'utils/aiRequest.js': ['AI_CONSTANTS', 'AI_OFF_MESSAGE', 'CANCELLED_MESSAGE', 'codedError', 'validateRequest', 'resolveModel', 'modelSettingsFor', 'buildParams', 'normalizeStopReason', 'normalizeUsage', 'createThinkFilter', 'classifyAIError', 'createRequestTable'],
   'utils/appSettings.js': ['KEY_NAMES', 'ROLE_NAMES', 'publicKeyStatus', 'applyKeyWrite', 'applyProviderPatch', 'readRoles', 'readModelSettings', 'mergePrefs'],
   'src/services/ai/aiClient.js': ['CLIENT_CONSTANTS', 'ROLES', 'ROLE_LABELS', 'judgeEdit', 'reasonText', 'stopNote', 'createAIClient', 'getAIClient'],
@@ -42,7 +42,7 @@ const MODULES = {
   'src/editor/pendingInsertView.js': ['createBlockView'],
   'src/services/suggestions/suggestionController.js': ['createSuggestionController'],
   // Final pass, package A (T-049): the own undo of the app's text fields
-  'src/editor/fieldHistory.js': ['createFieldHistory', 'fieldHistoryFor', 'isTextField', 'MAX_STEPS', 'MERGE_MS'],
+  'src/editor/fieldHistory.js': ['createFieldHistory', 'createStepLog', 'changedEnd', 'fieldHistoryFor', 'isTextField', 'MAX_STEPS', 'MERGE_MS'],
   'src/services/ai/actions.js': ['BUILTIN_ACTIONS', 'DEFAULT_ACTION_IDS', 'actionsFor', 'findAction', 'menuEntries', 'normalizeSavedPrompts', 'addSavedPrompt', 'removeSavedPrompt', 'labelFromPrompt'],
   'src/services/ai/editRequest.js': ['LIMITS', 'WRITE_LENGTHS', 'QUICK_EDIT_THINKING', 'ACTION_SENDS_AT_ONCE', 'editTask', 'refineMessages', 'writeTask', 'answerTokensFor', 'previewUnmask', 'promptMessage'],
   'src/editor/promptTarget.js': ['resolveEditTarget'],

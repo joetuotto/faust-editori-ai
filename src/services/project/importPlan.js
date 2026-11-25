@@ -15,7 +15,7 @@
 
 const { countWords } = require('../../editor/textTools.js');
 const { buildSnapshot } = require('./snapshots.js');
-const { formatCount } = require('../format.fi.js');
+const { formatCount, pendingWords } = require('../format.fi.js');
 
 const UNTITLED = 'Nimetön luku';
 const UNTITLED_PROJECT = 'Nimetön projekti';
@@ -266,20 +266,19 @@ function noticeLines(source, rows) {
 
 /**
  * Why the chapters of the project cannot be replaced right now, or null.
- * A replace would take the text away from under a pending suggestion or a
- * running request.
+ * A replace would take the text away from under a pending suggestion, a
+ * pending draft or a running request. The suggestions and the drafts
+ * (Tekoälyn luonnos) are counted apart and named in the one wording of the bar
+ * and the questions (format.fi.js pendingWords; suggestion controller
+ * pendingCounts(): { suggestions, blocks }).
  */
-function replaceBlockedReason({ pendingSuggestions = 0, activeRequests = 0 } = {}) {
-  const pending = Number(pendingSuggestions) || 0;
+function replaceBlockedReason({ suggestions = 0, blocks = 0, activeRequests = 0 } = {}) {
+  const counts = { suggestions: Math.max(0, Number(suggestions) || 0), blocks: Math.max(0, Number(blocks) || 0) };
+  const pending = counts.suggestions + counts.blocks;
   const active = Number(activeRequests) || 0;
 
-  // The wording of contracts 8.1 (format.fi.js pendingSuggestions), carried
-  // here as a literal because the sentence around it changes with the number
-  if (pending === 1) {
-    return 'Projektissa on 1 käsittelemätön ehdotus. Käsittele se ensin tai lisää luvut projektin loppuun.';
-  }
-  if (pending > 1) {
-    return `Projektissa on ${formatCount(pending)} käsittelemätöntä ehdotusta. Käsittele ne ensin tai lisää luvut projektin loppuun.`;
+  if (pending > 0) {
+    return `Projektissa on ${pendingWords(counts)}. Käsittele ${pending === 1 ? 'se' : 'ne'} ensin tai lisää luvut projektin loppuun.`;
   }
   if (active > 0) {
     return 'Tekoälypyyntö on käynnissä. Pysäytä se tai odota sen valmistumista ennen lukujen korvaamista.';

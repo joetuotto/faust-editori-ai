@@ -19,7 +19,12 @@
  *   starts the field's history afresh: an undo never brings back the text the
  *   field showed for something else.
  * - A field that keeps its own history (`field.faustHistory`, the Pikamuokkaus
- *   prompt) and password fields are left alone.
+ *   prompt) is left alone here; it steps by the same rule through
+ *   createStepLog (inlinePromptView.js), so every field undoes by words.
+ * - Password fields (the API key) deliberately have no undo: a key's text is
+ *   kept out of every undo stack, so Kumoa does nothing there.
+ * - A number field (Tarkistus ▸ Pitkät virkkeet ▸ Raja) is a text field here:
+ *   its typing is undone as in any other field.
  *
  * Plain DOM; the document is passed in, so it is unit-tested with jsdom
  * (test/editor/fieldHistory.test.js).
@@ -28,8 +33,8 @@
 const MAX_STEPS = 200;
 // Typing or deleting within this many milliseconds of the last key is one step
 const MERGE_MS = 1000;
-// The input types that hold text; '' is an input without a type attribute
-const TEXT_TYPES = new Set(['', 'text', 'search', 'url', 'email', 'tel']);
+// The input types that hold text; '' is an input without a type attribute. Not 'password' (see above).
+const TEXT_TYPES = new Set(['', 'text', 'search', 'url', 'email', 'tel', 'number']);
 
 /** A text field whose history this module keeps: a textarea, or an input that holds text. */
 function isTextField(el) {
@@ -68,23 +73,88 @@ function changedEnd(before, after) {
 }
 
 /**
+ * The steps of one field's text, by the rule above: a run of typing (a word with the space after it, or what
+ * came before a pause of mergeMs), a run of deleting, or one paste, cut, drop or line break. Plain values, no
+ * DOM: createFieldHistory keeps one per field, and the Pikamuokkaus prompt keeps one for its field
+ * (inlinePromptView.js), so both undo by the same steps.
+ *
+ * @param {string} value the field's value to start from
+ * @param {{ now?: () => number, maxSteps?: number, mergeMs?: number }} [options]
+ * @returns {{ readonly last: string, record(value: string, inputType?: string, data?: string): boolean,
+ *             rebase(value: string): void, canStep(direction: 'undo'|'redo'): boolean,
+ *             step(direction: 'undo'|'redo', current: string): string|null }}
+ */
+function createStepLog(value, options = {}) {
+  const now = typeof options.now === 'function' ? options.now : () => Date.now();
+  const maxSteps = Number.isFinite(options.maxSteps) && options.maxSteps > 0 ? options.maxSteps : MAX_STEPS;
+  const mergeMs = Number.isFinite(options.mergeMs) && options.mergeMs >= 0 ? options.mergeMs : MERGE_MS;
+  const log = { undo: [], redo: [], last: String(value == null ? '' : value), kind: null, at: 0, word: false, endsWord: false };
+
+  return {
+    get last() { return log.last; },
+
+    /** An edit of the author's left `next` in the field. False when nothing changed. */
+    record(next, inputType, data) {
+      const text = String(next == null ? '' : next);
+      if (text === log.last) return false;
+      const kind = kindOf(inputType);
+      const at = now();
+      const joins = kind !== 'other' && kind === log.kind && at - log.at <= mergeMs && !log.endsWord && log.undo.length > 0;
+      if (!joins) {
+        log.undo.push(log.last);
+        if (log.undo.length > maxSteps) log.undo.shift();
+        log.word = false;
+      }
+      // A space ends the step once the step has a word: " ja avain" is undone as "avain", then " ja"
+      const typed = String(data || '');
+      log.word = log.word || /\S/.test(typed);
+      log.redo = [];
+      log.last = text;
+      log.kind = kind;
+      log.at = at;
+      log.endsWord = kind === 'type' && log.word && /\s$/.test(typed);
+      return true;
+    },
+
+    /** The program set the value (not an edit): the steps stay, the next edit starts a step from it. */
+    rebase(next) {
+      log.last = String(next == null ? '' : next);
+      log.kind = null;
+    },
+
+    canStep(direction) {
+      return (direction === 'redo' ? log.redo : log.undo).length > 0;
+    },
+
+    /** One step back or forward from `current` (the value shown): the value to show, or null when there is none. */
+    step(direction, current) {
+      const from = direction === 'redo' ? log.redo : log.undo;
+      const to = direction === 'redo' ? log.undo : log.redo;
+      if (!from.length) return null;
+      const value = from.pop();
+      to.push(String(current == null ? '' : current));
+      log.last = value;
+      log.kind = null;
+      return value;
+    }
+  };
+}
+
+/**
  * @param {{ now?: () => number, maxSteps?: number, mergeMs?: number }} options
  * @returns {{ attach(doc: Document): () => void, step(field: Element, direction: 'undo'|'redo'): boolean,
  *             canStep(field: Element, direction: 'undo'|'redo'): boolean, isTextField: typeof isTextField }}
  */
 function createFieldHistory(options = {}) {
-  const now = typeof options.now === 'function' ? options.now : () => Date.now();
-  const maxSteps = Number.isFinite(options.maxSteps) && options.maxSteps > 0 ? options.maxSteps : MAX_STEPS;
-  const mergeMs = Number.isFinite(options.mergeMs) && options.mergeMs >= 0 ? options.mergeMs : MERGE_MS;
-  const entries = new WeakMap();    // field → { undo, redo, last, kind, at, word, endsWord, armed }
+  const entries = new WeakMap();    // field → { log (createStepLog), armed }
 
-  const fresh = (value) => ({ undo: [], redo: [], last: value, kind: null, at: 0, word: false, endsWord: false, armed: false });
+  const fresh = (value) => ({ log: createStepLog(value, options), armed: false });
 
   // The field's history, started afresh when its value changed without an edit seen here
   function entryOf(field) {
     const value = String(field.value);
     let entry = entries.get(field);
-    if (!entry || entry.last !== value) {
+    if (!entry || entry.log.last !== value) {
       entry = fresh(value);
       entries.set(field, entry);
     }
@@ -104,36 +174,19 @@ function createFieldHistory(options = {}) {
     const value = String(field.value);
     const entry = entries.get(field);
     // A step of this module's own, or nothing changed
-    if (entry && entry.last === value) return;
+    if (entry && entry.log.last === value) return;
     // An input event with no edit before it (a script set the value): nothing to go back to
     if (!entry || !entry.armed) {
       entries.set(field, fresh(value));
       return;
     }
-
-    const kind = kindOf(event.inputType);
-    const at = now();
-    const joins = kind !== 'other' && kind === entry.kind && at - entry.at <= mergeMs && !entry.endsWord && entry.undo.length > 0;
-    if (!joins) {
-      entry.undo.push(entry.last);
-      if (entry.undo.length > maxSteps) entry.undo.shift();
-      entry.word = false;
-    }
-    // A space ends the step once the step has a word: " ja avain" is undone as "avain", then " ja"
-    const data = String(event.data || '');
-    entry.word = entry.word || /\S/.test(data);
-    entry.redo = [];
-    entry.last = value;
-    entry.kind = kind;
-    entry.at = at;
-    entry.endsWord = kind === 'type' && entry.word && /\s$/.test(data);
+    entry.log.record(value, event.inputType, event.data);
     entry.armed = false;
   }
 
   function canStep(field, direction) {
     if (!tracked(field)) return false;
-    const entry = entryOf(field);
-    return (direction === 'redo' ? entry.redo : entry.undo).length > 0;
+    return entryOf(field).log.canStep(direction);
   }
 
   /**
@@ -143,15 +196,9 @@ function createFieldHistory(options = {}) {
   function step(field, direction) {
     if (!tracked(field)) return false;
     const entry = entryOf(field);
-    const from = direction === 'redo' ? entry.redo : entry.undo;
-    const to = direction === 'redo' ? entry.undo : entry.redo;
-    if (!from.length) return false;
-
     const before = String(field.value);
-    const value = from.pop();
-    to.push(before);
-    entry.last = value;
-    entry.kind = null;
+    const value = entry.log.step(direction, before);
+    if (value === null) return false;
     entry.armed = false;
 
     const setter = nativeSetter(field);
@@ -166,7 +213,7 @@ function createFieldHistory(options = {}) {
     try {
       field.setSelectionRange(caret, caret);
     } catch (error) {
-      // An email field has no selection API; the value is set all the same
+      // An email or number field has no selection API; the value is set all the same
     }
     return true;
   }
@@ -196,4 +243,4 @@ function fieldHistoryFor(doc, options) {
   return history;
 }
 
-module.exports = { createFieldHistory, fieldHistoryFor, isTextField, MAX_STEPS, MERGE_MS };
+module.exports = { createFieldHistory, createStepLog, changedEnd, fieldHistoryFor, isTextField, MAX_STEPS, MERGE_MS };

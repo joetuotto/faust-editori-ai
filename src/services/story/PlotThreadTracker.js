@@ -19,15 +19,22 @@ class PlotThreadTracker {
 
   /**
    * Auto-detect threads from all content (using AI)
+   * @param {object} electronAPI
+   * @param {{ languageRule?: string, readText?: (text: string) => string }} [options] from app.js, because this
+   *   file is a plain script that cannot import: languageRule is the prompt's last line, the answer language of
+   *   the project (oldPaths.answerLanguageRule); readText prepares a chapter's text for reading (the context
+   *   builder's stripTodos: the author's [TODO: …] notes are never sent as text to read)
    */
-  async detectThreads(electronAPI) {
+  async detectThreads(electronAPI, options = {}) {
     if (!electronAPI) {
       throw new Error('Electron API not available');
     }
+    const languageRule = options && typeof options.languageRule === 'string' ? options.languageRule.trim() : '';
+    const readText = options && typeof options.readText === 'function' ? options.readText : (text) => text || '';
 
     // Build content from all chapters
     const allContent = (this.project.structure || [])
-      .map((ch, idx) => `[Chapter ${idx + 1}: ${ch.title}]\n${ch.content}`)
+      .map((ch, idx) => `[Chapter ${idx + 1}: ${ch.title}]\n${readText(ch.content || '')}`)
       .join('\n\n---\n\n');
 
     if (!allContent.trim()) {
@@ -66,7 +73,7 @@ Return ONLY valid JSON in this format:
       "priority": "high"
     }
   ]
-}`;
+}${languageRule ? '\n' + languageRule : ''}`;
 
     try {
       // Call AI API based on provider

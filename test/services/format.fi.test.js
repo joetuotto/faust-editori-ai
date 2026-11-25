@@ -8,6 +8,7 @@ const {
   modelLabel,
   plural,
   pendingSuggestions,
+  pendingWords,
   AI_OFF_SENTENCE
 } = require('../../src/services/format.fi');
 
@@ -114,6 +115,16 @@ describe('fixed wordings', () => {
     // The count goes through formatCount
     expect(pendingSuggestions(1200)).toBe(`1${NBSP}200 käsittelemätöntä ehdotusta`);
     expect(pendingSuggestions(undefined)).toBe('0 käsittelemätöntä ehdotusta');
+  });
+
+  // Moved here from the suggestion controller in the final-pass review, so the import's Korvaa guard says the same
+  test('pendingWords names the suggestions by their count and a draft by its own name, apart (contracts 8.1)', () => {
+    expect(pendingWords({ suggestions: 9, blocks: 1 })).toBe('9 käsittelemätöntä ehdotusta ja tekoälyn luonnos');
+    expect(pendingWords({ suggestions: 1, blocks: 0 })).toBe('1 käsittelemätön ehdotus');
+    expect(pendingWords({ suggestions: 0, blocks: 1 })).toBe('käsittelemätön tekoälyn luonnos');
+    expect(pendingWords({ suggestions: 0, blocks: 2 })).toBe('2 käsittelemätöntä tekoälyn luonnosta');
+    expect(pendingWords({ suggestions: 4, blocks: 2 })).toBe('4 käsittelemätöntä ehdotusta ja 2 tekoälyn luonnosta');
+    expect(pendingWords({ suggestions: 1200 })).toBe(`1${NBSP}200 käsittelemätöntä ehdotusta`);
   });
 
   test('AI_OFF_SENTENCE is Tekoäly pois -asetus on päällä.', () => {

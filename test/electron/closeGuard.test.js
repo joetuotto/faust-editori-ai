@@ -15,6 +15,7 @@ const mockState = {
   answers: [],        // what showMessageBoxSync answers, in order
   asked: [],          // the messages it was asked
   details: [],        // and their details
+  buttons: [],        // and their buttons
   handlers: {},       // ipcMain.handle channels
   clipboard: '',      // what clipboard.readText returns
   clipboardReads: 0,
@@ -63,6 +64,7 @@ jest.mock('electron', () => {
       showMessageBoxSync: (_win, options) => {
         mockState.asked.push(options.message);
         mockState.details.push(options.detail);
+        mockState.buttons.push(options.buttons);
         return mockState.answers.length ? mockState.answers.shift() : options.cancelId;
       },
       showMessageBox: async () => ({ response: 2 })
@@ -113,6 +115,7 @@ beforeEach(() => {
   mockState.answers = [];
   mockState.asked = [];
   mockState.details = [];
+  mockState.buttons = [];
   setPending(0);
   setDirty(false);
   mockState.listeners['project:close-cancelled']();
@@ -173,6 +176,22 @@ describe('the close guard (R-24)', () => {
     ]);
     // A bare number is the older form: suggestions
     expect(ask(3)[0]).toBe(SUGGESTIONS_3);
+  });
+
+  // Final-pass review: with no suggestion the buttons do not speak of suggestions either
+  test('the buttons name the suggestions while there is one, and a draft alone by its own name', () => {
+    const buttonsFor = (counts) => {
+      mockState.buttons = [];
+      setPending(counts);
+      mockState.answers = [0];
+      expect(close().prevented).toBe(true);
+      return mockState.buttons[0];
+    };
+    expect(buttonsFor({ suggestions: 3, blocks: 0 })).toEqual(['Palaa ehdotuksiin', 'Sulje ja hylkää ehdotukset']);
+    expect(buttonsFor({ suggestions: 9, blocks: 1 })).toEqual(['Palaa ehdotuksiin', 'Sulje ja hylkää ehdotukset']);
+    expect(buttonsFor({ suggestions: 0, blocks: 1 })).toEqual(['Palaa luonnokseen', 'Sulje ja hylkää luonnos']);
+    expect(buttonsFor({ suggestions: 0, blocks: 2 })).toEqual(['Palaa luonnoksiin', 'Sulje ja hylkää luonnokset']);
+    expect(buttonsFor(1)).toEqual(['Palaa ehdotuksiin', 'Sulje ja hylkää ehdotukset']);
   });
 
   test('nothing pending of either kind asks nothing, and a draft alone is enough to ask', () => {

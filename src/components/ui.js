@@ -111,22 +111,35 @@ function Toast({ item }) {
 // A notification never covers an open popover (lead, final pass: "Notifications vs. Etsi"). The host's own place is
 // the stylesheet's: under the format bar, centred on the editor pane (faust-components.css section 8). While a
 // popover, the inline prompt or the dock's bar lies over that place, the host stands beside it in the pane, on the
-// side nearer the pane's axis, or under it, and the stylesheet's place comes back when nothing covers it.
+// side nearer the pane's axis, or under it, and the stylesheet's place comes back when nothing covers it. When no
+// place is free of all three, the popovers and the prompt still win: the host stands under them above the dock's bar
+// and scrolls, else it may cover the bar, and as a last resort it scrolls in the room left above the status bar. It
+// never goes back over a popover.
 const TOAST_AVOID = '.faust-popover, .cm-tooltip.cm-faust-prompt, .faust-dock > *';
+const TOAST_DOCK = '.faust-dock > *';
 const TOAST_GAP = 8;              // between the notifications and what they give way to (--sp-2)
 const TOAST_EDGE = 16;            // from the editor pane's edges and the status bar (--sp-4), as the stylesheet keeps it
 const TOAST_BESIDE_W = 280;       // beside a popover only with this much room; else under it
 const TOAST_NARROW_W = 200;       // the last choice: beside it in a narrower column
+const TOAST_MIN_H = 48;           // under the popovers when nothing is free: room for one line of a notification
+
+// The newest notification when the host was last held to a height and scrolled, and where it was scrolled to
+const lastScroll = new WeakMap();
 
 function placeToastHost(host) {
   const style = host.style;
-  ['left', 'top', 'width', 'transform'].forEach(name => style.removeProperty(name));
+  const scrolled = { newest: lastScroll.get(host), top: host.scrollTop };
+  lastScroll.delete(host);
+  ['left', 'top', 'width', 'transform', 'max-height', 'overflow-y'].forEach(name => style.removeProperty(name));
   if (!host.childElementCount) return;
   const own = host.getBoundingClientRect();
-  const blocks = Array.from(document.querySelectorAll(TOAST_AVOID))
+  const avoided = Array.from(document.querySelectorAll(TOAST_AVOID))
     .filter(el => !host.contains(el))
-    .map(el => el.getBoundingClientRect())
-    .filter(r => r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight);
+    .map(el => ({ rect: el.getBoundingClientRect(), dock: el.matches(TOAST_DOCK) }))
+    .filter(({ rect: r }) => r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight);
+  const blocks = avoided.map(b => b.rect);
+  // What a notification may never cover: the popovers and the prompt (the dock's bar gives way last)
+  const covers = avoided.filter(b => !b.dock).map(b => b.rect);
   const meets = (r, b) => r.left < b.right && r.right > b.left && r.top < b.bottom && r.bottom > b.top;
   const over = blocks.filter(b => meets(own, b));
   if (over.length === 0) return;
@@ -161,13 +174,42 @@ function placeToastHost(host) {
     return found.sort((a, b) => Math.abs(a.left + a.width / 2 - axis) - Math.abs(b.left + b.width / 2 - axis));
   };
   const under = at(own.left, Math.max(...over.map(b => b.bottom)) + TOAST_GAP, own.width);
-  const place = [...beside(TOAST_BESIDE_W), under, ...beside(TOAST_NARROW_W)]
-    .find(r => r.bottom <= floor && !blocks.some(b => meets(r, b)));
-  if (!place) return;             // nowhere free (a popover as high as the pane): the stylesheet's place
+  const candidates = [...beside(TOAST_BESIDE_W), under, ...beside(TOAST_NARROW_W)].filter(r => r.bottom <= floor);
+  let place = candidates.find(r => !blocks.some(b => meets(r, b)));
+  let room = 0;
+  // The room under the popovers down to `limit` when one line fits there and nothing of `avoid` lies in it, else 0
+  const underTo = (limit, avoid) => {
+    const box = { ...under, bottom: limit };
+    return limit - under.top >= TOAST_MIN_H && !avoid.some(b => meets(box, b)) ? limit - under.top : 0;
+  };
+  if (!place) {
+    // Nothing free: first under the popovers and above the dock's bar, the notifications scrolling there (the
+    // newest in view), so that the popovers and the bar's buttons both stay usable
+    const bars = blocks.filter(b => !covers.includes(b) && b.left < under.right && b.right > under.left && b.top > under.top);
+    room = underTo(Math.min(floor, ...bars.map(b => b.top - TOAST_GAP)), blocks);
+    if (room > 0) place = under;
+  }
+  // Then free of the popovers and the prompt, over the dock's bar (its keys still work; Etsi is where the author types)
+  if (!place) place = candidates.find(r => !covers.some(b => meets(r, b)));
+  if (!place) {
+    // The last resort: under the popovers in the room left above the status bar, over the bar
+    room = underTo(floor, covers);
+    if (room > 0) place = under;
+  }
+  if (!place) return;             // no room at all (a popover as high as the pane): the stylesheet's place
   style.transform = 'none';
   style.left = Math.round(place.left) + 'px';
   style.top = Math.round(place.top) + 'px';
   style.width = Math.round(place.width) + 'px';
+  if (room > 0) {
+    style.maxHeight = Math.floor(room) + 'px';
+    style.overflowY = 'auto';
+    // A new notification (the last one) comes into view; placed again for anything else, the host stays where the
+    // author scrolled it
+    const newest = host.lastElementChild;
+    host.scrollTop = newest === scrolled.newest ? scrolled.top : host.scrollHeight;
+    lastScroll.set(host, newest);
+  }
 }
 
 export function ToastHost() {
@@ -193,6 +235,10 @@ export function ToastHost() {
     const layer = document.querySelector('.faust-layer');
     const observer = layer && typeof MutationObserver !== 'undefined' ? new MutationObserver(again) : null;
     if (observer) observer.observe(layer, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+    // The page's bottom dock is outside the layer host: a suggestion bar that comes, goes or changes its words
+    // after the notifications were placed places them again (it may have come under them)
+    const dock = observer ? document.querySelector('.faust-dock') : null;
+    if (dock) observer.observe(dock, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['style', 'class'] });
     window.addEventListener('resize', again);
     return () => {
       if (observer) observer.disconnect();

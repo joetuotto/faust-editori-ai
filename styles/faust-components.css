@@ -532,7 +532,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* Centred on the editor pane, not on the window: the notification shares the axis of the
    chapter title and the text. --left-col-w and --right-col-w are set on .faust-app. A notification never
    covers an open popover: while one lies over this place, ToastHost (ui.js) writes the host's left, top and
-   width inline, beside the popover in the pane or under it, and removes them when nothing covers the place. */
+   width inline, beside the popover in the pane or under it, and removes them when nothing covers the place.
+   With no free place it holds the host to the room under the popover (max-height, the host scrolls). */
 .faust-toast-host {
   position: fixed; z-index: var(--z-toast);
   left: calc(var(--left-col-w) + (100vw - var(--left-col-w) - var(--right-col-w)) / 2); transform: translateX(-50%);
@@ -543,7 +544,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 }
 .faust-focus-mode .faust-toast-host { top: calc(28px + var(--sp-2)); }
 .faust-toast {
-  pointer-events: auto; position: relative; overflow: hidden;
+  pointer-events: auto; position: relative; overflow: hidden; flex: none;     /* whole also in a host held to a height */
   display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: start; gap: var(--sp-1) var(--sp-3);
   padding: var(--sp-2) var(--sp-2) var(--sp-2) var(--sp-3);
   background: var(--surface-raised); color: var(--text);
@@ -834,12 +835,18 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* With nothing pending in this chapter the bar has no count: Kaikki ehdotukset käsitelty. · Palauta hylätyt (17) ·
    Muissa luvuissa odottaa … · close (about 670px). It never runs past the dock and its close button is never cut: below
    a 720px page the sentence goes, as the name does in the compact forms, and the last text button (Muissa luvuissa …,
-   the longest) ends in an ellipsis when it still does not fit; its whole text stays its name for a screen reader. */
+   the longest) ends in an ellipsis when it still does not fit; its whole text stays its name for a screen reader and
+   its title. */
 .faust-suggestbar:not(:has(.faust-suggestbar__count)) > :nth-last-child(1 of .faust-btn--quiet) {
   display: block; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
 }
 @container page (max-width: 720px) {
   .faust-suggestbar:not(:has(.faust-suggestbar__count)) .faust-suggestbar__name { display: none; }
+}
+/* The long line names a draft beside the suggestions (Muissa luvuissa odottaa 12 ehdotusta ja tekoälyn luonnos, about
+   140px more): the sentence gives way at a wider page, so the line stays whole wherever it can (final-pass review) */
+@container page (max-width: 900px) {
+  .faust-suggestbar[data-elsewhere="long"]:not(:has(.faust-suggestbar__count)) .faust-suggestbar__name { display: none; }
 }
 /* voice bar: the anatomy of the suggestion bar: state word, the heard text, cancel */
 .faust-voicebar__state { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--text); }
@@ -1079,6 +1086,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-editor-host .cm-editor .cm-faust-match { background-color: var(--hl-search-bg); color: var(--ink); box-shadow: inset 0 calc(-1 * var(--mark-line)) 0 var(--hl-search-line); border-radius: var(--radius-xs); }
 .faust-editor-host .cm-editor .cm-faust-match-current { background-color: var(--hl-search-current-bg); color: var(--hl-search-current-text); border-radius: var(--radius-xs); }
 .faust-editor-host .cm-editor .cm-faust-todo { padding: 0.1em 0.35em; border-radius: var(--radius-xs); background-color: var(--hl-todo-bg); color: var(--hl-todo-text); font: var(--w-mono-strong) 0.78em/1 var(--font-mono); text-decoration: none; }
+/* The chip stays upright as .faust-mark--todo does, also when *emphasis* or a quote line nests its italic span inside
+   it: the mono face is loaded upright only, and a synthesized slant is no TODO chip */
+.faust-editor-host .cm-editor .cm-faust-todo * { font-style: normal; }
 .faust-editor-host .cm-editor .cm-faust-scenebreak { text-align: center; letter-spacing: 0.5em; color: var(--text-3); }
 /* Nesting. Syntax highlighting has the higher precedence, so its spans (Markdown markers in
    --text-3, links, emphasis) are created INSIDE the mark spans; a mark and a mark can nest

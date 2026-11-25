@@ -337,9 +337,10 @@ describe('session store', () => {
     // Final pass (T-009): the draft is named on its own, not counted as a suggestion
     expect(env.reportPending).toHaveBeenLastCalledWith(reported(0, 1));
     await expect(controller.confirmDiscard()).resolves.toBe(true);
-    expect(env.askConfirm).toHaveBeenCalledWith('Hylätäänkö käsittelemättömät ehdotukset?',
+    // A draft alone: the title and the buttons name it too (final-pass review; was the suggestions' words)
+    expect(env.askConfirm).toHaveBeenCalledWith('Hylätäänkö tekoälyn luonnos?',
       'Käsikirjoituksessa on käsittelemätön tekoälyn luonnos. Se ei säily, kun projekti vaihtuu. Käsikirjoituksen tekstiä se ei ole muuttanut.',
-      'Hylkää ehdotukset', 'Palaa ehdotuksiin');
+      'Hylkää luonnos', 'Palaa luonnokseen');
   });
 
   test('the request row of a draft whose chapter was left reaches its stored attempt and its decision row', () => {
@@ -549,6 +550,33 @@ describe('counting and the bar', () => {
       draftIn(harness, 'luku-2', OTHER);
       draftIn(harness, 'luku-3', 'Kolmas luku on lyhyt.');
     })).toBe('Käsikirjoituksessa on 4 käsittelemätöntä ehdotusta ja 2 tekoälyn luonnosta. Ne eivät säily, kun projekti vaihtuu. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.');
+  });
+
+  // Final-pass review: the title and the buttons say what the message says, so a draft alone is no "ehdotukset"
+  test('the project-switch question\'s title and buttons name a draft alone by its own name', async () => {
+    const words = async (build) => {
+      const harness = setup();
+      build(harness);
+      await harness.controller.confirmDiscard();
+      const [title, , confirm, cancel] = harness.env.askConfirm.mock.calls[0];
+      return [title, confirm, cancel];
+    };
+    const draftIn = (harness, chapterId, text) => {
+      const editor = harness.open(chapterId, text);
+      editor.reduce({ type: 'blockStart', id: `b-${chapterId}`, pos: text.length, meta: META, docText: text });
+      editor.reduce({ type: 'blockAppend', id: `b-${chapterId}`, text: 'Aamu tuli.' });
+      return editor;
+    };
+
+    expect(await words((harness) => draftIn(harness, 'luku-1', SAMPLE)))
+      .toEqual(['Hylätäänkö tekoälyn luonnos?', 'Hylkää luonnos', 'Palaa luonnokseen']);
+    expect(await words((harness) => { draftIn(harness, 'luku-1', SAMPLE); draftIn(harness, 'luku-2', OTHER); }))
+      .toEqual(['Hylätäänkö tekoälyn luonnokset?', 'Hylkää luonnokset', 'Palaa luonnoksiin']);
+    // With a suggestion the words stay the suggestions' (the message names the draft beside them)
+    expect(await words((harness) => {
+      harness.open('luku-1').proposeChanges([at(SAMPLE, 'sanoi', 'kuiskasi')], { meta: META });
+      draftIn(harness, 'luku-2', OTHER);
+    })).toEqual(['Hylätäänkö käsittelemättömät ehdotukset?', 'Hylkää ehdotukset', 'Palaa ehdotuksiin']);
   });
 
   test('closeBar sets the closed flag of the open chapter, and a new proposal clears it', () => {

@@ -18,7 +18,14 @@ const { preparePasteEdits, PROTECTED_PATTERN } = require('../../editor/pasteEdit
 
 const TEXT = {
   snapshotReason: 'Ennen Hyväksy kaikki -toimintoa',
-  discardTitle: 'Hylätäänkö käsittelemättömät ehdotukset?',
+  // The title and the buttons name the suggestions while there is one; a draft alone is named itself, as the message
+  // names it (final-pass review: no question about suggestions when only Tekoälyn luonnos waits)
+  discardWords: (counts) => {
+    if (counts.suggestions > 0) return { title: 'Hylätäänkö käsittelemättömät ehdotukset?', confirm: 'Hylkää ehdotukset', cancel: 'Palaa ehdotuksiin' };
+    return counts.blocks === 1
+      ? { title: 'Hylätäänkö tekoälyn luonnos?', confirm: 'Hylkää luonnos', cancel: 'Palaa luonnokseen' }
+      : { title: 'Hylätäänkö tekoälyn luonnokset?', confirm: 'Hylkää luonnokset', cancel: 'Palaa luonnoksiin' };
+  },
   // The suggestions by their count and a pending draft by the name of its head (Tekoälyn luonnos), apart:
   // the bar counts suggestions only, so the questions name the draft on its own (lead decision, final pass)
   discard: (counts) => {
@@ -26,8 +33,6 @@ const TEXT = {
     return `Käsikirjoituksessa on ${pendingWords(counts)}. ${one ? 'Se ei säily' : 'Ne eivät säily'}, kun projekti vaihtuu. ` +
       `Käsikirjoituksen tekstiä ${one ? 'se ei ole muuttanut' : 'ne eivät ole muuttaneet'}.`;
   },
-  discardConfirm: 'Hylkää ehdotukset',
-  discardCancel: 'Palaa ehdotuksiin',
   pasteLabel: 'Liitä muokkauksina',
   // The stop note of the insert block (contracts 8.6), also when leaving the chapter stops it
   stoppedNote: 'Pysäytetty. Teksti on leikattu viimeiseen kokonaiseen virkkeeseen.'
@@ -35,16 +40,10 @@ const TEXT = {
 
 /**
  * What is pending, in the one wording (contracts 8.1): `9 käsittelemätöntä ehdotusta ja tekoälyn luonnos`,
- * `1 käsittelemätön ehdotus`, `käsittelemätön tekoälyn luonnos`. A chapter has at most one draft, so more than
- * one comes from several chapters. format.fi.js owns the suggestion count; it is taken when needed (contract 0.7).
- * electron.js carries the same words for the close question (the main process cannot load src/).
+ * `1 käsittelemätön ehdotus`, `käsittelemätön tekoälyn luonnos`. format.fi.js owns it (the import's Korvaa guard
+ * says the same); it is taken when needed (contract 0.7).
  */
-function pendingWords({ suggestions = 0, blocks = 0 } = {}) {
-  const { pendingSuggestions, formatCount } = require('../format.fi.js');
-  if (!suggestions) return blocks === 1 ? 'käsittelemätön tekoälyn luonnos' : `${formatCount(blocks)} käsittelemätöntä tekoälyn luonnosta`;
-  if (!blocks) return pendingSuggestions(suggestions);
-  return `${pendingSuggestions(suggestions)} ja ${blocks === 1 ? 'tekoälyn luonnos' : `${formatCount(blocks)} tekoälyn luonnosta`}`;
-}
+const pendingWords = (counts) => require('../format.fi.js').pendingWords(counts);
 
 const PASTE_SOURCES = ['editor', 'external-ai'];
 const PASTE_SOURCE_KEY = 'suggestions.pasteSource';
@@ -762,8 +761,9 @@ function createSuggestionController(deps = {}) {
       const counts = pendingCounts();
       if (!(counts.suggestions + counts.blocks) || typeof env.askConfirm !== 'function') return Promise.resolve(true);
       const message = TEXT.discard(counts);
+      const words = TEXT.discardWords(counts);
       // A throwing askConfirm rejects the promise instead of throwing at the caller
-      return new Promise(resolve => resolve(env.askConfirm(TEXT.discardTitle, message, TEXT.discardConfirm, TEXT.discardCancel)))
+      return new Promise(resolve => resolve(env.askConfirm(words.title, message, words.confirm, words.cancel)))
         .then(answer => !!answer);
     },
 

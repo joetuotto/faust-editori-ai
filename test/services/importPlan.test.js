@@ -443,20 +443,45 @@ describe('counts and sentences', () => {
     expect(noticeLines({ kind: 'folder', chapters: [] }, [])).toEqual([]);
   });
 
+  // Final-pass review: the suggestions and a pending draft are counted apart (the controller's pendingCounts()),
+  // as the bar and both questions name them; the argument was { pendingSuggestions } (their sum) before
   test('replaceBlockedReason', () => {
     expect(replaceBlockedReason({})).toBeNull();
     expect(replaceBlockedReason()).toBeNull();
-    expect(replaceBlockedReason({ pendingSuggestions: 0, activeRequests: 0 })).toBeNull();
-    expect(replaceBlockedReason({ pendingSuggestions: 1 }))
+    expect(replaceBlockedReason({ suggestions: 0, blocks: 0, activeRequests: 0 })).toBeNull();
+    expect(replaceBlockedReason({ suggestions: 1 }))
       .toBe('Projektissa on 1 käsittelemätön ehdotus. Käsittele se ensin tai lisää luvut projektin loppuun.');
-    expect(replaceBlockedReason({ pendingSuggestions: 12 }))
+    expect(replaceBlockedReason({ suggestions: 12, blocks: 0 }))
       .toBe('Projektissa on 12 käsittelemätöntä ehdotusta. Käsittele ne ensin tai lisää luvut projektin loppuun.');
     expect(replaceBlockedReason({ activeRequests: 1 }))
       .toBe('Tekoälypyyntö on käynnissä. Pysäytä se tai odota sen valmistumista ennen lukujen korvaamista.');
     expect(replaceBlockedReason({ activeRequests: 3 }))
       .toBe('Tekoälypyyntö on käynnissä. Pysäytä se tai odota sen valmistumista ennen lukujen korvaamista.');
-    expect(replaceBlockedReason({ pendingSuggestions: 2, activeRequests: 1 })).toContain('2 käsittelemätöntä ehdotusta');
-    expect(replaceBlockedReason({ pendingSuggestions: 1500 })).toContain(`1${NBSP}500 käsittelemätöntä ehdotusta`);
+    expect(replaceBlockedReason({ suggestions: 2, activeRequests: 1 })).toContain('2 käsittelemätöntä ehdotusta');
+    expect(replaceBlockedReason({ suggestions: 1500 })).toContain(`1${NBSP}500 käsittelemätöntä ehdotusta`);
+  });
+
+  test('replaceBlockedReason names a pending draft apart, as the bar and the questions do', () => {
+    // A draft alone is no suggestion
+    expect(replaceBlockedReason({ suggestions: 0, blocks: 1 }))
+      .toBe('Projektissa on käsittelemätön tekoälyn luonnos. Käsittele se ensin tai lisää luvut projektin loppuun.');
+    // Suggestions and a draft: the sum is not called suggestions
+    expect(replaceBlockedReason({ suggestions: 8, blocks: 1 }))
+      .toBe('Projektissa on 8 käsittelemätöntä ehdotusta ja tekoälyn luonnos. Käsittele ne ensin tai lisää luvut projektin loppuun.');
+    expect(replaceBlockedReason({ suggestions: 1, blocks: 1 }))
+      .toBe('Projektissa on 1 käsittelemätön ehdotus ja tekoälyn luonnos. Käsittele ne ensin tai lisää luvut projektin loppuun.');
+    expect(replaceBlockedReason({ suggestions: 0, blocks: 2 }))
+      .toBe('Projektissa on 2 käsittelemätöntä tekoälyn luonnosta. Käsittele ne ensin tai lisää luvut projektin loppuun.');
+    // The guard stays on the sum: a draft blocks the replace even with a request running
+    expect(replaceBlockedReason({ blocks: 1, activeRequests: 1 })).toMatch(/^Projektissa on käsittelemätön tekoälyn luonnos\./);
+  });
+
+  test('app.js passes the controller\'s counts apart to the guard', () => {
+    const fs = require('fs');
+    const path = require('path');
+    const app = fs.readFileSync(path.join(__dirname, '..', '..', 'app.js'), 'utf8');
+    expect(app).toContain('replaceBlockedReason({ ...suggestionsRef.current.pendingCounts(), activeRequests: getAIClient().activeCount() })');
+    expect(app).not.toContain('pendingSuggestions: suggestionsRef.current.pendingTotal()');
   });
 
   // The hints under the two radios are built here, not in the dialog (R-29: no plural helper in a component)

@@ -14,7 +14,7 @@ import { getAIClient } from './src/services/ai/aiClient.js';
 import { useSetting } from './src/components/useSetting.js';
 import { AiModelBadge } from './src/components/AiModelSettings.js';
 import { BookBriefFields, ChapterNoAIField, useNoAIGuard } from './src/components/ContextFields.js';
-import { normalizeContextFields, MESSAGES, isChapterBlocked } from './src/services/ai/contextBuilder.js';
+import { normalizeContextFields, MESSAGES, isChapterBlocked, stripTodos } from './src/services/ai/contextBuilder.js';
 import { modelLabel } from './src/services/format.fi.js';
 // failureReason: the reason in '<Toiminto> epäonnistui: <syy>.'; asIsNotice: a stop, the switch and
 // the wire guard shown as they are (R-21); bookRunPlan: Magnum Opus without "Ei tekoälylle" chapters;
@@ -1104,6 +1104,10 @@ function FAUSTApp() {
   // ref that always holds the handler of the latest render. A handler captured
   // at mount would keep seeing the first render's empty project.
   menuHandlerRef.current = (action, arg) => {
+    // A question that only a button answers (the start-up recovery question) comes first. A dialog opened from the
+    // menu would hold it inert under itself while it is drawn on top, so a click on Palauta muutokset landed in the
+    // dialog below (measured: Vie…'s format changed); Avaa… or Uusi projekti would race its answer (T-101)
+    if (confirmRequest && confirmRequest.requireChoice) return;
     // While an instruction is typed in the Pikamuokkaus prompt, Cmd+B and the like must not change the manuscript
     if (quickEditRef.current && quickEditRef.current.blocksMenuAction(action)) return;
     // A command that shows a docked panel leaves focus mode first, then shows its panel (never hides it)
@@ -2303,6 +2307,21 @@ function FAUSTApp() {
     explainCacheRef.current.clear();
     // A running check, the selected finding and the failure details belong to the previous project
     reviewRef.current.reset();
+    // Uusi hahmo and Suunnittele hahmot hold the previous project's plan, answers and profile: they close, and a
+    // request still running for them is dropped (its run number goes stale). Hahmot goes back to its list.
+    resetCharacterBuilder();
+    setShowCharacterBuilder(false);
+    castPlanRunRef.current += 1;
+    setShowCastPlanDialog(false);
+    setSelectedCharacter(null);
+    setCharacterSheetMode('list');
+    // A question still open over the previous project (Hylätäänkö keskeneräinen hahmo?, when Avaa… ran from the menu)
+    // goes with it, answered as its cancel; the recovery question (requireChoice) holds the menu and stays
+    setConfirmRequest(prev => {
+      if (!prev || prev.requireChoice) return prev;
+      prev.resolve(false);
+      return null;
+    });
     setProject(data);
     setCurrentFilePath(filePath || null);
     setActiveChapterId(data.structure[0]?.id || 'chapter-1');
@@ -2857,10 +2876,11 @@ ${answerLanguageRule(project.language, [])}`;
       return null;
     }
 
+    // The author's [TODO: …] notes are not text to analyse (report section 5, as in every read-only context)
     const prompt = `You are an expert writing analyst. Analyze this text comprehensively.
 
 TEXT:
-${chapter.content}
+${stripTodos(chapter.content)}
 
 PROJECT CONTEXT:
 - Characters: ${project.characters.map(c => c.name).join(', ')}
@@ -2963,9 +2983,10 @@ ${answerLanguageRule(project.language, ['type', 'severity', 'readiness', 'speed'
 
     if (!window.electronAPI) return null;
 
+    // Without the author's [TODO: …] notes (report section 5)
     const prompt = `Summarize this chapter in 2-3 sentences:
 
-${chapter.content}
+${stripTodos(chapter.content)}
 
 Return ONLY the summary, no extra text. ${answerLanguageRule(project.language)}`;
 
@@ -3003,9 +3024,10 @@ Return ONLY the summary, no extra text. ${answerLanguageRule(project.language)}`
 
     if (!window.electronAPI) return null;
 
+    // The beginning of the text without the author's [TODO: …] notes (report section 5)
     const prompt = `Rate this text quality (1-10) and give 1-2 quick improvement suggestions:
 
-${chapter.content.substring(0, 2000)}...
+${stripTodos(chapter.content).substring(0, 2000)}...
 
 Return JSON: {"score": 7.5, "suggestions": ["suggestion1", "suggestion2"]}
 ${answerLanguageRule(project.language, [])}`;
@@ -3580,7 +3602,10 @@ ${answerLanguageRule(project.language, [])}`;
     setConsistencyChecked(false);
 
     try {
-      const result = await consistencyCheckerRef.current.runFullCheck();
+      // The character check's free text in the project's language, its type and severity as given (menu spec D.7)
+      const result = await consistencyCheckerRef.current.runFullCheck({
+        languageRule: answerLanguageRule(project.language, ['type', 'severity'])
+      });
 
       if (result.success) {
         setConsistencyErrors(result.errors);
@@ -3632,7 +3657,12 @@ ${answerLanguageRule(project.language, [])}`;
     setDetectingThreads(true);
 
     try {
-      const result = await plotThreadTrackerRef.current.detectThreads(window.electronAPI);
+      // Thread names and questions in the project's language, type and priority as given (menu spec D.7);
+      // the author's [TODO: …] notes are not sent as text to read (report section 5)
+      const result = await plotThreadTrackerRef.current.detectThreads(window.electronAPI, {
+        languageRule: answerLanguageRule(project.language, ['type', 'priority']),
+        readText: stripTodos
+      });
 
       if (result.success) {
         // Update project with detected threads
@@ -4427,7 +4457,7 @@ Return ONLY the rewritten text, no explanations or extra commentary.`;
       }
       window.removeEventListener('resize', updateEditorDimensions);
     };
-  }, [activeChapterId]); // Re-attach listeners when chapter changes
+  }, [activeChapterId, projectEpoch, corkboardEnabled]); // Re-attach listeners whenever a new editor mounts (chapter, project, back from the card view)
 
   // Annotation handlers
   const handleAnnotationClick = (annotation) => {
@@ -5100,7 +5130,7 @@ ${contextPrompt}`;
       e(ImportPreviewDialog, {
         source: importSource,
         project,
-        getReplaceBlockedReason: () => replaceBlockedReason({ pendingSuggestions: suggestionsRef.current.pendingTotal(), activeRequests: getAIClient().activeCount() }),
+        getReplaceBlockedReason: () => replaceBlockedReason({ ...suggestionsRef.current.pendingCounts(), activeRequests: getAIClient().activeCount() }),
         onPickFolder: (request) => beginImport('folder', request, { inPreview: true }),
         onDone: finishImport,
         pickError: importPickError
@@ -6118,7 +6148,12 @@ ${contextPrompt}`;
               onUpdateAnnotation: handleUpdateAnnotation,
               onDeleteAnnotation: handleDeleteAnnotation,
               askConfirm: askConfirm,
-              editorDimensions: editorDimensions
+              editorDimensions: editorDimensions,
+              // Each marker stands at its own line, measured by the editor (the share of the scroll height put a
+              // mark far from its line: the page's bottom padding and uneven lines); read at render, after each
+              // scroll, resize and change of the text
+              lineTopOf: (pos) => (editorRef.current && typeof editorRef.current.lineTopOf === 'function'
+                ? editorRef.current.lineTopOf(pos) : null)
             }),
 
             // Bookmarks (MV-65): a popover anchored to the format bar's bookmarks button (R-60), or to

@@ -20,6 +20,8 @@
  */
 
 const { attemptLabel, changeCountLabel } = require('./inlinePromptState.js');
+// The step rule of every text field of the app (a word, a delete run, a paste), so Kumoa undoes the same here
+const { createStepLog, changedEnd } = require('./fieldHistory.js');
 
 // Bubble-phase listeners on the root; each stops the event after the view has used it
 const ISOLATED_EVENTS = [
@@ -86,8 +88,8 @@ function createPromptView(doc, options = {}) {
   let previewNode = null;
   let statusNode = null;
   let saveButton = null;
-  // The field's own undo and redo: the values before each edit the author made in it
-  const history = { undo: [], redo: [], last: '' };
+  // The field's own undo and redo, by the steps of the app's other text fields (fieldHistory.js)
+  const history = createStepLog('', { maxSteps: MAX_HISTORY });
 
   const fieldShown = (phase) => phase !== 'sending' && phase !== 'blocked';
   const hasText = () => field.value.trim() !== '';
@@ -102,14 +104,12 @@ function createPromptView(doc, options = {}) {
    * @param {'undo'|'redo'} direction
    */
   function stepHistory(direction) {
-    const from = direction === 'redo' ? history.redo : history.undo;
-    const to = direction === 'redo' ? history.undo : history.redo;
-    if (from.length === 0) return false;
-    to.push(field.value);
-    field.value = from.pop();
-    history.last = field.value;
-    const end = field.value.length;
-    field.setSelectionRange(end, end);
+    const before = field.value;
+    const value = history.step(direction, before);
+    if (value === null) return false;
+    field.value = value;
+    const caret = changedEnd(before, value);
+    field.setSelectionRange(caret, caret);
     if (invalid) setInvalid(false);
     if (saveButton) saveButton.disabled = !hasText();
     resizeField();
@@ -382,7 +382,7 @@ function createPromptView(doc, options = {}) {
       // The typed text stays in the hidden field while a request runs
       if (next.phase !== 'sending') {
         field.value = next.draft || '';
-        history.last = field.value;
+        history.rebase(field.value);
         resizeField();
       }
       setInvalid(false);
@@ -482,13 +482,8 @@ function createPromptView(doc, options = {}) {
 
   function onInput(event) {
     if (event.target === field) {
-      // An edit of the author's: the value before it is one step back
-      if (field.value !== history.last) {
-        history.undo.push(history.last);
-        if (history.undo.length > MAX_HISTORY) history.undo.shift();
-        history.redo = [];
-        history.last = field.value;
-      }
+      // An edit of the author's: a word, a delete run, a paste or a line break is one step back
+      history.record(field.value, event.inputType, event.data);
       if (invalid) setInvalid(false);
       if (saveButton) saveButton.disabled = !hasText();
       resizeField();

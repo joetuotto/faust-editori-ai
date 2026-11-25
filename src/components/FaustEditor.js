@@ -17,7 +17,8 @@
  * app uses: value, selectionStart, selectionEnd, setSelectionRange(), focus(),
  * select(), plus scrollTop / clientHeight / scrollHeight / scroll events, which
  * the element has natively. Extra members: replaceRange(), scrollToPos(),
- * centerCursor(), setHighlights(), clearHighlights(), faustView.
+ * centerCursor(), lineTopOf() (where a position's line stands, for the annotation
+ * margin), setHighlights(), clearHighlights(), faustView.
  *
  * The suggestion layer (src/editor/suggestions.js, stage I-03) adds, except in a read-only editor:
  * captureSelection(), captureRange(), getRange(), setRangeHighlight(), releaseRange(),
@@ -341,6 +342,20 @@ function installTextareaFacade(view, withSuggestions) {
   };
 
   el.centerCursor = () => el.scrollToPos(view.state.selection.main.head);
+
+  // Where the text of a document position stands, in px from the top of the visible area (this element):
+  // { top, bottom } of its character on its own visual line, so a marker beside the text (AnnotationMargin)
+  // stands at the line, also inside a long wrapped paragraph. Outside the drawn part of the text, the line's
+  // place from the editor's height map. null once the editor is gone.
+  el.lineTopOf = (pos) => {
+    if (!el.isConnected) return null;
+    const at = clamp(pos, docLength());
+    const origin = el.getBoundingClientRect().top;
+    const rect = view.coordsAtPos(at, 1) || view.coordsAtPos(at, -1);
+    if (rect) return { top: rect.top - origin, bottom: rect.bottom - origin };
+    const block = view.lineBlockAt(at);
+    return { top: view.documentTop + block.top - origin, bottom: view.documentTop + block.bottom - origin };
+  };
 
   // Mark search matches ([{ start, end }]); `current` is the index of the active one
   el.setHighlights = (ranges, current = -1) => {

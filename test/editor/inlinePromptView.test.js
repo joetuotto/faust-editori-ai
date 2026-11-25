@@ -797,6 +797,35 @@ describe('review fixes (I-05)', () => {
     expect(field.faustHistory).toBeUndefined();
   });
 
+  // Final-pass review: the prompt undid one character per Kumoa while every other field undid by words
+  test('the field undoes typing by words, as the app\'s other text fields do (fieldHistory.createStepLog)', () => {
+    const prompt = mount();
+    const field = prompt.view.field;
+    const typeChars = (text) => {
+      for (const ch of text) {
+        field.value += ch;
+        field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: ch }));
+      }
+    };
+    typeChars('Tee tästä');
+    typeChars(' lyhyempi');
+    expect(field.faustHistory('undo')).toBe(true);
+    expect(field.value).toBe('Tee tästä ');
+    expect(field.faustHistory('undo')).toBe(true);
+    expect(field.value).toBe('Tee ');
+    expect(field.faustHistory('redo')).toBe(true);
+    expect(field.value).toBe('Tee tästä ');
+    // A delete run is one step
+    for (let n = 0; n < 3; n += 1) {
+      field.value = field.value.slice(0, -1);
+      field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }));
+    }
+    expect(field.value).toBe('Tee täs');
+    expect(field.faustHistory('undo')).toBe(true);
+    expect(field.value).toBe('Tee tästä ');
+    expect(prompt.intents).toEqual([]);
+  });
+
   test('the model picker\'s label ends in a colon (M B.19)', () => {
     const prompt = mount({ attempts: [attempt(1)], models: [{ id: 'p:glm', name: 'glm' }], pickerOpen: true });
     expect(prompt.role('model-picker').closest('label').firstChild.textContent).toBe('Malli:');

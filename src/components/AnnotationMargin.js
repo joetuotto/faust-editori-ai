@@ -56,7 +56,12 @@
    * @param {Function} props.onDeleteAnnotation - Callback to delete annotation
    * @param {Function} props.askConfirm - The app's question dialog (askConfirm in app.js); without it
    *   the delete control is not offered
-   * @param {Object} props.editorDimensions - { scrollTop, clientHeight, scrollHeight }
+   * @param {Object} props.editorDimensions - { scrollTop, clientHeight, scrollHeight }; a new object on every
+   *   scroll and resize of the editor, so the markers follow the text
+   * @param {Function} [props.lineTopOf] - (position) => { top, bottom } | null: where the text of a position
+   *   stands in px from the top of the editor's visible area (FaustEditor's lineTopOf). With it a marker stands
+   *   at its line and a marker whose line is out of view is not drawn; without it (no editor mounted) the
+   *   position's share of the scroll height is the estimate, as before.
    */
   const AnnotationMargin = (props) => {
     const {
@@ -67,7 +72,8 @@
       onUpdateAnnotation,
       onDeleteAnnotation,
       askConfirm,
-      editorDimensions = { scrollTop: 0, clientHeight: 600, scrollHeight: 1000 }
+      editorDimensions = { scrollTop: 0, clientHeight: 600, scrollHeight: 1000 },
+      lineTopOf
     } = props;
 
     const [expandedAnnotationId, setExpandedAnnotationId] = React.useState(null);
@@ -79,7 +85,18 @@
       return null;
     }
 
-    // Calculate visible range based on editor scroll position
+    // The marker is 20px high (.faust-annot-marker): its middle goes on the middle of its line
+    const MARKER = 20;
+
+    // Where each marker stands, from the editor itself: the line of its position. null when the editor cannot say
+    const measured = (annotation) => {
+      if (typeof lineTopOf !== 'function') return null;
+      const box = lineTopOf(annotation.position);
+      if (!box || !Number.isFinite(box.top) || !Number.isFinite(box.bottom)) return null;
+      return (box.top + box.bottom) / 2 - MARKER / 2;
+    };
+
+    // Calculate visible range based on editor scroll position (the estimate without the editor)
     const calculateVisibleRange = () => {
       const { scrollTop, clientHeight, scrollHeight } = editorDimensions;
       const contentLength = content.length;
@@ -99,16 +116,8 @@
       return { start, end };
     };
 
-    // Get visible annotations
-    const visibleRange = calculateVisibleRange();
-    const visibleAnnotations = AnnotationUtils.getVisibleAnnotations(
-      annotations,
-      visibleRange.start,
-      visibleRange.end
-    );
-
-    // Calculate annotation position on screen
-    const calculateAnnotationTop = (annotation) => {
+    // The estimate without the editor: the position's share of the scroll height, held inside the strip
+    const estimatedTop = (annotation) => {
       const { scrollTop, clientHeight, scrollHeight } = editorDimensions;
       const contentLength = content.length;
 
@@ -126,6 +135,28 @@
       // Clamp to visible area
       return Math.max(0, Math.min(clientHeight - 40, relativePos));
     };
+
+    // The markers on screen and their places. Measured: a marker stands at its line, and one whose line is out of
+    // view is not drawn (it is never pinned to the strip's edge, where it would point at another line).
+    const tops = new Map();
+    let visibleAnnotations;
+    const firstTop = annotations.length > 0 ? measured(annotations[0]) : null;
+    if (firstTop !== null) {
+      const height = editorDimensions.clientHeight > 0 ? editorDimensions.clientHeight : Infinity;
+      visibleAnnotations = annotations.filter(annotation => {
+        const top = measured(annotation);
+        if (top === null || top + MARKER <= 0 || top >= height) return false;
+        tops.set(annotation, top);
+        return true;
+      });
+    } else {
+      const visibleRange = calculateVisibleRange();
+      visibleAnnotations = AnnotationUtils.getVisibleAnnotations(annotations, visibleRange.start, visibleRange.end);
+      visibleAnnotations.forEach(annotation => tops.set(annotation, estimatedTop(annotation)));
+    }
+
+    // Calculate annotation position on screen
+    const calculateAnnotationTop = (annotation) => (tops.has(annotation) ? tops.get(annotation) : estimatedTop(annotation));
 
     // Group overlapping annotations (within 30px)
     const groupAnnotations = (annotations) => {

@@ -1113,6 +1113,7 @@ function reduceRestore(state, action) {
   });
 
   let block = state.block;
+  let blockFailed = false;
   if (rejectedBlock) {
     const place = { from: rejectedBlock.pos, to: rejectedBlock.pos, original: '', context: rejectedBlock.context };
     if (stillMatches(docText, place) && !livePending.some(p => touches(place.from, place.to, p.from, p.to))) {
@@ -1121,11 +1122,14 @@ function reduceRestore(state, action) {
       ids.push(block.id);
     } else {
       failed++;
+      blockFailed = true;
     }
   }
 
+  // The count holds the draft that could not come back; block: true says it is among them, so the notice
+  // names it (Tekoälyn luonnosta ei voitu palauttaa …) instead of calling it a suggestion
   let notice = state.notice;
-  if (failed > 0) notice = { kind: 'restore-failed', count: failed };
+  if (failed > 0) notice = blockFailed ? { kind: 'restore-failed', count: failed, block: true } : { kind: 'restore-failed', count: failed };
   else if (notice && notice.kind === 'restore-failed') notice = null;
 
   let currentId = state.currentId;

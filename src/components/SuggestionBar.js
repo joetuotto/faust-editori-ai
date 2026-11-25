@@ -47,9 +47,13 @@ const NOTICE_TEXT = {
   'dropped-external': (n) => (n === 1
     ? 'Yksi ehdotus poistui, koska teksti sen kohdalla muuttui.'
     : `${formatCount(n)} ehdotusta poistui, koska teksti niiden kohdalla muuttui.`),
-  'restore-failed': (n) => (n === 1
-    ? 'Yhtä hylättyä ehdotusta ei voitu palauttaa, koska teksti on muuttunut.'
-    : `${formatCount(n)} hylättyä ehdotusta ei voitu palauttaa, koska teksti on muuttunut.`),
+  // block: the rejected draft (Tekoälyn luonnos) is one of them and is named itself (final-pass review)
+  'restore-failed': (n, block) => {
+    const suggestions = block ? n - 1 : n;
+    const named = suggestions === 1 ? 'Yhtä hylättyä ehdotusta' : `${formatCount(suggestions)} hylättyä ehdotusta`;
+    const what = !block ? named : suggestions > 0 ? `${named} ja tekoälyn luonnosta` : 'Tekoälyn luonnosta';
+    return `${what} ei voitu palauttaa, koska teksti on muuttunut.`;
+  },
   skipped: (n) => (n === 1
     ? 'Yksi ehdotus jäi pois, koska samassa kohdassa on jo ehdotus.'
     : `${formatCount(n)} ehdotusta jäi pois, koska samassa kohdassa on jo ehdotus.`)
@@ -57,19 +61,20 @@ const NOTICE_TEXT = {
 
 const noticeText = (notice) => {
   const text = notice && NOTICE_TEXT[notice.kind];
-  return text ? text(Number(notice.count) || 1) : null;
+  return text ? text(Number(notice.count) || 1, notice.block === true) : null;
 };
 
 // The notice on screen. There is one bar in the app, and the dock may give its place to the voice bar
 // for a moment: the notification and its timer live here, outside the component, so that they go on
 // (and are not shown twice) when the bar comes back.
-const shown = { kind: null, count: 0, handle: null, timer: 0, controller: null };
+const shown = { kind: null, count: 0, block: false, handle: null, timer: 0, controller: null };
 
 function closeShown() {
   clearTimeout(shown.timer);
   if (shown.handle) shown.handle.close();
   shown.kind = null;
   shown.count = 0;
+  shown.block = false;
   shown.handle = null;
   shown.timer = 0;
   shown.controller = null;
@@ -88,6 +93,7 @@ function startTimer() {
 function useNotice(notice, controller) {
   const kind = notice ? notice.kind : null;
   const amount = notice ? Number(notice.count) || 1 : 0;
+  const block = !!(notice && notice.block === true);
   useEffect(() => {
     const text = noticeText(notice);
     if (!text) {
@@ -96,8 +102,9 @@ function useNotice(notice, controller) {
       return;
     }
     if (shown.handle && shown.kind === kind) {
-      if (shown.count !== amount) {
+      if (shown.count !== amount || shown.block !== block) {
         shown.count = amount;
+        shown.block = block;
         shown.handle.update({ text });
         startTimer();
       }
@@ -107,10 +114,11 @@ function useNotice(notice, controller) {
     if (shown.handle) closeShown();
     shown.kind = kind;
     shown.count = amount;
+    shown.block = block;
     shown.controller = controller;
     shown.handle = notify('warning', text, { duration: 0 });
     startTimer();
-  }, [kind, amount]);
+  }, [kind, amount, block]);
 }
 
 const VIEWS = [
@@ -174,7 +182,10 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor, ex
     const done = info.rejected > 0 && !info.closed;
     const elsewhere = info.elsewhere.length > 0;
     if (!done && !elsewhere) return null;
-    return e('div', { className: 'faust-suggestbar', role: 'toolbar', 'aria-label': 'Ehdotusten läpikäynti' },
+    // The other chapters' line names a draft beside the suggestions: the long form, which needs a wider page before
+    // the sentence Kaikki ehdotukset käsitelty. may stay (faust-components.css section 12)
+    const long = elsewhere && elsewhereSum(info, 'blocks') > 0 && elsewhereSum(info, 'count') > 0;
+    return e('div', { className: 'faust-suggestbar', role: 'toolbar', 'aria-label': 'Ehdotusten läpikäynti', 'data-elsewhere': long ? 'long' : undefined },
       e('span', { className: 'faust-suggestbar__label' },
         icons.star8({ size: 14 }),
         done && e('span', { className: 'faust-suggestbar__name' }, 'Kaikki ehdotukset käsitelty.')
@@ -189,6 +200,8 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor, ex
       elsewhere && e('button', {
         type: 'button',
         className: 'faust-btn faust-btn--quiet faust-btn--sm',
+        // The whole line, readable also when a narrow page cuts the label (T-057)
+        title: elsewhereLabel(info),
         onMouseDown: keep,
         onClick: openElsewhere
       }, elsewhereLabel(info)),

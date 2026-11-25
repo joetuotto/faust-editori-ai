@@ -64,4 +64,18 @@ function pendingSuggestions(n) {
   return `${formatCount(n)} käsittelemätöntä ehdotusta`;
 }
 
-module.exports = { formatCount, fiDate, fiDateTime, modelLabel, plural, pendingSuggestions, AI_OFF_SENTENCE };
+/**
+ * What is pending, suggestions by their count and a pending draft by the name of its head (Tekoälyn luonnos),
+ * apart (contracts 8.1; lead decision "Counts" of the final pass): `9 käsittelemätöntä ehdotusta ja tekoälyn
+ * luonnos`, `1 käsittelemätön ehdotus`, `käsittelemätön tekoälyn luonnos`. A chapter has at most one draft, so
+ * more than one comes from several chapters. The suggestion controller's questions and the import's Korvaa
+ * guard use it; electron.js carries the same words for the close question (the main process cannot load src/).
+ */
+function pendingWords({ suggestions = 0, blocks = 0 } = {}) {
+  const drafts = Number(blocks) || 0;
+  if (!suggestions) return drafts === 1 ? 'käsittelemätön tekoälyn luonnos' : `${formatCount(drafts)} käsittelemätöntä tekoälyn luonnosta`;
+  if (!drafts) return pendingSuggestions(suggestions);
+  return `${pendingSuggestions(suggestions)} ja ${drafts === 1 ? 'tekoälyn luonnos' : `${formatCount(drafts)} tekoälyn luonnosta`}`;
+}
+
+module.exports = { formatCount, fiDate, fiDateTime, modelLabel, plural, pendingSuggestions, pendingWords, AI_OFF_SENTENCE };
