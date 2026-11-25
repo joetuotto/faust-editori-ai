@@ -13,7 +13,9 @@
  * It never covers its target: when it opens, the text scrolls to make room
  * under the target's end; when there is still no room it goes above the
  * target's start; and it is never taller than the room on its side (it then
- * scrolls inside itself).
+ * scrolls inside itself). The one exception is a prompt whose "Mitä malli
+ * näkee" list is open (lead decision F3, promptLayoutFor): it may take the
+ * height its list needs, over the lines next to its anchor.
  *
  * What the author does is reported to the host as intents:
  *   host().handle(intent, view)
@@ -34,52 +36,111 @@ const DOCK_BAND = 56;
 // The custom property the stylesheet caps the prompt's height with (I-05 block of faust-components.css)
 const ROOM_PROPERTY = '--cm-faust-prompt-room';
 // The opened "Mitä malli näkee" list (ContextRow) is the one part of the prompt that gives way when
-// the prompt does not fit its room: it gets what the room leaves after the field, the rows and the
-// foot, and scrolls inside itself, so the field and Lähetä stay where they are. Below LIST_MIN the
-// prompt scrolls as a whole, as before.
+// the prompt does not fit the room on its side (promptLayoutFor below): first its rows go onto one
+// line each, then the prompt takes the height it needs over the lines next to its anchor, and only
+// a list that still does not fit scrolls inside itself, under a foot that stays where it is.
 const LIST_SELECTOR = '.faust-context-row__list';
 const LIST_ROOM_PROPERTY = '--cm-faust-prompt-list-room';
 const LIST_CAPPED_ATTRIBUTE = 'data-list-capped';
+// One-line rows (the stylesheet lays them out; the attribute stands on the prompt)
+const LIST_COMPACT_ATTRIBUTE = 'data-list-compact';
 const LIST_MIN = 96;
+// What the prompt's top is moved by between a change made here and CodeMirror's next placement
+// (the stylesheet's margin-top). CodeMirror moves a tooltip only when it measures, at the earliest
+// in the next frame; until then this margin holds the prompt where CodeMirror will put it.
+const BRIDGE_PROPERTY = '--cm-faust-prompt-bridge';
 
 /**
- * The room of the opened list inside a prompt whose own room is `room` px. Pure.
- * @param {{ room: number, promptContent: number, promptBorder: number, listShown: number, listNatural: number }} m
- *   promptContent: the prompt's whole content height (scrollHeight); listShown: the list's height now;
- *   listNatural: the height of the list's whole content
- * @returns {{ listRoom: number, capped: boolean }}
+ * The layout of a prompt whose "Mitä malli näkee" list is open (lead decision F3). Pure; px.
+ * In this order:
+ *   1. the two-line rows, when the whole prompt fits the room on its side: nothing else changes;
+ *   2. the rows on one line each, when that fits the room on its side;
+ *   3. the one-line rows in a prompt as high as it needs, at most `fullRoom` (the height between the
+ *      window's gutters): the prompt moves over the lines next to its anchor by `shift`;
+ *   4. only a list that does not fit even so is capped, and scrolls inside itself.
+ * The list never gets less than LIST_MIN; only a window that cannot hold the other rows and that
+ * much (lower than the application's smallest) leaves the prompt to scroll as a whole.
+ * @param {{ sideRoom: number, fullRoom: number, others: number, border?: number, twoLine: number, oneLine: number }} m
+ *   sideRoom: the room between the anchor and the gutter on the prompt's side; others: the height of
+ *   everything in the prompt but the list (padding included); border: the prompt's two edges;
+ *   twoLine / oneLine: the height of the whole list in each form
+ * @returns {{ compact: boolean, room: number, shift: number, listRoom: number, capped: boolean }}
+ *   room: the prompt's greatest height; shift: how far it reaches past its side's room, over the anchor
  */
-function listRoomFor({ room, promptContent, promptBorder = 0, listShown, listNatural }) {
-  const others = Math.max(0, promptContent - listShown);
-  const left = Math.floor(room - promptBorder - others);
-  const listRoom = Math.max(LIST_MIN, Number.isFinite(left) ? left : LIST_MIN);
-  return { listRoom, capped: listNatural > listRoom + 1 };
+function promptLayoutFor({ sideRoom, fullRoom, others, border = 0, twoLine, oneLine }) {
+  const side = Math.max(MIN_ROOM, Number.isFinite(sideRoom) ? Math.floor(sideRoom) : MIN_ROOM);
+  const full = Math.max(side, Number.isFinite(fullRoom) ? Math.floor(fullRoom) : side);
+  const rest = Math.max(0, Number.isFinite(others) ? others : 0) + border;
+  const fits = (list, room) => Number.isFinite(list) && rest + list <= room;
+  if (fits(twoLine, side)) return { compact: false, room: side, shift: 0, listRoom: side - rest, capped: false };
+  if (fits(oneLine, side)) return { compact: true, room: side, shift: 0, listRoom: side - rest, capped: false };
+  // One pixel more than the rows measure, so a height the browser rounded down never makes a scroller
+  const wanted = Number.isFinite(oneLine) ? Math.ceil(rest + oneLine) + 1 : full;
+  const room = Math.min(full, Math.max(side, wanted));
+  const listRoom = Math.max(LIST_MIN, room - rest);
+  return { compact: true, room, shift: room - side, listRoom, capped: !(oneLine <= listRoom + 1) };
 }
 
-// Reads the layout and writes the list's room on the prompt (nothing when no list is open)
-function fitList(dom) {
-  if (!dom || typeof dom.querySelector !== 'function') return;
-  const list = dom.querySelector(LIST_SELECTOR);
-  if (!list) {
-    if (dom.style.getPropertyValue(LIST_ROOM_PROPERTY)) dom.style.removeProperty(LIST_ROOM_PROPERTY);
-    if (dom.hasAttribute(LIST_CAPPED_ATTRIBUTE)) dom.removeAttribute(LIST_CAPPED_ATTRIBUTE);
-    return;
+// Sets or removes one attribute or style property, only when it changes
+function setFlag(dom, name, on) {
+  if (dom.hasAttribute(name) !== on) dom.toggleAttribute(name, on);
+}
+
+function setPx(dom, name, px) {
+  const value = px === null ? '' : `${px}px`;
+  if (dom.style.getPropertyValue(name) === value) return;
+  if (value) dom.style.setProperty(name, value);
+  else dom.style.removeProperty(name);
+}
+
+/**
+ * What the prompt's rows measure, or null when no list is open. Reads the layout. The list's two
+ * forms are both measured (the attribute is switched for the reading), except when the two-line
+ * list is whole now and fits `sideRoom`: then nothing is switched, and `oneLine` is not needed.
+ * Leaves the attributes as they were; the caller writes the layout it decides on.
+ */
+function measureList(dom, sideRoom) {
+  const list = dom && typeof dom.querySelector === 'function' ? dom.querySelector(LIST_SELECTOR) : null;
+  if (!list) return null;
+  const border = dom.offsetHeight - dom.clientHeight;
+  const compact = dom.hasAttribute(LIST_COMPACT_ATTRIBUTE);
+  const capped = dom.hasAttribute(LIST_CAPPED_ATTRIBUTE);
+  const others = () => Math.max(0, dom.scrollHeight - list.clientHeight);
+  if (!compact && !capped) {
+    const m = { others: others(), border, twoLine: list.scrollHeight, oneLine: NaN };
+    if (m.others + border + m.twoLine <= sideRoom) return m;
   }
-  const room = parseFloat(dom.style.getPropertyValue(ROOM_PROPERTY));
-  if (!Number.isFinite(room)) return;
-  const view = dom.ownerDocument.defaultView;
-  // A capped list carries a foot padding under its fade; its content is what is above that
-  const pad = dom.hasAttribute(LIST_CAPPED_ATTRIBUTE) && view ? parseFloat(view.getComputedStyle(list).paddingBottom) || 0 : 0;
-  const { listRoom, capped } = listRoomFor({
-    room,
-    promptContent: dom.scrollHeight,
-    promptBorder: dom.offsetHeight - dom.clientHeight,
-    listShown: list.clientHeight,
-    listNatural: list.scrollHeight - pad
-  });
-  const value = `${listRoom}px`;
-  if (dom.style.getPropertyValue(LIST_ROOM_PROPERTY) !== value) dom.style.setProperty(LIST_ROOM_PROPERTY, value);
-  if (dom.hasAttribute(LIST_CAPPED_ATTRIBUTE) !== capped) dom.toggleAttribute(LIST_CAPPED_ATTRIBUTE, capped);
+  // A capped list carries a foot padding under its fade: measured without it
+  setFlag(dom, LIST_CAPPED_ATTRIBUTE, false);
+  setFlag(dom, LIST_COMPACT_ATTRIBUTE, false);
+  const twoLine = list.scrollHeight;
+  setFlag(dom, LIST_COMPACT_ATTRIBUTE, true);
+  const m = { others: others(), border, twoLine, oneLine: list.scrollHeight };
+  setFlag(dom, LIST_COMPACT_ATTRIBUTE, compact);
+  setFlag(dom, LIST_CAPPED_ATTRIBUTE, capped);
+  return m;
+}
+
+/**
+ * Lays the prompt out in the room it has and writes that on it: its greatest height, and for an
+ * open list its form, its room and whether it is capped. Returns how far the prompt reaches over
+ * its anchor (0 without a list).
+ */
+function fitPrompt(dom, { sideRoom, fullRoom }) {
+  const m = measureList(dom, sideRoom);
+  if (!m) {
+    setPx(dom, ROOM_PROPERTY, Math.max(MIN_ROOM, Number.isFinite(sideRoom) ? sideRoom : MIN_ROOM));
+    setPx(dom, LIST_ROOM_PROPERTY, null);
+    setFlag(dom, LIST_CAPPED_ATTRIBUTE, false);
+    setFlag(dom, LIST_COMPACT_ATTRIBUTE, false);
+    return 0;
+  }
+  const layout = promptLayoutFor({ sideRoom, fullRoom, ...m });
+  setPx(dom, ROOM_PROPERTY, layout.room);
+  setPx(dom, LIST_ROOM_PROPERTY, layout.listRoom);
+  setFlag(dom, LIST_COMPACT_ATTRIBUTE, layout.compact);
+  setFlag(dom, LIST_CAPPED_ATTRIBUTE, layout.capped);
+  return layout.shift;
 }
 
 // What a capped list hides: the prompt's natural height is that much more than what is drawn
@@ -358,39 +419,95 @@ function createInlinePromptKit(cm, options = {}) {
         }
       });
 
-      // The "Mitä malli näkee" row grows when the author opens its list (Muuta): the text gives the
-      // prompt room again, as far as it can scroll, so the list is not squeezed to one row above the foot
-      const ownerWindow = doc.defaultView;
-      const slotWatch = ownerWindow && typeof ownerWindow.ResizeObserver === 'function'
-        ? new ownerWindow.ResizeObserver(() => {
-          if (!promptView.dom.isConnected) return;
+      // Where CodeMirror last placed the prompt: the tooltip space, the side, the prompt's top as
+      // CodeMirror wrote it, and the anchor's edge on the prompt's side
+      let placed = null;
+
+      /**
+       * Lays the prompt out in the room it has (fitPrompt) and puts it there. A prompt that needs
+       * more than its side's room reaches over its anchor: CodeMirror gets that as the tooltip's
+       * offset (so it keeps the prompt on its side and places it there from then on), and the
+       * bridge margin holds the prompt in that place until CodeMirror has placed it again.
+       */
+      const place = () => {
+        const dom = promptView.dom;
+        if (!placed || !dom.isConnected) return;
+        const { space, above, edge, top } = placed;
+        const sideRoom = Math.floor(above ? edge - space.top - ROOM_GAP : space.bottom - edge - ROOM_GAP);
+        // The ends the prompt keeps on either side: the gutter of the tooltip space and the gap
+        const fullRoom = Math.floor(space.bottom - space.top - 2 * ROOM_GAP);
+        const shift = fitPrompt(dom, { sideRoom, fullRoom });
+        // Added to the anchor's edge by CodeMirror on either side: a negative y is towards the anchor
+        tip.offset = { x: 0, y: shift > 0 ? -shift : 0 };
+        const wanted = above ? edge + shift - dom.getBoundingClientRect().height : edge - shift;
+        const bridge = Math.round(wanted - top);
+        setPx(dom, BRIDGE_PROPERTY, Number.isFinite(bridge) && bridge !== 0 ? bridge : null);
+      };
+
+      // The "Mitä malli näkee" row changes height when the author opens or closes its list (Muuta,
+      // Valmis). An opened list: first the text gives the prompt room for the whole two-line list, as
+      // far as it can scroll (a prompt below its target; the same rule as when it opened), then the
+      // prompt is laid out in the room it has, at once: the scroll and the layout show in one frame.
+      const slotResized = () => {
+        const dom = promptView.dom;
+        if (!dom.isConnected) return;
+        const rows = measureList(dom, Infinity);
+        if (!rows) {
           roomAgain();
-          // At once, in the room the prompt has now; positioned() fits it again after a scroll
-          fitList(promptView.dom);
-        })
+          place();
+          return;
+        }
+        if (!dom.classList.contains('cm-tooltip-above')) {
+          let delta = 0;
+          try {
+            const value = view.state.field(promptField, false);
+            const range = value ? rangeOf(view.state, value.rangeId) : null;
+            // Reading the layout may let CodeMirror finish a pending measure, which places the prompt
+            if (range) delta = roomDelta(view, range, rows.others + rows.border + rows.twoLine);
+          } catch (error) {
+            // The layout cannot be read now: the prompt is laid out in the room it has
+          }
+          if (delta > 0 && placed && !placed.above) {
+            const scroller = view.scrollDOM;
+            const before = scroller.scrollTop;
+            scroller.scrollTop = before + delta;
+            // The anchor went up with the text; CodeMirror places the prompt by it in the next frame
+            placed.edge -= scroller.scrollTop - before;
+          }
+        }
+        place();
+      };
+      const ownerWindow = doc.defaultView;
+      const slotWatch = ownerWindow && typeof ownerWindow.ResizeObserver === 'function' && promptView.contextSlot
+        ? new ownerWindow.ResizeObserver(slotResized)
         : null;
       if (slotWatch) slotWatch.observe(promptView.contextSlot);
 
-      return {
+      const tip = {
         dom: promptView.dom,
         resize: false,
         overlap: true,
+        // How far the prompt stands from its anchor's edge (CodeMirror reads it when it places the prompt)
+        offset: { x: 0, y: 0 },
         // Once, when the prompt opens: the author starts typing the instruction
         mount() {
           promptView.focus();
         },
         getCoords: (pos) => anchorRect(view, pos),
-        // After CodeMirror has placed it (below, or flipped above): the room on that side caps
-        // the prompt's height, so it never runs past the window and its controls stay reachable
+        // After CodeMirror has placed it (below, or flipped above): the room on that side caps the
+        // prompt's height, so it never runs past the window and its controls stay reachable; a
+        // prompt whose list is open is laid out by promptLayoutFor
         positioned(space) {
           const dom = promptView.dom;
           if (!dom.isConnected || !space) return;
           const rect = dom.getBoundingClientRect();
           const above = dom.classList.contains('cm-tooltip-above');
-          const room = Math.floor(above ? rect.bottom - space.top - ROOM_GAP : space.bottom - rect.top - ROOM_GAP);
-          const value = `${Math.max(MIN_ROOM, Number.isFinite(room) ? room : MIN_ROOM)}px`;
-          if (dom.style.getPropertyValue(ROOM_PROPERTY) !== value) dom.style.setProperty(ROOM_PROPERTY, value);
-          fitList(dom);
+          // CodeMirror's own top is the rectangle's less the bridge; the anchor's edge is where the
+          // prompt would stand without its offset
+          const bridge = parseFloat(dom.style.getPropertyValue(BRIDGE_PROPERTY)) || 0;
+          const shift = -tip.offset.y || 0;
+          placed = { space, above, top: rect.top - bridge, edge: above ? rect.bottom - bridge - shift : rect.top - bridge + shift };
+          place();
           // The whole content, also the part scrolled inside a capped prompt
           const natural = Math.max(rect.height, dom.scrollHeight || 0);
           if (natural > 0) expectedHeight = Math.min(HEIGHT_ESTIMATE_MAX, Math.round(natural));
@@ -432,6 +549,7 @@ function createInlinePromptKit(cm, options = {}) {
           }
         }
       };
+      return tip;
     };
 
     const tooltip = showTooltip.compute([promptField, suggestionField], (state) => {
@@ -581,4 +699,4 @@ function createInlinePromptKit(cm, options = {}) {
   return { inlinePrompt, openPrompt, updatePrompt, closePrompt, getPrompt, focusPrompt };
 }
 
-module.exports = { createInlinePromptKit, scrollForRoom, listRoomFor };
+module.exports = { createInlinePromptKit, scrollForRoom, promptLayoutFor };

@@ -263,6 +263,12 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 .faust-context-row__actions { display: flex; gap: var(--sp-3); margin-left: auto; }
 .faust-context-row__list { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: var(--sp-1); }
 .faust-context-row__list > * { flex: none; }
+/* A row's words: a part's name with its size and note on a line of their own under it; an entry's name
+   with its size beside it. (The Pikamuokkaus prompt puts both on one line in a low window: I-05 block.) */
+.faust-context-row__words { display: flex; flex-direction: column; }
+.faust-context-row__words > .faust-check__hint { margin-left: 0; }
+.faust-context-row__words--item { flex-direction: row; align-items: flex-start; gap: var(--sp-2); }
+.faust-context-row__words--item > .faust-check__hint { margin-left: var(--sp-1); }
 .faust-check-group { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); }
 .faust-check-group--column { flex-direction: column; align-items: flex-start; gap: 0; }      /* one option per line */
 .faust-ai-provider .faust-field + .faust-field { margin-top: 0; }      /* the block's column gap already parts its fields */
@@ -1379,6 +1385,16 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 @media (max-height: 719px) {
   :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt:has(.faust-context-row__list) :is(.cm-faust-prompt-chips, .cm-faust-prompt-saved) { display: none; }
 }
+/* F3 (lead decision, 25 Nov 2026). When the two-line rows do not fit the room on the prompt's side, the
+   core marks the prompt data-list-compact and every row of the list is one line: the name, then its size
+   and note in the meta colour, cut with an ellipsis (ContextRow gives a cut row its whole text as a
+   title). When that is not enough either, the prompt takes the height it needs over the lines next to
+   its anchor: the core gives CodeMirror the offset, and --cm-faust-prompt-bridge holds the prompt in
+   that place until CodeMirror has placed it again (it moves a tooltip in the next frame at the earliest).
+   Layout only. */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt { margin-top: var(--cm-faust-prompt-bridge, 0px); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt[data-list-compact] .faust-context-row__words { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt[data-list-compact] .faust-context-row__words > .faust-check__hint { margin-left: var(--sp-2); line-height: 1; }      /* the smaller face shares the name's 16px line (two 16px line boxes on one baseline made the row 25px) */
 /* end I-05 */
 
 /* I-09: Kirjoita kohdistimeen (the insert block of pendingInsertView.js, the prompt in write mode) */

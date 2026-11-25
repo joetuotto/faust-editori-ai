@@ -48,7 +48,7 @@ const MODULES = {
   'src/editor/promptTarget.js': ['resolveEditTarget'],
   'src/editor/inlinePromptState.js': ['createState', 'reduce', 'attemptLabel', 'changeCountLabel'],
   'src/editor/inlinePromptView.js': ['createPromptView'],
-  'src/editor/inlinePromptCore.js': ['createInlinePromptKit', 'scrollForRoom'],
+  'src/editor/inlinePromptCore.js': ['createInlinePromptKit', 'scrollForRoom', 'promptLayoutFor'],
   'src/services/ai/quickEdit.js': ['createQuickEdit'],
   'utils/aiContextMenu.js': ['sanitizeContext', 'takeContext', 'buildAiSubmenu'],
   'src/editor/termMatch.js': ['parseTerm', 'parseTermList', 'formatTermList', 'compileTerms', 'findTermMatches', 'todoRanges', 'countTerms'],

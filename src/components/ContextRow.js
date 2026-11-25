@@ -38,6 +38,15 @@ const ORDER_NOTE = 'Jos tila loppuu, osat jätetään pois tässä järjestykses
 
 const STATE_TEXT = { dropped: 'ei mahtunut', cut: 'osa ei mahtunut', excluded: 'pois' };
 
+// A row's words (its name, then its size and note). In a low window the Pikamuokkaus prompt lays them
+// out on one line and cuts them with an ellipsis (the stylesheet's F3 rules); a row that is cut shows
+// its whole text as a tooltip, and a row that is whole has none
+const cutTitle = (el, text) => { if (el) el.title = el.scrollWidth > el.clientWidth ? text : ''; };
+const rowWords = (name, hint, item) => e('span', {
+  className: item ? 'faust-context-row__words faust-context-row__words--item' : 'faust-context-row__words',
+  onMouseEnter: (ev) => cutTitle(ev.currentTarget, `${name}, ${hint}`)
+}, name, e('span', { className: 'faust-check__hint' }, hint));
+
 const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
 const taskIdOf = (task) => (typeof task === 'string' ? task : isRecord(task) && typeof task.id === 'string' ? task.id : '');
 
@@ -208,9 +217,7 @@ export function ContextRow(props) {
     const size = count(part.state === 'excluded' ? part.fullChars : part.chars, 'merkki');
     // The size and state on their own line under the label, so a label that wraps in the
     // 288px column keeps its hint under it instead of in a column of its own
-    const words = e('span', { style: { display: 'flex', flexDirection: 'column' } },
-      alone(part.label),
-      e('span', { className: 'faust-check__hint', style: { marginLeft: 0 } }, stateText ? `${size} · ${stateText}` : size));
+    const words = rowWords(alone(part.label), stateText ? `${size} · ${stateText}` : size);
     return e('div', { key: part.id, style: { display: 'flex', flexDirection: 'column' } },
       // A part that is always sent is information to read, not a control that is switched off: a plain
       // row with a check mark, its name in the reading colour (a disabled box made the name dimmer
@@ -236,8 +243,7 @@ export function ContextRow(props) {
           disabled: off,
           onChange: (ev) => toggle(item.key, ev.target.checked)
         }),
-        item.label,
-        e('span', { className: 'faust-check__hint' }, count(item.chars, 'merkki')))),
+        rowWords(item.label, count(item.chars, 'merkki'), true))),
       part.id === 'summaries' && skipped.length > 0 && e('div', { className: 'faust-field__hint' },
         `Ei tekoälylle merkityt luvut jätettiin pois: ${skipped.join(', ')}.`)
     );
@@ -363,8 +369,14 @@ export function mountContextRow(container, props) {
   if (!root) {
     root = ReactDOM.createRoot(container);
     roots.set(container, root);
+    // The first render is drawn at once: the host (the Pikamuokkaus prompt) is measured and placed in
+    // the next frame, and a row that arrived after that made the prompt taller than the side it had
+    // been given (measured at 1024 × 640 at a chapter's end: four openings of twelve stood under the
+    // text in 200px and scrolled as a whole, with 352px free above)
+    ReactDOM.flushSync(() => root.render(e(ContextRow, props)));
+  } else {
+    root.render(e(ContextRow, props));
   }
-  root.render(e(ContextRow, props));
   return () => {
     const current = roots.get(container);
     if (!current) return;
