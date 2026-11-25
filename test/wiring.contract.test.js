@@ -35,7 +35,7 @@ const MODULES = {
   'src/services/ai/tokenStats.js': ['DEFAULT_CHARS_PER_TOKEN', 'MIN_CALIBRATION_CHARS', 'MAX_PLAUSIBLE_CHARS_PER_TOKEN', 'MIN_PLAUSIBLE_CHARS_PER_TOKEN', 'estimateTokens', 'updateCalibration', 'looksTruncated'],
   'src/services/ai/usageLog.js': ['MAX_ROWS', 'MAX_TEXT', 'SOURCES', 'SOURCE_LABELS', 'createLog', 'normalizeLog', 'appendRow', 'requestRow', 'decisionRow', 'summarize', 'exportText'],
   'src/services/settingsStore.js': ['createSettingsStore', 'getSettingsStore'],
-  'src/editor/suggestionModel.js': ['nextId', 'resetIds', 'makeMapper', 'mapSuggestions', 'singleChange', 'firstDifference', 'stillMatches', 'rebaseSuggestions', 'normalizeChanges', 'createSuggestions', 'createState', 'reduce', 'pendingItems', 'rejectedItems', 'hasReviewable', 'acceptChanges', 'blockInsertText', 'blockChange', 'decorationSpecs', 'snapshot', 'bulkAcceptIds', 'relocateTarget', 'CONTEXT_CHARS', 'REBASE_DIFF_LIMIT'],
+  'src/editor/suggestionModel.js': ['nextId', 'resetIds', 'makeMapper', 'mapRange', 'planRebase', 'mapSuggestions', 'singleChange', 'firstDifference', 'stillMatches', 'rebaseSuggestions', 'normalizeChanges', 'createSuggestions', 'createState', 'reduce', 'pendingItems', 'rejectedItems', 'hasReviewable', 'acceptChanges', 'blockInsertText', 'blockChange', 'decorationSpecs', 'snapshot', 'bulkAcceptIds', 'relocateTarget', 'CONTEXT_CHARS', 'REBASE_DIFF_LIMIT'],
   'src/editor/suggestionsCore.js': ['createSuggestionKit'],
   // I-04 adds the dialog's words (PasteEditsDialog.js draws them)
   'src/editor/pasteEdits.js': ['PASTE_WARN_RATIO', 'PROTECTED_PATTERN', 'paragraphBreakStyle', 'normalizeClipboard', 'preparePasteEdits', 'PASTE_TEXT', 'pasteDialogText'],
@@ -85,7 +85,9 @@ const MODULES = {
   // contracts.md 2.2: existing files that a stage extended (I-01, I-03)
   'utils/manuscript.js': ['decodeText', 'splitIntoChapters', 'importDocument'],
   'src/editor/textTools.js': ['WORD_CHAR', 'TODO_PATTERN_SOURCE', 'UNDERLINE_PATTERN_SOURCE', 'continueList', 'buildSearchPattern', 'countWords'],
-  'src/utils/CommandManager.js': ['CommandManager', 'UpdateContentCommand']
+  'src/utils/CommandManager.js': ['CommandManager', 'UpdateContentCommand'],
+  // F1 (25 Nov 2026): margin marks follow edits; the mapper is suggestionModel's (mapRange, planRebase exported for it)
+  'src/editor/annotationMapping.js': ['changesFit', 'mapAnnotations', 'mapAnnotationsBetween', 'followEdits']
 };
 
 // The editor cores: the factory is called with CodeMirror and must return these names.

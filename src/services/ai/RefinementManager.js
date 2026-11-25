@@ -139,14 +139,20 @@ Kirjoita luku uudelleen ottaen huomioon kirjailijan palaute. Säilytä tarinan j
       const version = chapter.versions.find(v => v.id === versionId);
       if (!version) throw new Error(`Version ${versionId} not found`);
 
-      chapter.currentVersion = versionId;
-      chapter.content = version.content;
-      chapter.wordCount = version.content.split(/\s+/).filter(w => w.length > 0).length;
-      chapter.modified = new Date().toISOString();
+      // A new chapter object: the chapter found here is the app's state and is not changed in place. The
+      // project setter then sees the text before and after, and the chapter's margin marks follow the
+      // restored text (src/editor/annotationMapping.js); changed in place, they stayed at their old offsets.
+      const restored = {
+        ...chapter,
+        currentVersion: versionId,
+        content: version.content,
+        wordCount: version.content.split(/\s+/).filter(w => w.length > 0).length,
+        modified: new Date().toISOString()
+      };
 
-      this.updateChapter(chapter);
+      this.updateChapter(restored);
 
-      console.log(`[Refinement] Restored to ${versionId} (${chapter.wordCount} words)`);
+      console.log(`[Refinement] Restored to ${versionId} (${restored.wordCount} words)`);
     }
 
     /**

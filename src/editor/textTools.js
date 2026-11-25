@@ -322,12 +322,13 @@ function findMatches(text, term, options) {
 }
 
 /**
- * Replace every match in a text.
- * @returns {{ text: string, count: number }}
+ * Replace every match in a text. `changes` is the same replacement as a list of ranges in offsets of
+ * the given text, so what stands at an offset of the text (a margin mark) can follow it.
+ * @returns {{ text: string, count: number, changes: Array<{from: number, to: number, insert: string}> }}
  */
 function replaceAllMatches(text, term, replacement, options) {
   const matches = findMatches(text, term, options);
-  if (matches.length === 0) return { text, count: 0 };
+  if (matches.length === 0) return { text, count: 0, changes: [] };
 
   let result = '';
   let cursor = 0;
@@ -335,7 +336,11 @@ function replaceAllMatches(text, term, replacement, options) {
     result += text.slice(cursor, match.start) + replacement;
     cursor = match.end;
   }
-  return { text: result + text.slice(cursor), count: matches.length };
+  return {
+    text: result + text.slice(cursor),
+    count: matches.length,
+    changes: matches.map(match => ({ from: match.start, to: match.end, insert: replacement }))
+  };
 }
 
 module.exports = {

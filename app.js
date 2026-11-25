@@ -28,6 +28,8 @@ import { AiUsageLogSection } from './src/components/AiUsageLogSection.js';
 import { createSuggestionController } from './src/services/suggestions/suggestionController.js';
 import { fieldHistoryFor } from './src/editor/fieldHistory.js';
 import { CommandManager } from './src/utils/CommandManager.js';
+// Margin marks follow every change of their chapter's text: the rule, applied in the project setter (F1)
+import { followEdits, mapAnnotationsBetween } from './src/editor/annotationMapping.js';
 import { wordDiff, changeRatio, diffSegments, changeStats } from './src/editor/wordDiff.js';
 import { appendRow as appendAiLogRow, createLog as createAiLog, decisionRow } from './src/services/ai/usageLog.js';
 import { addAutoSnapshot } from './src/services/project/snapshots.js';
@@ -477,7 +479,15 @@ const createDefaultProject = () => ({
 
 function FAUSTApp() {
   // Project state
-  const [project, setProject] = useState(createDefaultProject);
+  const [project, setProjectState] = useState(createDefaultProject);
+  // Every write of the project goes through this setter, so a chapter's margin marks follow its text whichever
+  // path wrote it (F1, followEdits in src/editor/annotationMapping.js): where an update changed a chapter's text
+  // and left its marks as they were, the marks are moved in the same state update, with no render of their own.
+  // `edit` is what the writer knows about its change of one chapter ({ chapterId, changes, restore }): the editor's
+  // precise change list, and for an undo or a redo the marks as they stood (UpdateContentCommand). One function
+  // for the life of the app, like React's own setter.
+  const setProject = useRef((update, edit) => setProjectState(prev =>
+    followEdits(prev, typeof update === 'function' ? update(prev) : update, edit))).current;
   const [currentFilePath, setCurrentFilePath] = useState(null);
   const [activeChapterId, setActiveChapterId] = useState('chapter-1');
   const [unsavedChanges, setUnsavedChanges] = useState(false);
@@ -1246,7 +1256,9 @@ function FAUSTApp() {
 
   // NEW: Update chapter content using Command Pattern
   // meta (memory only): { noMerge: true, suggestions? } makes an AI write its own undo step (contracts 1.1)
-  const updateChapterContent = (newContent, skipHistory = false, meta = null) => {
+  // changes (memory only): the change as a list of ranges when the writer knows it (the editor's own change
+  // list, the hits of Korvaa kaikki): the chapter's margin marks follow the text by it (F1)
+  const updateChapterContent = (newContent, skipHistory = false, meta = null, changes = null) => {
     if (!activeChapter) return;
 
     // Use the live content, not the rendered state: two keystrokes can arrive
@@ -1266,7 +1278,8 @@ function FAUSTApp() {
         activeChapter.id,
         oldContent,
         newContent,
-        meta
+        meta,
+        changes
       );
       commandManagerRef.current.execute(command);
     } else {
@@ -1279,7 +1292,7 @@ function FAUSTApp() {
             ? { ...ch, content: newContent, wordCount: words.length }
             : ch
         )
-      }));
+      }), { chapterId: activeChapter.id, changes });
     }
 
     setUnsavedChanges(true);
@@ -2115,18 +2128,18 @@ function FAUSTApp() {
     }
   };
 
-  // Change any chapter's text through the undo history
-  const setChapterText = (chapterId, oldContent, newContent, meta = null) => {
+  // Change any chapter's text through the undo history; `changes` as in updateChapterContent
+  const setChapterText = (chapterId, oldContent, newContent, meta = null, changes = null) => {
     if (oldContent === newContent) return;
 
     if (chapterId === activeChapter?.id) {
-      updateChapterContent(newContent, false, meta);
+      updateChapterContent(newContent, false, meta, changes);
       return;
     }
 
     if (commandManagerRef.current && window.UpdateContentCommand) {
       commandManagerRef.current.execute(
-        new window.UpdateContentCommand(setProject, chapterId, oldContent, newContent, meta)
+        new window.UpdateContentCommand(setProject, chapterId, oldContent, newContent, meta, changes)
       );
     } else {
       setProject(prev => ({
@@ -2134,7 +2147,7 @@ function FAUSTApp() {
         structure: prev.structure.map(ch =>
           ch.id === chapterId ? { ...ch, content: newContent, wordCount: countWords(newContent) } : ch
         )
-      }));
+      }), { chapterId, changes });
     }
     setUnsavedChanges(true);
   };
@@ -2184,7 +2197,8 @@ function FAUSTApp() {
       const content = chapterText(chapter);
       const replaced = replaceAllMatches(content, term, replaceTerm, options);
       if (replaced.count > 0) {
-        changes.push({ chapter, content, text: replaced.text });
+        // The hits as a change list: a margin mark between two of them stays on its own words (F1)
+        changes.push({ chapter, content, text: replaced.text, ranges: replaced.changes });
         total += replaced.count;
       }
     });
@@ -2204,7 +2218,7 @@ function FAUSTApp() {
       return;
     }
 
-    changes.forEach(change => setChapterText(change.chapter.id, change.content, change.text));
+    changes.forEach(change => setChapterText(change.chapter.id, change.content, change.text, null, change.ranges));
 
     setSearchResults([]);
     setCurrentSearchIndex(-1);
@@ -3648,13 +3662,15 @@ ${answerLanguageRule(project.language, [])}`;
         // Carry them into the project state by chapter id, keeping every other annotation.
         const AI_CONSISTENCY = window.AnnotationUtils.ANNOTATION_TYPES.AI_CONSISTENCY;
         const checked = consistencyCheckerRef.current.project;
+        // A mark was placed on the text the checker read; where the chapter's text has changed since, the mark
+        // is moved onto the text as it is now (F1)
         setProject(prev => ({
           ...prev,
           structure: prev.structure.map(ch => {
             const stale = checked.structure.find(s => s.id === ch.id);
             return stale ? { ...ch, annotations: [
               ...(ch.annotations || []).filter(a => a.type !== AI_CONSISTENCY),
-              ...(stale.annotations || []).filter(a => a.type === AI_CONSISTENCY)
+              ...mapAnnotationsBetween((stale.annotations || []).filter(a => a.type === AI_CONSISTENCY), stale.content, ch.content)
             ] } : ch;
           })
         }));
@@ -6262,7 +6278,14 @@ ${contextPrompt}`;
               key: `${projectEpoch}:${activeChapter.id}`,
               ref: editorRef,
               value: activeChapter.content,
-              onChange: (text, meta) => updateChapterContent(text, false, meta),
+              // `changes` is the editor's own change list: the margin marks follow the text by it (F1)
+              onChange: (text, meta, changes) => updateChapterContent(text, false, meta, changes),
+              // A change made outside the editor (undo, Korvaa kaikki, a restored version) reaches the editor after
+              // the render that drew the marks at their new offsets: the strip is measured once more then. Typing
+              // does not come this way, and a chapter without marks is not rendered again.
+              onExternalChange: () => {
+                if ((activeChapter.annotations || []).length > 0) setEditorDimensions(dimensions => ({ ...dimensions }));
+              },
               ...suggestionsRef.current.editorProps(activeChapter.id),
               // The Pikamuokkaus prompt reports what the author does there to the quick-edit controller
               aiHost: quickEditRef.current.host,

@@ -221,11 +221,34 @@ describe('search', () => {
     expect(findMatches('abc', 'x*', { regex: true })).toEqual([]);
   });
 
+  // F1 (margin marks follow edits): the result also carries the replacement as a list of ranges in offsets of
+  // the given text (`changes`), so the three expectations below name it; text and count are as they were.
   test('replaceAllMatches replaces every match and reports the count', () => {
-    expect(replaceAllMatches('kissa ja Kissa', 'kissa', 'koira')).toEqual({ text: 'koira ja koira', count: 2 });
-    expect(replaceAllMatches('kissa', 'koira', 'x')).toEqual({ text: 'kissa', count: 0 });
+    expect(replaceAllMatches('kissa ja Kissa', 'kissa', 'koira')).toEqual({
+      text: 'koira ja koira', count: 2,
+      changes: [{ from: 0, to: 5, insert: 'koira' }, { from: 9, to: 14, insert: 'koira' }]
+    });
+    expect(replaceAllMatches('kissa', 'koira', 'x')).toEqual({ text: 'kissa', count: 0, changes: [] });
     // The replacement is literal: $1 is not a back-reference
-    expect(replaceAllMatches('a b', 'a', '$1')).toEqual({ text: '$1 b', count: 1 });
+    expect(replaceAllMatches('a b', 'a', '$1')).toEqual({ text: '$1 b', count: 1, changes: [{ from: 0, to: 1, insert: '$1' }] });
+  });
+
+  test('the change list of replaceAllMatches gives the same text, hit by hit (F1)', () => {
+    const before = 'Liisa katsoi merta. Majakka vilkkui. Liisa sulki oven, ja liisa nukahti.';
+    const replaced = replaceAllMatches(before, 'Liisa', 'Annaliisa', { caseSensitive: true });
+    expect(replaced.changes).toEqual([
+      { from: 0, to: 5, insert: 'Annaliisa' },
+      { from: before.indexOf('Liisa sulki'), to: before.indexOf('Liisa sulki') + 5, insert: 'Annaliisa' }
+    ]);
+    let built = '';
+    let cursor = 0;
+    for (const change of replaced.changes) {
+      built += before.slice(cursor, change.from) + change.insert;
+      cursor = change.to;
+    }
+    expect(built + before.slice(cursor)).toBe(replaced.text);
+    // A removal is a list of empty inserts
+    expect(replaceAllMatches('a, b, c', ', ', '').changes).toEqual([{ from: 1, to: 3, insert: '' }, { from: 4, to: 6, insert: '' }]);
   });
 
   // Stage I-06 (contracts.md 11.2 F): smart typing writes ” ’ –, the author types " ' -
@@ -237,7 +260,7 @@ describe('search', () => {
     expect(findMatches('Hän sanoi ”Hei”', '"', { wholeWord: false }).map(m => m.start)).toEqual([10, 14]);
     // Whole word and case still apply to the rest of the term
     expect(findMatches('”hei” ja ”Hei”', '"Hei"', { caseSensitive: true }).map(m => m.start)).toEqual([9]);
-    expect(replaceAllMatches('Hän sanoi ”Hei”.', '"Hei"', '”Moi”')).toEqual({ text: 'Hän sanoi ”Moi”.', count: 1 });
+    expect(replaceAllMatches('Hän sanoi ”Hei”.', '"Hei"', '”Moi”')).toMatchObject({ text: 'Hän sanoi ”Moi”.', count: 1 });
   });
 
   test('a typed apostrophe also finds ’', () => {

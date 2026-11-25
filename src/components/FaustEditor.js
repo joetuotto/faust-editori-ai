@@ -55,6 +55,11 @@
  * marks follow the text, and an outside change (undo, Korvaa kaikki) puts this render's set back. A press
  * inside a mark calls `onFindingClick(findingId)`, read through a ref; the caret still lands there.
  *
+ * Margin marks (src/editor/annotationMapping.js): onChange(text, meta, changes) also carries the change as
+ * CodeMirror made it, [{ from, to, insert }] in offsets of the text before it, so the app moves the chapter's
+ * marks exactly; `onExternalChange()` is called after a change made outside the editor has been put into it,
+ * so the app can measure the marks' lines again.
+ *
  * Bundled with app.js by webpack. Uses the global React like the rest of the app.
  */
 
@@ -377,6 +382,8 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
   const {
     value,
     onChange,
+    // Called after a text change that was made outside the editor has been mirrored into it (no arguments)
+    onExternalChange,
     placeholder,
     typewriterMode,
     style,
@@ -411,6 +418,7 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
   const hostRef = useRef(null);
   const viewRef = useRef(null);
   const onChangeRef = useRef(onChange);
+  const onExternalChangeRef = useRef(onExternalChange);
   const onSuggestionsRef = useRef(onSuggestionsChange);
   const aiHostRef = useRef(aiHost);
   const typewriterRef = useRef(!!typewriterMode);
@@ -427,6 +435,7 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
   const settleTimerRef = useRef(0);
 
   onChangeRef.current = onChange;
+  onExternalChangeRef.current = onExternalChange;
   onSuggestionsRef.current = onSuggestionsChange;
   aiHostRef.current = aiHost;
   typewriterRef.current = !!typewriterMode;
@@ -529,7 +538,16 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
               pendingRef.current.push(text);
               if (pendingRef.current.length > 20) pendingRef.current.shift();
               const smart = update.transactions.some(tr => tr.annotation(SmartTyping) !== undefined);
-              if (onChangeRef.current) onChangeRef.current(text, smart ? { noMerge: true, source: 'smart-typing' } : readSuggestionMeta(update));
+              if (onChangeRef.current) {
+                // The change itself, in offsets of the text before it: the chapter's margin marks follow by it.
+                // Range by range (individual), not with touching ranges joined: joined, two accepted suggestions
+                // side by side would be one replacement, and a mark inside it would lose its words
+                const changes = [];
+                update.changes.iterChanges((fromA, toA, fromB, toB, inserted) => {
+                  changes.push({ from: fromA, to: toA, insert: inserted.toString() });
+                }, true);
+                onChangeRef.current(text, smart ? { noMerge: true, source: 'smart-typing' } : readSuggestionMeta(update), changes);
+              }
             }
 
             if (!readOnly) {
@@ -627,6 +645,8 @@ export const FaustEditor = forwardRef(function FaustEditor(props, ref) {
     // An undo, a redo or a replace-all arrives as one coarse change that can swallow the finding marks;
     // the findings of this render were computed against the new text, so they put them back
     if (!readOnly && findingHighlightsRef.current) view.dispatch({ effects: setFindingHighlights.of(findingHighlightsRef.current) });
+    // The render that brought this text measured the margin marks against the text before it
+    if (onExternalChangeRef.current) onExternalChangeRef.current();
   }, [value]);
 
   // The findings changed (a run ended, a status, the tab shown or hidden, another finding selected). Typing does

@@ -132,13 +132,22 @@ class UpdateContentCommand {
    * meta (memory only, never saved): { noMerge: true, source?, suggestions?: { ids, items } }. With
    * noMerge the step is its own undo step: an accepted suggestion or any other AI write never joins
    * the typing around it, and undoing it restores exactly oldContent (contracts.md 1.1).
+   *
+   * changes (memory only): the same change as a list of ranges, [{ from, to, insert }] sorted and in
+   * oldContent's offsets, when the writer knows it (the editor's own change list, the hits of
+   * Korvaa kaikki). The chapter's margin marks follow the text by it (src/editor/annotationMapping.js);
+   * without it they follow by the two texts.
    */
-  constructor(setProject, chapterId, oldContent, newContent, meta = null) {
+  constructor(setProject, chapterId, oldContent, newContent, meta = null, changes = null) {
     this.name = 'Update Content';
     this.setProject = setProject;
     this.chapterId = chapterId;
     this.oldContent = oldContent;
     this.newContent = newContent;
+    this.changes = Array.isArray(changes) && changes.length > 0 ? changes : null;
+    // The chapter's margin marks as they stood on oldContent and on newContent, noted when the step
+    // writes over that text: an undo or a redo puts the marks back exactly where they were
+    this.marksOn = { old: null, new: null };
 
     // Typing run bookkeeping: a run is a series of small changes of the same
     // kind (inserting or deleting) with no long pause in between
@@ -181,29 +190,40 @@ class UpdateContentCommand {
     this.newContent = next.newContent;
     this.lastChangeAt = next.startedAt;
     this.endsRun = next.endsRun;
+    // The step is now the whole run: the first keystroke's change list and the marks noted on the
+    // run's earlier end no longer describe it
+    this.changes = null;
+    this.marksOn.new = null;
     return true;
   }
 
   execute() {
-    this.setProject(prev => ({
-      ...prev,
-      structure: prev.structure.map(ch =>
-        ch.id === this.chapterId
-          ? { ...ch, content: this.newContent, wordCount: countWords(this.newContent) }
-          : ch
-      )
-    }));
+    this.write('old', 'new', this.changes);
   }
 
   undo() {
+    this.write('new', 'old', null);
+  }
+
+  /**
+   * Put the text of one side of the step ('old' or 'new') in place of the other. The margin marks
+   * are not moved here: the app's project setter does that for every update (followEdits in
+   * src/editor/annotationMapping.js) and takes what this step knows as its second argument: the
+   * change list, and the marks as they stood on the text being put back. A setter that takes the
+   * update alone (the tests' plain one) works as before.
+   */
+  write(from, to, changes) {
+    const leaving = from === 'old' ? this.oldContent : this.newContent;
+    const content = to === 'old' ? this.oldContent : this.newContent;
     this.setProject(prev => ({
       ...prev,
-      structure: prev.structure.map(ch =>
-        ch.id === this.chapterId
-          ? { ...ch, content: this.oldContent, wordCount: countWords(this.oldContent) }
-          : ch
-      )
-    }));
+      structure: prev.structure.map(ch => {
+        if (ch.id !== this.chapterId) return ch;
+        // The marks are noted only on the text this step knows; they are state and never changed in place
+        this.marksOn[from] = ch.content === leaving && Array.isArray(ch.annotations) ? ch.annotations : null;
+        return { ...ch, content, wordCount: countWords(content) };
+      })
+    }), { chapterId: this.chapterId, changes, restore: () => this.marksOn[to] });
   }
 }
 
