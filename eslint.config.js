@@ -148,6 +148,16 @@ module.exports = [
     },
   },
 
+  // Node build scripts (CommonJS)
+  {
+    files: ['scripts/**/*.cjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'commonjs',
+      globals: { require: 'readonly', module: 'readonly', __dirname: 'readonly', process: 'readonly', Buffer: 'readonly', console: 'readonly' },
+    },
+  },
+
   // Config for ES modules (newer files)
   {
     files: ['**/*.mjs', 'webpack.config.js', 'eslint.config.js'],

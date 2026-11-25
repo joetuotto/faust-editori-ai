@@ -29,6 +29,7 @@ import {
 } from './projectStore';
 import { forgetProject, getSettings, rememberProject, updateSettings } from './settings';
 import { writeFileAtomic } from './fsutil';
+import appIcon from '../../build/icons/png/512x512.png?asset';
 
 let mainWindow: BrowserWindow | null = null;
 let currentProject: string | null = null;
@@ -175,6 +176,8 @@ function createWindow() {
     title: 'FAUST',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: '#141210',
+    // Window and taskbar icon on Linux and Windows (macOS uses the bundle icon)
+    ...(process.platform === 'darwin' ? {} : { icon: appIcon }),
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -449,6 +452,8 @@ app.whenReady().then(async () => {
     const audioOnly = permission === 'media' && 'mediaTypes' in details && (details.mediaTypes ?? []).every(t => t === 'audio');
     callback(audioOnly);
   });
+  // In development the Dock would show Electron's own icon
+  if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(appIcon);
   registerIpc();
   buildMenu();
   createWindow();

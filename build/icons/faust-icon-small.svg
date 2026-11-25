@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- FAUST app icon for 16–64 px: the star alone, so it stays legible when small. -->
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8f4ec"/>
+      <stop offset="1" stop-color="#ebe3d4"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#paper)" stroke="#000" stroke-opacity="0.12" stroke-width="8"/>
+  <g transform="translate(512 512) scale(1.32)">
+    <path d="
+      M 0,-280 C 20,-200 40,-120 60,-80 L 200,-200 C 160,-140 120,-80 80,-60
+      L 280,0 C 200,20 120,40 80,60 L 200,200 C 140,160 80,120 60,80
+      L 0,280 C -20,200 -40,120 -60,80 L -200,200 C -160,140 -120,80 -80,60
+      L -280,0 C -200,-20 -120,-40 -80,-60 L -200,-200 C -140,-160 -80,-120 -60,-80 Z"
+      fill="#1a1a1a"/>
+  </g>
+</svg>

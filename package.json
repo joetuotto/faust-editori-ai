@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "icons": "node scripts/build-icons.cjs",
     "start": "electron-vite preview",
     "test": "vitest run && jest",
     "test:app": "vitest run",
@@ -24,7 +25,8 @@
     "legacy:dev": "webpack --mode=development --watch",
     "legacy:start": "npm run legacy:build && electron electron.js",
     "legacy:verify-build": "node scripts/verify-assets.js",
-    "legacy:test:electron": "electron-mocha --require test/setup.js test/electron"
+    "legacy:test:electron": "electron-mocha --require test/setup.js test/electron",
+    "install-mac": "bash scripts/install-mac.sh"
   },
   "build": {
     "appId": "com.faust.app",
@@ -42,9 +44,9 @@
           ]
         }
       ],
-      "icon": "build/faust-dock-icon.icns",
+      "icon": "build/icons/icon.icns",
       "darkModeSupport": true,
-      "identity": null,
+      "identity": "-",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "FAUST käyttää mikrofonia sanelussa: puhe muutetaan tekstiksi käsikirjoitukseen."
       }
@@ -86,10 +88,13 @@
         "deb"
       ],
       "category": "Office",
-      "icon": "build/icon.svg.png",
+      "icon": "build/icons/png",
       "maintainer": "FAUST Team <faust@users.noreply.github.com>",
       "synopsis": "Suomenkielinen kirjoituseditori",
       "executableName": "faust"
+    },
+    "win": {
+      "icon": "build/icons/icon.ico"
     }
   },
   "devDependencies": {
