@@ -49,9 +49,11 @@ class ConsistencyChecker {
         }
       });
 
-      // Update project chapters with annotations
-      if (annotations.length > 0 && this.project.structure) {
-        this.mergeAnnotationsIntoProject(annotations);
+      // Update project chapters with annotations. A complete run replaces the marks of an earlier
+      // run in every chapter, so a contradiction that is gone leaves no mark behind; a run with
+      // failed requests replaces them only in the chapters it marked.
+      if (this.project.structure) {
+        this.mergeAnnotationsIntoProject(annotations, { replaceAll: this.failures.length === 0 });
       }
 
       return {
@@ -135,12 +137,13 @@ class ConsistencyChecker {
       priority = window.AnnotationUtils.ANNOTATION_PRIORITY.LOW;
     }
 
-    // Create annotation
+    // Create annotation. The margin shows its text: in Finnish, rebuilt from the fields where the
+    // checker's own message is English (the same rule as the Projekti tab's list)
     const annotation = window.AnnotationUtils.createAnnotation({
       type: annotationType,
       position,
       length,
-      content: error.message,
+      content: ConsistencyChecker.markText(error),
       priority,
       metadata: {
         errorId: error.id,
@@ -150,7 +153,7 @@ class ConsistencyChecker {
         evidence: error.evidence,
         chapters: error.chapters
       },
-      aiSuggestion: error.suggestedFix,
+      aiSuggestion: ConsistencyChecker.markFix(error),
       source: 'ai',
       chapterId: occurrence.chapterId,
       chapterIndex
@@ -160,42 +163,75 @@ class ConsistencyChecker {
   }
 
   /**
-   * Merge generated annotations into project chapters
+   * Merge generated annotations into project chapters. The project the checker holds is the app's
+   * state, so it is not mutated: this.project becomes a new object whose changed chapters are new
+   * objects, and the app carries their marks into its state by chapter id.
+   *
+   * An annotation goes to the chapter of its chapterId, else of its chapterIndex. In a chapter that
+   * gets marks the checker's earlier marks are replaced; with replaceAll (a complete run) they are
+   * replaced in every chapter, also by none. Every other annotation is kept.
    */
-  mergeAnnotationsIntoProject(annotations) {
+  mergeAnnotationsIntoProject(annotations, { replaceAll = false } = {}) {
+    const AI_CONSISTENCY = window.AnnotationUtils.ANNOTATION_TYPES.AI_CONSISTENCY;
+    const structure = this.project.structure || [];
+
     // Group annotations by chapter
     const annotationsByChapter = new Map();
-
     annotations.forEach(annotation => {
-      if (annotation.chapterIndex === undefined) return;
+      let chapterIndex = annotation.chapterId !== undefined
+        ? structure.findIndex(ch => ch.id === annotation.chapterId)
+        : -1;
+      if (chapterIndex === -1 && Number.isInteger(annotation.chapterIndex) && structure[annotation.chapterIndex]) {
+        chapterIndex = annotation.chapterIndex;
+      }
+      if (chapterIndex === -1) return;
 
-      const chapterIndex = annotation.chapterIndex;
       if (!annotationsByChapter.has(chapterIndex)) {
         annotationsByChapter.set(chapterIndex, []);
       }
       annotationsByChapter.get(chapterIndex).push(annotation);
     });
 
-    // Update chapters
-    annotationsByChapter.forEach((chapterAnnotations, chapterIndex) => {
-      const chapter = this.project.structure[chapterIndex];
-      if (!chapter) return;
+    if (annotationsByChapter.size === 0 && !replaceAll) return;
 
-      // Initialize annotations array if needed
-      if (!chapter.annotations) {
-        chapter.annotations = [];
-      }
+    this.project = {
+      ...this.project,
+      structure: structure.map((chapter, chapterIndex) => {
+        const chapterAnnotations = annotationsByChapter.get(chapterIndex);
+        if (!chapter || (!chapterAnnotations && !replaceAll)) return chapter;
 
-      // Remove old AI_CONSISTENCY annotations
-      chapter.annotations = chapter.annotations.filter(
-        ann => ann.type !== window.AnnotationUtils.ANNOTATION_TYPES.AI_CONSISTENCY
-      );
+        const kept = (chapter.annotations || []).filter(ann => ann.type !== AI_CONSISTENCY);
+        if (!chapterAnnotations && kept.length === (chapter.annotations || []).length) return chapter;
+        if (chapterAnnotations) {
+          console.log(`[ConsistencyChecker] Added ${chapterAnnotations.length} annotations to chapter ${chapterIndex + 1}`);
+        }
+        return { ...chapter, annotations: [...kept, ...(chapterAnnotations || [])] };
+      })
+    };
+  }
 
-      // Add new annotations
-      chapter.annotations.push(...chapterAnnotations);
+  /**
+   * The text of a mark in the margin, in Finnish. The checker writes three types in English
+   * (name variations, timeline, location); their text is rebuilt from the fields.
+   */
+  static markText(error) {
+    if (error.type === 'name_variation') {
+      return 'Nimen kirjoitusasu vaihtelee: ' + (error.variations || []).join(', ');
+    }
+    if ((error.type === 'timeline_error' || error.type === 'location_inconsistency') && error.description) {
+      return error.description;
+    }
+    return error.message;
+  }
 
-      console.log(`[ConsistencyChecker] Added ${chapterAnnotations.length} annotations to chapter ${chapterIndex + 1}`);
-    });
+  /** The correction a mark suggests, in Finnish, or null. */
+  static markFix(error) {
+    if (error.type === 'name_variation') {
+      const name = error.characterName || (error.variations || [])[0] || '';
+      return name ? `Käytä kaikkialla muotoa ”${name}”.` : null;
+    }
+    if (error.suggestedFix === 'Manual review needed') return 'Tarkista käsin.';
+    return error.suggestedFix || null;
   }
 
   /**

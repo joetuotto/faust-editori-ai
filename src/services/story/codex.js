@@ -12,7 +12,7 @@
  * entry object.
  */
 
-const { parseTermList, compileTerms, findTermMatches, todoRanges } = require('../../editor/termMatch.js');
+const { parseTerm, parseTermList, compileTerms, findTermMatches, todoRanges } = require('../../editor/termMatch.js');
 
 const TYPES = {
   fiction: ['hahmo', 'paikka', 'esine', 'kasite', 'juonilanka'],
@@ -431,8 +431,14 @@ function selectForContext({ entries, text, include = [], exclude = [], detectMen
 // ---------------------------------------------------------------------------
 // The old fields are read, never written or removed.
 
-// Finnish labels of the old forms' enum values (src/utils/constants.js)
+// Finnish labels of the old forms' enum values (src/utils/constants.js), and the character role
+// of menu spec A.4 (Rooli tarinassa, app.js PROFILE_LABELS), lower case after its label
 const LEGACY_LABELS = {
+  role: {
+    protagonist: 'päähenkilö',
+    antagonist: 'vastustaja',
+    supporting: 'sivuhenkilö'
+  },
   locationType: {
     home: 'Koti',
     city: 'Kaupunki',
@@ -458,11 +464,15 @@ const LEGACY_LABELS = {
     character_arc: 'Hahmon kehityskaari',
     theme: 'Teema',
     mystery: 'Arvoitus',
-    romance: 'Rakkausjuoni'
+    romance: 'Rakkausjuoni',
+    // written by the thread detection; app.js LABELS.threadType has the same word
+    relationship: 'Ihmissuhde'
   },
   threadStatus: {
     planned: 'Suunniteltu',
     active: 'Avoin',
+    // written by the thread detection; it means active (app.js LABELS.threadStatus, M C.14 row 6)
+    open: 'Avoin',
     developing: 'Kehittyvä',
     resolved: 'Ratkaistu',
     abandoned: 'Hylätty'
@@ -501,10 +511,42 @@ function flatCharacterLines(record) {
   ];
 }
 
+// The fields of an old basicInfo character as the Hahmot window names them; role's value goes
+// through the Rooli tarinassa list of menu spec A.4. Another key is written as B.14's fallback:
+// underscores and a camel-case join become spaces, in lower case.
+const CHARACTER_FIELD_LABELS = {
+  age: 'Ikä',
+  occupation: 'Ammatti',
+  role: 'Rooli',
+  appearance: 'Ulkonäkö',
+  gender: 'Sukupuoli',
+  personality: 'Luonne',
+  nickname: 'Lempinimi',
+  nationality: 'Kansallisuus'
+};
+
+const fieldLabel = (key) => (has(CHARACTER_FIELD_LABELS, key)
+  ? CHARACTER_FIELD_LABELS[key]
+  : key.replace(/_/g, ' ').replace(/([a-zåäö])([A-ZÅÄÖ])/g, '$1 $2').toLowerCase());
+
+// A role value after its label: the A.4 word, or the stored word in lower case (M B.1: Rooli: päähenkilö)
+function roleValue(value) {
+  const key = plain(value);
+  if (has(LEGACY_LABELS.role, key)) return LEGACY_LABELS.role[key];
+  const text = key.replace(/_/g, ' ');
+  return /^[A-ZÅÄÖ][a-zåäö]/.test(text) ? text.charAt(0).toLowerCase() + text.slice(1) : text;
+}
+
+// The character's flat description and background are used when present (a record can hold both
+// forms; the flat one is the builder's own), else those of basicInfo
 function basicInfoCharacterLines(record) {
-  const lines = Object.keys(record.basicInfo)
-    .filter(key => key !== 'name')
-    .map(key => labelled(key, record.basicInfo[key]));
+  const info = record.basicInfo;
+  const lines = [plain(record.description) || plain(info.description)];
+  for (const key of Object.keys(info)) {
+    if (key === 'name' || key === 'description' || key === 'background') continue;
+    lines.push(labelled(fieldLabel(key), key === 'role' ? roleValue(info[key]) : info[key]));
+  }
+  lines.push(labelled('Tausta', plain(record.background) || plain(info.background)));
   if (typeof record.psychological === 'string') lines.push(record.psychological.trim());
   return lines;
 }
@@ -646,11 +688,51 @@ const LEGACY_TYPES = {
   nonfiction: { character: 'henkilo', location: 'termi', thread: 'termi' }
 };
 
+// The first word of a name of several words, when it is a word of at least three letters (a
+// hyphen or an apostrophe may join its parts: Anna-Liisa), else '': "Aino Lehto" gives "Aino",
+// "Dr. Watson" and "Li Wei" give nothing
+const FIRST_WORD = /^(\p{L}+(?:[-'’]\p{L}+)*)\s+\S/u;
+function firstWordOf(name) {
+  const match = FIRST_WORD.exec(asText(name).normalize('NFC').trim());
+  return match && match[1].match(/\p{L}/gu).length >= 3 ? match[1] : '';
+}
+
+// A name or an alias as it is compared: its text without quotation marks, in lower case
+function termText(term) {
+  const parsed = parseTerm(term);
+  return parsed ? parsed.text.toLocaleLowerCase('fi') : '';
+}
+
+// A migrated character is mentioned by its first name too: the first word of a name of several
+// words becomes its alias, unless the word is the name or an alias of another entry (in the
+// folder or in this batch) or the first word of another character of the batch
+function addFirstNames(entries, existing, characterType) {
+  const taken = new Set();
+  for (const entry of [...existing, ...entries]) {
+    taken.add(termText(entry.name));
+    for (const alias of termList(entry.aliases)) taken.add(termText(alias));
+  }
+
+  const byWord = new Map();
+  for (const entry of entries) {
+    if (entry.type !== characterType) continue;
+    const word = firstWordOf(entry.name);
+    if (!word) continue;
+    const key = word.toLocaleLowerCase('fi');
+    byWord.set(key, [...(byWord.get(key) || []), { entry, word }]);
+  }
+  for (const [key, list] of byWord) {
+    if (list.length === 1 && !taken.has(key)) list[0].entry.aliases = [list[0].word];
+  }
+}
+
 /**
  * Turn the pending old records into entries. The project is not changed:
  * the caller appends `entries` to project.codex and `handled` to
  * project.codexLegacyHandled. Because every pending key is in `handled`, a
  * second run imports nothing and a deleted entry does not come back.
+ * A new entry has no aliases, except a character whose name has several
+ * words: its first word, by the rule of addFirstNames.
  *
  * opts: { includeNameOnly = false, now, makeId }
  * @returns {{ entries: object[], handled: string[], counts: { imported, duplicates, nameOnlySkipped } }}
@@ -709,6 +791,7 @@ function migrateLegacy(project, opts = {}) {
     counts.imported += 1;
   }
 
+  addFirstNames(entries, existing, types.character);
   return { entries, handled, counts };
 }
 

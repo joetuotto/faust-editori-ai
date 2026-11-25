@@ -38,7 +38,12 @@
   };
 
   /**
-   * Create a new annotation
+   * Create a new annotation.
+   *
+   * chapterId and chapterIndex say which chapter the annotation belongs to. They are kept when
+   * they are given: the consistency checker places its marks into the chapters by them (and the
+   * app carries them into the project by chapter id). A note made in the open chapter passes
+   * neither and has neither key.
    */
   function createAnnotation(options) {
     const {
@@ -50,10 +55,12 @@
       color = null,
       source = 'user',
       aiSuggestion = null,
-      metadata = {}
+      metadata = {},
+      chapterId,
+      chapterIndex
     } = options;
 
-    return {
+    const annotation = {
       id: `ann_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       type,
       position,
@@ -69,6 +76,9 @@
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
+    if (chapterId !== undefined && chapterId !== null && chapterId !== '') annotation.chapterId = chapterId;
+    if (Number.isInteger(chapterIndex) && chapterIndex >= 0) annotation.chapterIndex = chapterIndex;
+    return annotation;
   }
 
   /**

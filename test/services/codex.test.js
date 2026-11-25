@@ -667,11 +667,13 @@ describe('migration', () => {
     };
     const result = migrateLegacy(project, opts());
 
+    // Changed in the final pass (lead decision "Tarinakansio migration", T-007): a name of several
+    // words gives its first word as an alias (P-05 had aliases: [] for every entry)
     expect(result.entries).toEqual([{
       id: 'cx-1',
       type: 'hahmo',
       name: 'Mari Virtanen',
-      aliases: [],
+      aliases: ['Mari'],
       exclude: [],
       description: [
         'Vanhin sisar.',
@@ -706,13 +708,106 @@ describe('migration', () => {
     };
     const result = migrateLegacy(project, opts());
     expect(result.entries).toHaveLength(1);
+    // Changed in the final pass (lead decision "Tarinakansio migration", T-007): the keys are written
+    // with Finnish labels (P-05 had one line {key}: {value} with the stored key)
     expect(result.entries[0]).toMatchObject({
       type: 'hahmo',
       name: 'Aino',
-      description: 'role: päähenkilö\nage: 17\nVarautunut ja tarkka.',
+      description: 'Rooli: päähenkilö\nIkä: 17\nVarautunut ja tarkka.',
       state: 'manual',
       source: { key: 'characters:Aino' }
     });
+  });
+
+  // Final pass, T-007 (lead decision "Tarinakansio migration"; I-07 For the lead 2, review live-7)
+  test('a character in both forms: the flat description and background, the basicInfo fields with Finnish labels (T-007)', () => {
+    const project = {
+      characters: [{
+        id: 'char-1',
+        name: 'Aino Lehto',
+        age: 43,
+        role: 'protagonist',
+        occupation: 'kääntäjä',
+        description: 'Palaa kotikaupunkiinsa isänsä kuoltua. Tarkkaavainen, varautunut.',
+        background: 'Lähti kaupungista 23-vuotiaana.',
+        notes: 'Puhuu vähän.',
+        basicInfo: { name: 'Aino Lehto', age: 43, occupation: 'kääntäjä', role: 'päähenkilö', description: 'Palaa kotikaupunkiinsa.' }
+      }]
+    };
+    const [migrated] = migrateLegacy(project, opts()).entries;
+    expect(migrated).toMatchObject({ name: 'Aino Lehto', aliases: ['Aino'], notes: 'Puhuu vähän.' });
+    expect(migrated.description).toBe([
+      'Palaa kotikaupunkiinsa isänsä kuoltua. Tarkkaavainen, varautunut.',
+      'Ikä: 43',
+      'Ammatti: kääntäjä',
+      'Rooli: päähenkilö',
+      'Tausta: Lähti kaupungista 23-vuotiaana.'
+    ].join('\n'));
+
+    const described = (character) => migrateLegacy({ characters: [character] }, opts()).entries[0].description;
+    // Without flat fields basicInfo's own description and background are used; a stored role key goes through
+    // the A.4 list, a role in words is written in lower case after its label
+    expect(described({ basicInfo: { name: 'Eero', role: 'supporting', background: 'Jäi kaupunkiin.', description: 'Ystävä.' } }))
+      .toBe('Ystävä.\nRooli: sivuhenkilö\nTausta: Jäi kaupunkiin.');
+    expect(described({ basicInfo: { name: 'Eero', role: 'antagonist' } })).toBe('Rooli: vastustaja');
+    expect(described({ basicInfo: { name: 'Eero', role: 'Päähenkilö' } })).toBe('Rooli: päähenkilö');
+    expect(described({ basicInfo: { name: 'Eero', role: 'comic_relief' } })).toBe('Rooli: comic relief');
+    // The other labels, and a key of no list in B.14's fallback: no stored key is written as it is
+    expect(described({ basicInfo: { name: 'Eero', appearance: 'Pitkä.', gender: 'mies', personality: 'Lempeä.', nickname: 'Eki', nationality: 'suomalainen', eyeColor: 'sininen', home_town: 'Kotka' } }))
+      .toBe('Ulkonäkö: Pitkä.\nSukupuoli: mies\nLuonne: Lempeä.\nLempinimi: Eki\nKansallisuus: suomalainen\neye color: sininen\nhome town: Kotka');
+    // A flat description that is empty leaves basicInfo's; values that are no text leave no line
+    expect(described({ description: '  ', basicInfo: { name: 'Eero', description: 'Ystävä.', age: null, tags: ['a'] } })).toBe('Ystävä.');
+  });
+
+  test('a character name of several words gives its first word as an alias, when no other entry has that word (T-007)', () => {
+    const aliasesOf = (project) => Object.fromEntries(migrateLegacy(project, opts()).entries.map(item => [item.name, item.aliases]));
+
+    expect(aliasesOf({
+      characters: [
+        { name: 'Aino Lehto' },
+        { name: 'Anna-Liisa Mäki' },
+        { name: 'Li Wei' },
+        { name: 'Dr. Watson' },
+        { name: 'Eero' }
+      ],
+      locations: [{ name: 'Talo mäellä', description: 'Isän talo.' }],
+      plotThreads: [{ name: 'Aino ja Eero', description: 'Miksi?' }]
+    })).toEqual({
+      'Aino Lehto': ['Aino'],
+      'Anna-Liisa Mäki': ['Anna-Liisa'],
+      // fewer than three letters, or no word
+      'Li Wei': [],
+      'Dr. Watson': [],
+      'Eero': [],
+      // only characters get one
+      'Talo mäellä': [],
+      'Aino ja Eero': []
+    });
+
+    // The word is another entry's name or alias, in the folder or in this batch, in any case
+    expect(aliasesOf({ codex: [entry({ id: 'cx-old', type: 'paikka', name: 'aino' })], characters: [{ name: 'Aino Lehto' }] }))
+      .toEqual({ 'Aino Lehto': [] });
+    expect(aliasesOf({ codex: [entry({ id: 'cx-old', name: 'Aino Virtanen', aliases: ['”Aino”'] })], characters: [{ name: 'Aino Lehto' }] }))
+      .toEqual({ 'Aino Lehto': [] });
+    expect(aliasesOf({ characters: [{ name: 'Aino Lehto' }, { name: 'Aino' }] })).toEqual({ 'Aino Lehto': [], 'Aino': [] });
+    // Two new characters with the same first word: neither gets it
+    expect(aliasesOf({ characters: [{ name: 'Aino Lehto' }, { name: 'Aino Virtanen' }, { name: 'Eero Salmi' }] }))
+      .toEqual({ 'Aino Lehto': [], 'Aino Virtanen': [], 'Eero Salmi': ['Eero'] });
+    // A person of a nonfiction project too
+    expect(aliasesOf({ genre: 'nonfiction', characters: [{ name: 'Elias Lönnrot', description: 'Kerääjä.' }] }))
+      .toEqual({ 'Elias Lönnrot': ['Elias'] });
+
+    // The mention counts follow the alias: "Ainon" is a mention of Aino Lehto
+    const project = { characters: [{ id: 'char-1', name: 'Aino Lehto' }] };
+    const [migrated] = migrateLegacy(project, opts()).entries;
+    const chapters = [{ id: 'ch-1', content: 'Ainon isä kuoli. Aino Lehto palasi.' }];
+    expect(countMentions(chapters, [migrated]).total[migrated.id]).toBe(2);
+    expect(countMentions(chapters, [{ ...migrated, aliases: [] }]).total[migrated.id]).toBe(1);
+  });
+
+  test('the thread detection\'s own values relationship and open are written in Finnish (T-007)', () => {
+    const [thread] = migrateLegacy({ plotThreads: [{ name: 'Aino ja Eero', type: 'relationship', status: 'open' }] }, opts()).entries;
+    expect(thread.description).toBe('Tyyppi: Ihmissuhde\nTila: Avoin');
   });
 
   test('a continuity character with only a name is name-only and skipped by default', () => {

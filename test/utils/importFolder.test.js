@@ -583,9 +583,90 @@ describe('readImportFolder', () => {
     expect(result.report.failed).toEqual([{ name: '2 Yli.txt', error: 'Tiedosto on liian suuri (yli 20 Mt).' }]);
   });
 
-  test('a folder that does not exist is a Finnish error', async () => {
-    await expect(readImportFolder(path.join(root, 'Puuttuu'), {}, stubManuscript)).rejects.toThrow('Kansiota ei voitu lukea');
-    await expect(readImportFolder(path.join(root, 'Puuttuu'), {}, stubManuscript)).rejects.toThrow(/^Kansiota ei voitu lukea: .*ENOENT/);
+  // Changed in the final pass (lead decision "Import errors", T-006): the reason is a Finnish sentence
+  // without Node's English text (it was "Kansiota ei voitu lukea: ENOENT: no such file …"); the code stays
+  test('a folder that does not exist is a Finnish error that keeps the system code', async () => {
+    const missing = path.join(root, 'Puuttuu');
+    const error = await readImportFolder(missing, {}, stubManuscript).catch(failure => failure);
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toBe('Kansiota ei löytynyt.');
+    expect(error.code).toBe('ENOENT');
+    expect(error.message).not.toMatch(/ENOENT|no such|scandir/);
+    expect(error.message).not.toContain(missing);
+    // A file where a folder was expected is not found as a folder either
+    fs.writeFileSync(path.join(root, 'tiedosto.txt'), 'x');
+    await expect(readImportFolder(path.join(root, 'tiedosto.txt'), {}, stubManuscript)).rejects.toMatchObject({
+      message: 'Kansiota ei löytynyt.', code: 'ENOTDIR'
+    });
+  });
+
+  test('a folder that cannot be listed gives its reason by the system code, in Finnish (T-006)', async () => {
+    const dir = writeFixture(path.join(root, 'Kirja'));
+    const systemError = (code, text) => Object.assign(new Error(`${code}: ${text}, scandir '${dir}'`), { code });
+    const readdir = jest.spyOn(fs.promises, 'readdir');
+
+    readdir.mockRejectedValueOnce(systemError('EACCES', 'permission denied'));
+    await expect(readImportFolder(dir, {}, stubManuscript)).rejects.toMatchObject({ message: 'Kansioon ei ole lukuoikeutta.', code: 'EACCES' });
+    readdir.mockRejectedValueOnce(systemError('EPERM', 'operation not permitted'));
+    await expect(readImportFolder(dir, {}, stubManuscript)).rejects.toMatchObject({ message: 'Kansioon ei ole lukuoikeutta.', code: 'EPERM' });
+    readdir.mockRejectedValueOnce(systemError('EIO', 'i/o error'));
+    await expect(readImportFolder(dir, {}, stubManuscript)).rejects.toMatchObject({ message: 'Kansiota ei voitu lukea.', code: 'EIO' });
+    // An error without a code says the same and carries none
+    readdir.mockRejectedValueOnce(new Error('Something went wrong'));
+    const plain = await readImportFolder(dir, {}, stubManuscript).catch(failure => failure);
+    expect(plain.message).toBe('Kansiota ei voitu lukea.');
+    expect(plain.code).toBeUndefined();
+    // The original error is the cause, for a log
+    readdir.mockRejectedValueOnce(systemError('EACCES', 'permission denied'));
+    const denied = await readImportFolder(dir, {}, stubManuscript).catch(failure => failure);
+    expect(denied.cause).toMatchObject({ code: 'EACCES' });
+  });
+
+  test('a file of the folder that cannot be read is reported with a Finnish reason, never the English one (T-006)', async () => {
+    const dir = writeFixture(path.join(root, 'Kirja'));
+    fs.writeFileSync(path.join(dir, '6 Rikki.docx'), Buffer.from('ei zip'));
+    fs.writeFileSync(path.join(dir, '7 Outo.txt'), 'x');
+    const systemError = (code) => Object.assign(new Error(`${code}: system text`), { code });
+    const realStat = fs.promises.stat.bind(fs.promises);
+    jest.spyOn(fs.promises, 'stat').mockImplementation((filePath, ...rest) => {
+      if (filePath.normalize('NFC').endsWith('2 Äiti [11].txt')) return Promise.reject(systemError('ENOENT'));
+      if (filePath.endsWith('10 Loppu [3].txt')) return Promise.reject(systemError('EACCES'));
+      if (filePath.endsWith('1 Alku [10].synopsis.txt')) return Promise.reject(systemError('EISDIR'));
+      return realStat(filePath, ...rest);
+    });
+    const deps = {
+      decodeText: stubManuscript.decodeText,
+      async importDocument(buffer, name, options) {
+        // The zip library's own message for a .docx that is no zip; an English message for another file
+        if (name.endsWith('.docx')) throw new Error("Can't find end of central directory : is this a zip file ?");
+        if (name.startsWith('7 ')) throw new Error('Unexpected token');
+        return stubManuscript.importDocument(buffer, name, options);
+      }
+    };
+    const result = await readImportFolder(dir, {}, deps);
+
+    // In reading order; the synopsis file could not be read, so its chapter is imported without one
+    expect(result.report.failed).toEqual([
+      { name: '1 Alku [10].synopsis.txt', error: 'Tiedostoa ei voitu lukea.' },
+      { name: '2 Äiti [11].txt', error: 'Tiedostoa ei löytynyt.' },
+      { name: '6 Rikki.docx', error: 'Tiedosto ei ole kelvollinen Word-asiakirja.' },
+      { name: '7 Outo.txt', error: 'Tiedostoa ei voitu lukea.' },
+      { name: '10 Loppu [3].txt', error: 'Tiedostoon ei ole lukuoikeutta.' }
+    ]);
+    for (const failure of result.report.failed) expect(failure.error).not.toMatch(/[A-Z]{2,}:|zip|token|system/i);
+    expect(result.chapters.map(chapter => chapter.sourceFile)).toEqual(['1 Alku [10].txt', '3 Saapuminen [12].md', '4 Osa II [13].txt']);
+    expect(result.chapters[0]).toMatchObject({ synopsis: '', synopsisFile: null });
+  });
+
+  realTest('a .docx that is no Word file, read by the real converter, is reported in Finnish (T-006)', async () => {
+    const dir = path.join(root, 'Kirja');
+    fs.mkdirSync(dir);
+    fs.writeFileSync(path.join(dir, '1 Alku.txt'), 'Alku.');
+    fs.writeFileSync(path.join(dir, '2 Rikki.docx'), Buffer.from([0x13, 0x37, 0x00, 0xff, 0x42, 0x99, 0x10, 0x20]));
+    const result = await readImportFolder(dir);
+
+    expect(result.report.failed).toEqual([{ name: '2 Rikki.docx', error: 'Tiedosto ei ole kelvollinen Word-asiakirja.' }]);
+    expect(result.chapters.map(chapter => chapter.sourceFile)).toEqual(['1 Alku.txt']);
   });
 
   test('resolveSubfolder finds a direct child folder and refuses everything else', async () => {
@@ -740,7 +821,9 @@ describe('readImportFolder', () => {
     };
     const result = await readImportFolder(dir, {}, deps);
 
-    expect(result.report.failed).toEqual([{ name: '1 Alku [10].synopsis.txt', error: 'Merkistöä ei tunnistettu' }]);
+    // Changed in the final pass (lead decision "Import errors", T-006): only the import modules' own
+    // sentences (Tiedosto…) pass as they are; any other message gives the module's Finnish reason
+    expect(result.report.failed).toEqual([{ name: '1 Alku [10].synopsis.txt', error: 'Tiedostoa ei voitu lukea.' }]);
     expect(result.chapters).toHaveLength(5);
     expect(result.chapters[0].title).toBe('Alku');
     expect(result.chapters[0].synopsis).toBe('');

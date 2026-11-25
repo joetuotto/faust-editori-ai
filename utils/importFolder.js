@@ -242,7 +242,49 @@ const atLeastZero = (value, fallback) => (typeof value === 'number' && value >= 
 // formatCount of src/services/format.fi.js, which the packaged main process cannot load.
 const groupThousands = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, String.fromCharCode(0xa0));
 
-const messageOf = (error) => String((error && error.message) || error);
+// Menu spec B.12: a reason is a Finnish sentence, never Node's or a library's English text
+// ("ENOENT: no such file or directory, scandir '/…'", JSZip's "Corrupted zip ?"). A system error
+// is told by its code; the sentences of this module and of utils/manuscript.js all begin with
+// "Tiedosto" and pass as they are.
+const FOLDER_REASONS = {
+  missing: 'Kansiota ei löytynyt.',
+  denied: 'Kansioon ei ole lukuoikeutta.',
+  other: 'Kansiota ei voitu lukea.'
+};
+const FILE_REASONS = {
+  missing: 'Tiedostoa ei löytynyt.',
+  denied: 'Tiedostoon ei ole lukuoikeutta.',
+  other: 'Tiedostoa ei voitu lukea.',
+  notWord: 'Tiedosto ei ole kelvollinen Word-asiakirja.'
+};
+const OWN_REASON = /^Tiedosto/;
+
+const codeOf = (error) => (error && typeof error.code === 'string' ? error.code : '');
+
+function systemReason(code, reasons) {
+  if (code === 'ENOENT' || code === 'ENOTDIR') return reasons.missing;
+  if (code === 'EACCES' || code === 'EPERM') return reasons.denied;
+  return reasons.other;
+}
+
+// Why one file of the folder could not be read: report.failed[].error
+function fileReason(error, name) {
+  const code = codeOf(error);
+  if (code) return systemReason(code, FILE_REASONS);
+  const message = String((error && error.message) || error || '').trim();
+  if (OWN_REASON.test(message)) return message;
+  // A .docx that the Word reader cannot open throws the zip library's English message
+  return extensionOf(name) === 'docx' ? FILE_REASONS.notWord : FILE_REASONS.other;
+}
+
+// The folder itself cannot be listed. The Error keeps the system code (electron.js maps the
+// failure by it) and the original error as its cause.
+function folderError(error) {
+  const code = codeOf(error);
+  const failure = new Error(systemReason(code, FOLDER_REASONS), { cause: error });
+  if (code) failure.code = code;
+  return failure;
+}
 
 // A file over the limit is never read into memory
 async function readWithinLimit(filePath, maxFileBytes) {
@@ -255,9 +297,11 @@ async function readWithinLimit(filePath, maxFileBytes) {
  * Read the importable files of a folder as chapters. Only the direct
  * children of the folder are read, one at a time, and nothing is logged.
  *
- * A file that cannot be read goes to report.failed and the rest are still
- * imported. The promise is rejected, with a Finnish message, only when the
- * folder cannot be listed or holds more than maxFiles chapter files.
+ * A file that cannot be read goes to report.failed, with its reason as a
+ * Finnish sentence, and the rest are still imported. The promise is rejected,
+ * with a Finnish message, only when the folder cannot be listed (the Error
+ * keeps the system's code, such as ENOENT or EACCES) or holds more than
+ * maxFiles chapter files.
  *
  * @param {string} folderPath
  * @param {{ maxFiles?: number, maxFileBytes?: number }} [options]
@@ -287,7 +331,7 @@ async function readImportFolder(folderPath, options = {}, deps) {
   try {
     listing = await fs.readdir(folderPath, { withFileTypes: true });
   } catch (error) {
-    throw new Error(`Kansiota ei voitu lukea: ${messageOf(error)}`);
+    throw folderError(error);
   }
 
   // External volumes are not always normalisation-insensitive, so every path
@@ -323,7 +367,7 @@ async function readImportFolder(folderPath, options = {}, deps) {
       const buffer = await readWithinLimit(pathOf(name), maxFileBytes);
       imported = await importDocument(buffer, name, { oneChapterPerFile: true });
     } catch (error) {
-      failed.push({ name, error: messageOf(error) });
+      failed.push({ name, error: fileReason(error, name) });
       continue;
     }
 
@@ -355,7 +399,7 @@ async function readImportFolder(folderPath, options = {}, deps) {
         chapter.synopsisFile = synopsisFile;
       } catch (error) {
         // The chapter is still imported, without a synopsis
-        failed.push({ name: synopsisFile, error: messageOf(error) });
+        failed.push({ name: synopsisFile, error: fileReason(error, synopsisFile) });
       }
     }
 
