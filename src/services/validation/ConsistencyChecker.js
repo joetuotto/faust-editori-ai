@@ -2,17 +2,31 @@
  * ConsistencyChecker
  *
  * Detects contradictions and inconsistencies across the book
- * - Character inconsistencies (appearance, traits)
+ * - Character inconsistencies (appearance, traits): the model reads the sentences that mention a character
  * - Timeline errors
  * - Location contradictions
  * - Naming variations
+ *
+ * The pattern rules (which words are a character's name, name variations, dates, places) live in
+ * consistencyRules.js, a pure module with its own tests. This file is a plain script and cannot
+ * import it: app.js hands the module over; under Node (Jest) it is required.
  */
 
 class ConsistencyChecker {
-  constructor(project, electronAPI, callAIWithMode) {
+  constructor(project, electronAPI, callAIWithMode, rules) {
     this.project = project;
     this.electronAPI = electronAPI;
     this.callAIWithMode = callAIWithMode; // AI Writing Modes support
+    this.rules = rules || null;
+  }
+
+  /** The pattern rules. Without them nothing can be checked: a run fails with this reason. */
+  patternRules() {
+    if (!this.rules && typeof module !== 'undefined' && module.exports && typeof require === 'function') {
+      this.rules = require('./consistencyRules.js');
+    }
+    if (!this.rules) throw new Error('tarkistussääntöjä ei ole ladattu');
+    return this.rules;
   }
 
   /**
@@ -110,11 +124,16 @@ class ConsistencyChecker {
       return null;
     }
 
-    // Find position in content (simple text search)
+    // The place of the mark: the rule's own offset in the chapter's text, where it gives one (a
+    // text search would find the first copy of the words, which may stand inside a note)
     let position = 0;
     let length = 50;
 
-    if (occurrence.content) {
+    if (Number.isInteger(occurrence.position) && occurrence.position >= 0 &&
+        Number.isInteger(occurrence.length) && occurrence.position + occurrence.length <= chapter.content.length) {
+      position = occurrence.position;
+      length = occurrence.length;
+    } else if (occurrence.content) {
       const foundPos = chapter.content.indexOf(occurrence.content);
       if (foundPos !== -1) {
         position = foundPos;
@@ -239,80 +258,23 @@ class ConsistencyChecker {
   }
 
   /**
-   * The words a character goes by in the text: the whole name, each of its words of at least
-   * three letters ("Aino", "Lehto") and the aliases of the Tarinakansio entry of the same name.
-   * A novel calls its people by first name, so the whole name alone finds almost nothing.
-   */
-  nameWords(character) {
-    const letters = (word) => word.replace(/[^\p{L}]/gu, '').length;
-    const name = String((character && character.name) || '').trim();
-    const own = name.split(/\s+/).filter(word => letters(word) >= 3);
-    const entry = (Array.isArray(this.project.codex) ? this.project.codex : []).find(item =>
-      item && typeof item.name === 'string' && item.name.trim().toLowerCase() === name.toLowerCase());
-    const aliases = entry && Array.isArray(entry.aliases)
-      ? entry.aliases.filter(alias => typeof alias === 'string').map(alias => alias.replace(/^["”“»]|["”“»]$/g, '').trim())
-      : [];
-    return [...new Set([name, ...own, ...aliases].filter(word => letters(word) >= 3))];
-  }
-
-  /**
-   * Finds a mention: one of the name words at the start of a word, any ending allowed
-   * ("Ainon", "Eerolle"), as the Tarinakansio matcher does. null for a character without a name.
-   */
-  mentionPattern(character) {
-    const words = this.nameWords(character).map(word => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-    return words.length > 0 ? new RegExp(`(?<![\\p{L}\\p{N}])(?:${words.join('|')})`, 'u') : null;
-  }
-
-  /**
-   * Is the word a name word itself or an inflected form of it? "Ainon" and "Eerolle" start with
-   * the name; "Koskisen" (Koskinen) and "Lehdon" (Lehto) change the end of the stem, so a longer
-   * word that keeps all but the last two letters and ends like a case form counts too.
-   */
-  isFormOfName(word, nameWord) {
-    const w = String(word).toLowerCase();
-    const n = String(nameWord).toLowerCase();
-    if (w.startsWith(n)) return true;
-    if (n.endsWith('nen') && w.startsWith(n.slice(0, -3) + 's')) return true;
-    const stem = n.slice(0, Math.max(3, n.length - 2));
-    return w.length > n.length && w.startsWith(stem) &&
-      /(?:n|a|ä|lla|llä|lta|ltä|lle|ksi|tta|ttä)(?:ni|si|nsa|nsä|mme|nne)?(?:kin|kaan|kään|ko|kö|han|hän|pa|pä)?$/.test(w);
-  }
-
-  /**
-   * Check character consistency using AI
+   * Check character consistency using AI. The pattern side (which sentences mention the character)
+   * is rules.mentionSentences: the Tarinakansio matcher finds the name, its words and the aliases of
+   * the entry of the same name in any inflected form, notes are left out, and the sentences are cut
+   * by the app's sentence rule.
    */
   async checkCharacterConsistency() {
     if (!this.electronAPI) {
       return [];
     }
 
+    const rules = this.patternRules();
     const errors = [];
 
     // Check each character
     for (const character of this.project.characters || []) {
-      // Collect all mentions of this character
-      const mentions = [];
-
-      // By any word the character goes by: with the whole name only ("Aino Lehto"), a text that
-      // uses first names never reached two chapters and the check was skipped without a word
-      const mentioned = this.mentionPattern(character);
-      if (!mentioned) continue;
-
-      (this.project.structure || []).forEach((chapter, idx) => {
-        if (chapter.content && mentioned.test(chapter.content)) {
-          const sentences = chapter.content.match(/[^.!?]+[.!?]+/g) || [];
-          const characterSentences = sentences.filter(s => mentioned.test(s));
-
-          if (characterSentences.length > 0) {
-            mentions.push({
-              chapterIndex: idx,
-              chapterTitle: chapter.title,
-              sentences: characterSentences.slice(0, 5) // First 5 mentions
-            });
-          }
-        }
-      });
+      // The first five sentences that mention the character, per chapter
+      const mentions = rules.mentionSentences(this.project, character, 5);
 
       if (mentions.length < 2) {
         continue; // Need at least 2 chapters to check consistency
@@ -417,7 +379,8 @@ If no contradictions found, return: {"contradictions": []}${this.languageRule ? 
         chapters: c.chapters || [],
         evidence: c.evidence || [],
         suggestedFix: c.suggestedFix || 'Manual review needed',
-        autoFixable: c.type === 'physical_appearance' || c.type === 'name_variation'
+        // No fix exists for what the model finds: applyAutoFix knows name variations only
+        autoFixable: false
       }));
 
     } catch (error) {
@@ -428,316 +391,28 @@ If no contradictions found, return: {"contradictions": []}${this.languageRule ? 
   }
 
   /**
-   * Check naming consistency (simple pattern matching)
+   * Check naming consistency: a name written in two base spellings (Katariina / Katarina).
+   * Inflected forms, other characters, aliases, entries and places are never variations.
    */
   async checkNamingConsistency() {
-    const errors = [];
-
-    // Check each character for name variations
-    for (const character of this.project.characters || []) {
-      const variations = new Set();
-      const baseName = character.name;
-      if (typeof baseName !== 'string' || baseName.trim().length < 3) continue;
-      const nameWords = this.nameWords(character);
-
-      // Look for variations like "Maria" vs "Marja", "Jussi" vs "Juhani"
-      (this.project.structure || []).forEach(chapter => {
-        if (!chapter.content) return;
-
-        // A capitalised word in the middle of a sentence is a name; at the start of a sentence
-        // every word is capitalised ("Aina", "Asia"), so those places say nothing
-        const words = chapter.content.match(/(?<=[\p{Ll},;:][ \t]+)\p{Lu}\p{Ll}+(?![\p{L}\p{N}])/gu) || [];
-        words.forEach(word => {
-          // Simple similarity check (first 3 letters match)
-          if (baseName.substring(0, 3).toLowerCase() !== word.substring(0, 3).toLowerCase()) return;
-          // The first name alone and an inflected form ("Aino", "Ainon", "Eerolle") are the same
-          // spelling of the name, not variations of it
-          if (nameWords.some(nameWord => this.isFormOfName(word, nameWord))) return;
-          variations.add(word);
-        });
-      });
-
-      if (variations.size > 0) {
-        errors.push({
-          id: `name-${character.id}`,
-          type: 'name_variation',
-          severity: 'medium',
-          category: 'naming',
-          characterId: character.id,
-          characterName: baseName,
-          message: `Possible name variations: ${Array.from(variations).join(', ')}`,
-          variations: [baseName, ...Array.from(variations)],
-          suggestedFix: `Standardize to "${baseName}"`,
-          autoFixable: true
-        });
-      }
-    }
-
-    return errors;
+    return this.patternRules().nameFindings(this.project);
   }
 
   /**
    * Check timeline consistency
-   * Detects chronological errors where later chapters reference earlier dates
+   * Detects chronological errors where a later chapter's dates lie before an earlier chapter's.
+   * The dates are read by rules.extractDates: a number that is no day of the calendar is not a date.
    */
   async checkTimeline() {
-    const errors = [];
-    const timeReferences = [];
-
-    // Extract all date/time references from chapters
-    (this.project.structure || []).forEach((chapter, chapterIndex) => {
-      if (!chapter.content) return;
-
-      const dates = this.extractDates(chapter.content);
-      dates.forEach(dateInfo => {
-        timeReferences.push({
-          ...dateInfo,
-          chapterId: chapter.id,
-          chapterTitle: chapter.title,
-          chapterIndex: chapterIndex
-        });
-      });
-    });
-
-    // Check for chronological errors
-    for (let i = 1; i < timeReferences.length; i++) {
-      const prev = timeReferences[i - 1];
-      const curr = timeReferences[i];
-
-      // If chapter order is later but date is earlier, it's an error
-      if (curr.chapterIndex > prev.chapterIndex && curr.date < prev.date) {
-        errors.push({
-          id: `timeline-${i}`,
-          type: 'timeline_error',
-          severity: 'critical',
-          category: 'timeline',
-          message: 'Timeline contradiction',
-          description: `${curr.chapterTitle} (${curr.dateText}) tapahtuu ennen ${prev.chapterTitle} (${prev.dateText})`,
-          occurrences: [
-            {
-              chapterId: prev.chapterId,
-              chapterTitle: prev.chapterTitle,
-              content: prev.dateText,
-              context: prev.context
-            },
-            {
-              chapterId: curr.chapterId,
-              chapterTitle: curr.chapterTitle,
-              content: curr.dateText,
-              context: curr.context
-            }
-          ],
-          suggestedFix: 'Tarkista aikajana – tapahtumat ovat väärässä järjestyksessä.',
-          autoFixable: false
-        });
-      }
-    }
-
-    return errors;
-  }
-
-  /**
-   * Extract dates from text
-   * Supports multiple date formats
-   */
-  extractDates(text) {
-    const dates = [];
-
-    // Pattern 1: DD.MM.YYYY or DD/MM/YYYY
-    const pattern1 = /(\d{1,2})[\.\/](\d{1,2})[\.\/](\d{4})/g;
-    let match;
-    while ((match = pattern1.exec(text)) !== null) {
-      const day = parseInt(match[1]);
-      const month = parseInt(match[2]) - 1; // JS months are 0-indexed
-      const year = parseInt(match[3]);
-      const date = new Date(year, month, day);
-
-      if (!isNaN(date.getTime())) {
-        dates.push({
-          dateText: match[0],
-          date: date,
-          position: match.index,
-          context: this.getContextAround(text, match.index, 50)
-        });
-      }
-    }
-
-    // Pattern 2: YYYY-MM-DD (ISO format)
-    const pattern2 = /(\d{4})-(\d{2})-(\d{2})/g;
-    while ((match = pattern2.exec(text)) !== null) {
-      const year = parseInt(match[1]);
-      const month = parseInt(match[2]) - 1;
-      const day = parseInt(match[3]);
-      const date = new Date(year, month, day);
-
-      if (!isNaN(date.getTime())) {
-        dates.push({
-          dateText: match[0],
-          date: date,
-          position: match.index,
-          context: this.getContextAround(text, match.index, 50)
-        });
-      }
-    }
-
-    // Pattern 3: Month names in Finnish
-    const monthNames = ['tammikuu', 'helmikuu', 'maaliskuu', 'huhtikuu', 'toukokuu', 'kesäkuu',
-                        'heinäkuu', 'elokuu', 'syyskuu', 'lokakuu', 'marraskuu', 'joulukuu'];
-    const pattern3 = new RegExp(`(\\d{1,2})\\.?\\s+(${monthNames.join('|')})\\s+(\\d{4})`, 'gi');
-    while ((match = pattern3.exec(text)) !== null) {
-      const day = parseInt(match[1]);
-      const monthName = match[2].toLowerCase();
-      const month = monthNames.indexOf(monthName);
-      const year = parseInt(match[3]);
-
-      if (month !== -1) {
-        const date = new Date(year, month, day);
-        if (!isNaN(date.getTime())) {
-          dates.push({
-            dateText: match[0],
-            date: date,
-            position: match.index,
-            context: this.getContextAround(text, match.index, 50)
-          });
-        }
-      }
-    }
-
-    return dates;
+    return this.patternRules().timelineFindings(this.project);
   }
 
   /**
    * Check location consistency
-   * Detects contradictions in character locations
+   * Detects a character who is clearly said to be in two places in consecutive chapters with no move told
    */
   async checkLocationConsistency() {
-    const errors = [];
-    const characterLocations = new Map();
-
-    // Track character locations per chapter
-    for (const character of this.project.characters || []) {
-      const locations = [];
-
-      (this.project.structure || []).forEach((chapter, idx) => {
-        if (!chapter.content || !chapter.content.includes(character.name)) return;
-
-        // Extract location mentions for this character
-        const locationMatches = this.extractCharacterLocation(chapter.content, character.name);
-        if (locationMatches.length > 0) {
-          locations.push({
-            chapterIndex: idx,
-            chapterId: chapter.id,
-            chapterTitle: chapter.title,
-            locations: locationMatches
-          });
-        }
-      });
-
-      if (locations.length >= 2) {
-        characterLocations.set(character.id, {
-          character: character,
-          locations: locations
-        });
-      }
-    }
-
-    // Check for contradictions
-    for (const [characterId, data] of characterLocations.entries()) {
-      const { character, locations } = data;
-
-      // Check consecutive chapters for location contradictions
-      for (let i = 1; i < locations.length; i++) {
-        const prev = locations[i - 1];
-        const curr = locations[i];
-
-        // If consecutive chapters, check if location changed without explanation
-        if (curr.chapterIndex === prev.chapterIndex + 1) {
-          const prevLoc = prev.locations[0];
-          const currLoc = curr.locations[0];
-
-          if (prevLoc !== currLoc && !this.hasTransitionKeywords(curr.chapterTitle)) {
-            errors.push({
-              id: `location-${characterId}-${i}`,
-              type: 'location_inconsistency',
-              severity: 'medium',
-              category: 'location',
-              characterId: characterId,
-              characterName: character.name,
-              message: `${character.name}'s location changes without explanation`,
-              description: `${character.name}: ${prevLoc} (${prev.chapterTitle}) → ${currLoc} (${curr.chapterTitle})`,
-              occurrences: [
-                {
-                  chapterId: prev.chapterId,
-                  chapterTitle: prev.chapterTitle,
-                  content: `Location: ${prevLoc}`
-                },
-                {
-                  chapterId: curr.chapterId,
-                  chapterTitle: curr.chapterTitle,
-                  content: `Location: ${currLoc}`
-                }
-              ],
-              suggestedFix: `Lisää kohtaus, jossa ${character.name} siirtyy paikasta ${prevLoc} paikkaan ${currLoc}, tai korjaa sijaintiviittaukset.`,
-              autoFixable: false
-            });
-          }
-        }
-      }
-    }
-
-    return errors;
-  }
-
-  /**
-   * Extract location for a character from text
-   */
-  extractCharacterLocation(text, characterName) {
-    const locations = [];
-
-    // Pattern: "Name ... in/at/to Location"
-    const patterns = [
-      new RegExp(`${characterName}[^.]*?(?:asuu|oli|on|kävi|meni|tuli)\\s+([A-ZÄÖÅ][a-zäöå]+(?:ssa|ssä|sta|stä|lle|aan|ään))`, 'g'),
-      new RegExp(`${characterName}[^.]*?(?:in|at|to|from)\\s+([A-ZÄÖÅ][a-zäöå]+)`, 'gi'),
-      new RegExp(`([A-ZÄÖÅ][a-zäöå]+(?:ssa|ssä|sta|stä|lle)),[^.]*${characterName}`, 'g')
-    ];
-
-    patterns.forEach(pattern => {
-      let match;
-      while ((match = pattern.exec(text)) !== null) {
-        if (match[1]) {
-          // Clean location name (remove Finnish case endings)
-          let location = match[1]
-            .replace(/ssa$|ssä$/i, '')
-            .replace(/sta$|stä$/i, '')
-            .replace(/aan$|ään$/i, '')
-            .replace(/lle$/i, '');
-
-          if (location.length > 2) {
-            locations.push(location);
-          }
-        }
-      }
-    });
-
-    return [...new Set(locations)]; // Remove duplicates
-  }
-
-  /**
-   * Check if chapter has transition keywords
-   */
-  hasTransitionKeywords(chapterTitle) {
-    const keywords = ['matka', 'saapuu', 'lähtö', 'muutto', 'matkalla', 'journey', 'arrival', 'departure'];
-    return keywords.some(keyword => chapterTitle.toLowerCase().includes(keyword));
-  }
-
-  /**
-   * Get context around a position in text
-   */
-  getContextAround(text, position, length = 50) {
-    const start = Math.max(0, position - length);
-    const end = Math.min(text.length, position + length);
-    const context = text.substring(start, end);
-    return (start > 0 ? '...' : '') + context + (end < text.length ? '...' : '');
+    return this.patternRules().locationFindings(this.project);
   }
 
   /**
@@ -758,32 +433,33 @@ If no contradictions found, return: {"contradictions": []}${this.languageRule ? 
   }
 
   /**
-   * Fix name variations
+   * Fix name variations: every place where a variation is written gets the kept spelling, and
+   * the ending of the word stays as written (Katarinan → Katariinan). The plan is rules.planNameFix;
+   * a plan that is not safe changes nothing and throws.
+   *
+   * The project the checker holds is the app's state, so it is not changed in place: this.project
+   * becomes a new object whose changed chapters are new objects. The caller writes `chapters`
+   * (id, content, changes) into its own state.
    */
   fixNameVariations(error) {
-    const correctName = error.characterName;
-    const variations = error.variations.filter(v => v !== correctName);
+    const plan = this.patternRules().planNameFix(this.project, error);
+    if (!plan.safe) {
+      throw new Error('Error is not auto-fixable');
+    }
 
-    let fixCount = 0;
-
-    (this.project.structure || []).forEach(chapter => {
-      if (!chapter.content) return;
-
-      variations.forEach(variation => {
-        const regex = new RegExp(`\\b${variation}\\b`, 'g');
-        const before = chapter.content;
-        chapter.content = chapter.content.replace(regex, correctName);
-
-        if (chapter.content !== before) {
-          fixCount++;
-        }
-      });
-    });
+    const texts = new Map(plan.chapters.map(chapter => [chapter.id, chapter.content]));
+    this.project = {
+      ...this.project,
+      structure: (this.project.structure || []).map(chapter =>
+        chapter && texts.has(chapter.id) ? { ...chapter, content: texts.get(chapter.id) } : chapter)
+    };
 
     return {
       success: true,
-      message: `Fixed ${fixCount} instances of name variations`,
-      correctName
+      message: `Fixed ${plan.count} instances of name variations`,
+      correctName: plan.correctName,
+      fixCount: plan.count,
+      chapters: plan.chapters
     };
   }
 

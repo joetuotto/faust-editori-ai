@@ -87,7 +87,9 @@ const MODULES = {
   'src/editor/textTools.js': ['WORD_CHAR', 'TODO_PATTERN_SOURCE', 'UNDERLINE_PATTERN_SOURCE', 'continueList', 'buildSearchPattern', 'countWords'],
   'src/utils/CommandManager.js': ['CommandManager', 'UpdateContentCommand'],
   // F1 (25 Nov 2026): margin marks follow edits; the mapper is suggestionModel's (mapRange, planRebase exported for it)
-  'src/editor/annotationMapping.js': ['changesFit', 'mapAnnotations', 'mapAnnotationsBetween', 'followEdits']
+  'src/editor/annotationMapping.js': ['changesFit', 'mapAnnotations', 'mapAnnotationsBetween', 'followEdits'],
+  // F2 (25 Nov 2026): the pattern rules of the consistency checker (app.js hands them to the plain script)
+  'src/services/validation/consistencyRules.js': ['readable', 'mentionSentences', 'differsByDoubledLetter', 'nameFindings', 'planNameFix', 'extractDates', 'timelineFindings', 'locationFindings']
 };
 
 // The editor cores: the factory is called with CodeMirror and must return these names.

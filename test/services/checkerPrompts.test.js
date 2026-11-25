@@ -105,6 +105,13 @@ describe('the thread detection asks for the answer language and reads the text w
 // Final polish round 1. The sample project calls its people by first name ("Aino", "Eerolle"), its
 // character list holds the whole names. Before: the name check listed the first name and every
 // inflected form as spelling variations, and the model step never ran (it looked for the whole name).
+//
+// F2 (25 Nov 2026) changed two things here, by the lead's decision. The checker has no form rule of
+// its own any more (isFormOfName is gone: the Tarinakansio matcher decides what is a form of a
+// name), so its three expectations left the first case. And a variation is only another base
+// spelling that is likely the same person: Marja beside Maria is another name, so the second case
+// now expects nothing for it and a finding for Katarina beside Katariina. The rules themselves are
+// tested in consistencyRules.test.js.
 describe('the checker knows a character by its first name and inflected forms', () => {
   const sample = () => ({
     title: 'Lumen alla',
@@ -125,18 +132,20 @@ describe('the checker knows a character by its first name and inflected forms', 
   test('the first name, an alias and inflected forms are not spelling variations', async () => {
     const checker = new window.ConsistencyChecker(sample(), null, null);
     expect(await checker.checkNamingConsistency()).toEqual([]);
-    expect(checker.isFormOfName('Lehdon', 'Lehto')).toBe(true);
-    expect(checker.isFormOfName('Koskisen', 'Koskinen')).toBe(true);
-    expect(checker.isFormOfName('Marja', 'Maria')).toBe(false);
+    expect(checker.isFormOfName).toBeUndefined();
   });
 
-  test('a different spelling in the middle of a sentence is still listed', async () => {
+  test('a different spelling in the middle of a sentence is still listed; another name is not', async () => {
     const project = sample();
     project.characters = [{ id: 'c1', name: 'Maria' }];
     project.structure[0].content = 'Illalla Maria tuli kotiin. Marketta ei ollut paikalla, mutta sitten Marja soitti.';
+    expect(await new window.ConsistencyChecker(project, null, null).checkNamingConsistency()).toEqual([]);
+
+    project.characters = [{ id: 'c1', name: 'Katariina' }];
+    project.structure[0].content = 'Illalla Katariina tuli kotiin. Marketta ei ollut paikalla, mutta sitten Katarina soitti.';
     const errors = await new window.ConsistencyChecker(project, null, null).checkNamingConsistency();
     expect(errors).toHaveLength(1);
-    expect(errors[0]).toMatchObject({ type: 'name_variation', characterName: 'Maria', variations: ['Maria', 'Marja'] });
+    expect(errors[0]).toMatchObject({ type: 'name_variation', characterName: 'Katariina', variations: ['Katariina', 'Katarina'] });
   });
 
   test('the model step runs for a character the text calls by first name or alias', async () => {

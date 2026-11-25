@@ -30,6 +30,8 @@ import { fieldHistoryFor } from './src/editor/fieldHistory.js';
 import { CommandManager } from './src/utils/CommandManager.js';
 // Margin marks follow every change of their chapter's text: the rule, applied in the project setter (F1)
 import { followEdits, mapAnnotationsBetween } from './src/editor/annotationMapping.js';
+// The pattern rules of the consistency checker. The checker is a plain script and cannot import them (F2)
+import { mentionSentences, nameFindings, planNameFix, timelineFindings, locationFindings } from './src/services/validation/consistencyRules.js';
 import { wordDiff, changeRatio, diffSegments, changeStats } from './src/editor/wordDiff.js';
 import { appendRow as appendAiLogRow, createLog as createAiLog, decisionRow } from './src/services/ai/usageLog.js';
 import { addAutoSnapshot } from './src/services/project/snapshots.js';
@@ -4861,7 +4863,8 @@ ${contextPrompt}`;
               consistencyCheckerRef.current = new window.ConsistencyChecker(
                 project,
                 window.electronAPI,
-                callAIStable  // AI mode-aware call, always the current one
+                callAIStable,  // AI mode-aware call, always the current one
+                { mentionSentences, nameFindings, planNameFix, timelineFindings, locationFindings }
               );
               console.log('[AI] ConsistencyChecker initialized with AI Writing Modes');
             }

@@ -159,18 +159,22 @@ describe('the consistency checker puts its marks into the chapters (T-004)', () 
 
   test('the fix texts the local checks write: an en dash, the relative clause in commas, a full stop (final-pass review)', async () => {
     // Shown on the margin card and the Projekti tab as "Korjausehdotus: …" (menu spec A, B.13)
+    // F2 (25 Nov 2026), by the lead's decision: a place is taken only from a clear statement, so the
+    // place stands alone in its clause here; and the place words are shown as the text writes them
+    // (no ending is cut off any more: "Helsingi", "Turu"), so the fix sentence no longer repeats them.
     const checker = new window.ConsistencyChecker({
       characters: [{ id: 'c1', name: 'Aino' }],
       structure: [
-        { id: 'ch-a', title: 'Eka', content: 'Aino oli Helsingissä 1.5.2020.', annotations: [] },
-        { id: 'ch-b', title: 'Toka', content: 'Aino oli Turussa 1.3.2019.', annotations: [] }
+        { id: 'ch-a', title: 'Eka', content: 'Aino oli Helsingissä. Oli 1.5.2020.', annotations: [] },
+        { id: 'ch-b', title: 'Toka', content: 'Aino oli Turussa. Oli 1.3.2019.', annotations: [] }
       ]
     }, null, null);
     const [timeline] = await checker.checkTimeline();
     expect(timeline.suggestedFix).toBe('Tarkista aikajana – tapahtumat ovat väärässä järjestyksessä.');
     expect(window.ConsistencyChecker.markFix(timeline)).toBe('Tarkista aikajana – tapahtumat ovat väärässä järjestyksessä.');
     const [location] = await checker.checkLocationConsistency();
-    expect(location.suggestedFix).toMatch(/^Lisää kohtaus, jossa Aino siirtyy paikasta \S+ paikkaan \S+, tai korjaa sijaintiviittaukset\.$/);
+    expect(location.description).toBe('Aino: Helsingissä (Eka) → Turussa (Toka)');
+    expect(location.suggestedFix).toBe('Lisää kohtaus, jossa Aino siirtyy paikasta toiseen, tai korjaa sijaintiviittaukset.');
   });
 
   test('the English texts the checker writes itself become Finnish in the margin', () => {
