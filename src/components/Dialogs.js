@@ -82,6 +82,9 @@ const OTHER_MODIFIERS = [['super', 'Super'], ['ctrl', 'Ctrl'], ['alt', 'Alt'], [
 // Keys with a name: [macOS, elsewhere]
 const KEY_NAME = {
   Plus: ['+', '+'],
+  // The minus key is shown as a minus sign (U+2212), the plus sign's width: as a hyphen the Loitonna
+  // keycap did not read as the pair of Lähennä's +. The accelerator string keeps the hyphen.
+  '-': ['−', '−'],
   Enter: ['↩', 'Enter'], Return: ['↩', 'Enter'],
   Backspace: ['⌫', 'Backspace'], Delete: ['⌦', 'Delete'],
   Up: ['↑', 'Up'], Down: ['↓', 'Down'], Left: ['←', 'Left'], Right: ['→', 'Right'],

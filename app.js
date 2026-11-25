@@ -71,6 +71,9 @@ import {
   Popover, usePopover, SigilButton, Tooltip, VoiceButton, Dialog, layerStack, Tabs, Rating, DiffView
 } from './src/components/ui.js';
 
+// Why a tekoäly command is disabled while no model is chosen (menu spec B.8: <Verb> ensin …)
+const NO_MODEL_REASON = 'Valitse ensin malli';
+
 const { createElement: e, useState, useEffect, useLayoutEffect, useRef, useMemo } = React;
 
 // Classic scrollbars take room on both sides of the manuscript scroller: their width is
@@ -200,6 +203,9 @@ const label = (value) => {
 const versionWords = (version) => (version && typeof version.content === 'string'
   ? version.content.split(/\s+/).filter(Boolean).length
   : Number(version && version.wordCount) || 0);
+
+// The comparison legend's sample of a mark: two letters in the mark's own look, before its plain words
+const diffSample = (kind) => React.createElement(kind, { className: 'faust-mark faust-mark--' + kind + ' faust-diff__sample', 'aria-hidden': 'true' }, 'Aa');
 
 // The categorical thread colours, in thread order: Aikajana's bars and the stripes of the Juonilangat cards
 const THREAD_HUES = ['var(--thread-1)', 'var(--thread-2)', 'var(--thread-3)', 'var(--thread-4)', 'var(--thread-5)', 'var(--thread-6)'];
@@ -786,6 +792,10 @@ function FAUSTApp() {
   // The tekoälyn lähde as the main process reports it ({ provider, model, ... }); null until known,
   // which counts as "not Cherry Studio". AIProviderSettings keeps it current (onProviderChange).
   const [aiSource, setAiSource] = useState(null);
+  // No model is chosen for the old paths (a first run: the source is set, its model is not). Their
+  // commands on screen are then disabled with NO_MODEL_REASON instead of failing after the press.
+  // False while the settings are not read yet.
+  const noDefaultModel = !!aiSource && !(aiSource.provider === 'cherry' ? aiSource.model : aiSource.anthropicModel);
 
   // Panel collapse state
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -2325,6 +2335,10 @@ function FAUSTApp() {
     setProject(data);
     setCurrentFilePath(filePath || null);
     setActiveChapterId(data.structure[0]?.id || 'chapter-1');
+    // The sidebar shows the opened project's chapter list from its top: the scroll position was the
+    // previous project's (scrolled to its Tarinakansio, the new project's first chapters stood out of view)
+    const sidebarBody = document.querySelector('.faust-sidebar .faust-panel__body');
+    if (sidebarBody) sidebarBody.scrollTop = 0;
     setUnsavedChanges(false);
     setSearchResults([]);
     setCurrentSearchIndex(-1);
@@ -2726,8 +2740,11 @@ function FAUSTApp() {
     // A stop, the switch or the wire guard: the three analyses show it as it is (R-21)
     if (response && response.success === false) refusalRef.current = asIsNotice(response.error);
 
-    // Track cost with CostOptimizer
-    if (costOptimizerRef.current) {
+    // Track cost with CostOptimizer: a request that was answered (a refusal, a stop or a failure sent
+    // nothing that can be counted), under the source and the model it really used. apiParams.model is
+    // empty when the model comes from the tekoäly settings (the main process fills it in), and the
+    // counter then counted nothing: with a Cherry Studio model every old-path request was lost.
+    if (costOptimizerRef.current && !(response && response.success === false)) {
       try {
         let outputText = '';
         if (typeof response === 'string') {
@@ -2740,11 +2757,17 @@ function FAUSTApp() {
           outputText = response.data;
         }
 
+        const source = getAIClient().configSnapshot();
+        const costSource = source && source.provider === 'cherry' ? 'cherry' : 'anthropic';
+        const usedModel = apiParams.model
+          || (source ? (costSource === 'cherry' ? source.model : source.anthropicModel) : '')
+          || '';
         const trackingInfo = costOptimizerRef.current.trackRequest(
-          'anthropic',
-          apiParams.model,
+          costSource,
+          usedModel,
           fullPrompt,
-          outputText
+          outputText,
+          response && typeof response === 'object' ? response.usage : undefined
         );
 
         console.log(`[CostOptimizer] Request: $${trackingInfo.cost.toFixed(4)}, Total: $${trackingInfo.runningTotal.toFixed(2)}`);
@@ -6575,9 +6598,11 @@ ${contextPrompt}`;
                 ),
                 e('div', { className: 'faust-result__context' }, `Puhuttu ohje: ”${voiceDiffView.instruction}”`),
                 // The legend of M C.11 row 28, worded for the two columns of this comparison (R-20)
+                // Each mark is shown by a sample; the words are plain (struck through, the key was the
+                // hardest text of the comparison to read)
                 e('div', { className: 'faust-meta faust-diff__legend' },
-                  e('ins', { className: 'faust-mark faust-mark--ins' }, 'Vihreä'), ': on ehdotuksessa, mutta ei alkuperäisessä tekstissä. ',
-                  e('del', { className: 'faust-mark faust-mark--del' }, 'Punainen yliviivattu'), ': on alkuperäisessä tekstissä, mutta ei ehdotuksessa.'),
+                  e('span', { className: 'faust-diff__key' }, diffSample('ins'), 'Vihreä: on ehdotuksessa, mutta ei alkuperäisessä tekstissä.'),
+                  e('span', { className: 'faust-diff__key' }, diffSample('del'), 'Punainen yliviivattu: on alkuperäisessä tekstissä, mutta ei ehdotuksessa.')),
                 // The word comparison in the shared renderer (R-87): the old text with its deletions
                 // (del.faust-mark--del), the ehdotus with its insertions (ins.faust-mark--ins)
                 e('div', { className: 'faust-result__body' },
@@ -7251,6 +7276,7 @@ ${contextPrompt}`;
                 e('button', {
                   type: 'button',
                   className: 'faust-btn faust-btn--block',
+                  style: { marginTop: 'var(--sp-2)' },   // the gap of every control pair of the panel (it stood 2px under the select)
                   title: 'Aloita kirjoituskerran sanalaskenta alusta',
                   onClick: resetSession
                 }, 'Nollaa sanalaskuri')
@@ -7338,10 +7364,12 @@ ${contextPrompt}`;
               // Cost estimation: the model the chapters are written with comes first (R-17)
               e('div', { className: 'faust-card faust-card--compact', style: { marginBottom: 'var(--sp-3)' } },
                 e('div', { className: 'faust-card__title' }, 'Kustannusarvio'),
-                e(AiModelBadge, { role: 'default', onOpenSettings: openAISettings, config: aiSource }),
+                // No link: the card stands on the tab the link opens (the model is chosen at the top of it)
+                e(AiModelBadge, { role: 'default', config: aiSource }),
                 // A count is a key-value row, as in Tekoälyn kustannukset below
                 e('div', { className: 'faust-kv' }, e('span', null, 'Lukuja:'), e('span', null, project.structure.length.toLocaleString('fi-FI'))),
-                e('div', { className: 'faust-meta' },
+                // Without a model there is no model whose price could be estimated: the line is left out
+                !noDefaultModel && e('div', { className: 'faust-meta' },
                   aiSource && aiSource.provider === 'cherry'
                     ? 'Hinta riippuu Cherry Studiossa valitusta mallista.'
                     : 'Hinta: ei arviota tälle mallille')
@@ -7351,11 +7379,12 @@ ${contextPrompt}`;
               !chapterNoAI && e('button', {
                 className: 'faust-btn faust-btn--block',
                 onClick: () => generateChapter(activeChapterId),
-                disabled: !activeChapter || isGenerating || !batchProcessorRef.current,
+                disabled: !activeChapter || isGenerating || !batchProcessorRef.current || noDefaultModel,
                 'aria-busy': oneRunning || undefined,
                 title: isGenerating ? runningTip
                   : !activeChapter ? 'Avaa ensin luku'
                   : !batchProcessorRef.current ? notReadyTip
+                  : noDefaultModel ? NO_MODEL_REASON
                   : 'Magnum Opus – kirjoita luku tekoälyllä: tekoäly kirjoittaa koko luvun ja käyttää pohjana luvun otsikkoa ja aiempia lukuja. Jos luvussa on jo tekstiä, se korvataan; tästä kysytään ensin.'
               }, oneRunning ? busyFace : icons.stone({ size: 14, className: 'faust-icon--sigil' }), oneRunning ? 'Kirjoitetaan lukua…' : 'Kirjoita luku…'),
 
@@ -7364,10 +7393,11 @@ ${contextPrompt}`;
                 className: 'faust-btn faust-btn--block',
                 style: { marginTop: 'var(--sp-2)' },
                 onClick: () => askAndGenerateAllChapters(),
-                disabled: isGenerating || !batchProcessorRef.current,
+                disabled: isGenerating || !batchProcessorRef.current || noDefaultModel,
                 'aria-busy': allRunning || undefined,
                 title: isGenerating ? runningTip
                   : !batchProcessorRef.current ? notReadyTip
+                  : noDefaultModel ? NO_MODEL_REASON
                   : 'Tekoäly kirjoittaa jokaisen luvun alusta ja korvaa nykyisen tekstin. Tästä kysytään ensin.'
               }, allRunning ? busyFace : icons.stone({ size: 14, className: 'faust-icon--sigil' }), allRunning ? 'Kirjoitetaan lukuja…' : 'Kirjoita kaikki luvut…')
             );
@@ -7377,6 +7407,12 @@ ${contextPrompt}`;
           inspectorTab === 'ai' && !aiDisabled && costOptimizerRef.current && (() => {
             const stats = costOptimizerRef.current.getStats();
             const providers = Object.keys(stats.byProvider || {});
+            // Requests of a model without a price (every Cherry Studio model) are counted, but there is no
+            // sum to show for them: the money rows say so in the words of the Kustannusarvio card
+            const unpriced = stats.unpricedRequests || 0;
+            const pricedRequests = (stats.totalRequests || 0) - unpriced;
+            const costShown = (amount) => (unpriced > 0 && pricedRequests === 0 ? 'ei arviota' : formatCostFi(amount));
+            const nothingCounted = !(stats.totalRequests > 0);
 
             return e('section', { className: 'faust-section' },
               e('div', { className: 'faust-section__head' },
@@ -7385,10 +7421,13 @@ ${contextPrompt}`;
               e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
                 // Overall stats
                 e('div', { className: 'faust-card faust-card--compact' },
-                  e('div', { className: 'faust-kv' }, e('span', null, 'Yhteensä:'), e('span', null, formatCostFi(stats.totalSpent))),
+                  e('div', { className: 'faust-kv' }, e('span', null, 'Yhteensä:'), e('span', null, costShown(stats.totalSpent))),
                   e('div', { className: 'faust-kv' }, e('span', null, 'Pyyntöjä:'), e('span', null, (stats.totalRequests || 0).toLocaleString('fi-FI'))),
                   e('div', { className: 'faust-kv' }, e('span', null, 'Käsiteltyä tekstiä (tokenia):'), e('span', null, (stats.totalTokens || 0).toLocaleString('fi-FI'))),
-                  e('div', { className: 'faust-kv' }, e('span', null, 'Keskimäärin / pyyntö:'), e('span', null, formatCostFi(stats.averageCostPerRequest)))
+                  e('div', { className: 'faust-kv' }, e('span', null, 'Keskimäärin / pyyntö:'), e('span', null, costShown(stats.averageCostPerRequest))),
+                  // Both kinds counted: the sum is of the priced ones, and the others are named beside it
+                  unpriced > 0 && pricedRequests > 0 && e('div', { className: 'faust-kv' },
+                    e('span', null, 'Ilman hinta-arviota:'), e('span', null, count(unpriced, 'pyyntö')))
                 ),
 
                 // By source: not rendered while every request is booked under one source
@@ -7398,7 +7437,8 @@ ${contextPrompt}`;
                     providers.map(provider => {
                       const providerStats = stats.byProvider[provider] || {};
                       return e('div', { key: provider, className: 'faust-card faust-card--compact' },
-                        e('div', { className: 'faust-kv' }, e('span', null, labelOf('costSource', provider)), e('span', null, formatCostFi(providerStats.cost))),
+                        e('div', { className: 'faust-kv' }, e('span', null, labelOf('costSource', provider)),
+                          e('span', null, providerStats.unpriced > 0 && providerStats.unpriced >= (providerStats.requests || 0) ? 'ei arviota' : formatCostFi(providerStats.cost))),
                         e('div', { className: 'faust-meta' },
                           `${count(providerStats.requests || 0, 'pyyntö')} · ${(providerStats.tokens || 0).toLocaleString('fi-FI')} tokenia`)
                       );
@@ -7406,15 +7446,19 @@ ${contextPrompt}`;
                   )
                 ),
 
-                e('button', {
-                  type: 'button',
-                  className: 'faust-btn faust-btn--block',
-                  onClick: async () => {
-                    if (!(await askConfirm('Nollataanko kustannuslaskuri?', 'Kertyneet kustannustiedot poistetaan. Projektin teksti ei muutu.', 'Nollaa kustannuslaskuri', 'Peruuta', { danger: true }))) return;
-                    costOptimizerRef.current.reset();
-                    setProject(prev => ({ ...prev }));
-                  }
-                }, 'Nollaa kustannuslaskuri')
+                // Nothing counted yet: nothing to reset (the span carries the title of the disabled button, M B.8)
+                e('span', { title: nothingCounted ? 'Laskurissa ei ole vielä pyyntöjä' : undefined, style: { display: 'block' } },
+                  e('button', {
+                    type: 'button',
+                    className: 'faust-btn faust-btn--block',
+                    disabled: nothingCounted,
+                    title: nothingCounted ? 'Laskurissa ei ole vielä pyyntöjä' : undefined,
+                    onClick: async () => {
+                      if (!(await askConfirm('Nollataanko kustannuslaskuri?', 'Kertyneet kustannustiedot poistetaan. Projektin teksti ei muutu.', 'Nollaa kustannuslaskuri', 'Peruuta', { danger: true }))) return;
+                      costOptimizerRef.current.reset();
+                      setProject(prev => ({ ...prev }));
+                    }
+                  }, 'Nollaa kustannuslaskuri'))
               )
             );
           })(),
@@ -8353,15 +8397,19 @@ ${contextPrompt}`;
 
             // Step 2: real people as models
             characterBuilderStep === 2 ? e('div', null,
+              // What was chosen in step 1 heads the card (the step showed it nowhere); the archetype line only
+              // when the plan gave the type one, never a bare dash
               e('div', { className: 'faust-card faust-card--compact', style: { marginBottom: 'var(--sp-4)' } },
-                e('span', { className: 'faust-meta' }, 'Arkkityyppi'),
-                e('span', { className: 'faust-card__title' }, typeof archetype.archetypeFamily === 'string' && archetype.archetypeFamily ? archetype.archetypeFamily : '–'),
+                e('span', { className: 'faust-meta' }, 'Hahmotyyppi'),
+                e('span', { className: 'faust-card__title' }, (selectedCharacterType && selectedCharacterType.type) || ''),
+                typeof archetype.archetypeFamily === 'string' && archetype.archetypeFamily
+                  ? e('span', { className: 'faust-meta' }, `Arkkityyppi: ${archetype.archetypeFamily}`) : null,
                 archetypeExamples.length > 0 ? e('span', { className: 'faust-meta' }, `Esimerkkejä: ${archetypeExamples.join(', ')}`) : null
               ),
               e('label', { className: 'faust-field' },
                 e('span', { className: 'faust-field__label' }, 'Nimeä todellisia henkilöitä hahmon esikuviksi'),
                 e('textarea', {
-                  className: 'faust-textarea',
+                  className: 'faust-textarea faust-textarea--author',   // names the author types: the author's face, as every other such field
                   rows: 4,
                   value: characterRealPeople,
                   onChange: (ev) => setCharacterRealPeople(ev.target.value),
@@ -8934,9 +8982,11 @@ ${contextPrompt}`;
         )
       },
             // The legend, in the marks' own two looks (M C.11 row 28)
+            // Each mark is shown by a sample; the words are plain (struck through, the key was the hardest
+            // text of the dialog to read)
             e('div', { className: 'faust-meta faust-diff__legend' },
-              e('ins', { className: 'faust-mark faust-mark--ins' }, 'Vihreä'), ': on nykyisessä tekstissä, mutta ei versiossa ' + compNo + '. ',
-              e('del', { className: 'faust-mark faust-mark--del' }, 'Punainen yliviivattu'), ': on versiossa ' + compNo + ', mutta ei nykyisessä tekstissä.'),
+              e('span', { className: 'faust-diff__key' }, diffSample('ins'), 'Vihreä: on nykyisessä tekstissä, mutta ei versiossa ' + compNo + '.'),
+              e('span', { className: 'faust-diff__key' }, diffSample('del'), 'Punainen yliviivattu: on versiossa ' + compNo + ', mutta ei nykyisessä tekstissä.')),
             e(DiffView, {
               mode: 'split',
               pieces: computeTextDiff(compContent, currentContent),
@@ -9151,6 +9201,9 @@ ${contextPrompt}`;
         icon: icons.terra({ size: 20 }),
         sub: locationEntries.length > 0 ? count(locationEntries.length, 'paikka') : null,
         size: 'lg',
+        // The three list windows of Työkalut (Hahmot, Paikat, Juonilangat) share one top: opened one
+        // after another they do not jump by the height of their lists
+        className: 'faust-dialog--steady',
         dismissOnScrim: true,
         onClose: () => setShowLocationSheet(false),
         actions: e('button', {
@@ -9221,6 +9274,7 @@ ${contextPrompt}`;
         icon: icons.lemniscate({ size: 20 }),
         sub: threads.length > 0 ? count(threads.length, 'juonilanka') : null,
         size: 'lg',
+        className: 'faust-dialog--steady',   // the same top as Hahmot and Paikat
         dismissOnScrim: true,
         onClose: () => setShowThreadSheet(false),
         actions: e('button', {
@@ -9499,7 +9553,8 @@ ${contextPrompt}`;
                       title: 'Poista',
                       'aria-label': 'Poista',
                       onClick: () => deleteResearchItem(item)
-                    }, icons.close({ size: 14 }))
+                    // The delete icon of the sidebar's rows: × is the window's close, two cards away
+                    }, icons.trash({ size: 14 }))
                   ),
                   e('div', { className: 'faust-card__title' }, item.title),
 
@@ -9569,7 +9624,7 @@ ${contextPrompt}`;
         else if (hybridMode === 'rewrite') handleRewriteSection();
         else if (hybridMode === 'scene') handleGenerateScene();
       };
-      const requestBlocked = continuingWriting ||
+      const requestBlocked = continuingWriting || noDefaultModel ||
         (hybridMode === 'continue' && !chapterHasText) ||
         (hybridMode !== 'continue' && !hybridInput.trim()) ||
         (hybridMode === 'rewrite' && !hasSelection);
@@ -9577,6 +9632,8 @@ ${contextPrompt}`;
       // guard is silent (R-68)
       const blockedReason = continuingWriting
         ? undefined
+        : noDefaultModel
+          ? NO_MODEL_REASON
         : hybridMode === 'continue' && !chapterHasText
           ? 'Luvussa ei ole vielä tekstiä jatkettavaksi'
           : hybridMode === 'rewrite' && !hasSelection
@@ -9615,6 +9672,14 @@ ${contextPrompt}`;
         className: 'faust-dialog--steady',
         busy: continuingWriting,
         onClose: closeWriting,
+        // The model the ehdotus is written with, or that none is chosen, as the Liminal Engine and the
+        // Kustannusarvio card say it. The link leaves the form as it is (only the window closes), so what
+        // was typed is there when the author comes back from the settings.
+        footerStart: e(AiModelBadge, {
+          role: 'default',
+          config: aiSource,
+          onOpenSettings: () => { setShowContinueDialog(false); openAISettings(); }
+        }),
         footer: continuePreview
           ? [
               e('button', {

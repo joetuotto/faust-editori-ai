@@ -248,13 +248,25 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 .faust-check--fixed, .faust-check--fixed:hover { color: var(--text-2); cursor: default; }
 .faust-check--fixed > .faust-icon { flex: none; width: 14px; height: 14px; margin-top: calc((16px - 14px) / 2); color: var(--text-3); }
 /* "Mitä malli näkee": the summary on its own line; under it the total at the left edge and the two
-   actions at the right one */
-.faust-context-row { display: flex; flex-direction: column; gap: var(--sp-1); }
-.faust-context-row__foot { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2); }
-.faust-context-row__actions { display: flex; gap: var(--sp-1); }
+   actions at the right one. Everything wraps inside its column (273px in Tietopaneeli): the parts of
+   the summary's lead-in and its parts go one after another and break between them, a part wider than
+   the column breaks inside itself, and the actions go under the total when the two do not share a line.
+   The separator of a part stands in the 3ch gap before it; the gap of a line's first part lies left
+   of the line, which clips it, so a wrapped line neither starts nor ends with a dot. */
+.faust-context-row { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
+.faust-context-row__line { overflow: hidden; min-width: 0; }
+.faust-context-row__parts { display: flex; flex-wrap: wrap; margin-left: -3ch; }
+.faust-context-row__part { position: relative; flex: 0 1 auto; min-width: 0; max-width: 100%; box-sizing: border-box; padding-left: 3ch; overflow-wrap: anywhere; }
+.faust-context-row__sep { position: absolute; left: 0; top: 0; width: 3ch; white-space: pre; }
+.faust-context-row__lead { flex: none; margin-right: -2ch; }      /* the first part follows the colon after one space (its own 3ch gap less 2), or starts the next line */
+.faust-context-row__foot { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--sp-1) var(--sp-2); min-width: 0; }
+.faust-context-row__actions { display: flex; gap: var(--sp-3); margin-left: auto; }
+.faust-context-row__list { display: flex; flex-direction: column; gap: var(--sp-1); margin-top: var(--sp-1); }
+.faust-context-row__list > * { flex: none; }
 .faust-check-group { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); }
 .faust-check-group--column { flex-direction: column; align-items: flex-start; gap: 0; }      /* one option per line */
 .faust-ai-provider .faust-field + .faust-field { margin-top: 0; }      /* the block's column gap already parts its fields */
+.faust-ai-provider > :not(.faust-section) + .faust-section { margin-top: var(--sp-4); }      /* the source's block ends in buttons (Hae mallit, Testaa yhteys): the next section's rule stood on their lower edge */
 .faust-check-grid  { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: var(--sp-1) var(--sp-4); }   /* two rows of options in shared columns */
 /* a text link that acts in place (a mode switch): a link's look on a button, on the content edge */
 .faust-link { display: inline; padding: 0; background: none; border: 0; font: var(--type-meta); color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
@@ -317,14 +329,17 @@ input[type="range"]:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 2px 
 .faust-segmented__option:disabled:is([aria-pressed="true"], [aria-checked="true"]) { background: var(--fill-subtle); box-shadow: inset 0 0 0 1px var(--text-disabled); }   /* the value of a locked control stays readable: the label and its ring share the disabled ink */
 .faust-segmented__option:disabled > .faust-icon { color: inherit; }
 
-/* I-08: Tietopaneeli's five tabs (reconcile R-40). One row, no wrapping: the sides and the gap step down.
-   Two classes, so the rule wins over section 15's .faust-panel__tabs. The row gives up the classic-scrollbar
-   reserve of the other panel rows: with it the five labels (284px, 294px with the busy dot) overflow the
-   281px left in the 320px panel; without it they have 296px. */
-.faust-panel__tabs.faust-panel__tabs--dense { padding: 0 var(--sp-1) 0 var(--sp-4); }      /* the left edge is the title's and the content's (16px); only the right side gives up the reserve */
-.faust-panel__tabs--dense > .faust-tabs { gap: var(--sp-2); }
-/* The busy dot stays on its label's line (in a row 2px narrower it went under the label and the row grew) */
-.faust-panel__tabs--dense .faust-tab { white-space: nowrap; }
+/* I-08: Tietopaneeli's five tabs (reconcile R-40). One row, no wrapping, inside the content column: the row
+   keeps the insets of every other panel row (16px, and the classic-scrollbar reserve at the right), so the
+   last tab and the row's rule end where the fields end (273px of the 320px panel with a classic scrollbar).
+   The five labels fit it in the meta size (231px) and share the rest as their gaps (10px and more; in the
+   interface size they filled 284px with 8px between them, read as one sentence and ran 11px past the fields).
+   Two classes, so the rule wins over section 15's .faust-panel__tabs. */
+.faust-panel__tabs.faust-panel__tabs--dense { padding: 0 calc(var(--sp-4) + var(--scrollbar-w)) 0 var(--sp-4); }
+.faust-panel__tabs--dense > .faust-tabs { gap: var(--sp-1); justify-content: space-between; }
+.faust-panel__tabs--dense .faust-tab { position: relative; white-space: nowrap; font: var(--type-meta); }
+/* The busy dot stands at the label's upper right corner and takes no width: the row is as wide busy as idle */
+.faust-panel__tabs--dense .faust-tab[aria-busy="true"]::after { position: absolute; top: var(--sp-1); right: calc(-1 * var(--sp-1)); margin: 0; }
 /* end I-08 */
 
 /* ============ 6 Cards, chips, rows, sections ============ */
@@ -497,6 +512,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* --pair: the same grid row for the application's own values (Liitä muokkauksina): value beside its label, on one left edge */
 .faust-kv-list > .faust-kv--pair { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; justify-content: start; }
 .faust-kv--pair > :last-child { text-align: left; overflow-wrap: anywhere; }
+.faust-kv-list > .faust-kv--pair { min-height: 0; padding-bottom: var(--sp-2); }      /* a one-line row keeps the 24px pitch (16 + 8); a value that wraps keeps the same 8px to the next row (it touched it) */
 .faust-stat { display: inline-flex; align-items: baseline; gap: var(--sp-1); font: var(--type-meta); color: var(--text-3); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .faust-stat > b { font-weight: var(--w-mono-strong); color: var(--text); }
 .faust-stat--hero > b { font-size: 16px; }
@@ -674,6 +690,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-dialog__body:last-child { -webkit-mask-image: linear-gradient(to bottom, var(--surface-raised) calc(100% - var(--sp-4)), transparent); mask-image: linear-gradient(to bottom, var(--surface-raised) calc(100% - var(--sp-4)), transparent); }
 .faust-dialog__footer { flex: none; display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-3) var(--dialog-pad); border-top: var(--bw) solid var(--rule); }
 .faust-dialog__toolbar { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-4); }      /* a list dialog's create actions, at the top of its body */
+.faust-dialog--sm .faust-dialog__body--lines { text-wrap: balance; }      /* a question's two or three lines end evenly: no last line of two words under a full one */
 .faust-dialog__body--lines { white-space-collapse: preserve-breaks; }      /* a message's own line breaks; unlike white-space: pre-line it keeps the body's text-wrap: pretty */
 .faust-dialog__footer-start { margin-right: auto; display: flex; align-items: center; gap: var(--sp-3); min-width: 0; }
 .faust-dialog :is(.faust-dialog__header, .faust-dialog__footer) { user-select: none; }
@@ -736,13 +753,13 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* I-07: the Tarinakansio entry form */
 /* A persistent, non-modal sheet beside the sidebar (VF-40): it stays through presses in the manuscript and
    in other popovers, under them in the stack, and its left and top come from --left-col-w and --header-h */
-.faust-popover--sheet { z-index: var(--z-dock); max-height: calc(100vh - var(--header-h) - var(--footer-h) - 2 * var(--sp-3)); }
+.faust-popover--sheet { z-index: var(--z-dock); max-height: calc(100vh - var(--header-h) - var(--formatbar-h) - var(--footer-h) - 2 * var(--sp-2)); }      /* under the format bar, which stays whole (the sheet used to start inside it and left stubs of its buttons) */
 .faust-popover--sheet:focus { outline: none; }      /* the sheet takes the focus only so that Esc reaches it; its fields show the ring */
 .faust-popover--sheet .faust-popover__body > * + * { margin-top: var(--sp-3); }      /* fields, the warning and the mentions in one rhythm */
 .faust-codex__mentions { display: flex; flex-direction: column; gap: var(--sp-1); }
 .faust-codex__mentions > .faust-label { margin-top: var(--sp-2); }
 .faust-codex__form { display: inline-flex; align-items: center; gap: var(--sp-2); }
-.faust-codex__delete { margin-right: auto; }      /* the destructive action at the start of the foot (R-69) */
+.faust-codex__delete { margin-right: auto; }      /* the destructive action at the start of the foot (R-69); Peruuta of a blank new entry is no such action and stands at the right, before Valmis (M B.10) */
 /* end I-07 */
 
 .faust-menu { --popover-w: max-content; min-width: 200px; padding: var(--sp-1); }
@@ -801,6 +818,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-mark--ai:is(:hover, .is-active) { background-color: var(--hl-ai-bg); }
 .faust-mark--finding { text-decoration-line: underline; text-decoration-style: wavy; text-decoration-color: var(--hl-finding-line); }
 .faust-mark--finding:is(:hover, .is-active) { background-color: var(--hl-finding-bg); }
+.faust-mark--finding.faust-mark--point { padding-inline: 0.2em; background-color: var(--hl-finding-bg); color: var(--ink); text-decoration-line: none; white-space: pre; }      /* a hit of one or two characters in an excerpt: the ground carries it (a wave under a hyphen was a 4px tilde) */
 .faust-mark--finding[data-severity="error"] { text-decoration-color: var(--hl-finding-error-line); text-decoration-thickness: calc(var(--mark-line) * 1.5); }
 .faust-mark--finding[data-severity="error"]:is(:hover, .is-active) { background-color: var(--hl-finding-error-bg); }
 .faust-mark--finding[data-severity="note"]  { text-decoration-color: var(--hl-finding-note-line); text-decoration-style: double; }
@@ -811,6 +829,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-mark--settled { animation: faust-settle 1200ms var(--ease-out); }
 /* children of a filled mark inherit its text colour and lose their own ground */
 :is(.faust-mark--search, .faust-mark--search-current) * { color: inherit; }
+/* In an italic excerpt (the hit's context in Etsi) the solid block keeps the word spaces on both sides: no
+   1px spread, and 1px of air of its own (the leaning letters ran into the block: "eiollutketään") */
+.faust-quote > .faust-mark--search-current { box-shadow: none; margin-inline: 1px; padding-inline: 1px; }
 .faust-mark--search-current * { background-color: transparent; }
 
 /* diff view and result block */
@@ -840,13 +861,15 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
    no pointer events. */
 .faust-dock { position: absolute; inset: 0 0 var(--sp-4) 0; z-index: var(--z-float); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding: 0 var(--sp-4); pointer-events: none; }
 .faust-dock > * { pointer-events: auto; max-width: 100%; }
-/* While the dock has an occupant, the page's last lines dissolve into the paper before they reach it:
-   the bar floats 16px above the pane's edge, and half a line showing in that strip read as clipped
-   text. The veil lies behind the occupant, takes no press and leaves the page's scrollbar free. */
+/* While the dock has an occupant, the strip between it and the pane's edge is paper: the bar floats
+   16px above the edge, and half a line showing in that strip read as clipped text. The veil is as high
+   as a bar and the strip, with 8px of soft edge above: the lines over the bar keep their full contrast
+   (a 48px fade washed the line above the bar to a ghost, in NOX to near nothing), and a line the bar
+   covers is simply covered. It lies behind the occupant, takes no press and leaves the scrollbar free. */
 .faust-dock:has(> *)::before {
   content: ""; position: absolute; z-index: -1; pointer-events: none;
-  left: var(--scrollbar-w); right: var(--scrollbar-w); bottom: calc(-1 * var(--sp-4)); height: calc(var(--h-xl) + var(--sp-4) + var(--sp-7));
-  background: linear-gradient(to bottom, transparent, var(--surface-page) var(--sp-7));
+  left: var(--scrollbar-w); right: var(--scrollbar-w); bottom: calc(-1 * var(--sp-4)); height: calc(var(--h-xl) + var(--sp-4) + var(--sp-2));
+  background: linear-gradient(to bottom, transparent, var(--surface-page) var(--sp-2));
 }
 .faust-suggestbar, .faust-voicebar {
   display: flex; align-items: center; gap: var(--sp-1); height: var(--h-xl); padding: 0 var(--sp-2) 0 var(--sp-4); flex: none;
@@ -899,6 +922,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-voicebar > div { min-width: 0; }
 .faust-voicebar > div > * { overflow: hidden; text-overflow: ellipsis; }
 .faust-voicebar__hint { font: var(--type-serif-sm); color: var(--text-2); }
+/* The bar says "Klikkaa mikrofonia": the microphone has a resting ground, so the instruction has a visible target */
+.faust-voicebar > .faust-btn--icon:not(:hover, :active, :disabled, [aria-pressed="true"]) { background: var(--fill-subtle); }
 /* At rest the bar stacks two lines (the name and what to do): it takes their height instead of
    squeezing them into the one-line bar's 40px */
 .faust-voicebar:not([data-state]) { height: auto; min-height: var(--h-xl); padding-block: var(--sp-2); }
@@ -937,8 +962,15 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-suggestbar__note { max-width: 100%; margin-bottom: var(--sp-1); padding: var(--sp-half) var(--sp-3); background: var(--surface-raised); color: var(--text-2); border: var(--bw) solid var(--border); border-radius: var(--radius-sm); box-shadow: var(--shadow-2); font: var(--type-meta); text-align: center; }
 /* A counter that carries its word (Lisätty 12, Poistettu 5: M C.5 row 42, C.11 row 25, MV-68) keeps its colour, not a sign */
 .faust-diff__count--named::before { content: none; }
-/* Versioiden vertailu: the one legend line above the two columns (M C.11 row 28) */
-.faust-diff__legend { padding: var(--sp-3) var(--dialog-pad) 0; }
+/* Versioiden vertailu: the one legend line above the two columns (M C.11 row 28). Each key is a sample of
+   its mark and its sentence in plain words (the words themselves used to carry the mark: the struck-through
+   key was the hardest text of the dialog); a key wraps as one unit. 12px above and under it, so the legend,
+   the column heads and the text are three levels with air between them. */
+.faust-diff__legend { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); padding: var(--sp-3) var(--dialog-pad); }
+.faust-diff__key { display: inline-flex; align-items: baseline; gap: var(--sp-2); }
+.faust-diff__sample { flex: none; padding: 0 var(--sp-1); font: var(--type-serif-sm); }
+.faust-diff__sample.faust-mark--del { background-color: var(--diff-del-bg); color: var(--diff-del-text); }
+.faust-diff__sample.faust-mark--ins { color: var(--text); }
 /* The voice comparison's legend: under the spoken instruction, on the card's own inset */
 .faust-result .faust-diff__legend { padding: var(--sp-2) var(--sp-4) 0; }
 /* A long unbroken word wraps inside its column, as it did in the prose columns the renderer replaced */
@@ -1007,7 +1039,8 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
      (138px in the 1024px window, measured). */
   --import-cols: 40px 24px 24px minmax(0, 1fr) 48px 92px 52px; }
 .faust-import__col { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; min-height: 0; }
-.faust-import__col--rows { padding: var(--sp-4) var(--sp-3) var(--sp-3) var(--dialog-pad); }
+.faust-import__col--rows { padding: var(--sp-4) var(--sp-3) 0 var(--dialog-pad); }      /* no foot padding: the list runs down to the footer's rule, as the preview beside it does (it ended 12px above, through a row) */
+.faust-import__col--rows > :last-child:not(.faust-import__list) { margin-bottom: var(--sp-3); }      /* what stands under the list (Palauta alkuperäinen järjestys) keeps the 12px */
 .faust-import__col--target { gap: 0; }
 .faust-import__notices { flex: 0 1 auto; display: flex; flex-direction: column; gap: var(--sp-2); min-height: 0; }
 .faust-import__col--rows > .faust-import__notices { max-height: 30%; overflow-y: auto; }
@@ -1028,6 +1061,11 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-import__all { gap: var(--sp-1); cursor: pointer; }
 .faust-import__count { justify-content: flex-end; text-align: right; }
 .faust-import__syn { padding-left: var(--sp-2); }
+/* no row has a summary: no Tiivistelmä column (a column of dashes), the title takes its 92px */
+.faust-import--nosyn { --import-cols: 40px 24px 24px minmax(0, 1fr) 48px 52px; }
+.faust-import--nosyn .faust-import__syn { display: none; }
+.faust-import--table .faust-import__list { padding-bottom: var(--sp-3); }
+.faust-import__target .faust-import__snapshot { margin-top: var(--sp-4); }      /* with the section's 8px gap: 24px after the radios, twice the 12px between the two of them, so it is not read as a third choice */
 .faust-import__meta { grid-row: 2; grid-column: 4 / -1; display: flex; align-items: center; gap: var(--sp-1); min-width: 0; }
 /* the excerpt takes what is left and gives way first; the file name shrinks only when it and its
    badges do not fit the line */
@@ -1110,6 +1148,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* The model's name (gateway names run to 36 characters) takes a line of its own under the check's name:
    beside it in the auto column it squeezed the name's column to nothing and the two were drawn over each other */
 .faust-review .faust-finding__where { grid-column: 2 / -1; overflow-wrap: anywhere; }
+/* A reading-feedback card starts with its sentence, beside the icon (the kind and the model are said once
+   above the list): the icon stands on the sentence's 20px line */
+.faust-finding--feedback > .faust-finding__icon { height: 20px; }
 /* end I-08 */
 
 /* ============ 14 Editor (CodeMirror) ============
@@ -1312,6 +1353,32 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-hint { margin: var(--sp-2) 0; }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt :is(.cm-faust-prompt-length, .cm-faust-prompt-picker label) > span { color: var(--text-3); }
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-foot { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: var(--bw) solid var(--rule); }
+/* Final polish round 2.
+   Sending: no box before the first text has come (an empty bordered box read as a dead field), and the
+   status line carries a spinner, as every other waiting line does (V 9.3 busy). */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-preview:empty { display: none; }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt[data-phase="sending"] .cm-faust-prompt-status { display: flex; align-items: center; gap: var(--sp-2); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt[data-phase="sending"] .cm-faust-prompt-status::before { content: ""; flex: none; box-sizing: border-box; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--track); border-top-color: var(--accent-line); animation: faust-spin 0.9s linear infinite; }
+/* An invalid field: its sentence is an error line, and the focused field keeps the error edge (the gold
+   focus outline around the red edge read as plain focus, in NOX as orange) */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-field[aria-invalid="true"]:focus { border-color: var(--error); outline-color: var(--error); }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-status.cm-faust-prompt-status-invalid { color: var(--error-text); }
+/* The button that opened the model picker shows it is open */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt button[aria-expanded="true"]:not(.cm-faust-prompt-link, :where(.cm-faust-prompt-context *)) { background: var(--fill-active); }
+/* The star stands on the first line of what the prompt starts with: in the form that starts with the
+   field, on the field's first text line (12 + 6 margin + 1 edge + 8 inset + 3 to centre 14px on a 20px line) */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt:has(> .cm-faust-prompt-head:empty + .cm-faust-prompt-field:not([hidden]))::before { top: calc(var(--sp-3) + 6px + var(--bw) + var(--sp-2) + 3px); }
+/* The opened "Mitä malli näkee" list is the part that gives way when the prompt does not fit its room:
+   the core writes what the room leaves for it into --cm-faust-prompt-list-room and it scrolls inside
+   itself, so the field, the row's two lines and the foot stay where they are (as one scroller the whole
+   prompt got a scrollbar beside the field, and reading the list moved the field out of view). A capped
+   list fades at its lower edge instead of being sliced through a row. In a low window the quick actions
+   and the saved instructions step aside while the list is open, which gives it three more rows. */
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .faust-context-row__list { max-height: var(--cm-faust-prompt-list-room, none); overflow-y: auto; overscroll-behavior: contain; }
+:is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt[data-list-capped] .faust-context-row__list { padding-bottom: var(--sp-4); -webkit-mask-image: linear-gradient(to bottom, var(--surface-raised) calc(100% - var(--sp-4)), transparent); mask-image: linear-gradient(to bottom, var(--surface-raised) calc(100% - var(--sp-4)), transparent); }
+@media (max-height: 719px) {
+  :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt:has(.faust-context-row__list) :is(.cm-faust-prompt-chips, .cm-faust-prompt-saved) { display: none; }
+}
 /* end I-05 */
 
 /* I-09: Kirjoita kohdistimeen (the insert block of pendingInsertView.js, the prompt in write mode) */
@@ -1423,7 +1490,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 .faust-panel__title { font: var(--type-title-panel); color: var(--text); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .faust-panel__title > .faust-icon { color: var(--accent-line); margin-right: var(--sp-2); }
 .faust-panel__tabs { flex: none; padding: 0 calc(var(--sp-4) + var(--scrollbar-w)) 0 var(--sp-4); }
-.faust-panel__body { flex: 1 1 0; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; padding: var(--sp-3) var(--sp-4) var(--sp-5); }
+.faust-panel__body { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; overscroll-behavior: contain; padding: var(--sp-3) var(--sp-4) var(--sp-5); }      /* a side panel never scrolls sideways: what is wider than the column must wrap (overflow-x was auto through overflow-y) */
 .faust-panel__foot { flex: none; padding: var(--sp-2) calc(var(--sp-4) + var(--scrollbar-w)) var(--sp-2) var(--sp-4); border-top: var(--bw) solid var(--rule); }
 /* A scrolled body shows nothing in its first 4px and fades in up to 12px under the fixed head or tab row,
    so text cut there never meets the tab underline or the head as a hard edge; at rest that strip is the
@@ -1452,7 +1519,7 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* While a notification is shown, the page keeps the 48px top margin V 4.7 counts on ("a one-line
    notification fits the page's 48px top margin"), also where a low window (V 6.6) or split view gives it
    24px: the head moves down instead of being covered. Focus mode has its own 64px. */
-.faust-app:not(.faust-focus-mode):has(.faust-toast-host > .faust-toast:not(.is-leaving)) .faust-page { --page-pad-top: max(var(--sp-7), calc(var(--toast-h, 0px) + var(--sp-2))); }   /* --toast-h: the stack's measured height (ToastHost); a two-line notification is 61px and lay over the title's upper half */
+.faust-app:not(.faust-focus-mode):has(.faust-toast-host > .faust-toast:not(.is-leaving)) .faust-page { --page-pad-top: max(var(--sp-7), calc(var(--toast-h, 0px) + 2 * var(--sp-2))); }   /* --toast-h: the stack's measured height (ToastHost); a two-line notification is 61px and lay over the title's upper half */
 
 /* Final page: head block and text share one centred column; the format bar lies on the desk. */
 /* Split view: two equal panes of 400px or more. Where the window-width rule cannot give the area 800px

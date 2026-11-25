@@ -413,7 +413,8 @@ describe('counting and the bar', () => {
     const count = () => env.setInfo.mock.calls.length;
     expect(count()).toBe(1);
     expect(lastInfo()).toEqual({
-      chapterId: 'luku-1', pending: 0, rejected: 0, currentIndex: -1, viewMode: 'changes', notice: null,
+      // rejectedBlock: final polish round 2 (BarInfo names a rejected draft apart from the rejected count)
+      chapterId: 'luku-1', pending: 0, rejected: 0, rejectedBlock: false, currentIndex: -1, viewMode: 'changes', notice: null,
       blockStatus: null, blockCurrent: false, dialoguePending: 0, elsewhere: [], closed: false, current: null
     });
 
@@ -519,6 +520,19 @@ describe('counting and the bar', () => {
     expect(lastInfo().elsewhere).toEqual([{ chapterId: 'luku-1', title: 'Ensimmäinen luku', count: 9, blocks: 1 }]);
     expect(lastInfo()).toMatchObject({ pending: 0, blockCurrent: false });
     expect(env.reportPending).toHaveBeenLastCalledWith(reported(9, 1));
+  });
+
+  test('a rejected draft is counted among the rejected and named apart, so Palauta hylätyt can say what it brings back (final polish round 2)', () => {
+    const harness = setup();
+    const { lastInfo } = harness;
+    const editor = nineAndDraft(harness);
+    expect(lastInfo()).toMatchObject({ rejected: 0, rejectedBlock: false });
+    // The draft rejected, the nine suggestions still pending
+    editor.reduce({ type: 'blockReject', id: 'b1' });
+    expect(lastInfo()).toMatchObject({ pending: 9, rejected: 1, rejectedBlock: true, blockStatus: null });
+    // Three suggestions rejected after it: four to restore, one of them the draft
+    for (const item of editor.getSuggestions().pending.slice(0, 3)) editor.rejectSuggestion(item.id);
+    expect(lastInfo()).toMatchObject({ pending: 6, rejected: 4, rejectedBlock: true });
   });
 
   test('the project-switch question names one suggestion, one draft and several drafts in the one wording (T-009)', async () => {

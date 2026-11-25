@@ -332,7 +332,9 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
   const left = e('div', { className: 'faust-import__col faust-import__col--rows' },
     e(PickError, { error: pickError }),
     notices.length > 0 && e('div', { className: 'faust-import__notices' }, e(NoticeCallouts, { notices })),
-    hasOrderNumbers(rows) && e('label', { className: 'faust-check faust-check--serif' },
+    // At the line's right end: at the left it stood right above the head's select-all box, and the two
+    // boxes read as one group of two options, the second without a name
+    hasOrderNumbers(rows) && e('label', { className: 'faust-check faust-check--serif', style: { alignSelf: 'flex-end' } },
       e('input', {
         type: 'checkbox',
         checked: strip,
@@ -391,10 +393,13 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
             value: bookTitle,
             onChange: (ev) => update({ bookTitle: ev.target.value })
           })),
-        !blank && !replacing && e('label', { className: 'faust-check faust-check--serif' },
+        // Its own option, a step apart from the two radios (at their pitch it read as a third choice);
+        // the snapshot's name is this box's hint while it is ticked, not a sentence of its own under it
+        !blank && !replacing && e('label', { className: 'faust-check faust-check--serif faust-import__choice faust-import__snapshot' },
           e('input', { type: 'checkbox', checked: snapshot, onChange: (ev) => update({ snapshot: ev.target.checked }) }),
-          'Ota tilannekuva ennen tuontia'),
-        takesSnapshot && e('div', { className: 'faust-meta' }, `Ennen tuontia otetaan tilannekuva ”Ennen tuontia: ${source.name}”.`)
+          e('span', null, 'Ota tilannekuva ennen tuontia',
+            takesSnapshot && e('span', { className: 'faust-check__hint' }, `Ennen tuontia otetaan tilannekuva ”Ennen tuontia: ${source.name}”.`))),
+        takesSnapshot && (blank || replacing) && e('div', { className: 'faust-meta' }, `Ennen tuontia otetaan tilannekuva ”Ennen tuontia: ${source.name}”.`)
       )
     ),
     e('div', { className: 'faust-import__preview faust-page' },
@@ -430,7 +435,8 @@ export function ImportPreviewDialog({ source, project, getReplaceBlockedReason, 
       }, importButtonLabel(rows))
     ].filter(Boolean)
   },
-    e('div', { className: 'faust-import faust-import--table' },
+    // Tiivistelmä is a column only when some row has a summary (a column of dashes took 92px from the titles)
+    e('div', { className: 'faust-import faust-import--table' + (rows.some(row => row.synopsis) ? '' : ' faust-import--nosyn') },
       left,
       e('div', { className: 'faust-import__rule' }),
       right

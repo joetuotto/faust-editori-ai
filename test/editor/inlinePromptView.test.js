@@ -855,3 +855,63 @@ describe('review fixes (I-05)', () => {
     expect(prompt.role('model-picker').closest('label').firstChild.textContent).toBe('Malli:');
   });
 });
+
+// Final polish round 2
+describe('final polish round 2', () => {
+  test('no model chosen: the foot says so, and a blocked send carries its reason on Lähetä and the chips', () => {
+    const prompt = mount({ model: { id: '', name: '' }, sendBlocked: 'Valitse ensin malli' });
+    expect(prompt.role('model').textContent).toBe('Mallia ei ole valittu.');
+    expect(prompt.role('send').disabled).toBe(true);
+    expect(prompt.role('send').title).toBe('Valitse ensin malli');
+    for (const chip of prompt.roles('chip')) expect(chip.disabled).toBe(true);
+    // A prompt without a model record (a host that gives none) shows no model line, as before
+    expect(mount({ model: null }).role('model')).toBeNull();
+    // With a model the line names it, whole in its title (the foot may cut a long name with an ellipsis)
+    const named = mount().role('model');
+    expect(named.textContent).toBe('Malli: deepseek-v4.1-flash');
+    expect(named.title).toBe('deepseek-v4.1-flash');
+  });
+
+  test('the model picker stands right under the row of its opener, before Hylkää muutokset and Hyväksy muutokset', () => {
+    const prompt = mount({ attempts: [attempt(1)] });
+    const order = () => Array.from(prompt.view.dom.querySelectorAll('[data-role="refine"], [data-role="other-model"], [data-role="picker"], [data-role="reject-all"], [data-role="accept-all"]'))
+      .map((node) => node.getAttribute('data-role'));
+    // Closed: one row, the decide pair at its end
+    expect(order()).toEqual(['refine', 'other-model', 'reject-all', 'accept-all']);
+    expect(prompt.role('accept-all').closest('.cm-faust-prompt-actions')).toBe(prompt.role('refine').closest('.cm-faust-prompt-actions'));
+    prompt.apply({ type: 'models', models: [{ id: 'p:glm', name: 'glm' }], otherModel: null }, { type: 'picker', open: true });
+    expect(order()).toEqual(['refine', 'other-model', 'picker', 'reject-all', 'accept-all']);
+    expect(prompt.role('other-model').getAttribute('aria-expanded')).toBe('true');
+    // The decide pair keeps its group and its end of the row on a row of its own
+    expect(prompt.role('accept-all').closest('.cm-faust-prompt-decide')).toBe(prompt.role('reject-all').closest('.cm-faust-prompt-decide'));
+    expect(prompt.role('accept-all').closest('.cm-faust-prompt-actions')).not.toBe(prompt.role('refine').closest('.cm-faust-prompt-actions'));
+  });
+
+  test('Tarkenna on an empty field: the sentence is an error line, and another action takes it away', () => {
+    const prompt = mount({ attempts: [attempt(1)] });
+    prompt.click('refine');
+    const status = prompt.role('status');
+    expect(status.textContent).toBe('Kirjoita ensin, mitä haluat muuttaa.');
+    expect(status.classList.contains('cm-faust-prompt-status-invalid')).toBe(true);
+    expect(prompt.view.field.getAttribute('aria-invalid')).toBe('true');
+    // Opening the model picker: the field is no longer invalid and the sentence is gone, also after the redraw
+    prompt.click('other-model');
+    expect(prompt.view.field.hasAttribute('aria-invalid')).toBe(false);
+    prompt.apply({ type: 'picker', open: true });
+    expect(prompt.role('status').textContent).toBe('');
+    expect(prompt.role('status').classList.contains('cm-faust-prompt-status-invalid')).toBe(false);
+  });
+
+  test('sending: the preview is empty until text arrives, so the stylesheet can leave its box out', () => {
+    const prompt = mount();
+    prompt.type('Tiivistä');
+    prompt.apply({ type: 'sending', title: 'Tiivistä' });
+    if (prompt.state.phase === 'sending') {
+      expect(prompt.role('preview').textContent).toBe('');
+      expect(prompt.view.dom.getAttribute('data-phase')).toBe('sending');
+    }
+    const css = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'styles', 'faust-components.css'), 'utf8');
+    expect(css).toMatch(/\.cm-faust-prompt-preview:empty \{ display: none; \}/);
+    expect(css).toMatch(/\.cm-faust-prompt\[data-phase="sending"\] \.cm-faust-prompt-status::before/);
+  });
+});

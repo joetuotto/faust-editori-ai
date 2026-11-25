@@ -79,15 +79,14 @@ function NumberSetting({ label, stored, fallback, onSave }) {
     if (text !== '' && next === null) { setDraft(shown(stored)); return; }
     onSave(next);
   };
-  // An empty field shows the default as its placeholder; the hint says so in words, so the number in
-  // the placeholder's ink is not read as an empty or disabled field
+  // An empty field is empty: the default stands in the hint under it, once. (As the placeholder too,
+  // the number read as a value already entered, and the hint repeated it.)
   return e(Field, { label, hint: draft.trim() === '' && Number.isFinite(fallback) ? `Oletus: ${shown(fallback)}` : undefined },
     e('input', {
       type: 'text',
       inputMode: 'numeric',
       className: 'faust-input faust-input--sm faust-num',
       value: draft,
-      placeholder: shown(fallback),
       onChange: (ev) => setDraft(ev.target.value),
       onBlur: commit,
       onKeyDown: (ev) => { if (ev.key === 'Enter') ev.currentTarget.blur(); }
@@ -172,16 +171,22 @@ export function AiModelBadge({ role = 'prose', onOpenSettings, config }) {
       : client.modelFor(role, { ...cfg, roles: isRecord(cfg.roles) ? cfg.roles : {} });
   // A text link (underlined), with the command's menu name (menu spec B.5: Tekoälyasetukset…). As a
   // quiet button it stood as plain text after the model id and read as a label without a value
-  const link = e('button', {
+  // Without onOpenSettings there is no link: the badge then stands on the Tekoäly tab itself, where
+  // the link would only open the tab the author is reading
+  const link = typeof onOpenSettings === 'function' ? e('button', {
     type: 'button',
     className: 'faust-link',
     title: 'Vaihda malli tietopaneelin Tekoäly-välilehdellä',
     onClick: onOpenSettings
-  }, 'Tekoälyasetukset…');
+  }, 'Tekoälyasetukset…') : null;
 
-  return e('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--sp-1) var(--sp-2)' } },
+  // A model id that does not fit after "Malli:" (gateway ids run to 36 characters; the Kustannusarvio
+  // card has 247px) goes whole onto the next line, and one wider than the column breaks at a hyphen:
+  // the id is never cut and never runs out of its column
+  const fits = { flexWrap: 'wrap', whiteSpace: 'normal', minWidth: 0, maxWidth: '100%' };
+  return e('div', { style: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 'var(--sp-1) var(--sp-2)', minWidth: 0 } },
     model
-      ? e('span', { className: 'faust-stat', title: model }, 'Malli: ', e('b', null, modelLabel(model)))
+      ? e('span', { className: 'faust-stat', title: model, style: fits }, 'Malli: ', e('b', { style: { minWidth: 0, overflowWrap: 'anywhere' } }, modelLabel(model)))
       : e('span', { className: 'faust-meta' }, 'Mallia ei ole valittu.'),
     link
   );

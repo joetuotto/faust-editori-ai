@@ -2915,6 +2915,20 @@ describe('review fixes (I-05)', () => {
     expect(h.prompt.sendBlocked).toBeNull();
   });
 
+  test('a dry build without a model disables sending with what to do first (final polish round 2)', () => {
+    const h = harness();
+    h.quick.open();
+    // The session resolved the role to no model (a first run): Lähetä and the quick actions wait
+    h.quick.contextChecked({ model: '', overBudget: false, totalTokens: 570, budgetTokens: 165189 });
+    expect(h.prompt.sendBlocked).toBe('Valitse ensin malli');
+    // A model chosen meanwhile: the next build enables sending again
+    h.quick.contextChecked({ model: 'p:deepseek-v4.1-flash', overBudget: false, totalTokens: 570, budgetTokens: 26000 });
+    expect(h.prompt.sendBlocked).toBeNull();
+    // A build that does not say which model it is for blocks nothing (a host's own build)
+    h.quick.contextChecked({ overBudget: false, totalTokens: 570, budgetTokens: 26000 });
+    expect(h.prompt.sendBlocked).toBeNull();
+  });
+
   test('a send over a pending suggestion of something else in the target is refused before any request', () => {
     const h = harness();
     h.quick.open();

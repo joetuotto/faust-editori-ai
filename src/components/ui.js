@@ -949,7 +949,13 @@ function PopoverFrame({ anchorRef, alignRef, title, width, onClose, footer, laye
       el.removeAttribute('data-anchor');
       const gap = 4;
       const margin = 16;
-      const below = window.innerHeight - rect.bottom - gap - margin;
+      // The room under the anchor ends 8px above the status bar, not at the window's edge: at
+      // 1024 × 640 a tall popover of the editor pane (Etsi under a hit) lay over the bar's upper half.
+      // Inside a dialog (layer 'modal') the bar is under the scrim and the window is the limit.
+      const bar = layer === 'modal' ? null : document.querySelector('.faust-statusbar');
+      const barRect = bar ? bar.getBoundingClientRect() : null;
+      const floor = barRect && barRect.height > 0 ? Math.min(window.innerHeight - margin, barRect.top - 8) : window.innerHeight - margin;
+      const below = floor - rect.bottom - gap;
       const above = rect.top - gap - margin;
       const upwards = below < 160 && above > below;
       el.style.setProperty('--popover-max-h', Math.max(0, upwards ? above : below) + 'px');
@@ -971,7 +977,7 @@ function PopoverFrame({ anchorRef, alignRef, title, width, onClose, footer, laye
         const height = el.offsetHeight;
         const covers = box.left < left + width && box.right > left && box.top < top + height && box.bottom > top;
         const under = box.bottom + margin;
-        const room = window.innerHeight - margin - under;
+        const room = floor - under;
         if (covers && room >= Math.min(height, 240)) {
           top = under;
           el.style.setProperty('--popover-max-h', Math.max(0, room) + 'px');

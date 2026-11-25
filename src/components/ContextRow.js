@@ -64,17 +64,27 @@ function promptOf(built, promptText, systemAsUser, sent) {
 
 const TURN_LABELS = { user: 'Käyttäjäviesti', assistant: 'Mallin vastaus' };
 
-// The line's parts ("oma ohje 28") each wrap as one unit: the line breaks only between them, so a
-// number never stands alone on the next line. The text is the same; only the wrapping is held.
+// The line's lead-in ("Lähetetään (merkkiä):") and its parts ("oma ohje 28") are laid out one after
+// another and wrap between them: in Tietopaneeli's 273px the lead-in stands on the first line and the
+// parts under it. A part wider than its column breaks inside itself at a space, never between a
+// label's last word and its number (a no-break space joins them). The separator is drawn in the gap
+// before each part, and the gap of a line's first part lies outside the clipped line, so no line
+// starts or ends with a dot (.faust-context-row__line). The text is the same; only the wrapping is held.
 const SEPARATOR = ' · ';
-function lineParts(line) {
-  const parts = String(line || '').split(SEPARATOR);
-  const out = [];
-  parts.forEach((part, index) => {
-    if (index > 0) out.push(SEPARATOR);
-    out.push(e('span', { key: index, style: { whiteSpace: 'nowrap' } }, part));
-  });
-  return out;
+const NBSP = '\u00a0';
+const joinNumber = (part) => String(part).replace(/ (\d[\d\u00a0\u202f]*)$/, NBSP + '$1');
+function lineParts(line, tail) {
+  const text = String(line || '');
+  const colon = text.indexOf(': ');
+  const lead = colon === -1 ? '' : text.slice(0, colon + 1);
+  const parts = (colon === -1 ? text : text.slice(colon + 2)).split(SEPARATOR).filter(part => part !== '');
+  return e('span', { className: 'faust-context-row__parts' },
+    // The space after the colon stays in the text (a copy of the line reads as before)
+    lead ? e('span', { className: 'faust-context-row__part faust-context-row__lead' }, lead + ' ') : null,
+    parts.map((part, index) => e('span', { key: index, className: 'faust-context-row__part' },
+      index > 0 ? e('span', { className: 'faust-context-row__sep', 'aria-hidden': 'true' }, SEPARATOR) : null,
+      joinNumber(part))),
+    tail || null);
 }
 
 /** Kehote: what is sent, as it is sent. A view: a press on the scrim closes it. */
@@ -108,7 +118,9 @@ export function PromptDialog({ open, built, promptText, systemAsUser, sent, onCl
     footerStart: e('span', { className: 'faust-stat' }, `${count(chars, 'merkki')}, noin ${formatCount(tokens)} tokenia`),
     footer: [
       e('button', { key: 'copy', type: 'button', className: 'faust-btn faust-btn--lg', onClick: copy }, copied ? 'Kopioitu' : 'Kopioi kehote'),
-      e('button', { key: 'close', type: 'button', className: 'faust-btn faust-btn--lg', title: 'Sulje (Esc)', onClick: close }, 'Sulje')
+      // The dialog only shows text: the focus goes to Sulje, not into the first read-only text, which
+      // then stood in a field's focus frame and invited typing
+      e('button', { key: 'close', type: 'button', className: 'faust-btn faust-btn--lg', title: 'Sulje (Esc)', 'data-autofocus': true, onClick: close }, 'Sulje')
     ]
   },
     systemAsUser && typeof promptText !== 'string' && e('div', { style: { marginBottom: 'var(--sp-4)' } },
@@ -145,10 +157,12 @@ export function ContextRow(props) {
     setExclude(next);
   };
 
-  // flush-end: the last action's text ends on the column's edge, where the fields end
+  // The row's two actions are text links, as Tekoälyasetukset… beside the model's name is: as quiet
+  // buttons they stood as plain words in the total's own face and colour, with nothing to tell
+  // that they can be pressed (final polish round 2)
   const promptButton = (built || typeof promptText === 'string') && e('button', {
     type: 'button',
-    className: 'faust-btn faust-btn--quiet faust-btn--sm faust-btn--flush-end',
+    className: 'faust-link',
     onClick: () => setShowPrompt(true)
   }, 'Näytä kehote');
   const dialog = e(PromptDialog, { open: showPrompt, built, promptText, systemAsUser, sent, onClose: () => setShowPrompt(false) });
@@ -161,7 +175,8 @@ export function ContextRow(props) {
       notice
         ? e(Callout, { role: 'warning' }, notice)
         : e(React.Fragment, null,
-            e('div', { className: 'faust-meta', title: NUMBERS_TITLE }, ...lineParts(line), note ? ' ' + note : null),
+            e('div', { className: 'faust-meta faust-context-row__line', title: NUMBERS_TITLE },
+              lineParts(line, note ? e('span', { className: 'faust-context-row__part' }, note) : null)),
             promptButton && e('div', { className: 'faust-context-row__foot' }, e('span', null), promptButton)),
       dialog
     );
@@ -179,6 +194,9 @@ export function ContextRow(props) {
         : null;
 
   const described = describeParts(built, folder);
+  // No model is chosen (a first run): there is no model whose room the size could be set against,
+  // so the total names the size alone (the hosts say Mallia ei ole valittu. and disable their send)
+  const total = built.model ? described.total : `noin ${formatCount(built.totalTokens)} tokenia`;
   const summaries = (built.parts || []).find(part => part.id === 'summaries');
   const skipped = summaries && Array.isArray(summaries.skippedNoAI) ? summaries.skippedNoAI : [];
   const manualOffered = manualChoices.filter(choice => !include.includes(`codex:${choice.id}`));
@@ -226,24 +244,28 @@ export function ContextRow(props) {
   };
 
   return e('div', { className: 'faust-context-row' },
-    // Two fixed lines: what is sent; under it the total at the left edge and the two actions at the
-    // right one. (One wrapping row with two auto margins left the total afloat in the middle of its
-    // line, or run into the summary: final polish round 1.)
+    // Two lines: what is sent; under it the total at the left edge and the two actions at the right
+    // one. In a narrow column (Tietopaneeli) the actions go under the total, still at the right edge.
+    // (One wrapping row with two auto margins left the total afloat in the middle of its line, or run
+    // into the summary: final polish round 1. A row that could not wrap pushed Näytä kehote out of the
+    // panel: round 2.)
     replaced || e(React.Fragment, null,
-      e('div', { className: 'faust-meta', title: NUMBERS_TITLE }, ...lineParts(withUnit(described.line))),
+      e('div', { className: 'faust-meta faust-context-row__line', title: NUMBERS_TITLE }, lineParts(withUnit(described.line))),
       e('div', { className: 'faust-context-row__foot' },
-        e('span', { className: 'faust-stat', title: NUMBERS_TITLE }, described.total),
+        e('span', { className: 'faust-stat', title: NUMBERS_TITLE }, total),
         e('span', { className: 'faust-context-row__actions' },
           e('button', {
             type: 'button',
-            className: 'faust-btn faust-btn--quiet faust-btn--sm',
+            className: 'faust-link',
             title: expanded ? undefined : 'Muuta, mitä pyynnön mukana lähetetään',
             'aria-expanded': expanded,
             onClick: () => setExpanded(open => !open)
           }, expanded ? 'Valmis' : 'Muuta'),
           promptButton))),
     !replaced && described.dropped && e('div', { className: 'faust-meta' }, described.dropped),
-    expanded && !replaced && e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)', marginTop: 'var(--sp-1)' } },
+    // Its own class: inside the Pikamuokkaus prompt the list is the one part that scrolls when the
+    // window is low (I-05 block of the stylesheet); in a panel it is a plain column
+    expanded && !replaced && e('div', { className: 'faust-context-row__list' },
       e('div', { className: 'faust-label' }, 'Mukana tässä pyynnössä'),
       (built.parts || []).filter(part => part.state !== 'empty').map(partRow),
       manualOffered.length > 0 && e('select', {

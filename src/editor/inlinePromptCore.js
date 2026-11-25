@@ -33,6 +33,60 @@ const HEIGHT_ESTIMATE_MAX = 480;
 const DOCK_BAND = 56;
 // The custom property the stylesheet caps the prompt's height with (I-05 block of faust-components.css)
 const ROOM_PROPERTY = '--cm-faust-prompt-room';
+// The opened "Mitä malli näkee" list (ContextRow) is the one part of the prompt that gives way when
+// the prompt does not fit its room: it gets what the room leaves after the field, the rows and the
+// foot, and scrolls inside itself, so the field and Lähetä stay where they are. Below LIST_MIN the
+// prompt scrolls as a whole, as before.
+const LIST_SELECTOR = '.faust-context-row__list';
+const LIST_ROOM_PROPERTY = '--cm-faust-prompt-list-room';
+const LIST_CAPPED_ATTRIBUTE = 'data-list-capped';
+const LIST_MIN = 96;
+
+/**
+ * The room of the opened list inside a prompt whose own room is `room` px. Pure.
+ * @param {{ room: number, promptContent: number, promptBorder: number, listShown: number, listNatural: number }} m
+ *   promptContent: the prompt's whole content height (scrollHeight); listShown: the list's height now;
+ *   listNatural: the height of the list's whole content
+ * @returns {{ listRoom: number, capped: boolean }}
+ */
+function listRoomFor({ room, promptContent, promptBorder = 0, listShown, listNatural }) {
+  const others = Math.max(0, promptContent - listShown);
+  const left = Math.floor(room - promptBorder - others);
+  const listRoom = Math.max(LIST_MIN, Number.isFinite(left) ? left : LIST_MIN);
+  return { listRoom, capped: listNatural > listRoom + 1 };
+}
+
+// Reads the layout and writes the list's room on the prompt (nothing when no list is open)
+function fitList(dom) {
+  if (!dom || typeof dom.querySelector !== 'function') return;
+  const list = dom.querySelector(LIST_SELECTOR);
+  if (!list) {
+    if (dom.style.getPropertyValue(LIST_ROOM_PROPERTY)) dom.style.removeProperty(LIST_ROOM_PROPERTY);
+    if (dom.hasAttribute(LIST_CAPPED_ATTRIBUTE)) dom.removeAttribute(LIST_CAPPED_ATTRIBUTE);
+    return;
+  }
+  const room = parseFloat(dom.style.getPropertyValue(ROOM_PROPERTY));
+  if (!Number.isFinite(room)) return;
+  const view = dom.ownerDocument.defaultView;
+  // A capped list carries a foot padding under its fade; its content is what is above that
+  const pad = dom.hasAttribute(LIST_CAPPED_ATTRIBUTE) && view ? parseFloat(view.getComputedStyle(list).paddingBottom) || 0 : 0;
+  const { listRoom, capped } = listRoomFor({
+    room,
+    promptContent: dom.scrollHeight,
+    promptBorder: dom.offsetHeight - dom.clientHeight,
+    listShown: list.clientHeight,
+    listNatural: list.scrollHeight - pad
+  });
+  const value = `${listRoom}px`;
+  if (dom.style.getPropertyValue(LIST_ROOM_PROPERTY) !== value) dom.style.setProperty(LIST_ROOM_PROPERTY, value);
+  if (dom.hasAttribute(LIST_CAPPED_ATTRIBUTE) !== capped) dom.toggleAttribute(LIST_CAPPED_ATTRIBUTE, capped);
+}
+
+// What a capped list hides: the prompt's natural height is that much more than what is drawn
+function hiddenListHeight(dom) {
+  const list = dom && typeof dom.querySelector === 'function' ? dom.querySelector(LIST_SELECTOR) : null;
+  return list ? Math.max(0, list.scrollHeight - list.clientHeight) : 0;
+}
 
 /**
  * How far to scroll the text so that a prompt of `height` fits under the target's end:
@@ -227,15 +281,22 @@ function createInlinePromptKit(cm, options = {}) {
       borderRadius: '3px',
       font: 'var(--type-serif)'
     },
+    // The foot is a grid of fixed places: the model at the left of the first row (cut with an
+    // ellipsis only when it would push the button), the button at that row's right end in every
+    // phase, the key hint under it. As a wrapping row the button changed place with the length of
+    // the model's name, and stood before the hint when there was no model line.
     '.cm-faust-prompt-foot': {
-      display: 'flex',
-      flexWrap: 'wrap',
+      display: 'grid',
+      gridTemplateColumns: 'minmax(0, 1fr) auto',
       alignItems: 'center',
-      justifyContent: 'flex-end',
-      gap: '8px',
+      gap: '4px 8px',
       marginTop: '6px'
     },
-    '.cm-faust-prompt-foot .cm-faust-prompt-model': { marginRight: 'auto' }
+    '.cm-faust-prompt-foot .cm-faust-prompt-model': {
+      gridColumn: '1', gridRow: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+    },
+    '.cm-faust-prompt-foot button': { gridColumn: '2', gridRow: '1', justifySelf: 'end' },
+    '.cm-faust-prompt-foot .cm-faust-prompt-keys': { gridColumn: '1 / -1', gridRow: '2', textAlign: 'right' }
   });
 
   /**
@@ -288,9 +349,9 @@ function createInlinePromptKit(cm, options = {}) {
           const value = current.state.field(promptField, false);
           const range = value ? rangeOf(current.state, value.rangeId) : null;
           if (!range || !promptView.dom.isConnected || promptView.dom.classList.contains('cm-tooltip-above')) return 0;
-          // The whole content, also the part a capped prompt scrolls inside itself
+          // The whole content, also the part a capped prompt or its capped list scrolls inside itself
           const dom = promptView.dom;
-          return roomDelta(current, range, Math.max(dom.getBoundingClientRect().height, dom.scrollHeight || 0));
+          return roomDelta(current, range, Math.max(dom.getBoundingClientRect().height, dom.scrollHeight || 0) + hiddenListHeight(dom));
         },
         write(delta, current) {
           if (delta > 0) current.scrollDOM.scrollTop += delta;
@@ -301,7 +362,12 @@ function createInlinePromptKit(cm, options = {}) {
       // prompt room again, as far as it can scroll, so the list is not squeezed to one row above the foot
       const ownerWindow = doc.defaultView;
       const slotWatch = ownerWindow && typeof ownerWindow.ResizeObserver === 'function'
-        ? new ownerWindow.ResizeObserver(() => { if (promptView.dom.isConnected) roomAgain(); })
+        ? new ownerWindow.ResizeObserver(() => {
+          if (!promptView.dom.isConnected) return;
+          roomAgain();
+          // At once, in the room the prompt has now; positioned() fits it again after a scroll
+          fitList(promptView.dom);
+        })
         : null;
       if (slotWatch) slotWatch.observe(promptView.contextSlot);
 
@@ -324,6 +390,7 @@ function createInlinePromptKit(cm, options = {}) {
           const room = Math.floor(above ? rect.bottom - space.top - ROOM_GAP : space.bottom - rect.top - ROOM_GAP);
           const value = `${Math.max(MIN_ROOM, Number.isFinite(room) ? room : MIN_ROOM)}px`;
           if (dom.style.getPropertyValue(ROOM_PROPERTY) !== value) dom.style.setProperty(ROOM_PROPERTY, value);
+          fitList(dom);
           // The whole content, also the part scrolled inside a capped prompt
           const natural = Math.max(rect.height, dom.scrollHeight || 0);
           if (natural > 0) expectedHeight = Math.min(HEIGHT_ESTIMATE_MAX, Math.round(natural));
@@ -514,4 +581,4 @@ function createInlinePromptKit(cm, options = {}) {
   return { inlinePrompt, openPrompt, updatePrompt, closePrompt, getPrompt, focusPrompt };
 }
 
-module.exports = { createInlinePromptKit, scrollForRoom };
+module.exports = { createInlinePromptKit, scrollForRoom, listRoomFor };

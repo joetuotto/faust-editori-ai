@@ -213,6 +213,8 @@ function createSuggestionController(deps = {}) {
       chapterId,
       pending: shot ? shot.pending.length : 0,
       rejected: shot ? shot.rejected.length + (shot.block && shot.block.state === 'rejected' ? 1 : 0) : 0,
+      // The rejected draft is one of them and is named apart, as a pending one is (lead decision Counts)
+      rejectedBlock: !!(shot && shot.block && shot.block.state === 'rejected'),
       currentIndex: shot ? shot.currentIndex : -1,
       viewMode: shot ? shot.viewMode : 'changes',
       notice: shot ? shot.notice : null,

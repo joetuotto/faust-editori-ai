@@ -259,7 +259,11 @@ export function ReviewPanel(props) {
 
   // --- 2 Scope ---
   const selectionOff = view.scopeLocked || !view.hasSelection;
-  const scopePart = e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
+  // A check that always takes the whole chapter (Lukupalaute) has no choice to offer: the sentence that
+  // says so stands alone, without a control whose one other value is greyed
+  const scopePart = view.scopeLocked
+    ? e('div', { className: 'faust-field__hint' }, TEXT.scopeLocked)
+    : e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
     e('div', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }, onMouseDown: keepEditor },
       e('span', { className: 'faust-field__label' }, TEXT.scope),
       e(Segmented, {
@@ -295,7 +299,8 @@ export function ReviewPanel(props) {
     settings = e('div', { style: { display: 'flex', alignItems: 'baseline', flexWrap: 'wrap', gap: 'var(--sp-1) var(--sp-2)' } },
       avoidWords > 0 && e('span', { className: 'faust-meta' }, `Listalla ${count(avoidWords, 'sana')}.`),
       listMessage && e('span', { className: 'faust-meta' }, listMessage),
-      e('button', { type: 'button', className: 'faust-btn faust-btn--quiet faust-btn--sm', onClick: onOpenProjectSettings }, TEXT.editList));
+      // A text link, as the row's other in-place actions (Tekoälyasetukset…, Muuta, Näytä kehote)
+      e('button', { type: 'button', className: 'faust-link', onClick: onOpenProjectSettings }, TEXT.editList));
   } else if (check.id === 'long-sentences') {
     const commit = (raw) => {
       const value = parseInt(raw, 10);
@@ -374,6 +379,10 @@ export function ReviewPanel(props) {
         callout = e(Callout, { role: 'hint' }, planBlocked);
       } else if (view.scope === 'selection' && !view.hasSelection && !view.scopeLocked) {
         reason = 'Valitse ensin tekstiä tai vaihda laajuudeksi Luku.';
+      } else if (preview.built && preview.built.model === '') {
+        // No model chosen (a first run): the model line above says so with its link; the run would only
+        // end in the same sentence
+        reason = 'Valitse ensin malli';
       }
       action = e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
         callout,
@@ -441,7 +450,8 @@ export function ReviewPanel(props) {
       },
         FILTERS.filter(([id]) => id !== 'invalid' || canBeInvalid || view.filter.status === 'invalid')
           .map(([id, label]) => e('option', { key: id, value: id }, `${label} (${formatCount(counts[id] || 0)})`))),
-      e('span', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }, onMouseDown: keepEditor },
+      // Nothing listed: nothing to step through (the two chevrons and "– / 0" stood above Ei osumia)
+      view.findings.length > 0 && e('span', { style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }, onMouseDown: keepEditor },
         e(IconButton, { icon: 'chevronUp', label: TEXT.previous, size: 'sm', disabled: located === 0, onClick: () => controller.step(-1) }),
         e('span', { className: 'faust-meta faust-num' },
           `${view.position ? formatCount(view.position.index) : '–'} / ${formatCount(view.findings.length)}`),
@@ -451,7 +461,8 @@ export function ReviewPanel(props) {
       TEXT.onlyCheck));
 
   // --- 7 Cards ---
-  const card = (finding) => {
+  // grouped: the card stands under the reading feedback's own heading (Toimii, Huolet)
+  const card = (finding, grouped = false) => {
     const active = finding.id === view.selectedId;
     const { attr, icon } = severityOf(finding);
     const quote = shownQuote(finding.quote);
@@ -462,6 +473,13 @@ export function ReviewPanel(props) {
     const url = finding.data && typeof finding.data.url === 'string' ? finding.data.url : null;
     const select = () => controller.select(finding.id);
     const stop = (ev) => ev.stopPropagation();
+    // A reading-feedback card: the sentence of feedback is the result, so it is on the card at rest
+    // (three lines; whole when the card is open). Under its own heading (Toimii, Huolet) the sentence
+    // heads the card, and the check's name and the model's id, the same on every card of the group, are
+    // said once above the list; among other checks' cards it keeps its name and model like them.
+    const feedback = isFeedbackFinding(finding) && finding.kind !== 'local';
+    const lead = feedback && grouped === true;
+    const noteClass = 'faust-finding__note' + (active ? '' : ' faust-clamp-3');
 
     let openRef = null;
     if (ref && ref.id && ref.kind === 'codex' && onOpenCodexEntry) {
@@ -477,7 +495,7 @@ export function ReviewPanel(props) {
       role: 'button',
       tabIndex: 0,
       'aria-pressed': active,
-      className: 'faust-finding' + (active ? ' is-active' : '') + (finding.status !== 'open' ? ' is-resolved' : ''),
+      className: 'faust-finding' + (lead && finding.note ? ' faust-finding--feedback' : '') + (active ? ' is-active' : '') + (finding.status !== 'open' ? ' is-resolved' : ''),
       'data-severity': attr,
       // A press on the card jumps in the text; its own buttons take their presses themselves
       onMouseDown: (ev) => { if (!(ev.target.closest && ev.target.closest('button, a, summary'))) ev.preventDefault(); },
@@ -491,14 +509,17 @@ export function ReviewPanel(props) {
       }
     },
       e('span', { className: 'faust-finding__icon' }, icons[icon]({ size: 14 })),
-      e('span', { className: 'faust-finding__kind' }, finding.checkLabel),
-      finding.kind !== 'local' && finding.model ? e('span', { className: 'faust-finding__where' }, finding.model) : null,
+      lead && finding.note
+        ? e('span', { className: noteClass, title: finding.model ? `${finding.checkLabel} · ${finding.model}` : finding.checkLabel }, finding.note)
+        : e('span', { className: 'faust-finding__kind' }, finding.checkLabel),
+      !lead && finding.kind !== 'local' && finding.model ? e('span', { className: 'faust-finding__where' }, finding.model) : null,
+      feedback && !lead && finding.note ? e('span', { className: noteClass }, finding.note) : null,
       e('span', { className: 'faust-finding__quote' }, quote ? `”${quote}”` : TEXT.noQuote),
       (!finding.located || finding.approx || severity) && e('span', { className: 'faust-finding__badges' },
         !finding.located && e('span', { className: 'faust-chip faust-chip--plain', title: TEXT.unlocatedTitle }, TEXT.unlocated),
         finding.located && finding.approx && e('span', { className: 'faust-chip faust-chip--plain', title: TEXT.approxTitle }, TEXT.approx),
         severity && e('span', { className: `faust-chip faust-chip--dot faust-chip--${severity.role}` }, severity.word)),
-      active && finding.note && e('span', { className: 'faust-finding__note' }, finding.note),
+      active && finding.note && !feedback && e('span', { className: 'faust-finding__note' }, finding.note),
       active && finding.suggestion && !isFeedbackFinding(finding) && e('span', { className: 'faust-finding__note' }, `${TEXT.suggestion} ${finding.suggestion}`),
       active && ref && e('span', { className: 'faust-finding__note' }, `Vertaa: ${ref.label}`),
       active && ref && (ref.located
@@ -544,12 +565,16 @@ export function ReviewPanel(props) {
   } else if (view.feedback) {
     // The two groups are this check's; the other checks' findings (Vain valittu tarkistus off) follow them
     const { works, concerns, others } = view.feedback;
+    // The model that gave the feedback, once (a card no longer repeats it)
+    const feedbackModels = Array.from(new Set([...works, ...concerns].map(finding => finding.model).filter(Boolean)));
     list = e(React.Fragment, null,
-      works.length > 0 && e(Section, { title: TEXT.works }, e('div', { className: 'faust-findings' }, works.map(card))),
-      concerns.length > 0 && e(Section, { title: TEXT.concerns }, e('div', { className: 'faust-findings' }, concerns.map(card))),
-      others.length > 0 && e(Section, { title: TEXT.others }, e('div', { className: 'faust-findings' }, others.map(card))));
+      feedbackModels.length > 0 && e('div', { className: 'faust-meta', style: { overflowWrap: 'anywhere' } },
+        `${feedbackModels.length === 1 ? 'Malli' : 'Mallit'}: ${feedbackModels.join(', ')}`),
+      works.length > 0 && e(Section, { title: TEXT.works }, e('div', { className: 'faust-findings' }, works.map(finding => card(finding, true)))),
+      concerns.length > 0 && e(Section, { title: TEXT.concerns }, e('div', { className: 'faust-findings' }, concerns.map(finding => card(finding, true)))),
+      others.length > 0 && e(Section, { title: TEXT.others }, e('div', { className: 'faust-findings' }, others.map(finding => card(finding)))));
   } else {
-    list = e('div', { className: 'faust-findings' }, view.findings.map(card));
+    list = e('div', { className: 'faust-findings' }, view.findings.map(finding => card(finding)));
   }
 
   // --- 9 Foot ---

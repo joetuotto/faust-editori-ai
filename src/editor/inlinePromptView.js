@@ -36,6 +36,7 @@ const INVALID_TEXT = 'Kirjoita ohje tai valitse pikavalinta.';
 const REFINE_EMPTY_TEXT = 'Kirjoita ensin, mitä haluat muuttaa.';
 // Esc closes the prompt too, so the close button's tooltip names the key
 const CLOSE_TITLE = 'Sulje (Esc)';
+const NO_MODEL_TEXT = 'Mallia ei ole valittu.';
 const MIN_ROWS = 2;
 const MAX_ROWS = 6;
 const MAX_HISTORY = 200;
@@ -132,7 +133,13 @@ function createPromptView(doc, options = {}) {
     else field.removeAttribute('aria-invalid');
     if (statusNode && state && state.phase !== 'sending') {
       statusNode.textContent = on ? (state.phase === 'result' ? REFINE_EMPTY_TEXT : INVALID_TEXT) : '';
+      markStatus();
     }
+  }
+
+  // The sentence of an invalid field is an error line (colour and mark), not a neutral status
+  function markStatus() {
+    if (statusNode) statusNode.classList.toggle('cm-faust-prompt-status-invalid', invalid && statusNode.textContent !== '');
   }
 
   function placeholderFor(current) {
@@ -156,8 +163,13 @@ function createPromptView(doc, options = {}) {
   }
 
   function modelNode(current) {
-    return current.model && current.model.name
-      ? make('span', { class: 'cm-faust-prompt-model', 'data-role': 'model' }, `Malli: ${current.model.name}`)
+    if (current.model && current.model.name) {
+      return make('span', { class: 'cm-faust-prompt-model', 'data-role': 'model', title: current.model.name }, `Malli: ${current.model.name}`);
+    }
+    // A model record without an id: none is chosen yet. The foot says so, as the panels' model line
+    // does, beside the send button that is disabled for the same reason
+    return current.model && current.model.id === ''
+      ? make('span', { class: 'cm-faust-prompt-model', 'data-role': 'model' }, NO_MODEL_TEXT)
       : null;
   }
 
@@ -284,20 +296,28 @@ function createPromptView(doc, options = {}) {
     const actions = make('div', { class: 'cm-faust-prompt-actions' });
     actions.appendChild(button('refine', 'Tarkenna'));
     actions.appendChild(button('other-model', 'Kokeile toisella mallilla', { 'aria-expanded': current.pickerOpen ? 'true' : 'false' }));
+    let decide = null;
     if (attempt && attempt.changeCount > 0) {
       // "Hyväksy kaikki" is the bar's button and means the whole chapter; these two mean this attempt.
       // One order on every surface that decides a change: reject first, the primary accept last, at
       // the row's end (the dock's bar, the draft block; menu spec B.10)
-      const decide = make('span', { class: 'cm-faust-prompt-decide' });
+      decide = make('span', { class: 'cm-faust-prompt-decide' });
       decide.appendChild(button('reject-all', 'Hylkää muutokset', { title: 'Hylkää tämän yrityksen muutokset.' }));
       decide.appendChild(button('accept-all', 'Hyväksy muutokset', {
         class: 'cm-faust-prompt-primary',
         title: 'Hyväksy tämän yrityksen muutokset. Luvun muut ehdotukset jäävät odottamaan.'
       }));
-      actions.appendChild(decide);
     }
-    body.appendChild(actions);
-    if (current.pickerOpen) body.appendChild(pickerNode(current));
+    if (current.pickerOpen) {
+      // The picker stands right under the row of the button that opened it; the decide pair follows
+      // on a row of its own (it stood between the opener and what it opened)
+      body.appendChild(actions);
+      body.appendChild(pickerNode(current));
+      if (decide) body.appendChild(make('div', { class: 'cm-faust-prompt-actions' }, decide));
+    } else {
+      if (decide) actions.appendChild(decide);
+      body.appendChild(actions);
+    }
 
     foot.appendChild(button('close', 'Sulje', { title: CLOSE_TITLE }));
   }
@@ -350,6 +370,7 @@ function createPromptView(doc, options = {}) {
     else if (current.phase === 'error') fillError(current);
     else if (current.phase === 'blocked') fillBlocked(current);
     else fillIdle(current);
+    if (current.phase !== 'sending') markStatus();
   }
 
   // ---------------------------------------------------------------------------
@@ -520,8 +541,11 @@ function createPromptView(doc, options = {}) {
     if (contextSlot.contains(event.target)) return;
     const target = event.target.closest('[data-role]');
     if (!target || !dom.contains(target) || target.disabled) return;
+    const role = target.getAttribute('data-role');
+    // "Kirjoita ensin…" belongs to the press that found the field empty: another action takes it away
+    if (invalid && role !== 'send' && role !== 'refine' && role !== 'field') setInvalid(false);
 
-    switch (target.getAttribute('data-role')) {
+    switch (role) {
       case 'chip':
         emit({ type: 'action', actionId: target.getAttribute('data-action'), extra: field.value });
         break;

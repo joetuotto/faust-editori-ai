@@ -58,8 +58,12 @@ export function AiUsageLogSection({ log, projectTitle, chapters }) {
         row('Hyväksyttyjä ehdotuksia', summary.accepted.count),
         row('Hylättyjä ehdotuksia', summary.rejected.count)
       ),
+    // "-toiminnon" keeps its hyphen (a line never ends in it), and the old functions are named with the
+    // menu's own verbs (menu spec B.18: no "generointi" in a string that reaches the screen)
     e('div', { className: 'faust-field__hint' },
-      'Loki kattaa uudet tekoälytoiminnot ja Liitä muokkauksina -toiminnon ehdotukset. Vanhat generointi- ja analyysitoiminnot eivät kirjaudu lokiin.'),
+      'Loki kattaa uudet tekoälytoiminnot ja Liitä muokkauksina ',
+      e('span', { style: { whiteSpace: 'nowrap' } }, '-toiminnon'),
+      ' ehdotukset. Vanhat kirjoitus- ja analyysitoiminnot eivät kirjaudu lokiin.'),
     e('div', { className: 'faust-field__row' },
       e('button', { type: 'button', className: 'faust-btn faust-btn--sm', onClick: exportLog }, 'Vie tekstinä…')
     )

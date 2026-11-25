@@ -75,20 +75,28 @@ class CostOptimizer {
    * @param {String} model - Model name
    * @param {String} inputText - Prompt text
    * @param {String} outputText - Response text
+   * @param {{ input_tokens?: number, output_tokens?: number }} [usage] - the provider's own token
+   *   counts, when the answer carried them; else the tokens are estimated from the texts
+   *
+   * A request is counted whatever its model: a model without a price (every model of the Cherry
+   * Studio gateway, a Claude model newer than the table) adds its request and its tokens, costs
+   * nothing here and is counted in `unpricedRequests`, so the sum can say "ei arviota" instead of 0 $.
    */
-  trackRequest(provider, model, inputText, outputText) {
+  trackRequest(provider, model, inputText, outputText, usage) {
     try {
       // Validate inputs
-      if (!provider || !model) {
-        console.warn('[CostOptimizer] Invalid provider or model:', { provider, model });
+      if (!provider) {
+        console.warn('[CostOptimizer] No provider:', { provider, model });
         return {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
           cost: 0,
+          priced: false,
           runningTotal: 0
         };
       }
+      model = typeof model === 'string' ? model : '';
 
       // Ensure project and AI structure exists
       if (!this.project) {
@@ -106,12 +114,16 @@ class CostOptimizer {
         this.project.ai = {};
       }
 
-      const inputTokens = this.estimateTokens(inputText || '');
-      const outputTokens = this.estimateTokens(outputText || '');
+      const counted = (value) => (Number.isFinite(value) && value >= 0 ? Math.round(value) : null);
+      const usedInput = usage ? counted(usage.input_tokens) : null;
+      const usedOutput = usage ? counted(usage.output_tokens) : null;
+      const inputTokens = usedInput !== null ? usedInput : this.estimateTokens(inputText || '');
+      const outputTokens = usedOutput !== null ? usedOutput : this.estimateTokens(outputText || '');
       const totalTokens = inputTokens + outputTokens;
 
-      // Calculate cost
-      const cost = this.calculateCost(provider, model, inputTokens, outputTokens);
+      // Calculate cost: only with a price of the model's own (no invented average)
+      const priced = this.hasPricing(provider, model);
+      const cost = priced ? this.calculateCost(provider, model, inputTokens, outputTokens) : 0;
 
       // Ensure costTracking structure is still valid
       if (!this.project.ai.costTracking) {
@@ -128,6 +140,9 @@ class CostOptimizer {
       this.project.ai.costTracking.requestCount++;
       this.project.ai.costTracking.tokensUsed += totalTokens;
       this.project.ai.costTracking.totalSpent += cost;
+      if (!priced) {
+        this.project.ai.costTracking.unpricedRequests = (this.project.ai.costTracking.unpricedRequests || 0) + 1;
+      }
 
       // Ensure byProvider exists
       if (!this.project.ai.costTracking.byProvider) {
@@ -146,6 +161,9 @@ class CostOptimizer {
       this.project.ai.costTracking.byProvider[provider].requests++;
       this.project.ai.costTracking.byProvider[provider].tokens += totalTokens;
       this.project.ai.costTracking.byProvider[provider].cost += cost;
+      if (!priced) {
+        this.project.ai.costTracking.byProvider[provider].unpriced = (this.project.ai.costTracking.byProvider[provider].unpriced || 0) + 1;
+      }
 
       // Add to history
       if (!this.project.ai.costTracking.history) {
@@ -157,7 +175,8 @@ class CostOptimizer {
         model,
         inputTokens,
         outputTokens,
-        cost
+        cost,
+        priced
       });
 
       // Keep only last 100 requests in history
@@ -172,6 +191,7 @@ class CostOptimizer {
         outputTokens,
         totalTokens,
         cost,
+        priced,
         runningTotal: this.project.ai.costTracking.totalSpent
       };
     } catch (error) {
@@ -185,6 +205,11 @@ class CostOptimizer {
         runningTotal: 0
       };
     }
+  }
+
+  /** Whether the table has a price for this model of this provider. */
+  hasPricing(provider, model) {
+    return !!(CostOptimizer.PRICING[provider] && CostOptimizer.PRICING[provider][model]);
   }
 
   /**
@@ -209,14 +234,18 @@ class CostOptimizer {
    * Get current spending stats
    */
   getStats() {
+    const tracking = this.project.ai.costTracking;
+    const requests = tracking.requestCount || 0;
+    // Requests of models without a price: they have no cost here, so the average is over the others
+    const unpriced = Math.min(requests, tracking.unpricedRequests || 0);
+    const priced = requests - unpriced;
     return {
-      totalRequests: this.project.ai.costTracking.requestCount,
-      totalTokens: this.project.ai.costTracking.tokensUsed,
-      totalSpent: this.project.ai.costTracking.totalSpent,
-      byProvider: this.project.ai.costTracking.byProvider,
-      averageCostPerRequest: this.project.ai.costTracking.requestCount > 0
-        ? this.project.ai.costTracking.totalSpent / this.project.ai.costTracking.requestCount
-        : 0
+      totalRequests: tracking.requestCount,
+      totalTokens: tracking.tokensUsed,
+      totalSpent: tracking.totalSpent,
+      unpricedRequests: unpriced,
+      byProvider: tracking.byProvider,
+      averageCostPerRequest: priced > 0 ? tracking.totalSpent / priced : 0
     };
   }
 

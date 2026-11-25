@@ -330,7 +330,8 @@ function CodexSheet({
     role: 'dialog',
     'aria-label': title,
     tabIndex: -1,
-    style: { '--popover-w': '380px', left: 'calc(var(--left-col-w) + var(--sp-2))', top: 'calc(var(--header-h) + var(--sp-3))' },
+    // Under the format bar, 8px clear of it: the bar stays whole beside the sheet
+    style: { '--popover-w': '380px', left: 'calc(var(--left-col-w) + var(--sp-2))', top: 'calc(var(--header-h) + var(--formatbar-h) + var(--sp-2))' },
     // Esc closes the form only while the focus is in it, and goes no further (R-70 step 4)
     onKeyDown: (ev) => {
       if (ev.key !== 'Escape' || ev.defaultPrevented) return;
@@ -377,8 +378,10 @@ function CodexSheet({
     e('div', { className: 'faust-popover__foot' },
       // A new entry with nothing typed does not exist yet: there is nothing to delete, only to leave
       // (close() drops it without a question)
+      // Peruuta stands at the right, before Valmis (M B.10): the foot's left end is the place of the
+      // destructive Poista kohde alone
       isNew && isBlank(draft)
-        ? e('button', { type: 'button', className: 'faust-btn faust-btn--sm faust-btn--quiet faust-codex__delete', onClick: close }, 'Peruuta')
+        ? e('button', { type: 'button', className: 'faust-btn faust-btn--sm faust-btn--quiet', onClick: close }, 'Peruuta')
         : e('button', { type: 'button', className: 'faust-btn faust-btn--sm faust-btn--danger faust-codex__delete', onClick: remove }, 'Poista kohde'),
       e('button', { type: 'button', className: 'faust-btn faust-btn--sm faust-btn--primary', onClick: close }, 'Valmis'))
   );
@@ -593,8 +596,9 @@ export function CodexPanel({
       },
         e('span', { className: 'faust-codex-state', 'data-state': state, role: 'img', 'aria-label': STATE_LABELS[state], title: STATE_LABELS[state] }),
         e('span', { className: 'faust-row__text' }, e('span', { className: 'faust-row__title' }, nameOf(entry) || UNNAMED)),
-        mentionsEnabled && totals && e('span', { className: 'faust-chip faust-chip--count', title: 'Mainintoja koko käsikirjoituksessa' },
-          formatCount(totals[entry.id] || 0)));
+        // A count only when there is something counted: a column of 0 chips said nothing
+        mentionsEnabled && totals && totals[entry.id] > 0 && e('span', { className: 'faust-chip faust-chip--count', title: 'Mainintoja koko käsikirjoituksessa' },
+          formatCount(totals[entry.id])));
     })
   )), [groups, openId, totals, mentionsEnabled]);
 

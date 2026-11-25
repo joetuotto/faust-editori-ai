@@ -66,6 +66,8 @@ const INSTALL_COMMAND = 'brew install libvoikko';
 const VOIKKO_MISSING = 'Voikkoa ei löytynyt. Asenna: brew install libvoikko';
 const READY_TEXT = 'Tekoäly korjaa vain kielivirheet. Jokainen korjaus tulee ehdotuksena, ja teksti muuttuu vasta, kun hyväksyt sen.';
 const NOTHING_TO_SEND = 'Luvussa ei ole lähetettävää tekstiä.';
+// Why Aloita is disabled while no model is chosen (menu spec B.8)
+const NO_MODEL_REASON = 'Valitse ensin malli';
 const GUARD_TEXT = {
   voikko: 'Epäilyttävien sanojen tarkistus: Voikko',
   system: 'Epäilyttävien sanojen tarkistus: järjestelmän oikoluku',
@@ -112,7 +114,9 @@ function Excerpt({ text, from, to }) {
   const part = excerptAround(text, from, to);
   return e('span', { className: 'faust-quote' },
     part.before,
-    part.hit ? e('span', { className: 'faust-mark faust-mark--finding' }, part.hit) : null,
+    // A hit of one or two characters (a hyphen, a quotation mark, a space) is shown by a ground: a wavy
+    // line under one narrow character read as a stray mark, not as a highlight
+    part.hit ? e('span', { className: 'faust-mark faust-mark--finding' + (part.hit.length <= 2 ? ' faust-mark--point' : '') }, part.hit) : null,
     part.after);
 }
 
@@ -426,7 +430,10 @@ export function LanguagePanel(props) {
   // ---------------------------------------------------------------------------------------------
   // Drawing
   // ---------------------------------------------------------------------------------------------
-  const tabs = aiDisabled ? TABS.filter(tab => tab.id !== 'proofread') : TABS;
+  // The tab of a running Kielenhuolto carries the busy dot, as Tarkistus does in Tietopaneeli (V 9.4)
+  const proofreadBusy = !!(run && run.status === 'running');
+  const tabs = (aiDisabled ? TABS.filter(tab => tab.id !== 'proofread') : TABS)
+    .map(tab => (tab.id === 'proofread' && proofreadBusy ? { ...tab, busy: true } : tab));
   const pending = pendingItems(editorRef);
 
   const head = e('div', { className: 'faust-panel__head' },
@@ -538,6 +545,9 @@ export function LanguagePanel(props) {
     : null);
 
   const modelLines = () => {
+    // No model is chosen (a first run): the badge says so with its link, and nothing is said about
+    // "this model" (the experience note and the guard line are about a run that cannot start yet)
+    if (!editModel) return e(AiModelBadge, { role: 'edit', onOpenSettings: onOpenAISettings, config: aiConfig });
     const note = modelNote(editModel, proofreadModelNotes);
     return e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-1)' } },
       e(AiModelBadge, { role: 'edit', onOpenSettings: onOpenAISettings, config: aiConfig }),
@@ -588,11 +598,15 @@ export function LanguagePanel(props) {
               e('div', { className: 'faust-field__hint' },
                 `Lähetetään ${count(lines, 'rivi')} ${formatCount(plan.batches.length)} erässä. Ei lähetetä: ${notSent}.`),
               dashNotice(plan.dashListLines),
-              blockButton('Aloita', () => startRun(false), {
-                primary: true,
-                icon: icons.star8({ size: 14 }),
-                disabled: !!(preview.built && (preview.built.overBudget || preview.built.blocked))
-              }))));
+              // Without a model the run would only end in "Mallia ei ole valittu": the button says
+              // what to do first (M B.8); the span carries the title of the disabled button
+              e('span', { title: editModel ? undefined : NO_MODEL_REASON, style: { display: 'block' } },
+                blockButton('Aloita', () => startRun(false), {
+                  primary: true,
+                  icon: icons.star8({ size: 14 }),
+                  title: editModel ? undefined : NO_MODEL_REASON,
+                  disabled: !editModel || !!(preview.built && (preview.built.overBudget || preview.built.blocked))
+                })))));
   };
 
   const proofreadRunning = () => {
@@ -600,9 +614,15 @@ export function LanguagePanel(props) {
     const percent = p.linesTotal > 0 ? (p.linesDone / p.linesTotal) * 100 : 0;
     return e(Section, { title: `Kielenhuolto: ${chapterTitle}` },
       e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
-        e(Progress, { value: percent, label: 'Kielenhuolto' }),
-        e('div', { className: 'faust-meta', role: 'status' },
+        // The same block as a running check of the Tarkistus tab: a spinner on the progress line and a
+        // bar that moves. Until the first lines are back the bar has nothing to show (an empty track
+        // read as a divider), so it runs without a value
+        e('div', { className: 'faust-meta', role: 'status', style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' } },
+          e('span', { className: 'faust-spinner faust-spinner--sm', 'aria-hidden': 'true' }),
           `Erä ${formatCount(Math.min((p.batchIndex || 0) + 1, Math.max(1, p.batchCount || 1)))}/${formatCount(Math.max(1, p.batchCount || 1))} · ${count((run.totals.corrections || 0) + (p.corrections || 0), 'korjaus')}`),
+        percent > 0
+          ? e(Progress, { value: percent, label: 'Kielenhuolto' })
+          : e(Progress, { indeterminate: true, label: 'Kielenhuolto' }),
         blockButton('Pysäytä', stopRun, { icon: icons.stop({ size: 14 }) })));
   };
 
@@ -638,7 +658,6 @@ export function LanguagePanel(props) {
             `Lähetetty ${count(totals.linesSent, 'rivi')} · ennallaan ${formatCount(totals.linesUnchanged)} · korjattu ${formatCount(totals.linesChanged)}`),
           result.status === 'failed' && result.error && e(Callout, { role: 'error' }, result.error),
           failures.length > 0 && e(Callout, { role: 'error' }, failures.map((line, i) => e('div', { key: i }, line))),
-          dashNotice(result.dashListLines || 0),
           dialogue > 0 && e(Callout, { role: 'warning' }, `Vuorosanojen ehdotuksia: ${formatCount(dialogue)}. Käy ne läpi yksitellen.`),
           mine.length > 0 && blockButton(`Hyväksy loput (${formatCount(bulk)})`,
             () => controller.acceptAll({ groupId: run.groupId, reason: 'Ennen kielenhuoltoa: ' + chapterTitle }),
@@ -649,7 +668,10 @@ export function LanguagePanel(props) {
           stoppedEarly && first && e('div', { className: 'faust-meta' }, notRunText(first, run.plan.batches.length)),
           stoppedEarly && place
             ? blockButton('Jatka', () => startRun(true))
-            : blockButton('Aja uudelleen', () => setRun(null)))),
+            : blockButton('Aja uudelleen', () => setRun(null)),
+          // The dash-line notice was read before the run; after it, it stands under the result's own
+          // actions and no longer between the count and Hyväksy loput
+          dashNotice(result.dashListLines || 0))),
       rewritten.length > 0 && e(Section, { title: `Malli kirjoitti uudelleen (${formatCount(rewritten.length)})` },
         rewritten.map((entry, i) => e(ListRow, {
           key: entry.key + ':' + i,
@@ -760,11 +782,16 @@ export function LanguagePanel(props) {
         !voikko.hasMorphology
           ? e('div', { className: 'faust-field__hint' }, 'Tämä Voikon asennus ei anna perusmuotoja.')
           : e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' } },
+              // What the form is for, before its fields (the heading alone said only "kokeilu")
+              e('div', { className: 'faust-field__hint' },
+                'Vertaa, montako nimen tai sanan taivutusmuotoa tästä luvusta löytyy Voikon perusmuodolla ja montako sanavartalolla.'),
               e(Field, { label: 'Nimi tai sana' },
-                e('input', { className: 'faust-input faust-input--sm', value: baseForm.name, onChange: (ev) => setBaseForm({ ...baseForm, name: ev.target.value, result: null }) })),
+                e('input', { className: 'faust-input faust-input--sm', value: baseForm.name, placeholder: 'Esimerkiksi Aino', onChange: (ev) => setBaseForm({ ...baseForm, name: ev.target.value, result: null }) })),
               e(Field, { label: 'Vartalo (valinnainen)' },
-                e('input', { className: 'faust-input faust-input--sm', value: baseForm.stem, onChange: (ev) => setBaseForm({ ...baseForm, stem: ev.target.value, result: null }) })),
-              e('div', null, smallButton('Vertaa', null, compareBaseForms, { disabled: baseForm.busy || !baseForm.name.trim() })),
+                e('input', { className: 'faust-input faust-input--sm', value: baseForm.stem, placeholder: 'Esimerkiksi Aino', onChange: (ev) => setBaseForm({ ...baseForm, stem: ev.target.value, result: null }) })),
+              // A block button, as the panel's other actions; why it waits is its title (M B.8)
+              e('span', { title: baseForm.name.trim() ? undefined : 'Kirjoita ensin nimi tai sana', style: { display: 'block' } },
+                blockButton('Vertaa', compareBaseForms, { disabled: baseForm.busy || !baseForm.name.trim(), title: baseForm.name.trim() ? undefined : 'Kirjoita ensin nimi tai sana' })),
               baseForm.result && baseForm.result.error && e(Callout, { role: 'error' }, `Voikon ajo epäonnistui: ${baseForm.result.error}.`),
               baseForm.result && baseForm.result.unknown && e(Callout, { role: 'hint' }, 'Voikko ei tunne tätä sanaa, joten perusmuotohaku ei löydä sitä.'),
               baseForm.result && baseForm.result.byLemma && e('div', { className: 'faust-meta' },

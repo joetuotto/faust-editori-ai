@@ -142,8 +142,18 @@ const elsewhereLabel = (info) => {
   if (drafts > 0) parts.push(draftWords(drafts));
   return 'Muissa luvuissa odottaa ' + parts.join(' ja ');
 };
-const restoreLabel = (info) => `Palauta hylätyt (${formatCount(info.rejected)})`;
+// What Palauta hylätyt brings back, by name: the rejected suggestions and, apart from their number, a
+// rejected draft (it used to be one of the number: "Palauta hylätyt (4)" for three suggestions and an
+// earlier draft, which then came back unnamed)
+const restoreLabel = (info) => {
+  const suggestions = Math.max(0, (Number(info.rejected) || 0) - (info.rejectedBlock ? 1 : 0));
+  if (!info.rejectedBlock) return `Palauta hylätyt (${formatCount(suggestions)})`;
+  return suggestions > 0 ? `Palauta hylätyt (${formatCount(suggestions)} ja luonnos)` : 'Palauta hylätty luonnos';
+};
 const RESTORE_TITLE = 'Palauta hylätyt ehdotukset, joiden alkuperäinen teksti on yhä paikallaan';
+const restoreTitle = (info) => (info.rejectedBlock
+  ? 'Palauta hylätyt ehdotukset ja hylätty tekoälyn luonnos, jos teksti niiden kohdalla on yhä ennallaan'
+  : RESTORE_TITLE);
 
 export function SuggestionBar({ info, controller, onOpenChapter, focusEditor, explain }) {
   const more = usePopover();
@@ -240,7 +250,7 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor, ex
       done && e('button', {
         type: 'button',
         className: 'faust-btn faust-btn--quiet faust-btn--sm',
-        title: RESTORE_TITLE,
+        title: restoreTitle(info),
         onMouseDown: keep,
         onClick: () => controller.restoreRejected()
       }, restoreLabel(info)),
@@ -308,7 +318,7 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor, ex
     canExplain && e('div', { className: 'faust-menu__sep', role: 'separator' }),
     menuItem('Hylkää kaikki', 'Hylkää kaikki tämän luvun ehdotukset. Palauta hylätyt tuo ne takaisin.',
       choose(() => controller.rejectAll())),
-    info.rejected > 0 && menuItem(restoreLabel(info), RESTORE_TITLE, choose(() => controller.restoreRejected())),
+    info.rejected > 0 && menuItem(restoreLabel(info), restoreTitle(info), choose(() => controller.restoreRejected())),
     e('div', { className: 'faust-menu__sep', role: 'separator' }),
     e('div', { className: 'faust-menu__label' }, 'Näytä'),
     VIEWS.map(view => e('button', {

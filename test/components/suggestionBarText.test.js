@@ -65,3 +65,29 @@ describe('the done state leaves by itself', () => {
     expect(SOURCE).toContain('const leave = () => controller.closeBar();');
   });
 });
+
+// Final polish round 2: Palauta hylätyt (n) counted a rejected draft as one of n and brought it back unnamed
+describe('Palauta hylätyt names a rejected draft apart from the suggestions', () => {
+  function restoreLabel() {
+    const from = SOURCE.indexOf('const restoreLabel = (info) => {');
+    const to = SOURCE.indexOf('\n};\n', from);
+    expect(from).toBeGreaterThan(-1);
+    // eslint-disable-next-line no-new-func
+    return new Function('formatCount', SOURCE.slice(from, to + 3) + '\nreturn restoreLabel;')(formatCount);
+  }
+
+  test('suggestions only, suggestions and a draft, a draft alone', () => {
+    const label = restoreLabel();
+    expect(label({ rejected: 3, rejectedBlock: false })).toBe('Palauta hylätyt (3)');
+    expect(label({ rejected: 4, rejectedBlock: true })).toBe('Palauta hylätyt (3 ja luonnos)');
+    expect(label({ rejected: 1, rejectedBlock: true })).toBe('Palauta hylätty luonnos');
+    expect(label({ rejected: 1200, rejectedBlock: false })).toBe('Palauta hylätyt (1\u00a0200)');
+    // An info from before the field existed reads as suggestions only
+    expect(label({ rejected: 2 })).toBe('Palauta hylätyt (2)');
+  });
+
+  test('the bar\'s button and the menu row both use the label and a title that names the draft', () => {
+    expect(SOURCE).toMatch(/title: restoreTitle\(info\),\s*onMouseDown: keep,\s*onClick: \(\) => controller\.restoreRejected\(\)/);
+    expect(SOURCE).toContain('menuItem(restoreLabel(info), restoreTitle(info)');
+  });
+});

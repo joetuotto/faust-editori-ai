@@ -57,6 +57,14 @@ const keyChip = (set, fromEnv) => (set
   ? e('span', { className: 'faust-chip faust-chip--plain faust-chip--dot faust-chip--success' }, fromEnv ? 'Avain käytössä' : 'Avain tallennettu')
   : e('span', { className: 'faust-chip faust-chip--plain faust-chip--hollow' }, 'Avain puuttuu'));
 
+// A key given in FAUST's start-up settings: one fact, said once. The label, the chip and the sentence;
+// no field and no buttons, which could do nothing in this state (an empty disabled field and two
+// disabled buttons read as a broken form, not as a locked one)
+const envKeyBlock = (label) => e('div', { className: 'faust-field' },
+  e('span', { className: 'faust-field__label' }, label),
+  e('div', null, keyChip(true, true)),
+  e('div', { className: 'faust-field__hint' }, KEY_FROM_ENV));
+
 const statusLine = (status) => status && e('div', {
   role: 'status',
   className: status.kind === 'error' ? 'faust-field__error' : 'faust-field__hint'
@@ -161,7 +169,10 @@ export function AIProviderSettings({ onProviderChange, getEditorContext, askConf
   );
 
   if (aiOff === true) {
-    return e('div', { className: 'faust-ai-provider faust-section' }, head, ...offSwitch);
+    // With the switch on no source is shown, so the section is not headed "Tekoälyn lähde"
+    return e('div', { className: 'faust-ai-provider faust-section' },
+      e('div', { className: 'faust-section__head' }, e('div', { className: 'faust-section__title' }, 'Tekoäly')),
+      ...offSwitch);
   }
 
   // A patch of the provider settings (roles, per-model settings, the Claude model)
@@ -331,7 +342,9 @@ export function AIProviderSettings({ onProviderChange, getEditorContext, askConf
         'Cherry Studion pitää olla käynnissä ja sen API Gateway päällä (Cherry Studiossa: Settings → API Gateway).'),
 
       // API key of the gateway
-      e('div', { className: 'faust-field' },
+      keyFromEnv.cherry
+        ? envKeyBlock('Cherry Studion API-avain')
+        : e('div', { className: 'faust-field' },
         e('label', { className: 'faust-field__label', htmlFor: keyId }, 'Cherry Studion API-avain'),
         e('input', {
           id: keyId,
@@ -340,16 +353,14 @@ export function AIProviderSettings({ onProviderChange, getEditorContext, askConf
           value: keyInput,
           onChange: (ev) => setKeyInput(ev.target.value),
           onKeyDown: (ev) => { if (ev.key === 'Enter') saveKey(); },
-          disabled: !!keyFromEnv.cherry,
-          placeholder: keyFromEnv.cherry ? '' : 'Liitä avain Cherry Studiosta'
+          placeholder: 'Liitä avain Cherry Studiosta'
         }),
-        keyFromEnv.cherry && e('div', { className: 'faust-field__hint' }, KEY_FROM_ENV),
         // The chip and the two buttons wrap in the 288px column: the buttons stay right-aligned
         e('div', { className: 'faust-field__row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' } },
-          keyChip(config.hasCherryKey, !!keyFromEnv.cherry),
+          keyChip(config.hasCherryKey, false),
           e('span', { style: { display: 'flex', gap: 'var(--sp-2)', marginLeft: 'auto' } },
-            actionButton({ label: 'Poista avain', danger: true, onClick: () => clearKey('CHERRY_API_KEY'), reason: removeReason(config.hasCherryKey, keyFromEnv.cherry) }),
-            actionButton({ label: 'Tallenna avain', onClick: saveKey, reason: keyFromEnv.cherry ? KEY_FROM_ENV : keyInput.trim() ? null : 'Liitä ensin avain' })
+            actionButton({ label: 'Poista avain', danger: true, onClick: () => clearKey('CHERRY_API_KEY'), reason: removeReason(config.hasCherryKey, false) }),
+            actionButton({ label: 'Tallenna avain', onClick: saveKey, reason: keyInput.trim() ? null : 'Liitä ensin avain' })
           )
         )
       ),
@@ -413,7 +424,9 @@ export function AIProviderSettings({ onProviderChange, getEditorContext, askConf
 
     // Claude directly: its key, the link to get one, and the model (typed or picked from the list)
     !isCherry && e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', marginTop: 'var(--sp-3)' } },
-      e('div', { className: 'faust-field' },
+      keyFromEnv.anthropic
+        ? envKeyBlock('Clauden API-avain')
+        : e('div', { className: 'faust-field' },
         e('label', { className: 'faust-field__label', htmlFor: claudeKeyId }, 'Clauden API-avain'),
         e('input', {
           id: claudeKeyId,
@@ -422,16 +435,14 @@ export function AIProviderSettings({ onProviderChange, getEditorContext, askConf
           value: anthropicKeyInput,
           onChange: (ev) => setAnthropicKeyInput(ev.target.value),
           onKeyDown: (ev) => { if (ev.key === 'Enter') saveAnthropicKey(); },
-          disabled: !!keyFromEnv.anthropic,
-          placeholder: keyFromEnv.anthropic ? '' : 'Liitä avain (sk-ant-…)'
+          placeholder: 'Liitä avain (sk-ant-…)'
         }),
-        keyFromEnv.anthropic && e('div', { className: 'faust-field__hint' }, KEY_FROM_ENV),
         // The chip and the two buttons wrap in the 288px column: the buttons stay right-aligned
         e('div', { className: 'faust-field__row', style: { justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap' } },
-          keyChip(config.hasAnthropicKey, !!keyFromEnv.anthropic),
+          keyChip(config.hasAnthropicKey, false),
           e('span', { style: { display: 'flex', gap: 'var(--sp-2)', marginLeft: 'auto' } },
-            actionButton({ label: 'Poista avain', danger: true, onClick: () => clearKey('ANTHROPIC_API_KEY'), reason: removeReason(config.hasAnthropicKey, keyFromEnv.anthropic) }),
-            actionButton({ label: 'Tallenna avain', onClick: saveAnthropicKey, reason: keyFromEnv.anthropic ? KEY_FROM_ENV : anthropicKeyInput.trim() ? null : 'Liitä ensin avain' })
+            actionButton({ label: 'Poista avain', danger: true, onClick: () => clearKey('ANTHROPIC_API_KEY'), reason: removeReason(config.hasAnthropicKey, false) }),
+            actionButton({ label: 'Tallenna avain', onClick: saveAnthropicKey, reason: anthropicKeyInput.trim() ? null : 'Liitä ensin avain' })
           )
         ),
         e('div', { className: 'faust-field__hint' },
@@ -455,14 +466,15 @@ export function AIProviderSettings({ onProviderChange, getEditorContext, askConf
           list: claudeListId,
           value: anthropicModelInput,
           spellCheck: false,
-          placeholder: 'Kirjoita mallin tunnus tai hae mallit',
+          // Short enough for the 288px column (the longer sentence was cut mid-word); what to do is in the hint
+          placeholder: 'Mallin tunnus',
           onChange: (ev) => setAnthropicModelInput(ev.target.value),
           onBlur: saveAnthropicModel,
           onKeyDown: (ev) => { if (ev.key === 'Enter') ev.currentTarget.blur(); }
         }),
         e('datalist', { id: claudeListId },
           anthropicModels.map(m => e('option', { key: m.id, value: m.id }, m.name))),
-        !config.anthropicModel && e('div', { className: 'faust-field__hint' }, 'Mallia ei ole valittu.'),
+        !config.anthropicModel && e('div', { className: 'faust-field__hint' }, 'Mallia ei ole valittu. Kirjoita mallin tunnus tai valitse Hae mallit.'),
         statusLine(status),
         e('div', { className: 'faust-field__row' },
           actionButton({

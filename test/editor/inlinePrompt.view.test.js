@@ -767,3 +767,30 @@ describe('placement: the prompt never covers its target and never runs past the 
     expect(top).toBe(264);                                                   // 652 + 16 + 240 - 644
   });
 });
+
+// Final polish round 2: the opened "Mitä malli näkee" list is the part of the prompt that gives way
+describe('the room of the opened context list inside the prompt (final polish round 2)', () => {
+  const { listRoomFor } = require('../../src/editor/inlinePromptCore');
+
+  test('the list gets what the prompt\'s room leaves after everything else, and is capped only when it needs more', () => {
+    // 1440 × 900: room 545, the prompt 620 high with a 330px list: 290 of other content, 253 left for the list
+    expect(listRoomFor({ room: 545, promptContent: 620, promptBorder: 2, listShown: 330, listNatural: 330 })).toEqual({ listRoom: 253, capped: true });
+    // The same list already capped at 253: the answer does not move (no loop between the cap and the measure)
+    expect(listRoomFor({ room: 545, promptContent: 543, promptBorder: 2, listShown: 253, listNatural: 330 })).toEqual({ listRoom: 253, capped: true });
+    // Room for all of it: not capped
+    expect(listRoomFor({ room: 700, promptContent: 620, promptBorder: 2, listShown: 330, listNatural: 330 })).toEqual({ listRoom: 408, capped: false });
+  });
+
+  test('a low window never squeezes the list under 96px: then the prompt scrolls as a whole, as before', () => {
+    expect(listRoomFor({ room: 360, promptContent: 640, promptBorder: 2, listShown: 330, listNatural: 330 })).toEqual({ listRoom: 96, capped: true });
+    expect(listRoomFor({ room: NaN, promptContent: 640, promptBorder: 2, listShown: 330, listNatural: 330 })).toEqual({ listRoom: 96, capped: true });
+  });
+
+  test('the stylesheet caps the list by the room the core writes, and steps the quick actions aside in a low window', () => {
+    const css = require('fs').readFileSync(require('path').join(__dirname, '../..', 'styles/faust-components.css'), 'utf8');
+    expect(css).toMatch(/\.cm-faust-prompt \.faust-context-row__list \{ max-height: var\(--cm-faust-prompt-list-room, none\); overflow-y: auto;/);
+    expect(css).toMatch(/@media \(max-height: 719px\) \{\s*[^}]*\.cm-faust-prompt:has\(\.faust-context-row__list\) :is\(\.cm-faust-prompt-chips, \.cm-faust-prompt-saved\) \{ display: none; \}/);
+    const row = require('fs').readFileSync(require('path').join(__dirname, '../..', 'src/components/ContextRow.js'), 'utf8');
+    expect(row).toContain("className: 'faust-context-row__list'");
+  });
+});

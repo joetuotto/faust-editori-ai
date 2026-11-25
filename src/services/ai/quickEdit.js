@@ -45,6 +45,8 @@ const NO_EDITOR_TEXT = 'Pikamuokkaus toimii, kun jokin luku on auki.';
 // The context row's name for the rule text of a built-in quick action ("oma ohje" is what the author wrote)
 const ACTION_INSTRUCTION_LABEL = 'ohje';
 
+// Why Lähetä, Kirjoita and the quick actions are disabled while no model is chosen (menu spec B.8)
+const NO_MODEL_REASON = 'Valitse ensin malli';
 // Token numbers are grouped like every other count (5 200); the formatter is taken when the text is built
 const overBudgetText = (built) => {
   const { formatCount } = require('../format.fi.js');
@@ -1558,7 +1560,10 @@ function createQuickEdit(deps) {
   function contextChecked(built) {
     const p = prompt;
     if (!p) return;
-    const reason = built && built.overBudget ? overBudgetText(built) : null;
+    // No model chosen (the session resolved the role to ''): the request would only be refused, so the
+    // send controls are disabled with what to do first
+    const reason = built && built.model === '' ? NO_MODEL_REASON
+      : built && built.overBudget ? overBudgetText(built) : null;
     if (p.state.sendBlocked === reason) return;
     dispatchState(p, { type: 'send-blocked', reason });
   }
