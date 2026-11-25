@@ -39,6 +39,9 @@ const WRITE_LABEL = 'Kirjoita kohdistimeen';
 const STOPPED_NOTE = 'Pysäytetty. Teksti on leikattu viimeiseen kokonaiseen virkkeeseen.';
 const CUT_NOTE = 'Vastaus katkesi pituusrajaan. Teksti on leikattu viimeiseen kokonaiseen virkkeeseen.';
 const RESERVED_TAG = /<\/?teksti/i;
+// ⌘K or Muokkaa ▸ Pikamuokkaus… with no chapter on screen (Korttinäkymä, an empty project): the item is
+// there, so it says why nothing opens (the wording of Liitä muokkauksina, pasteEdits.js)
+const NO_EDITOR_TEXT = 'Pikamuokkaus toimii, kun jokin luku on auki.';
 // The context row's name for the rule text of a built-in quick action ("oma ohje" is what the author wrote)
 const ACTION_INSTRUCTION_LABEL = 'ohje';
 
@@ -346,7 +349,11 @@ function createQuickEdit(deps) {
     if (!aiOn()) return false;
     const view = getView();
     const editor = getEditor();
-    if (!view || !editor) return false;
+    if (!view || !editor) {
+      // The right-click submenu exists only over the manuscript: it never gets here without an editor
+      if (!requireSelection) notify('info', NO_EDITOR_TEXT);
+      return false;
+    }
 
     // A draft is being written into the text: Cmd+K waits for it
     const block = typeof editor.getInsertBlock === 'function' ? editor.getInsertBlock() : null;

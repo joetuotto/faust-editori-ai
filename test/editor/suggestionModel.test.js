@@ -1445,13 +1445,85 @@ describe('block', () => {
     expect(far.event).toBeNull();
   });
 
-  test('a block that is still streaming when it leaves the screen is kept as stopped', () => {
+  // Final pass (T-077): the rule changed. A settled draft was kept with the text it had, half a sentence
+  // included; now it is stopped as Pysäytä stops it.
+  const STOP_NOTE = 'Pysäytetty. Teksti on leikattu viimeiseen kokonaiseen virkkeeseen.';
+
+  test('a block that is still streaming when it leaves the screen is kept as stopped, cut to its last full sentence', () => {
     let state = M.reduce(start(), { type: 'blockAppend', id: 'b1', text: 'Sumu nousi. Sitten' });
-    state = M.reduce(state, { type: 'blockReject', id: 'b1' });
+    state = M.reduce(state, { type: 'blockReject', id: 'b1', insert: ' Sumu nousi. Sitten' });
     expect(state.block).toMatchObject({ state: 'rejected', reason: 'user' });
-    expect(state.block.attempts).toEqual([{ text: 'Sumu nousi. Sitten', status: 'stopped', note: null }]);
-    // Without any text there is nothing to keep
+    expect(state.block.attempts).toEqual([{ text: 'Sumu nousi.', status: 'stopped', note: STOP_NOTE }]);
+    // The decision row names what was kept, not the half sentence on screen
+    expect(state.event.items[0]).toMatchObject({ id: 'b1', insert: 'Sumu nousi.' });
+    // Without any text, or without one full sentence, there is nothing to keep
     expect(M.reduce(start(), { type: 'blockReject', id: 'b1' }).block).toBeNull();
+    const half = M.reduce(start(), { type: 'blockAppend', id: 'b1', text: 'Sumu nousi järvel' });
+    expect(M.reduce(half, { type: 'blockReject', id: 'b1' }).block).toBeNull();
+  });
+
+  test('a streaming block pushed aside by an edit across its place keeps its last full sentence with the stop note, and Palauta hylätyt brings back only that (T-077)', () => {
+    let state = M.reduce(start(), { type: 'blockAppend', id: 'b1', text: 'Sumu nousi järveltä. "Tule jo," hän sanoi, ja' });
+    const gone = mapWith(state, deleted(15, 30));
+    expect(gone.block).toMatchObject({ pos: 15, state: 'rejected', reason: 'edited' });
+    expect(gone.block.attempts).toEqual([{ text: 'Sumu nousi järveltä.', status: 'stopped', note: STOP_NOTE }]);
+    expect(gone.event).toEqual({ type: 'dropped', ids: ['b1'], reason: 'edited' });
+
+    // The undo of the edit brings the stopped draft back, never the half sentence
+    const back = M.reduce(gone, { type: 'rebase', oldText: SAMPLE.slice(0, 15) + SAMPLE.slice(30), newText: SAMPLE, diff: wordDiff });
+    expect(M.snapshot(back).block).toMatchObject({ state: 'pending', status: 'stopped', text: 'Sumu nousi järveltä.', note: STOP_NOTE });
+    // Palauta hylätyt of a draft rejected mid-stream, where the text still stands: what it inserts is the full sentence
+    const rejected = M.reduce(state, { type: 'blockReject', id: 'b1' });
+    const restored = M.reduce(rejected, { type: 'restore', docText: SAMPLE });
+    expect(M.snapshot(restored).block).toMatchObject({ state: 'pending', status: 'stopped', text: 'Sumu nousi järveltä.', note: STOP_NOTE });
+    expect(M.blockChange(restored, SAMPLE)).toEqual({ from: 22, to: 22, insert: ' Sumu nousi järveltä.' });
+
+    // The text is in the manuscript's typography, as a stop in the editor gives it
+    state = M.reduce(start(), { type: 'blockAppend', id: 'b1', text: 'Hän sanoi: "Tule." Sitten hän' });
+    expect(mapWith(state, deleted(15, 30)).block.attempts[0].text).toBe('Hän sanoi: ”Tule.”');
+
+    // Before its first full sentence the draft goes; a draft of one attempt goes with it
+    state = M.reduce(start(), { type: 'blockAppend', id: 'b1', text: 'Sumu nousi järvel' });
+    const none = mapWith(state, deleted(15, 30));
+    expect(none.block).toBeNull();
+    expect(none.event).toEqual({ type: 'dropped', ids: ['b1'], reason: 'edited' });
+  });
+
+  test('a streaming retry pushed aside keeps the earlier attempts, and is dropped itself without a full sentence (T-077)', () => {
+    let state = M.reduce(start(), { type: 'blockAppend', id: 'b1', text: 'Ensimmäinen virke.' });
+    state = M.reduce(state, { type: 'blockFinish', id: 'b1', status: 'done' });
+    state = M.reduce(state, { type: 'blockRetry', id: 'b1' });
+    const withHalf = M.reduce(state, { type: 'blockAppend', id: 'b1', text: 'Toinen yri' });
+    const dropped = mapWith(withHalf, deleted(15, 30));
+    expect(dropped.block.attempts).toEqual([{ text: 'Ensimmäinen virke.', status: 'done', note: null }]);
+    expect(dropped.block.attempt).toBe(0);
+
+    const withWhole = M.reduce(state, { type: 'blockAppend', id: 'b1', text: 'Toinen yritys. Ja kolm' });
+    const kept = mapWith(withWhole, deleted(15, 30));
+    expect(kept.block.attempts).toEqual([
+      { text: 'Ensimmäinen virke.', status: 'done', note: null },
+      { text: 'Toinen yritys.', status: 'stopped', note: STOP_NOTE }
+    ]);
+    expect(kept.block.attempt).toBe(1);
+  });
+
+  test('a streaming block that a restored suggestion or an external change pushes aside is stopped the same way (T-077)', () => {
+    // An external change at the block's place (an undo of another step, a replace-all)
+    let state = M.reduce(start(), { type: 'blockAppend', id: 'b1', text: 'Sumu nousi. Sitten' });
+    const other = SAMPLE.replace('mene.”', 'mene!');
+    const gone = M.reduce(state, { type: 'rebase', oldText: SAMPLE, newText: other, diff: wordDiff });
+    expect(gone.block).toMatchObject({ state: 'rejected', reason: 'external' });
+    expect(gone.block.attempts).toEqual([{ text: 'Sumu nousi.', status: 'stopped', note: STOP_NOTE }]);
+
+    // A suggestion that comes back onto the block's place (the undo of its accept)
+    const item = at(SAMPLE, 'mene.”', 'tule.”');
+    let withItem = propose(M.createState(), SAMPLE, [item]);
+    const accepted = withItem.items[0];
+    state = start(M.reduce(withItem, { type: 'remove', ids: [accepted.id] }), 22);
+    state = M.reduce(state, { type: 'blockAppend', id: 'b1', text: 'Sumu nousi. Sitten' });
+    const landed = M.reduce(state, { type: 'propose', docText: SAMPLE, changes: [accepted], restore: true });
+    expect(landed.block).toMatchObject({ state: 'rejected', reason: 'external' });
+    expect(landed.block.attempts).toEqual([{ text: 'Sumu nousi.', status: 'stopped', note: STOP_NOTE }]);
   });
 
   test('blockReject keeps the block for restore and reports it like a one-item group', () => {

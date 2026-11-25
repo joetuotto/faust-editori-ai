@@ -19,14 +19,32 @@ const { preparePasteEdits, PROTECTED_PATTERN } = require('../../editor/pasteEdit
 const TEXT = {
   snapshotReason: 'Ennen Hyväksy kaikki -toimintoa',
   discardTitle: 'Hylätäänkö käsittelemättömät ehdotukset?',
-  discardOne: 'Käsikirjoituksessa on 1 käsittelemätön ehdotus. Se ei säily, kun projekti vaihtuu. Käsikirjoituksen tekstiä se ei ole muuttanut.',
-  discardMany: (count) => `Käsikirjoituksessa on ${count} käsittelemätöntä ehdotusta. Ne eivät säily, kun projekti vaihtuu. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.`,
+  // The suggestions by their count and a pending draft by the name of its head (Tekoälyn luonnos), apart:
+  // the bar counts suggestions only, so the questions name the draft on its own (lead decision, final pass)
+  discard: (counts) => {
+    const one = counts.suggestions + counts.blocks === 1;
+    return `Käsikirjoituksessa on ${pendingWords(counts)}. ${one ? 'Se ei säily' : 'Ne eivät säily'}, kun projekti vaihtuu. ` +
+      `Käsikirjoituksen tekstiä ${one ? 'se ei ole muuttanut' : 'ne eivät ole muuttaneet'}.`;
+  },
   discardConfirm: 'Hylkää ehdotukset',
   discardCancel: 'Palaa ehdotuksiin',
   pasteLabel: 'Liitä muokkauksina',
   // The stop note of the insert block (contracts 8.6), also when leaving the chapter stops it
   stoppedNote: 'Pysäytetty. Teksti on leikattu viimeiseen kokonaiseen virkkeeseen.'
 };
+
+/**
+ * What is pending, in the one wording (contracts 8.1): `9 käsittelemätöntä ehdotusta ja tekoälyn luonnos`,
+ * `1 käsittelemätön ehdotus`, `käsittelemätön tekoälyn luonnos`. A chapter has at most one draft, so more than
+ * one comes from several chapters. format.fi.js owns the suggestion count; it is taken when needed (contract 0.7).
+ * electron.js carries the same words for the close question (the main process cannot load src/).
+ */
+function pendingWords({ suggestions = 0, blocks = 0 } = {}) {
+  const { pendingSuggestions, formatCount } = require('../format.fi.js');
+  if (!suggestions) return blocks === 1 ? 'käsittelemätön tekoälyn luonnos' : `${formatCount(blocks)} käsittelemätöntä tekoälyn luonnosta`;
+  if (!blocks) return pendingSuggestions(suggestions);
+  return `${pendingSuggestions(suggestions)} ja ${blocks === 1 ? 'tekoälyn luonnos' : `${formatCount(blocks)} tekoälyn luonnosta`}`;
+}
 
 const PASTE_SOURCES = ['editor', 'external-ai'];
 const PASTE_SOURCE_KEY = 'suggestions.pasteSource';
@@ -91,7 +109,7 @@ function createSuggestionController(deps = {}) {
   // request row exists only when the cancelled request ends, after the editor went (linkStoredBlock)
   const awaitingLog = new Map();
   let lastInfo = null;
-  let lastTotal = 0;              // the main process starts from zero as well
+  let lastCounts = '0/0';         // suggestions/drafts last reported; the main process starts from zero as well
 
   // --- Small readers ---------------------------------------------------------
 
@@ -133,9 +151,13 @@ function createSuggestionController(deps = {}) {
   // editor on screen still belongs to the old one.
   const openEditor = (chapterId) => (chapterId != null && chapterId === env.activeChapterId ? facade() : null);
 
-  // A pending block is one pending thing, also while it is still being written: the close guard and the
-  // project-switch question must not let a draft go without a word (I-09 step 6)
-  const countOf = (shot) => shot.pending.length + (shot.block && shot.block.state === 'pending' ? 1 : 0);
+  // Suggestions and the draft are counted apart (lead decision, final pass): the bar counts suggestions,
+  // and the close guard and the project-switch question name a pending draft on its own. A draft is
+  // pending also while it is still being written, so neither question lets it go without a word (I-09 step 6).
+  const countsOf = (shot) => ({
+    suggestions: shot.pending.length,
+    blocks: shot.block && shot.block.state === 'pending' ? 1 : 0
+  });
 
   const tracks = (state) => !!state && (state.items.length > 0 || !!state.block);
 
@@ -150,11 +172,12 @@ function createSuggestionController(deps = {}) {
 
   // --- Counting and the bar ----------------------------------------------------
 
+  /** Per chapter: count = pending suggestions, blocks = a pending draft (0 or 1). Chapters with neither are left out. */
   function pendingByChapter() {
     const counts = new Map();
-    if (live && live.snapshot) counts.set(live.chapterId, countOf(live.snapshot));
+    if (live && live.snapshot) counts.set(live.chapterId, countsOf(live.snapshot));
     for (const [chapterId, record] of records) {
-      if (!counts.has(chapterId)) counts.set(chapterId, countOf(model.snapshot(record.state)));
+      if (!counts.has(chapterId)) counts.set(chapterId, countsOf(model.snapshot(record.state)));
     }
 
     const order = chapterList().map(chapter => chapter.id);
@@ -162,12 +185,22 @@ function createSuggestionController(deps = {}) {
       const index = order.indexOf(chapterId);
       return index === -1 ? order.length : index;
     };
-    return Array.from(counts, ([chapterId, count]) => ({ chapterId, count }))
-      .filter(entry => entry.count > 0)
+    return Array.from(counts, ([chapterId, { suggestions, blocks }]) => ({ chapterId, count: suggestions, blocks }))
+      .filter(entry => entry.count + entry.blocks > 0)
       .sort((a, b) => place(a.chapterId) - place(b.chapterId));
   }
 
-  const pendingTotal = () => pendingByChapter().reduce((sum, entry) => sum + entry.count, 0);
+  /** The project's pending suggestions and drafts, apart: { suggestions, blocks }. */
+  const pendingCounts = () => pendingByChapter().reduce(
+    (sum, entry) => ({ suggestions: sum.suggestions + entry.count, blocks: sum.blocks + entry.blocks }),
+    { suggestions: 0, blocks: 0 }
+  );
+
+  // Everything that would be lost: the import's Korvaa waits while anything is pending
+  const pendingTotal = () => {
+    const counts = pendingCounts();
+    return counts.suggestions + counts.blocks;
+  };
 
   function barInfo() {
     const chapterId = env.activeChapterId == null ? null : env.activeChapterId;
@@ -176,6 +209,7 @@ function createSuggestionController(deps = {}) {
     else if (records.has(chapterId)) shot = model.snapshot(records.get(chapterId).state);
 
     const current = shot && shot.currentIndex >= 0 ? shot.pending[shot.currentIndex] : null;
+    const draft = shot && shot.block && shot.block.state === 'pending' ? shot.block : null;
     return {
       chapterId,
       pending: shot ? shot.pending.length : 0,
@@ -183,12 +217,14 @@ function createSuggestionController(deps = {}) {
       currentIndex: shot ? shot.currentIndex : -1,
       viewMode: shot ? shot.viewMode : 'changes',
       notice: shot ? shot.notice : null,
-      blockStatus: shot && shot.block && shot.block.state === 'pending' ? shot.block.status : null,
+      blockStatus: draft ? draft.status : null,
+      // The finished draft is the current item of the review order: the bar names it (Tekoälyn luonnos)
+      blockCurrent: !!draft && shot.currentId === draft.id,
       // A bulk accept leaves these; the bar says so
       dialoguePending: shot ? shot.pending.filter(item => item.meta && item.meta.dialogue === true).length : 0,
       elsewhere: pendingByChapter()
         .filter(entry => entry.chapterId !== chapterId)
-        .map(entry => ({ chapterId: entry.chapterId, title: titleOf(entry.chapterId), count: entry.count })),
+        .map(entry => ({ chapterId: entry.chapterId, title: titleOf(entry.chapterId), count: entry.count, blocks: entry.blocks })),
       closed: closed.has(chapterId),
       current: current ? { id: current.id, original: current.original, insert: current.insert, meta: current.meta } : null
     };
@@ -203,10 +239,11 @@ function createSuggestionController(deps = {}) {
       lastInfo = key;
       call('setInfo', info);
     }
-    const total = pendingTotal();
-    if (total !== lastTotal) {
-      lastTotal = total;
-      call('reportPending', total);
+    const counts = pendingCounts();
+    const reported = `${counts.suggestions}/${counts.blocks}`;
+    if (reported !== lastCounts) {
+      lastCounts = reported;
+      call('reportPending', counts);
     }
   }
 
@@ -425,6 +462,7 @@ function createSuggestionController(deps = {}) {
      * Called on every render with the current surroundings:
      * { getEditor, activeChapterId, chapters, setInfo, reportPending, logDecision, askConfirm,
      *   openPasteDialog, getSetting?, setSetting?, takeSnapshot? }
+     * reportPending({ suggestions, blocks }) is called when either count changes (the close guard).
      */
     bind(nextEnv) {
       env = nextEnv || {};
@@ -716,13 +754,14 @@ function createSuggestionController(deps = {}) {
     // --- Leaving the project ---
 
     pendingTotal,
+    pendingCounts,
     pendingByChapter,
 
-    /** Ask before a project switch throws pending suggestions away. Resolves true when it may go on. */
+    /** Ask before a project switch throws pending suggestions and drafts away. Resolves true when it may go on. */
     confirmDiscard() {
-      const count = pendingTotal();
-      if (!count || typeof env.askConfirm !== 'function') return Promise.resolve(true);
-      const message = count === 1 ? TEXT.discardOne : TEXT.discardMany(count);
+      const counts = pendingCounts();
+      if (!(counts.suggestions + counts.blocks) || typeof env.askConfirm !== 'function') return Promise.resolve(true);
+      const message = TEXT.discard(counts);
       // A throwing askConfirm rejects the promise instead of throwing at the caller
       return new Promise(resolve => resolve(env.askConfirm(TEXT.discardTitle, message, TEXT.discardConfirm, TEXT.discardCancel)))
         .then(answer => !!answer);
@@ -745,8 +784,8 @@ function createSuggestionController(deps = {}) {
       bulkSnapshotId = null;
       awaitingLog.clear();
       lastInfo = JSON.stringify(null);
-      lastTotal = 0;
-      call('reportPending', 0);
+      lastCounts = '0/0';
+      call('reportPending', { suggestions: 0, blocks: 0 });
       call('setInfo', null);
     }
   };

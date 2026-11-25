@@ -41,6 +41,8 @@ const MODULES = {
   'src/editor/pasteEdits.js': ['PASTE_WARN_RATIO', 'PROTECTED_PATTERN', 'paragraphBreakStyle', 'normalizeClipboard', 'preparePasteEdits', 'PASTE_TEXT', 'pasteDialogText'],
   'src/editor/pendingInsertView.js': ['createBlockView'],
   'src/services/suggestions/suggestionController.js': ['createSuggestionController'],
+  // Final pass, package A (T-049): the own undo of the app's text fields
+  'src/editor/fieldHistory.js': ['createFieldHistory', 'fieldHistoryFor', 'isTextField', 'MAX_STEPS', 'MERGE_MS'],
   'src/services/ai/actions.js': ['BUILTIN_ACTIONS', 'DEFAULT_ACTION_IDS', 'actionsFor', 'findAction', 'menuEntries', 'normalizeSavedPrompts', 'addSavedPrompt', 'removeSavedPrompt', 'labelFromPrompt'],
   'src/services/ai/editRequest.js': ['LIMITS', 'WRITE_LENGTHS', 'QUICK_EDIT_THINKING', 'ACTION_SENDS_AT_ONCE', 'editTask', 'refineMessages', 'writeTask', 'answerTokensFor', 'previewUnmask', 'promptMessage'],
   'src/editor/promptTarget.js': ['resolveEditTarget'],

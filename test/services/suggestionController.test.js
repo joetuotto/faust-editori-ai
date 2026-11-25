@@ -99,6 +99,8 @@ function fakeEditor(text, getProps) {
     },
     unmount() { emit({ type: 'unmount', docText: doc, state }); },
     emit,
+    // A model action in the editor, as the facade's block members dispatch them (startInsertBlock …)
+    reduce: (action) => run(action),
     // The text changed outside the editor (an undo mirrored by React)
     setText(next) {
       const previous = doc;
@@ -193,6 +195,8 @@ function setup(options = {}) {
 }
 
 const logged = (env) => env.logDecision.mock.calls.map(call => call[0]);
+// What reportPending tells the close guard: suggestions and pending drafts apart (final pass, T-009)
+const reported = (suggestions, blocks = 0) => ({ suggestions, blocks });
 
 describe('session store', () => {
   test('the seed of a chapter without a record is null', () => {
@@ -213,7 +217,7 @@ describe('session store', () => {
     const before = first.getSuggestions();
 
     open('luku-2');
-    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-1', count: 3 }]);
+    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-1', count: 3, blocks: 0 }]);
 
     const back = open('luku-1');
     expect(back.seed.state).not.toBeNull();
@@ -239,7 +243,7 @@ describe('session store', () => {
     expect(shot.rejected.map(item => [item.original, item.reason])).toEqual([['mennyt', 'external']]);
     expect(shot.notice).toEqual({ kind: 'dropped-external', count: 1 });
     expect(lastInfo()).toMatchObject({ chapterId: 'luku-1', pending: 3, rejected: 1, notice: { kind: 'dropped-external', count: 1 } });
-    expect(env.reportPending).toHaveBeenLastCalledWith(3);
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(3));
   });
 
   test('an unmount without tracked suggestions deletes the record', () => {
@@ -330,9 +334,12 @@ describe('session store', () => {
       { type: 'blockAppend', id: 'b1', text: 'Sumu' });
     controller.editorProps('luku-1').onSuggestionsChange(M.snapshot(streaming), streaming.event);
     expect(controller.pendingTotal()).toBe(1);
-    expect(env.reportPending).toHaveBeenLastCalledWith(1);
+    // Final pass (T-009): the draft is named on its own, not counted as a suggestion
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(0, 1));
     await expect(controller.confirmDiscard()).resolves.toBe(true);
-    expect(env.askConfirm).toHaveBeenCalledWith('Hylätäänkö käsittelemättömät ehdotukset?', expect.stringContaining('1 käsittelemätön ehdotus'), 'Hylkää ehdotukset', 'Palaa ehdotuksiin');
+    expect(env.askConfirm).toHaveBeenCalledWith('Hylätäänkö käsittelemättömät ehdotukset?',
+      'Käsikirjoituksessa on käsittelemätön tekoälyn luonnos. Se ei säily, kun projekti vaihtuu. Käsikirjoituksen tekstiä se ei ole muuttanut.',
+      'Hylkää ehdotukset', 'Palaa ehdotuksiin');
   });
 
   test('the request row of a draft whose chapter was left reaches its stored attempt and its decision row', () => {
@@ -364,17 +371,19 @@ describe('counting and the bar', () => {
     const second = open('luku-2');
     second.proposeChanges([at(OTHER, 'Sade', 'Sumu'), at(OTHER, 'yön', 'päivän')], { meta: META });
     expect(controller.pendingTotal()).toBe(6);
-    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-1', count: 4 }, { chapterId: 'luku-2', count: 2 }]);
+    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-1', count: 4, blocks: 0 }, { chapterId: 'luku-2', count: 2, blocks: 0 }]);
 
     second.rejectSuggestion();
     expect(controller.pendingTotal()).toBe(5);
-    // A finished block counts as one
+    // A finished block is one more thing pending, counted apart from the suggestions (final pass, T-009)
     const withBlock = M.reduce(M.reduce(M.reduce(second.state(),
       { type: 'blockStart', id: 'b1', pos: OTHER.length, meta: META, docText: OTHER }),
       { type: 'blockAppend', id: 'b1', text: 'Aamulla.' }),
       { type: 'blockFinish', id: 'b1' });
     controller.editorProps('luku-2').onSuggestionsChange(M.snapshot(withBlock), withBlock.event);
     expect(controller.pendingTotal()).toBe(6);
+    expect(controller.pendingCounts()).toEqual({ suggestions: 5, blocks: 1 });
+    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-1', count: 4, blocks: 0 }, { chapterId: 'luku-2', count: 1, blocks: 1 }]);
   });
 
   test('reportPending is called only when the total changes', () => {
@@ -383,7 +392,7 @@ describe('counting and the bar', () => {
     expect(env.reportPending).not.toHaveBeenCalled();     // nothing pending, as the main process assumes
 
     first.proposeChanges(FOUR, { meta: META });
-    expect(env.reportPending.mock.calls).toEqual([[4]]);
+    expect(env.reportPending.mock.calls).toEqual([[reported(4)]]);
     first.stepSuggestion(1);
     first.setSuggestionView('new');
     first.emit({ type: 'current', id: 'x' });
@@ -391,7 +400,7 @@ describe('counting and the bar', () => {
 
     first.acceptSuggestion();
     first.rejectSuggestion();
-    expect(env.reportPending.mock.calls).toEqual([[4], [3], [2]]);
+    expect(env.reportPending.mock.calls).toEqual([[reported(4)], [reported(3)], [reported(2)]]);
     // Leaving the chapter keeps the total
     open('luku-2');
     expect(env.reportPending).toHaveBeenCalledTimes(3);
@@ -404,7 +413,7 @@ describe('counting and the bar', () => {
     expect(count()).toBe(1);
     expect(lastInfo()).toEqual({
       chapterId: 'luku-1', pending: 0, rejected: 0, currentIndex: -1, viewMode: 'changes', notice: null,
-      blockStatus: null, dialoguePending: 0, elsewhere: [], closed: false, current: null
+      blockStatus: null, blockCurrent: false, dialoguePending: 0, elsewhere: [], closed: false, current: null
     });
 
     first.proposeChanges(FOUR, { meta: META });
@@ -432,13 +441,13 @@ describe('counting and the bar', () => {
       chapterId: 'luku-2',
       pending: 0,
       elsewhere: [
-        { chapterId: 'luku-1', title: 'Ensimmäinen luku', count: 4 },
-        { chapterId: 'luku-3', title: 'Kolmas luku', count: 1 }
+        { chapterId: 'luku-1', title: 'Ensimmäinen luku', count: 4, blocks: 0 },
+        { chapterId: 'luku-3', title: 'Kolmas luku', count: 1, blocks: 0 }
       ]
     });
     // The open chapter is never in its own list
     open('luku-1');
-    expect(lastInfo().elsewhere).toEqual([{ chapterId: 'luku-3', title: 'Kolmas luku', count: 1 }]);
+    expect(lastInfo().elsewhere).toEqual([{ chapterId: 'luku-3', title: 'Kolmas luku', count: 1, blocks: 0 }]);
     expect(lastInfo().pending).toBe(4);
   });
 
@@ -468,6 +477,78 @@ describe('counting and the bar', () => {
     expect(lastInfo()).toMatchObject({ pending: 3, dialoguePending: 2 });
     first.rejectSuggestion(first.getSuggestions().pending[1].id);
     expect(lastInfo()).toMatchObject({ pending: 2, dialoguePending: 1 });
+  });
+
+  // Final pass (T-009, lead decision "Counts"): the bar, Muissa luvuissa …, the project-switch question and
+  // the close guard name the same things, the suggestions by their count and a pending draft apart
+  const NINE = 'Yksi kaksi kolme neljä viisi kuusi seitsemän kahdeksan yhdeksän. Loppu.';
+  const nineAndDraft = (harness) => {
+    const editor = harness.open('luku-1', NINE);
+    const words = NINE.split('. ')[0].split(' ');
+    editor.proposeChanges(words.map(word => at(NINE, word, word.toUpperCase())), { meta: META });
+    editor.reduce({ type: 'blockStart', id: 'b1', pos: NINE.length, meta: META, docText: NINE });
+    editor.reduce({ type: 'blockAppend', id: 'b1', text: 'Aamu tuli.' });
+    editor.reduce({ type: 'blockFinish', id: 'b1' });
+    return editor;
+  };
+
+  test('nine suggestions and a finished draft are counted apart everywhere, and the bar names the draft when it is current (T-009)', async () => {
+    const harness = setup();
+    const { controller, env, lastInfo } = harness;
+    nineAndDraft(harness);
+
+    expect(controller.pendingCounts()).toEqual({ suggestions: 9, blocks: 1 });
+    expect(controller.pendingTotal()).toBe(10);
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(9, 1));
+    // The draft is the current item (blockStart made it so): the bar's count stays the suggestions'
+    expect(lastInfo()).toMatchObject({ pending: 9, currentIndex: -1, blockStatus: 'done', blockCurrent: true, current: null });
+
+    await controller.confirmDiscard();
+    expect(env.askConfirm).toHaveBeenLastCalledWith('Hylätäänkö käsittelemättömät ehdotukset?',
+      'Käsikirjoituksessa on 9 käsittelemätöntä ehdotusta ja tekoälyn luonnos. Ne eivät säily, kun projekti vaihtuu. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.',
+      'Hylkää ehdotukset', 'Palaa ehdotuksiin');
+
+    // A suggestion current again: the draft is not
+    harness.env.editor.stepSuggestion(1);
+    expect(lastInfo()).toMatchObject({ pending: 9, blockCurrent: false });
+    expect(lastInfo().currentIndex).toBeGreaterThanOrEqual(0);
+
+    // From another chapter: Muissa luvuissa … gets both numbers
+    harness.open('luku-2');
+    expect(lastInfo().elsewhere).toEqual([{ chapterId: 'luku-1', title: 'Ensimmäinen luku', count: 9, blocks: 1 }]);
+    expect(lastInfo()).toMatchObject({ pending: 0, blockCurrent: false });
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(9, 1));
+  });
+
+  test('the project-switch question names one suggestion, one draft and several drafts in the one wording (T-009)', async () => {
+    const ask = async (build) => {
+      const harness = setup();
+      build(harness);
+      await harness.controller.confirmDiscard();
+      return harness.env.askConfirm.mock.calls[0][1];
+    };
+    const draftIn = (harness, chapterId, text) => {
+      const editor = harness.open(chapterId, text);
+      editor.reduce({ type: 'blockStart', id: `b-${chapterId}`, pos: text.length, meta: META, docText: text });
+      editor.reduce({ type: 'blockAppend', id: `b-${chapterId}`, text: 'Aamu tuli.' });
+      return editor;
+    };
+
+    expect(await ask(({ open }) => open('luku-1').proposeChanges([at(SAMPLE, 'sanoi', 'kuiskasi')], { meta: META })))
+      .toBe('Käsikirjoituksessa on 1 käsittelemätön ehdotus. Se ei säily, kun projekti vaihtuu. Käsikirjoituksen tekstiä se ei ole muuttanut.');
+    expect(await ask((harness) => {
+      harness.open('luku-1').proposeChanges([at(SAMPLE, 'sanoi', 'kuiskasi')], { meta: META });
+      draftIn(harness, 'luku-2', OTHER);
+    })).toBe('Käsikirjoituksessa on 1 käsittelemätön ehdotus ja tekoälyn luonnos. Ne eivät säily, kun projekti vaihtuu. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.');
+    expect(await ask((harness) => {
+      draftIn(harness, 'luku-1', SAMPLE);
+      draftIn(harness, 'luku-2', OTHER);
+    })).toBe('Käsikirjoituksessa on 2 käsittelemätöntä tekoälyn luonnosta. Ne eivät säily, kun projekti vaihtuu. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.');
+    expect(await ask((harness) => {
+      harness.open('luku-1').proposeChanges(FOUR, { meta: META });
+      draftIn(harness, 'luku-2', OTHER);
+      draftIn(harness, 'luku-3', 'Kolmas luku on lyhyt.');
+    })).toBe('Käsikirjoituksessa on 4 käsittelemätöntä ehdotusta ja 2 tekoälyn luonnosta. Ne eivät säily, kun projekti vaihtuu. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.');
   });
 
   test('closeBar sets the closed flag of the open chapter, and a new proposal clears it', () => {
@@ -753,8 +834,8 @@ describe('undo and redo', () => {
     chapters[0].content = step.oldContent;
     controller.afterHistory('undo', step);
     expect(elsewhere.proposeChanges).not.toHaveBeenCalled();
-    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-1', count: 2 }]);
-    expect(env.reportPending).toHaveBeenLastCalledWith(2);
+    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-1', count: 2, blocks: 0 }]);
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(2));
 
     const back = open('luku-1', step.oldContent);
     const shot = back.getSuggestions();
@@ -810,7 +891,7 @@ describe('undo and redo', () => {
     controller.beforeHistory('redo', step);
     expect(other.removeSuggestions).not.toHaveBeenCalled();
     expect(controller.pendingTotal()).toBe(0);
-    expect(env.reportPending).toHaveBeenLastCalledWith(0);
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(0));
     expect(logged(env)).toHaveLength(2);
     expect(logged(env)[1]).toMatchObject({ decision: 'accepted', redo: true });
 
@@ -1072,12 +1153,12 @@ describe('a throwing host', () => {
     const { controller, env, open, lastInfo } = setup();
     const first = open('luku-1');
     first.proposeChanges([at(SAMPLE, 'sanoi', 'kuiskasi'), at(SAMPLE, 'mennyt', 'lähtenyt')], { meta: META });
-    expect(env.reportPending).toHaveBeenLastCalledWith(2);
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(2));
 
     env.logDecision.mockImplementation(() => { throw new Error('levy täynnä'); });
     expect(() => first.acceptSuggestion()).toThrow('levy täynnä');
     expect(controller.pendingTotal()).toBe(1);
-    expect(env.reportPending).toHaveBeenLastCalledWith(1);
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(1));
     expect(lastInfo().pending).toBe(1);
   });
 
@@ -1094,7 +1175,8 @@ describe('a throwing host', () => {
     expect(() => controller.editorProps('luku-1').onSuggestionsChange(M.snapshot(finished), { type: 'block-action', action: 'retry', blockId: 'b1' }))
       .toThrow('rikki');
     expect(later).toHaveBeenCalledTimes(1);
-    expect(env.reportPending).toHaveBeenLastCalledWith(1);
+    // The finished draft is pending, and named apart from the suggestions (final pass, T-009)
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(0, 1));
     expect(env.setInfo).toHaveBeenCalled();
   });
 
@@ -1157,7 +1239,7 @@ describe('leaving the project', () => {
     controller.reset();
     expect(controller.pendingTotal()).toBe(0);
     expect(controller.pendingByChapter()).toEqual([]);
-    expect(env.reportPending).toHaveBeenLastCalledWith(0);
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(0));
     expect(env.setInfo).toHaveBeenLastCalledWith(null);
     // Records, the stored reveal position and the closed flag are gone
     expect(controller.editorProps('luku-1').suggestionSeed(SAMPLE)).toEqual({ state: null, revealPos: null });
@@ -1208,7 +1290,7 @@ describe('leaving the project', () => {
     // And it works like any editor from here on
     fresh.proposeChanges([at(SAMPLE, 'sanoi', 'kuiskasi')], { meta: META });
     expect(controller.pendingTotal()).toBe(1);
-    expect(env.reportPending).toHaveBeenLastCalledWith(1);
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(1));
   });
 
   test('bind forgets the records of deleted chapters', () => {
@@ -1221,20 +1303,20 @@ describe('leaving the project', () => {
     // The first chapter is deleted
     env.chapters = chapters.slice(1);
     controller.bind(env);
-    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-3', count: 1 }]);
+    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-3', count: 1, blocks: 0 }]);
     expect(controller.editorProps('luku-1').suggestionSeed(SAMPLE)).toEqual({ state: null, revealPos: null });
 
     // A chapter nested under another one is still a chapter
     env.chapters = [{ id: 'osa-1', title: 'Osa', content: '', children: chapters.slice(1) }];
     controller.bind(env);
-    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-3', count: 1 }]);
+    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-3', count: 1, blocks: 0 }]);
   });
 
   test('bind reports the total again after it forgets a record', () => {
     const { controller, env, chapters, open, lastInfo } = setup();
     open('luku-1').proposeChanges(FOUR, { meta: META });
     open('luku-2');
-    expect(env.reportPending).toHaveBeenLastCalledWith(4);
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(4));
     expect(lastInfo().elsewhere).toHaveLength(1);
     const reports = env.reportPending.mock.calls.length;
 
@@ -1245,7 +1327,7 @@ describe('leaving the project', () => {
     env.chapters = chapters.slice(1);
     controller.bind(env);
     expect(env.reportPending).toHaveBeenCalledTimes(reports + 1);
-    expect(env.reportPending).toHaveBeenLastCalledWith(0);
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(0));
     expect(lastInfo().elsewhere).toEqual([]);
   });
 
@@ -1260,7 +1342,7 @@ describe('leaving the project', () => {
     first.unmount();
     env.editor = null;
     expect(controller.pendingTotal()).toBe(0);
-    expect(env.reportPending).toHaveBeenLastCalledWith(0);
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(0));
   });
 });
 
@@ -1334,9 +1416,9 @@ describe('features', () => {
     expect(first.proposeChanges).not.toHaveBeenCalled();
     expect(result).toMatchObject({ ok: true, groupId: 'ajo', skipped: [{ index: 0, reason: 'target-changed' }] });
     expect(result.ids).toHaveLength(2);
-    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-2', count: 2 }]);
-    expect(lastInfo().elsewhere).toEqual([{ chapterId: 'luku-2', title: 'Toinen luku', count: 2 }]);
-    expect(env.reportPending).toHaveBeenLastCalledWith(2);
+    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-2', count: 2, blocks: 0 }]);
+    expect(lastInfo().elsewhere).toEqual([{ chapterId: 'luku-2', title: 'Toinen luku', count: 2, blocks: 0 }]);
+    expect(env.reportPending).toHaveBeenLastCalledWith(reported(2));
 
     // When the chapter opens, the suggestions sit on the same words of its current text
     const second = open('luku-2', now);
@@ -1349,7 +1431,7 @@ describe('features', () => {
     open('luku-1');
     const more = controller.propose('luku-2', [at(base, 'Sitten', 'Silloin')], { baseText: base, groupId: 'ajo', meta: META });
     expect(more).toMatchObject({ ok: true, groupId: 'ajo' });
-    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-2', count: 3 }]);
+    expect(controller.pendingByChapter()).toEqual([{ chapterId: 'luku-2', count: 3, blocks: 0 }]);
 
     // A chapter that no longer exists, and a batch of which nothing survives
     expect(controller.propose('ei-ole', [at(base, 'Hän', 'Hon')], { baseText: base })).toEqual({ ok: false, groupId: null, ids: [], skipped: [], error: 'target-changed' });

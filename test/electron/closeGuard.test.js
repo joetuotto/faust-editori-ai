@@ -14,6 +14,7 @@ const mockState = {
   windows: [],
   answers: [],        // what showMessageBoxSync answers, in order
   asked: [],          // the messages it was asked
+  details: [],        // and their details
   handlers: {},       // ipcMain.handle channels
   clipboard: '',      // what clipboard.readText returns
   clipboardReads: 0,
@@ -61,6 +62,7 @@ jest.mock('electron', () => {
       showOpenDialog: async () => ({}),
       showMessageBoxSync: (_win, options) => {
         mockState.asked.push(options.message);
+        mockState.details.push(options.detail);
         return mockState.answers.length ? mockState.answers.shift() : options.cancelId;
       },
       showMessageBox: async () => ({ response: 2 })
@@ -110,6 +112,7 @@ afterAll(() => {
 beforeEach(() => {
   mockState.answers = [];
   mockState.asked = [];
+  mockState.details = [];
   setPending(0);
   setDirty(false);
   mockState.listeners['project:close-cancelled']();
@@ -135,6 +138,51 @@ describe('the close guard (R-24)', () => {
     mockState.answers = [0];
     close();
     expect(mockState.asked).toEqual(['Käsikirjoituksessa on 1 käsittelemätön ehdotus.']);
+  });
+
+  // Final pass (T-009): the renderer reports suggestions and pending drafts apart, and the question names
+  // the draft (Tekoälyn luonnos) on its own, as the bar and the project-switch question do
+  test('a pending draft is named apart from the suggestions, in the message and in the detail', () => {
+    const ask = (counts) => {
+      mockState.asked = [];
+      mockState.details = [];
+      setPending(counts);
+      mockState.answers = [0];
+      expect(close().prevented).toBe(true);
+      return [mockState.asked[0], mockState.details[0]];
+    };
+    expect(ask({ suggestions: 9, blocks: 1 })).toEqual([
+      'Käsikirjoituksessa on 9 käsittelemätöntä ehdotusta ja tekoälyn luonnos.',
+      'Ehdotukset ja luonnos eivät säily sovelluksen sulkemisen yli. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.'
+    ]);
+    expect(ask({ suggestions: 0, blocks: 1 })).toEqual([
+      'Käsikirjoituksessa on käsittelemätön tekoälyn luonnos.',
+      'Luonnos ei säily sovelluksen sulkemisen yli. Käsikirjoituksen tekstiä se ei ole muuttanut.'
+    ]);
+    expect(ask({ suggestions: 1, blocks: 2 })).toEqual([
+      'Käsikirjoituksessa on 1 käsittelemätön ehdotus ja 2 tekoälyn luonnosta.',
+      'Ehdotukset ja luonnokset eivät säily sovelluksen sulkemisen yli. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.'
+    ]);
+    expect(ask({ suggestions: 0, blocks: 2 })).toEqual([
+      'Käsikirjoituksessa on 2 käsittelemätöntä tekoälyn luonnosta.',
+      'Luonnokset eivät säily sovelluksen sulkemisen yli. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.'
+    ]);
+    expect(ask({ suggestions: 1200, blocks: 0 })).toEqual([
+      'Käsikirjoituksessa on 1\u00a0200 käsittelemätöntä ehdotusta.',
+      'Ehdotukset eivät säily sovelluksen sulkemisen yli. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.'
+    ]);
+    // A bare number is the older form: suggestions
+    expect(ask(3)[0]).toBe(SUGGESTIONS_3);
+  });
+
+  test('nothing pending of either kind asks nothing, and a draft alone is enough to ask', () => {
+    setPending({ suggestions: 0, blocks: 0 });
+    expect(close().prevented).toBe(false);
+    expect(mockState.asked).toEqual([]);
+    setPending({ suggestions: 0, blocks: 1 });
+    mockState.answers = [1];
+    expect(close().prevented).toBe(false);
+    expect(mockState.asked).toEqual(['Käsikirjoituksessa on käsittelemätön tekoälyn luonnos.']);
   });
 
   test('Sulje ja hylkää ehdotukset on a saved project lets the window close', () => {

@@ -747,10 +747,30 @@ function cleanBlockText(text) {
   return normalizeNewlines(text).replace(/^\n+/, '').replace(/\s+$/, '');
 }
 
+// The stop note of the insert block (contracts 8.6): what a stop in the editor writes under the text it kept
+const STOPPED_NOTE = 'Pysäytetty. Teksti on leikattu viimeiseen kokonaiseen virkkeeseen.';
+
 /**
- * A block that leaves the screen keeps what it had: an attempt that was still
- * streaming is stored as stopped, an attempt without text is dropped. Null
- * when no attempt is left.
+ * What an attempt that was still being written keeps when it is stopped: its
+ * text up to the last full sentence, in the manuscript's typography, as
+ * Pysäytä (quickEdit.js) and a chapter switch (suggestionController.js) cut
+ * it; '' when not one sentence is complete. The two text modules are taken
+ * when needed (contract 0.7), so this file loads nothing and stays pure.
+ */
+function stoppedText(text) {
+  const { trimToSentence } = require('./sentences.js');
+  const { normaliseModelText } = require('./typography.fi.js');
+  const kept = trimToSentence(String(text == null ? '' : text));
+  return kept.trim() ? normaliseModelText(kept) : '';
+}
+
+/**
+ * A block that leaves the screen while it is still being written (an edit
+ * across its place, a restored suggestion or an external change in its way,
+ * Hylkää) is stopped as Pysäytä stops it: the attempt keeps its text up to the
+ * last full sentence with the stop note, so "Palauta hylätyt" never brings back
+ * half a sentence; an attempt without a full sentence is dropped. Null when no
+ * attempt is left.
  */
 function settleBlock(block) {
   if (!isStreaming(block)) return block;
@@ -759,10 +779,14 @@ function settleBlock(block) {
   const attempts = [];
   let shownIndex = -1;
   for (const attempt of block.attempts) {
-    const streaming = attempt.status === 'streaming';
-    if (streaming && attempt.text.trim() === '') continue;
+    let kept = attempt;
+    if (attempt.status === 'streaming') {
+      const text = stoppedText(attempt.text);
+      if (!text) continue;
+      kept = { ...attempt, text, status: 'stopped', note: STOPPED_NOTE };
+    }
     if (attempt === shown) shownIndex = attempts.length;
-    attempts.push(streaming ? { ...attempt, status: 'stopped' } : attempt);
+    attempts.push(kept);
   }
   if (!attempts.length) return null;
   return { ...block, attempts, attempt: shownIndex === -1 ? attempts.length - 1 : shownIndex };
@@ -1424,10 +1448,12 @@ function reduceBlock(state, action) {
     case 'blockReject': {
       const settled = settleBlock(block);
       const rejected = settled && { ...settled, state: 'rejected', reason: 'user' };
+      // The caller's insert is the text on screen; a draft stopped here keeps less of it (settleBlock)
+      const insert = settled && settled !== block ? undefined : action.insert;
       return changed(state, { block: rejected, currentId: currentFrom(state.items, null, block.pos) }, {
         type: 'rejected',
         ids: [block.id],
-        items: [blockAsSuggestion(settled || block, action.insert)],
+        items: [blockAsSuggestion(settled || block, insert)],
         bulk: false,
         reason: 'user',
         block: true

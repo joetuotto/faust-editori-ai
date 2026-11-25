@@ -24,6 +24,7 @@ import { failureReason, asIsNotice, bookRunPlan, sentTarget, placeSentText } fro
 import { SuggestionBar } from './src/components/SuggestionBar.js';
 import { AiUsageLogSection } from './src/components/AiUsageLogSection.js';
 import { createSuggestionController } from './src/services/suggestions/suggestionController.js';
+import { fieldHistoryFor } from './src/editor/fieldHistory.js';
 import { CommandManager } from './src/utils/CommandManager.js';
 import { wordDiff, changeRatio, diffSegments, changeStats } from './src/editor/wordDiff.js';
 import { appendRow as appendAiLogRow, createLog as createAiLog, decisionRow } from './src/services/ai/usageLog.js';
@@ -1662,7 +1663,9 @@ function FAUSTApp() {
   // own undo applies; everywhere else the project history does. In the Pikamuokkaus prompt's field
   // the field's own history (inlinePromptView.js), also when it is empty again; only an empty
   // Tarkenna… field after a result gives Cmd+Z to the project history, so the accept just made can
-  // be undone (fieldOwnsUndo).
+  // be undone (fieldOwnsUndo). The other fields keep their steps in fieldHistory.js, which listens
+  // from the first render on.
+  const fieldHistory = fieldHistoryFor(document);
   const runHistory = (direction) => {
     const active = document.activeElement;
     const inManuscript = active && active.closest && active.closest('.cm-content');
@@ -1671,10 +1674,11 @@ function FAUSTApp() {
       ? quickEditRef.current.fieldOwnsUndo()
       : (active && !inManuscript && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA'));
     if (fieldUndo) {
-      // The prompt's field steps through its own history; the browser's undo would reach past it
-      // into the manuscript's editing steps once the field's own were used up
+      // Every field steps through its own history only. The browser's undo (execCommand) is one stack
+      // for the whole window: past the field's own steps it reached the manuscript's editing steps and
+      // changed the text out of sight. A field with nothing left to undo does nothing.
       if (inPrompt && typeof active.faustHistory === 'function') active.faustHistory(direction);
-      else document.execCommand(direction);
+      else fieldHistory.step(active, direction);
       return;
     }
 

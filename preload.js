@@ -22,8 +22,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   confirmUnsavedChanges: () => ipcRenderer.invoke('dialog:unsaved-changes'), // 'save' | 'discard' | 'cancel'
   confirmClose: () => ipcRenderer.send('project:close-confirmed'),
   cancelClose: () => ipcRenderer.send('project:close-cancelled'),
-  // Pending AI suggestions: the main process asks before the window closes
-  setPendingSuggestions: (count) => ipcRenderer.send('suggestions:set-pending', Number(count) || 0),
+  // Pending AI suggestions and drafts, counted apart ({ suggestions, blocks }): the main process asks before the window closes
+  setPendingSuggestions: (counts) => ipcRenderer.send('suggestions:set-pending', counts && typeof counts === 'object'
+    ? { suggestions: Number(counts.suggestions) || 0, blocks: Number(counts.blocks) || 0 }
+    : { suggestions: Number(counts) || 0, blocks: 0 }),
 
   // Recovery copy of unsaved work
   saveBackup: (payload) => ipcRenderer.invoke('save-backup', payload),

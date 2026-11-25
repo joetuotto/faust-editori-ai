@@ -24,6 +24,8 @@ const at = (text, word, insert, extra = {}) => {
   return { from, to: from + word.length, insert, original: word, ...extra };
 };
 const FOUR = [at(SAMPLE, 'mennyt', 'lähtenyt'), at(SAMPLE, 'sanoi', 'kuiskasi'), at(SAMPLE, 'åkerö', 'Åkerö'), { from: 3, to: 3, insert: ' taas' }];
+// What reportPending tells the close guard: suggestions and pending drafts apart (final pass, T-009)
+const reported = (suggestions, blocks = 0) => ({ suggestions, blocks });
 
 // Finest word diff: words and the gaps between them, longest common subsequence
 function diff(a, b) {
@@ -185,7 +187,7 @@ test('acceptAll takes one snapshot, accepts in one transaction and logs one grou
   const { el } = app.open('chapter-1');
   expect(el.proposeChanges(FOUR, { meta: META }).ok).toBe(true);
   expect(app.info()).toMatchObject({ chapterId: 'chapter-1', pending: 4, currentIndex: 0 });
-  expect(app.reportPending).toHaveBeenLastCalledWith(4);
+  expect(app.reportPending).toHaveBeenLastCalledWith(reported(4));
 
   expect(app.controller.acceptAll()).toBe(4);
   expect(app.text()).toBe(REVISED);
@@ -207,13 +209,13 @@ test('acceptAll takes one snapshot, accepts in one transaction and logs one grou
     count: 4, charsAdded: 26, charsRemoved: 16, before: null, after: null, snapshotId: 'snapshot-1'
   }]);
   expect(app.info()).toMatchObject({ pending: 0, rejected: 0, current: null });
-  expect(app.reportPending).toHaveBeenLastCalledWith(0);
+  expect(app.reportPending).toHaveBeenLastCalledWith(reported(0));
 
   // One Cmd+Z takes all four back out and brings all four suggestions back
   app.history('undo');
   expect(app.text()).toBe(SAMPLE);
   expect(el.getSuggestions().pending).toHaveLength(4);
-  expect(app.reportPending).toHaveBeenLastCalledWith(4);
+  expect(app.reportPending).toHaveBeenLastCalledWith(reported(4));
 });
 
 test('acceptAll leaves suggestions with meta.dialogue pending and the bar info counts them', () => {
@@ -288,7 +290,7 @@ test('a batch proposed after an earlier accept lands on the same words', () => {
   const T2 = app.chapters[0].content;
   const late = app.controller.propose('chapter-1', [at(T0, 'Sitten', 'Silloin'), compound], { baseText: T0, groupId: 'ajo', meta: META });
   expect(late).toMatchObject({ ok: true, skipped: [{ index: 1, reason: 'target-changed' }] });
-  expect(app.info().elsewhere).toEqual([{ chapterId: 'chapter-1', title: 'Luku 1', count: 1 }]);
+  expect(app.info().elsewhere).toEqual([{ chapterId: 'chapter-1', title: 'Luku 1', count: 1, blocks: 0 }]);
   const back = app.open('chapter-1');
   const [waiting] = back.el.getSuggestions().pending;
   expect(T2.slice(waiting.from, waiting.to)).toBe('Sitten');
@@ -332,7 +334,7 @@ test('undo of an accept brings the suggestion back through afterHistory', () => 
 
   // Undo once more, from another chapter: the app switches back and the seed carries the suggestion
   app.open('chapter-2');
-  expect(app.reportPending).toHaveBeenLastCalledWith(3);
+  expect(app.reportPending).toHaveBeenLastCalledWith(reported(3));
   app.history('undo');
   expect(app.activeChapterId).toBe('chapter-1');
   expect(app.text()).toBe(SAMPLE);
@@ -340,7 +342,7 @@ test('undo of an accept brings the suggestion back through afterHistory', () => 
   expect(again.pending.map(item => item.id)).toContain(sanoi.id);
   expect(again.pending).toHaveLength(4);
   expect(app.editor.seed.revealPos).toBe(4);
-  expect(app.reportPending).toHaveBeenLastCalledWith(4);
+  expect(app.reportPending).toHaveBeenLastCalledWith(reported(4));
 });
 
 test('several accepts undone and redone in turn keep every suggestion on its words', () => {
@@ -395,14 +397,14 @@ test('typing into a suggestion and undoing the typing keeps the count right', ()
   el.proposeChanges(FOUR, { meta: META });
   v.dispatch({ changes: { from: 32, insert: 'X' }, selection: { anchor: 33 }, userEvent: 'input.type' });
   expect(app.info()).toMatchObject({ pending: 3, rejected: 1, notice: { kind: 'dropped-edit', count: 1 } });
-  expect(app.reportPending).toHaveBeenLastCalledWith(3);
+  expect(app.reportPending).toHaveBeenLastCalledWith(reported(3));
   // Dropped by the author's own edit: not a decision, nothing in the log
   expect(app.logged()).toEqual([]);
 
   app.history('undo');
   expect(app.text()).toBe(SAMPLE);
   expect(app.info()).toMatchObject({ pending: 4, rejected: 0 });
-  expect(app.reportPending).toHaveBeenLastCalledWith(4);
+  expect(app.reportPending).toHaveBeenLastCalledWith(reported(4));
 });
 
 test('after reset the editor of the next project starts empty although its chapter id is the same', async () => {
@@ -418,7 +420,7 @@ test('after reset the editor of the next project starts empty although its chapt
 
   // Tiedosto → Avaa: another project whose first chapter is also "chapter-1", with words in common
   app.controller.reset();
-  expect(app.reportPending).toHaveBeenLastCalledWith(0);
+  expect(app.reportPending).toHaveBeenLastCalledWith(reported(0));
   expect(app.setInfo).toHaveBeenLastCalledWith(null);
   app.chapters = [{ id: 'chapter-1', title: 'Alku', content: 'Hän sanoi jotain aivan muuta, vaikka åkerö oli mennyt.' }];
   app.activeChapterId = 'chapter-1';
@@ -444,5 +446,5 @@ test('after reset the editor of the next project starts empty although its chapt
 
   // The new project works as usual
   expect(fresh.proposeChanges([{ from: 4, to: 9, insert: 'kuiskasi', original: 'sanoi' }], { meta: META }).ok).toBe(true);
-  expect(app.reportPending).toHaveBeenLastCalledWith(1);
+  expect(app.reportPending).toHaveBeenLastCalledWith(reported(1));
 });

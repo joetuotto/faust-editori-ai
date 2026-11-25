@@ -529,6 +529,31 @@ describe('open', () => {
     expect(none.quick.open()).toBe(false);
   });
 
+  test('open with no chapter on screen (Korttinäkymä) says why instead of doing nothing (T-047)', () => {
+    const cards = harness();
+    cards.state.view = null;
+    cards.state.editor = null;
+    expect(cards.quick.open()).toBe(false);
+    expect(cards.notify).toHaveBeenCalledTimes(1);
+    expect(cards.notify).toHaveBeenCalledWith('info', 'Pikamuokkaus toimii, kun jokin luku on auki.');
+    expect(cards.ui.openPrompt).not.toHaveBeenCalled();
+    expect(cards.ai.requestEdit).not.toHaveBeenCalled();
+
+    // The right-click submenu is only offered over the manuscript: it says nothing
+    const menu = harness();
+    menu.state.view = null;
+    menu.state.editor = null;
+    expect(menu.quick.open({ actionId: 'tighten', requireSelection: true })).toBe(false);
+    expect(menu.notify).not.toHaveBeenCalled();
+
+    // With AI off the item is not in the menu at all, and nothing is said either
+    const off = harness({ settings: { aiOff: true } });
+    off.state.view = null;
+    off.state.editor = null;
+    expect(off.quick.open()).toBe(false);
+    expect(off.notify).not.toHaveBeenCalled();
+  });
+
   test('open with requireSelection and an empty selection shows nothing', () => {
     const h = harness({ marked: 'Ensimmäinen.\nÅke käv|eli öisin.' });
     expect(h.quick.open({ actionId: 'tighten', requireSelection: true })).toBe(false);

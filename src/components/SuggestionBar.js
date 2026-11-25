@@ -119,8 +119,18 @@ const VIEWS = [
   { mode: 'new', label: 'Uusi', title: 'Näytä teksti sellaisena kuin se olisi hyväksyttynä' }
 ];
 
-const elsewhereCount = (info) => info.elsewhere.reduce((sum, entry) => sum + (Number(entry.count) || 0), 0);
-const elsewhereLabel = (info) => 'Muissa luvuissa odottaa ' + count(elsewhereCount(info), 'ehdotus');
+// The other chapters' suggestions by their count and their drafts by the name of the draft's head, apart
+// (contracts 8.1; lead decision "Counts" of the final pass): `Muissa luvuissa odottaa 9 ehdotusta ja tekoälyn luonnos`
+const elsewhereSum = (info, key) => info.elsewhere.reduce((sum, entry) => sum + (Number(entry[key]) || 0), 0);
+const draftWords = (n) => (n === 1 ? 'tekoälyn luonnos' : `${formatCount(n)} tekoälyn luonnosta`);
+const elsewhereLabel = (info) => {
+  const suggestions = elsewhereSum(info, 'count');
+  const drafts = elsewhereSum(info, 'blocks');
+  const parts = [];
+  if (suggestions > 0 || drafts === 0) parts.push(count(suggestions, 'ehdotus'));
+  if (drafts > 0) parts.push(draftWords(drafts));
+  return 'Muissa luvuissa odottaa ' + parts.join(' ja ');
+};
 const restoreLabel = (info) => `Palauta hylätyt (${formatCount(info.rejected)})`;
 const RESTORE_TITLE = 'Palauta hylätyt ehdotukset, joiden alkuperäinen teksti on yhä paikallaan';
 
@@ -193,6 +203,9 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor, ex
   }
 
   const hasCurrent = info.currentIndex >= 0;
+  // The finished draft (Tekoälyn luonnos) is the current item of the review order: the bar's Hyväksy and
+  // Hylkää act on it, so the bar names it; the count stays the suggestions' own (lead decision "Counts")
+  const draftCurrent = !hasCurrent && info.blockCurrent === true;
   // Without a current suggestion the keys and these buttons first step to one (⌘↩ does the same)
   const accept = () => { if (!controller.acceptCurrent()) controller.step(1); };
   const reject = () => { if (!controller.rejectCurrent()) controller.step(1); };
@@ -262,10 +275,16 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor, ex
     e('div', { className: 'faust-suggestbar', role: 'toolbar', 'aria-label': 'Ehdotusten läpikäynti' },
       e('span', { className: 'faust-suggestbar__label' },
         icons.star8({ size: 14 }),
-        hasCurrent && e('span', { className: 'faust-suggestbar__name' }, 'Ehdotus')
+        hasCurrent && e('span', { className: 'faust-suggestbar__name' }, 'Ehdotus'),
+        draftCurrent && e('span', { className: 'faust-suggestbar__name' }, 'Tekoälyn luonnos')
       ),
+      // With the draft current: "Tekoälyn luonnos  ja 9 ehdotusta"; the compact form drops the name and its "ja"
       e('span', { className: 'faust-suggestbar__count' },
-        hasCurrent ? `${formatCount(info.currentIndex + 1)} / ${formatCount(pending)}` : count(pending, 'ehdotus')),
+        hasCurrent
+          ? `${formatCount(info.currentIndex + 1)} / ${formatCount(pending)}`
+          : draftCurrent
+            ? e(React.Fragment, null, e('span', { className: 'faust-suggestbar__name' }, 'ja '), count(pending, 'ehdotus'))
+            : count(pending, 'ehdotus')),
       e(IconButton, {
         icon: 'chevronUp',
         size: 'sm',
@@ -285,7 +304,7 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor, ex
         type: 'button',
         className: 'faust-btn faust-btn--quiet faust-btn--sm faust-suggestbar__reject',
         'aria-label': 'Hylkää',
-        title: 'Hylkää tämä ehdotus (' + shortcut('CmdOrCtrl+Shift+Backspace') + ')',
+        title: (draftCurrent ? 'Hylkää tämä luonnos (' : 'Hylkää tämä ehdotus (') + shortcut('CmdOrCtrl+Shift+Backspace') + ')',
         onMouseDown: keep,
         onClick: reject
       },
@@ -296,7 +315,7 @@ export function SuggestionBar({ info, controller, onOpenChapter, focusEditor, ex
         type: 'button',
         className: 'faust-btn faust-btn--primary faust-btn--sm faust-suggestbar__accept',
         'aria-label': 'Hyväksy',
-        title: 'Hyväksy tämä ehdotus (' + shortcut('CmdOrCtrl+Enter') + ')',
+        title: (draftCurrent ? 'Hyväksy tämä luonnos (' : 'Hyväksy tämä ehdotus (') + shortcut('CmdOrCtrl+Enter') + ')',
         onMouseDown: keep,
         onClick: accept
       },

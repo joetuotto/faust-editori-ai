@@ -368,8 +368,9 @@ let mainWindow;
 // Unsaved-changes state reported by the renderer. Guards window close and quit.
 let rendererDirty = false;
 let quitRequested = false;
-// Pending AI suggestions reported by the renderer. They do not survive a restart, so closing asks first.
-let pendingSuggestions = 0;
+// Pending AI suggestions and drafts (Tekoälyn luonnos) reported by the renderer, counted apart. They do
+// not survive a restart, so closing asks first.
+let pendingSuggestions = { suggestions: 0, blocks: 0 };
 let discardSuggestionsOnClose = false;
 
 // Send to the renderer if the window still exists (on macOS the app outlives its window)
@@ -395,7 +396,7 @@ const aiRequests = createRequestTable({
 
 function createWindow() {
   rendererDirty = false;
-  pendingSuggestions = 0;
+  pendingSuggestions = { suggestions: 0, blocks: 0 };
   discardSuggestionsOnClose = false;
 
   mainWindow = new BrowserWindow({
@@ -511,24 +512,56 @@ const UNSAVED_DIALOG = {
   cancelId: 2
 };
 
+// The renderer's report: { suggestions, blocks }; a bare number (the older form) counts suggestions
+function pendingCountsOf(value) {
+  const whole = (n) => Math.max(0, Math.floor(Number(n) || 0));
+  if (value && typeof value === 'object') return { suggestions: whole(value.suggestions), blocks: whole(value.blocks) };
+  return { suggestions: whole(value), blocks: 0 };
+}
+
+const hasPending = (counts) => counts.suggestions + counts.blocks > 0;
+
+// Groups of three digits with a no-break space, as format.fi.js formatCount (the main process cannot load src/)
+const groupDigits = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+
+// The words of the suggestion controller (pendingWords): the suggestions by their count, a pending draft by the
+// name of its head, apart, so the question names what the bar counts and the draft on its own (final pass)
+function pendingWords({ suggestions, blocks }) {
+  if (!suggestions) return blocks === 1 ? 'käsittelemätön tekoälyn luonnos' : `${groupDigits(blocks)} käsittelemätöntä tekoälyn luonnosta`;
+  const named = suggestions === 1 ? '1 käsittelemätön ehdotus' : `${groupDigits(suggestions)} käsittelemätöntä ehdotusta`;
+  if (!blocks) return named;
+  return `${named} ja ${blocks === 1 ? 'tekoälyn luonnos' : `${groupDigits(blocks)} tekoälyn luonnosta`}`;
+}
+
+function pendingDetail({ suggestions, blocks }) {
+  const lasting = 'säily sovelluksen sulkemisen yli. Käsikirjoituksen tekstiä';
+  if (!blocks) return `Ehdotukset eivät ${lasting} ne eivät ole muuttaneet.`;
+  const drafts = blocks === 1 ? 'luonnos' : 'luonnokset';
+  if (!suggestions) {
+    return blocks === 1 ? `Luonnos ei ${lasting} se ei ole muuttanut.` : `Luonnokset eivät ${lasting} ne eivät ole muuttaneet.`;
+  }
+  return `Ehdotukset ja ${drafts} eivät ${lasting} ne eivät ole muuttaneet.`;
+}
+
 // Pending suggestions live in memory only: the question comes before the unsaved-changes one (R-24)
-const pendingSuggestionsDialog = (count) => ({
-  type: 'warning',
-  message: count === 1
-    ? 'Käsikirjoituksessa on 1 käsittelemätön ehdotus.'
-    : `Käsikirjoituksessa on ${count} käsittelemätöntä ehdotusta.`,
-  detail: 'Ehdotukset eivät säily sovelluksen sulkemisen yli. Käsikirjoituksen tekstiä ne eivät ole muuttaneet.',
-  buttons: ['Palaa ehdotuksiin', 'Sulje ja hylkää ehdotukset'],
-  defaultId: 0,
-  cancelId: 0
-});
+const pendingSuggestionsDialog = (pending) => {
+  const counts = pendingCountsOf(pending);
+  return {
+    type: 'warning',
+    message: `Käsikirjoituksessa on ${pendingWords(counts)}.`,
+    detail: pendingDetail(counts),
+    buttons: ['Palaa ehdotuksiin', 'Sulje ja hylkää ehdotukset'],
+    defaultId: 0,
+    cancelId: 0
+  };
+};
 
 // Ask before a window with unsaved changes closes (also covers Cmd+Q)
 function attachCloseGuard(win) {
   win.on('close', (event) => {
     // "Palaa ehdotuksiin" stops the close before any save question; after "Sulje ja hylkää ehdotukset"
     // the unsaved-changes flow runs as before, and the close that follows a save does not ask again
-    if (pendingSuggestions > 0 && !discardSuggestionsOnClose) {
+    if (hasPending(pendingSuggestions) && !discardSuggestionsOnClose) {
       const answer = dialog.showMessageBoxSync(win, pendingSuggestionsDialog(pendingSuggestions));
       if (answer === 0) {
         event.preventDefault();
@@ -583,9 +616,9 @@ ipcMain.on('context:manuscript', (_event, info) => {
   manuscriptContext = aiContextMenu.sanitizeContext(info, Date.now());
 });
 
-ipcMain.on('suggestions:set-pending', (_event, count) => {
-  pendingSuggestions = Math.max(0, Number(count) || 0);
-  if (pendingSuggestions === 0) discardSuggestionsOnClose = false;
+ipcMain.on('suggestions:set-pending', (_event, counts) => {
+  pendingSuggestions = pendingCountsOf(counts);
+  if (!hasPending(pendingSuggestions)) discardSuggestionsOnClose = false;
 });
 
 // The renderer reports its theme at start and on every switch. Only the two names are accepted.
