@@ -1341,8 +1341,9 @@ button.faust-chip:disabled[aria-pressed="true"] { background: var(--fill-subtle)
 /* "Mitä malli näkee" (ContextRow, mounted into the prompt's slot) keeps its own classes' look; the
    slot only spaces it from the controls above */
 :is(.faust-editor-host, .faust-layer) .cm-tooltip.cm-tooltip.cm-faust-prompt .cm-faust-prompt-context:not(:empty) { margin-top: var(--sp-2); }
-/* Never past the window: after placing the prompt the core writes the room on its side into
-   --cm-faust-prompt-room; a taller prompt (the row's list expanded) scrolls inside itself, and its
+/* Never past the window: after placing the prompt the core writes the height it may take into
+   --cm-faust-prompt-room (the room on its side; what it needs, over its anchor, when that room cannot
+   hold it); only a prompt that the whole height between the gutters cannot hold scrolls inside itself, and its
    foot (the model, Lähetä, the keys) stays at the bottom of the view. The foot's padding stands in
    for the prompt's bottom padding, so the prompt that fits looks as before; it sticks below the
    padding edge (Chromium keeps a sticky box inside the scroller's padding), so nothing shows under it.

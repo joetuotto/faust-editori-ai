@@ -10,12 +10,14 @@
  * The prompt is a tooltip under the end of its target. It holds no positions:
  * the target is a captured range of the suggestion layer (`rangeId`), read
  * from `suggestionField`. When that range disappears, the prompt closes.
- * It never covers its target: when it opens, the text scrolls to make room
- * under the target's end; when there is still no room it goes above the
- * target's start; and it is never taller than the room on its side (it then
- * scrolls inside itself). The one exception is a prompt whose "Mitä malli
- * näkee" list is open (lead decision F3, promptLayoutFor): it may take the
- * height its list needs, over the lines next to its anchor.
+ * It stays off its target while it can: when it opens, the text scrolls to
+ * make room under the target's end; when there is still no room it goes above
+ * the target's start. A prompt that the room on its side cannot hold (a low
+ * window, a target as tall as the text pane, an opened "Mitä malli näkee"
+ * list) reaches over the lines next to its anchor by what is missing (lead
+ * decision F3, promptLayoutFor): it stays between the window's gutters, its
+ * foot in view, and it scrolls inside itself only when the whole height
+ * between the gutters cannot hold it.
  *
  * What the author does is reported to the host as intents:
  *   host().handle(intent, view)
@@ -23,8 +25,9 @@
  */
 
 // Layout numbers of the placement (px): the space kept between the prompt and the target or the
-// window edge, the least room the prompt is ever given, and the height a new prompt is expected to
-// have before one was measured (the idle prompt measured 286 to 308 px in the app) and at most
+// window edge, the least height the prompt is ever given (promptLayoutFor), and the height a new
+// prompt is expected to have before one was measured (the idle prompt measured 286 to 308 px in
+// the app) and at most
 const ROOM_GAP = 16;
 const MIN_ROOM = 120;
 const HEIGHT_ESTIMATE = 300;
@@ -51,34 +54,52 @@ const LIST_MIN = 96;
 const BRIDGE_PROPERTY = '--cm-faust-prompt-bridge';
 
 /**
- * The layout of a prompt whose "Mitä malli näkee" list is open (lead decision F3). Pure; px.
- * In this order:
+ * The layout of the prompt in the room it has (lead decision F3). Pure; px.
+ *
+ * A prompt that fits the room on its side stands there, as high as it is. One that does not takes
+ * the height it needs, at most `fullRoom` (the height between the window's gutters), and reaches
+ * over the lines next to its anchor by `shift`: what its side cannot hold. So its far end stays
+ * where the side's room ends, also when that room is a few pixels or none (a target as tall as the
+ * text pane ends at the pane's lower edge). The prompt is never given less than MIN_ROOM, and the
+ * pixels its side lacks for that go into the shift as well.
+ *
+ * With an open "Mitä malli näkee" list, in this order:
  *   1. the two-line rows, when the whole prompt fits the room on its side: nothing else changes;
  *   2. the rows on one line each, when that fits the room on its side;
- *   3. the one-line rows in a prompt as high as it needs, at most `fullRoom` (the height between the
- *      window's gutters): the prompt moves over the lines next to its anchor by `shift`;
+ *   3. the one-line rows in a prompt as high as it needs, over its anchor as above;
  *   4. only a list that does not fit even so is capped, and scrolls inside itself.
  * The list never gets less than LIST_MIN; only a window that cannot hold the other rows and that
  * much (lower than the application's smallest) leaves the prompt to scroll as a whole.
- * @param {{ sideRoom: number, fullRoom: number, others: number, border?: number, twoLine: number, oneLine: number }} m
- *   sideRoom: the room between the anchor and the gutter on the prompt's side; others: the height of
- *   everything in the prompt but the list (padding included); border: the prompt's two edges;
- *   twoLine / oneLine: the height of the whole list in each form
- * @returns {{ compact: boolean, room: number, shift: number, listRoom: number, capped: boolean }}
- *   room: the prompt's greatest height; shift: how far it reaches past its side's room, over the anchor
+ * @param {{ sideRoom: number, fullRoom: number, others: number, border?: number, twoLine?: number, oneLine?: number }} m
+ *   sideRoom: the room between the anchor and the gutter on the prompt's side (it may be negative);
+ *   others: the height of everything in the prompt but the list (padding included); border: the
+ *   prompt's two edges; twoLine / oneLine: the height of the whole list in each form, both left
+ *   out when no list is open
+ * @returns {{ compact: boolean, room: number, shift: number, listRoom: number|null, capped: boolean }}
+ *   room: the prompt's greatest height; shift: how far it reaches past its side's room, over the
+ *   anchor; listRoom: null without a list
  */
 function promptLayoutFor({ sideRoom, fullRoom, others, border = 0, twoLine, oneLine }) {
-  const side = Math.max(MIN_ROOM, Number.isFinite(sideRoom) ? Math.floor(sideRoom) : MIN_ROOM);
-  const full = Math.max(side, Number.isFinite(fullRoom) ? Math.floor(fullRoom) : side);
+  const side = Number.isFinite(sideRoom) ? Math.floor(sideRoom) : MIN_ROOM;
+  const full = Math.max(MIN_ROOM, side, Number.isFinite(fullRoom) ? Math.floor(fullRoom) : side);
   const rest = Math.max(0, Number.isFinite(others) ? others : 0) + border;
-  const fits = (list, room) => Number.isFinite(list) && rest + list <= room;
-  if (fits(twoLine, side)) return { compact: false, room: side, shift: 0, listRoom: side - rest, capped: false };
-  if (fits(oneLine, side)) return { compact: true, room: side, shift: 0, listRoom: side - rest, capped: false };
-  // One pixel more than the rows measure, so a height the browser rounded down never makes a scroller
-  const wanted = Number.isFinite(oneLine) ? Math.ceil(rest + oneLine) + 1 : full;
-  const room = Math.min(full, Math.max(side, wanted));
+  // A prompt that wants `wanted` px: its side's room when that holds it, else what it wants, within
+  // the least and the whole height. One pixel more than the rows measure, so a height the browser
+  // rounded down never makes a scroller.
+  const roomFor = (wanted) => Math.max(MIN_ROOM, Math.min(full, Math.max(side, Math.ceil(wanted) + 1)));
+  const over = (room) => Math.max(0, room - side);
+
+  if (twoLine === undefined && oneLine === undefined) {
+    const room = rest <= side ? Math.max(MIN_ROOM, side) : roomFor(rest);
+    return { compact: false, room, shift: over(room), listRoom: null, capped: false };
+  }
+
+  const fits = (list) => Number.isFinite(list) && rest + list <= side;
+  if (fits(twoLine)) return { compact: false, room: side, shift: 0, listRoom: side - rest, capped: false };
+  if (fits(oneLine)) return { compact: true, room: side, shift: 0, listRoom: side - rest, capped: false };
+  const room = Number.isFinite(oneLine) ? roomFor(rest + oneLine) : full;
   const listRoom = Math.max(LIST_MIN, room - rest);
-  return { compact: true, room, shift: room - side, listRoom, capped: !(oneLine <= listRoom + 1) };
+  return { compact: true, room, shift: over(room), listRoom, capped: !(oneLine <= listRoom + 1) };
 }
 
 // Sets or removes one attribute or style property, only when it changes
@@ -124,17 +145,17 @@ function measureList(dom, sideRoom) {
 /**
  * Lays the prompt out in the room it has and writes that on it: its greatest height, and for an
  * open list its form, its room and whether it is capped. Returns how far the prompt reaches over
- * its anchor (0 without a list).
+ * its anchor (0 when the room on its side holds it).
  */
 function fitPrompt(dom, { sideRoom, fullRoom }) {
-  const m = measureList(dom, sideRoom);
-  if (!m) {
-    setPx(dom, ROOM_PROPERTY, Math.max(MIN_ROOM, Number.isFinite(sideRoom) ? sideRoom : MIN_ROOM));
-    setPx(dom, LIST_ROOM_PROPERTY, null);
-    setFlag(dom, LIST_CAPPED_ATTRIBUTE, false);
-    setFlag(dom, LIST_COMPACT_ATTRIBUTE, false);
-    return 0;
-  }
+  // A prompt that is capped now (its rows grew since it was laid out) scrolls inside itself, and its
+  // scroller's bar narrows the rows: the quick actions wrap onto a second line, 28px more. The rows
+  // are measured without the cap, which is put back for setPx to compare with.
+  const cap = dom.scrollHeight > dom.clientHeight ? dom.style.getPropertyValue(ROOM_PROPERTY) : '';
+  if (cap) dom.style.removeProperty(ROOM_PROPERTY);
+  // Without a list the prompt's rows are its whole content
+  const m = measureList(dom, sideRoom) || { others: dom.scrollHeight, border: dom.offsetHeight - dom.clientHeight };
+  if (cap) dom.style.setProperty(ROOM_PROPERTY, cap);
   const layout = promptLayoutFor({ sideRoom, fullRoom, ...m });
   setPx(dom, ROOM_PROPERTY, layout.room);
   setPx(dom, LIST_ROOM_PROPERTY, layout.listRoom);
@@ -425,9 +446,10 @@ function createInlinePromptKit(cm, options = {}) {
 
       /**
        * Lays the prompt out in the room it has (fitPrompt) and puts it there. A prompt that needs
-       * more than its side's room reaches over its anchor: CodeMirror gets that as the tooltip's
-       * offset (so it keeps the prompt on its side and places it there from then on), and the
-       * bridge margin holds the prompt in that place until CodeMirror has placed it again.
+       * more than its side's room reaches over its anchor, with or without an open list: CodeMirror
+       * gets that as the tooltip's offset (so it keeps the prompt on its side and places it there
+       * from then on), and the bridge margin holds the prompt in that place until CodeMirror has
+       * placed it again. The side's room is taken as it is, also when it is next to nothing.
        */
       const place = () => {
         const dom = promptView.dom;
@@ -494,9 +516,9 @@ function createInlinePromptKit(cm, options = {}) {
           promptView.focus();
         },
         getCoords: (pos) => anchorRect(view, pos),
-        // After CodeMirror has placed it (below, or flipped above): the room on that side caps the
-        // prompt's height, so it never runs past the window and its controls stay reachable; a
-        // prompt whose list is open is laid out by promptLayoutFor
+        // After CodeMirror has placed it (below, or flipped above): the prompt is laid out in the
+        // room it has (promptLayoutFor), so it never runs past the window and its controls stay
+        // reachable
         positioned(space) {
           const dom = promptView.dom;
           if (!dom.isConnected || !space) return;

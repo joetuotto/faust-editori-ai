@@ -43,6 +43,13 @@ class ConsistencyChecker {
     this.failures = [];
     this.languageRule = options && typeof options.languageRule === 'string' ? options.languageRule.trim() : '';
 
+    // The project the rules read. The app hands the checker a new project on every change of its
+    // state, also while the model step waits, and the place of a finding is an offset in the text
+    // as it was when the rules ran (they run before the first wait, in the calls below). So the
+    // marks are placed and merged on this project, and the app moves them onto the text as it is
+    // by then (app.js runConsistencyCheck: mapAnnotationsBetween from this text to the state's).
+    const read = this.project;
+
     try {
       // Run all checks in parallel
       const [
@@ -58,6 +65,9 @@ class ConsistencyChecker {
       ]);
 
       errors.push(...characterErrors, ...namingErrors, ...timelineErrors, ...locationErrors);
+
+      // Back on the text the places were counted in (see above)
+      this.project = read;
 
       // Generate annotations from errors
       errors.forEach(error => {

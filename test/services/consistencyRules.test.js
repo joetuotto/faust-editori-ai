@@ -191,16 +191,19 @@ describe('the auto-fix of a name variation', () => {
   const finding = (keep, ...variants) => ({ type: 'name_variation', characterName: keep, variations: [keep, ...variants], autoFixable: true });
 
   test('only the stem is replaced and the ending stays: Katarina → Katariina, Katarinan → Katariinan', () => {
+    // The second chapter had its two places at the start of a sentence (KATARINA! huusi joku. Katarina ei
+    // vastannut.). The review of F2 changed the rule: such a place makes the plan unsafe (cases below), so
+    // the fixture has them in the middle of a sentence now.
     const project = book(['Katariina'], [
       'Illalla Katariina tuli. Sitten Katarina söi. Hän otti Katarinan lautasen ja Katariinan lasin.',
-      'KATARINA! huusi joku. Katarina ei vastannut.'
+      'Joku huusi, että KATARINA! Silloin Katarina ei vastannut.'
     ]);
     const plan = planNameFix(project, finding('Katariina', 'Katarina'));
     expect(plan.safe).toBe(true);
     expect(plan.count).toBe(4);
     expect(plan.chapters.map(chapter => chapter.content)).toEqual([
       'Illalla Katariina tuli. Sitten Katariina söi. Hän otti Katariinan lautasen ja Katariinan lasin.',
-      'KATARIINA! huusi joku. Katariina ei vastannut.'
+      'Joku huusi, että KATARIINA! Silloin Katariina ei vastannut.'
     ]);
     expect(plan.chapters[0].changes).toEqual([
       { from: 31, to: 39, insert: 'Katariina' },
@@ -226,6 +229,46 @@ describe('the auto-fix of a name variation', () => {
     // Another word that only starts like the variation
     const other = book(['Anna'], ['Illalla Anna tuli kotiin. Sitten Ana söi, ja Anastasia nukkui.']);
     expect(planNameFix(other, finding('Anna', 'Ana')).safe).toBe(false);
+  });
+
+  // Review of F2. The variation's letters can be an ordinary word, and at the start of a sentence a
+  // capital says nothing (the name rule's own test). The plan replaced such words: "Oli pimeää." became
+  // "Olli pimeää." and "Olin väsynyt" became "Ollin väsynyt", because Ollin is written elsewhere.
+  describe('a variation that is also a word', () => {
+    const unsafe = { safe: false, count: 0, chapters: [] };
+    const fixtures = [
+      ['Olli', 'Oli', 'Oli pimeää. Illalla kun Oli tuli kotiin, Ollin takki oli märkä. Olin väsynyt, hän sanoi.'],
+      ['Tuuli', 'Tuli', 'Tuli räiskyi takassa. Illalla kun Tuli tuli kotiin, Tuulin takki oli märkä.'],
+      ['Lassi', 'Lasi', 'Lasi putosi lattialle. Lasin sirpaleet kiilsivät. Illalla kun Lasi tuli kotiin, Lassin takki oli märkä.'],
+      ['Hanna', 'Hana', 'Asemalla soitti Hana, joka oli myöhässä. Keittiössä oli hiljaista. Hana vuoti taas. Illalla Hanna nukkui.'],
+      ['Riitta', 'Riita', 'Riita alkoi pienestä. Illalla kun Riita tuli kotiin, Riitta nukkui.']
+    ];
+
+    test.each(fixtures)('%s / %s: the finding stands, the plan is unsafe and nothing would change', (keep, variant, text) => {
+      const project = book([keep], [text]);
+      // One mistyped name in the middle of a sentence is enough for the finding
+      expect(nameFindings(project)).toMatchObject([{ characterName: keep, variations: [keep, variant], autoFixable: false }]);
+      expect(planNameFix(project, finding(keep, variant))).toMatchObject(unsafe);
+      expect(project.structure[0].content).toBe(text);
+    });
+
+    test('a place at the start of a sentence or a line, after a colon, a dash or a quotation mark is not trusted', () => {
+      const safeText = 'Illalla Katariina tuli. Sitten Katarina söi, ja Katarinan kissa nukkui Katariinan sylissä.';
+      expect(planNameFix(book(['Katariina'], [safeText]), finding('Katariina', 'Katarina'))).toMatchObject({ safe: true, count: 2 });
+      for (const more of [
+        ' Katarina nukkui.',                 // the start of a sentence
+        '\nKatarina nukkui.',                // the start of a line
+        '\n# Katarina',                      // a heading
+        ' Hän kysyi: Katarina?',             // after a colon
+        '\n– Katarina tuli, hän sanoi.',     // a line of speech
+        ' Hän sanoi ”Katarina” kahdesti.',   // inside quotation marks
+        ' Ovessa luki KATARINA. KATARINAN nimi oli kaiverrettu siihen.'
+      ]) {
+        const project = book(['Katariina'], [safeText + more]);
+        expect(planNameFix(project, finding('Katariina', 'Katarina'))).toMatchObject(unsafe);
+        expect(nameFindings(project)).toMatchObject([{ variations: ['Katariina', 'Katarina'], autoFixable: false }]);
+      }
+    });
   });
 
   test('a known name that starts like the variation is left alone', () => {
@@ -441,8 +484,56 @@ describe('places', () => {
 
   test('one place in two cases is one place', () => {
     expect(places(['Aino'], ['Aino saapui Helsinkiin.', 'Aino oli Helsingissä.'])).toEqual([]);
-    expect(places(['Aino'], ['Aino meni Turkuun.', 'Aino asui Turussa.'])).toEqual([]);
+    // Was "Aino asui Turussa.": living somewhere is no statement of place any more (review of F2, below)
+    expect(places(['Aino'], ['Aino meni Turkuun.', 'Aino oli Turussa.'])).toEqual([]);
     expect(places(['Aino'], ['Aino saapui Helsinkiin.', 'Aino oli Turussa.'])).toEqual(['Aino: Helsinkiin (Eka) → Turussa (Toka)']);
+  });
+
+  // Review of F2: changes of place a reader would not agree with
+  describe('precision before recall (review of F2)', () => {
+    const KNOWN = {
+      codex: [
+        { id: 'k1', type: 'paikka', name: 'Asema', aliases: ['asema'] },
+        { id: 'k2', type: 'paikka', name: 'Kirjasto', aliases: ['kirjasto'] }
+      ]
+    };
+    const second = 'Aino oli Turussa.';
+
+    test('the move is told after the statement: the earlier chapter names the later place', () => {
+      // No listed travel word in this one; the place is named in another case
+      expect(places(['Aino'], ['Aino oli Helsingissä. Illalla hän ajatteli jo Turkua.', second])).toEqual([]);
+      expect(places(['Aino Lehto'], ['Aino oli Helsingissä. Illalla hän nousi junaan ja ajoi yön yli Turkuun.', 'Aino oli Turussa.'])).toEqual([]);
+      // A place of the project, by the form rule
+      expect(places(['Aino'], ['Aino oli asemalla. Illalla hän näki kirjaston valot.', 'Aino oli kirjastossa.'], KNOWN)).toEqual([]);
+      expect(places(['Aino'], ['Aino oli asemalla. Illalla hän näki valot.', 'Aino oli kirjastossa.'], KNOWN)).toEqual(['Aino: asemalla (Eka) → kirjastossa (Toka)']);
+      // Named before the statement, the place explains nothing; another place does not either
+      expect(places(['Aino'], ['Turussa satoi. Aino oli Helsingissä.', second])).toEqual(['Aino: Helsingissä (Eka) → Turussa (Toka)']);
+      expect(places(['Aino'], ['Aino oli Helsingissä. Illalla hän ajatteli Oulua.', second])).toEqual(['Aino: Helsingissä (Eka) → Turussa (Toka)']);
+    });
+
+    test('a verb of moving after the statement, or in the later chapter, explains the change', () => {
+      for (const move of ['Illalla hän nousi junaan.', 'Hän ajoi koko yön.', 'Aamulla hän lensi pois.', 'Sitten hän käveli satamaan.', 'Viikon päästä hän siirtyi länteen.', 'Laiva odotti jo.']) {
+        expect(places(['Aino'], [`Aino oli Helsingissä. ${move}`, second])).toEqual([]);
+        expect(places(['Aino'], ['Aino oli Helsingissä.', `${move} ${second}`])).toEqual([]);
+      }
+      // The same words before the statement of the earlier chapter explain nothing
+      expect(places(['Aino'], ['Hän ajoi koko yön. Aino oli Helsingissä.', second])).toEqual(['Aino: Helsingissä (Eka) → Turussa (Toka)']);
+    });
+
+    test('living in a place is not being there now', () => {
+      expect(places(['Aino'], ['Aino asui Helsingissä. Hän kävi töissä satamassa.', second])).toEqual([]);
+      expect(places(['Aino'], ['Aino oli Helsingissä.', 'Aino asui Turussa.'])).toEqual([]);
+      expect(places(['Aino'], ['Aino asuu Helsingissä.', 'Aino on Turussa.'])).toEqual([]);
+    });
+
+    test('a place of the project beside a place name is not clearly another place', () => {
+      // The station may be the station of the town
+      expect(places(['Aino'], ['Aino oli Helsingissä.', 'Aino oli asemalla.'], KNOWN)).toEqual([]);
+      expect(places(['Aino'], ['Aino oli asemalla.', 'Aino oli Helsingissä.'], KNOWN)).toEqual([]);
+      // Two places of the project, and two place names, are still compared
+      expect(places(['Aino'], ['Aino oli asemalla.', 'Aino oli kirjastossa.'], KNOWN)).toEqual(['Aino: asemalla (Eka) → kirjastossa (Toka)']);
+      expect(places(['Aino'], ['Aino oli Helsingissä.', second], KNOWN)).toEqual(['Aino: Helsingissä (Eka) → Turussa (Toka)']);
+    });
   });
 
   test('the last place of the earlier chapter is compared with the first of the later one', () => {

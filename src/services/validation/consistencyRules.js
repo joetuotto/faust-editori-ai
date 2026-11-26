@@ -208,7 +208,15 @@ function mentionSentences(project, character, limit = 5) {
 
 // A capitalised word in the middle of a sentence is a name. At the start of a sentence, and
 // after a colon, every word is capitalised ("Kuka siellä?"), so those places say nothing.
-const NAME_IN_SENTENCE = /(?<=[\p{Ll},;][ \t\u00A0]+)\p{Lu}\p{Ll}+(?![\p{L}\p{N}]|[-'’:]\p{L})/gu;
+const MID_SENTENCE = '(?<=[\\p{Ll},;][ \\t\\u00A0]+)';
+const NAME_IN_SENTENCE = new RegExp(`${MID_SENTENCE}\\p{Lu}\\p{Ll}+(?![\\p{L}\\p{N}]|[-'’:]\\p{L})`, 'gu');
+const MID_SENTENCE_AT = new RegExp(MID_SENTENCE, 'uy');
+
+// Does the word that starts at `index` stand in the middle of a sentence, by the same test?
+function standsMidSentence(text, index) {
+  MID_SENTENCE_AT.lastIndex = index;
+  return MID_SENTENCE_AT.test(text);
+}
 
 /**
  * Are the two spellings the same but for one letter written once in one and twice in the other
@@ -327,11 +335,15 @@ const isUpperCase = (text) => text.length > 1 && text === text.toLocaleUpperCase
  *
  * A place is found by the form rule (the variation at the start of a word, any ending; its
  * word boundaries know ä and ö; the name is escaped), outside notes, and never where a known
- * name starts. An ending is trusted only when the manuscript itself writes the kept spelling
- * with that ending (Katarinan → Katariinan needs a Katariinan somewhere): nothing here knows
- * which letters are an ending, and the kept name may inflect differently (Peka for Pekka: Pekan
- * is right as it stands). One place that cannot be trusted makes the whole plan unsafe, and an
- * unsafe plan changes nothing.
+ * name starts. A place is trusted only where the name rule itself reads a name: capitalised in
+ * the middle of a sentence. At the start of a sentence or of a line, after a colon, a dash or a
+ * quotation mark the same letters are as often an ordinary word (Oli for Olli, Tuli for Tuuli,
+ * Lasi for Lassi, Hana for Hanna), and nothing here can tell the two apart. An ending is trusted
+ * only when the manuscript itself writes the kept spelling with that ending (Katarinan →
+ * Katariinan needs a Katariinan somewhere): nothing here knows which letters are an ending, and
+ * the kept name may inflect differently (Peka for Pekka: Pekan is right as it stands). One place
+ * that cannot be trusted makes the whole plan unsafe, and an unsafe plan changes nothing: the
+ * finding is then not auto-fixable, and the author corrects the places by hand.
  *
  * @returns {{ safe: boolean, count: number, correctName: string,
  *   chapters: Array<{ id: *, content: string, changes: Array<{ from: number, to: number, insert: string }> }> }}
@@ -360,6 +372,7 @@ function planNameFix(project, finding) {
         const stem = hit.text.slice(0, variant.length);
         const ending = hit.text.slice(variant.length);
         if (fold(stem) !== fold(variant)) return unsafe; // letters encoded another way: not ours to cut
+        if (!standsMidSentence(content, hit.start)) return unsafe; // may be a word, not the name
         if (ending) {
           if (!written) written = manuscriptWords(project);
           if (!written.has(fold(correct + ending))) return unsafe;
@@ -504,8 +517,10 @@ function timelineFindings(project) {
 // ---------------------------------------------------------------------------
 
 // A clear statement of where a character is: the character as the subject at the start of a
-// sentence, one of these verbs, and the place, with nothing after it in the clause
-const BEING = ['on', 'oli', 'asuu', 'asui'];
+// sentence, one of these verbs, and the place, with nothing after it in the clause. Living
+// somewhere (asuu, asui) is not being there now: "Aino asui Helsingissä." says nothing against
+// "Aino oli Turussa." in the next chapter.
+const BEING = ['on', 'oli'];
 const ARRIVING = ['saapuu', 'saapui', 'tulee', 'tuli', 'menee', 'meni', 'palaa', 'palasi'];
 const BETWEEN = ['jo', 'taas', 'yhä', 'vielä', 'nyt', 'jälleen', 'vihdoin', 'viimein'];
 
@@ -519,8 +534,11 @@ const TO_UNKNOWN = /(?:([aeiouyäö])\1n|seen|siin|h[aeiouyäö]n)$/u;
 const CAPITALISED_WORD = /^\p{Lu}\p{Ll}+$/u;
 
 // Words that tell of a move. In the later chapter's title or text, or after the statement in
-// the earlier chapter, they explain a change of place.
-const TRAVEL_WORDS = ['matka', 'matkust', 'saapu', 'lähtö', 'lähti', 'lähte', 'muutto', 'muutt', 'journey', 'arrival', 'departure'];
+// the earlier chapter, they explain a change of place. Stems, found anywhere in a word: one word
+// too many here only costs a finding. The second row: verbs of moving and what one travels by
+// ("Illalla hän nousi junaan ja ajoi yön yli.").
+const TRAVEL_WORDS = ['matka', 'matkust', 'saapu', 'lähtö', 'lähti', 'lähte', 'muutto', 'muutt', 'journey', 'arrival', 'departure',
+  'ajoi', 'ajaa', 'lensi', 'lentä', 'lento', 'kävel', 'siirty', 'palasi', 'paluu', 'juna', 'bussi', 'laiva'];
 
 function hasTravelWords(text) {
   const value = asText(text).toLowerCase();
@@ -573,11 +591,29 @@ function placeOf(phrase, arriving, places, others) {
   return { known: false, key: fold(phrase), word: phrase };
 }
 
-// Two places are clearly two when the project knows both, or when the words do not even start
-// alike: Helsingissä and Helsinkiin are one place in two cases, and nothing here can lemmatise
+// Two capitalised words name one place when they start alike: Helsingissä and Helsinkiin are one
+// place in two cases, and nothing here can lemmatise
+const startsAlike = (a, b) => fold(a).slice(0, 3) === fold(b).slice(0, 3);
+
+// Two places are clearly two when the project knows both and they are two of its places, or when
+// both are capitalised words that do not even start alike. A place of the project beside a place
+// name is never clearly another place: the one is as often inside the other (the station of the
+// town), and nothing here knows.
 function clearlyDifferent(a, b) {
-  if (a.known && b.known) return a.key !== b.key;
-  return fold(a.word).slice(0, 3) !== fold(b.word).slice(0, 3);
+  if (a.known !== b.known) return false;
+  if (a.known) return a.key !== b.key;
+  return !startsAlike(a.word, b.word);
+}
+
+const CAPITALISED_IN_TEXT = /(?<![\p{L}\p{N}])\p{Lu}\p{L}+/gu;
+
+// Does the text name the place, in any form? A place of the project by the form rule, a
+// capitalised word by the test above.
+function namesPlace(text, place, places) {
+  if (place.known) {
+    return matchPrepared(text, places.prepared).matches.some(match => fold(places.names.get(match.entryId)) === place.key);
+  }
+  return (text.match(CAPITALISED_IN_TEXT) || []).some(word => startsAlike(word, place.word));
 }
 
 /**
@@ -588,6 +624,8 @@ function clearlyDifferent(a, b) {
  * sentence of narration, a verb of being or arriving, and a place the project knows or a
  * capitalised word in a local case, alone in its clause ("Aino oli Helsingissä."). A statement
  * of arriving in the later chapter is itself the move, and travel words keep their exemption.
+ * So does the earlier chapter when it names the later place after the statement ("Aino oli
+ * Helsingissä. Illalla hän nousi junaan ja ajoi yön yli Turkuun."): the move is told there.
  * occurrences: the two statements, each at its place in the real text.
  */
 function locationFindings(project) {
@@ -644,7 +682,9 @@ function locationFindings(project) {
       const from = prev.last;
       const to = curr.first;
       if (to.arriving || !clearlyDifferent(from, to)) continue;
-      if (hasTravelWords(curr.chapter.title) || hasTravelWords(curr.read.text) || hasTravelWords(prev.read.text.slice(from.to))) continue;
+      const afterStatement = prev.read.text.slice(from.to);
+      if (hasTravelWords(curr.chapter.title) || hasTravelWords(curr.read.text) || hasTravelWords(afterStatement)) continue;
+      if (namesPlace(afterStatement, to, places)) continue;
 
       const name = nameOf(character);
       findings.push({

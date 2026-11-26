@@ -143,6 +143,58 @@ describe('a whole run reports only what a reader would agree with', () => {
   });
 });
 
+// Review of F1 to F4: the rules run when the check starts, and the model step then waits (23 s in the
+// live run). app.js hands the checker every new project meanwhile (its effect on [project]) and, after
+// the run, carries the checker's marks into its state through mapAnnotationsBetween(marks, the text
+// the checker holds, the text now). So the checker must hold the text its offsets were counted in.
+describe('a chapter edited while the check runs', () => {
+  const { mapAnnotationsBetween } = require('../../src/editor/annotationMapping');
+  // runConsistencyCheck of app.js, the carry-over into the state
+  const carry = (state, checked) => state.structure.map(ch => {
+    const stale = checked.structure.find(item => item.id === ch.id);
+    const marks = mapAnnotationsBetween((stale.annotations || []).filter(mark => mark.type === 'ai_consistency'), stale.content, ch.content);
+    return marks.map(mark => ({ chapter: ch.id, under: ch.content.slice(mark.position, mark.position + mark.length), position: mark.position }));
+  }).flat();
+  // A run whose model answers only when released; the app's effect is played by `edit`
+  const runWhile = async (before, edit) => {
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    const checker = new window.ConsistencyChecker(before, {}, async () => { await gate; return { success: true, data: NO_CONTRADICTION }; });
+    const run = checker.runFullCheck();
+    const after = edit(before);
+    checker.project = after;
+    release();
+    return { checker, after, result: await run };
+  };
+  const withFirst = (project, content) => ({ ...project, structure: [{ ...project.structure[0], content }, ...project.structure.slice(1)] });
+
+  test('text typed above the date: the mark lands on the date, not on the old offset in the new text', async () => {
+    const typed = 'Tämä lause kirjoitettiin tarkistuksen aikana. ';
+    const { checker, after, result } = await runWhile(KAKSI(), before => withFirst(before, typed + before.structure[0].content));
+
+    expect(result.errors.map(error => error.type)).toEqual(['timeline_error']);
+    // The checker holds the text it read, with the mark at the rule's place in it
+    expect(checker.project.structure[0].content).toBe(KAKSI().structure[0].content);
+    expect(checker.project.structure[0].annotations).toMatchObject([{ position: 21, length: 8 }]);
+    expect(carry(after, checker.project)).toEqual([{ chapter: 'a', under: '1.5.2020', position: 21 + typed.length }]);
+  });
+
+  test('text deleted above the date, and the date itself deleted', async () => {
+    const shorter = await runWhile(KAKSI(), before => withFirst(before, before.structure[0].content.replace('Aino saapui ', '')));
+    expect(carry(shorter.after, shorter.checker.project)).toEqual([{ chapter: 'a', under: '1.5.2020', position: 9 }]);
+
+    // The marked text is gone: the mark stays as a point at the place of the deletion (F1)
+    const gone = await runWhile(KAKSI(), before => withFirst(before, before.structure[0].content.replace('1.5.2020 ', '')));
+    expect(carry(gone.after, gone.checker.project)).toEqual([{ chapter: 'a', under: '', position: 21 }]);
+  });
+
+  test('an untouched run leaves the checker with the project it was given, marked', async () => {
+    const { checker, after, result } = await runWhile(KAKSI(), before => before);
+    expect(result.annotations).toHaveLength(1);
+    expect(carry(after, checker.project)).toEqual([{ chapter: 'a', under: '1.5.2020', position: 21 }]);
+  });
+});
+
 describe('the auto-fix of a name variation', () => {
   const project = () => book([{ id: 'char-1', name: 'Väinö Lehto' }], [
     chapter('a', 'Eka', 'Illalla Väinö tuli kotiin. Sitten Väinnö söi, ja Väinnön kissa nukkui Väinön sylissä. [TODO: Väinnö?]'),

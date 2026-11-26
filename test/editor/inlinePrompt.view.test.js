@@ -737,6 +737,9 @@ describe('placement: the prompt never covers its target and never runs past the 
     box.mockReturnValue(rect(504, 0, 1024, 60));
     tip.positioned(space);
     expect(room()).toBe('120px');
+    // Review of F3: the floor is not given without moving the prompt. What the side lacks (120 - 44) goes
+    // over the anchor, so the prompt's far end stays where the side's room ends
+    expect(tip.offset).toEqual({ x: 0, y: -76 });
   });
 
   test('before a new prompt is placed, the text scrolls so that it fits under the target; the same prompt on a new range does not scroll', async () => {
@@ -824,6 +827,50 @@ describe('the layout of a prompt whose context list is open (F3)', () => {
       .toEqual({ compact: true, room: 120, shift: 0, listRoom: 96, capped: true });
     expect(promptLayoutFor({ ...SAMPLE, sideRoom: 371, fullRoom: 576, others: 201, twoLine: NaN, oneLine: NaN }))
       .toEqual({ compact: true, room: 576, shift: 205, listRoom: 373, capped: true });
+  });
+
+  // Review of F1 to F4. The floor of 120px was given to the room without moving the prompt, and a prompt
+  // without a list was never laid out over its anchor. Under a target as tall as the text pane (its end at
+  // the pane's lower edge, 11px of room) the prompt stood at 596–716 in a 640px window, its foot outside;
+  // under a paragraph of five lines (241px of room) it scrolled as a whole. Now the side's room is taken
+  // as it is, and what is missing goes over the anchor, with or without a list.
+  // Measured in the app: the idle prompt's rows take 253px at both window sizes, its edges 2.
+  test('a side with next to no room: what is missing goes over the anchor, so the far end stays inside the gutter', () => {
+    // 1024 × 640, the whole chapter selected: 11px under the target's end
+    expect(promptLayoutFor({ sideRoom: 11, fullRoom: 576, others: 253, border: 2 }))
+      .toEqual({ compact: false, room: 256, shift: 245, listRoom: null, capped: false });
+    // The list open (four parts on one line each: 156px; the other rows 201px)
+    expect(promptLayoutFor({ sideRoom: 11, fullRoom: 576, others: 201, border: 2, twoLine: 220, oneLine: 156 }))
+      .toEqual({ compact: true, room: 360, shift: 349, listRoom: 157, capped: false });
+    // A long list in the same place: the whole height, and the list scrolls in what is left
+    expect(promptLayoutFor({ sideRoom: 11, fullRoom: 576, others: 201, border: 2, twoLine: 772, oneLine: 676 }))
+      .toEqual({ compact: true, room: 576, shift: 565, listRoom: 373, capped: true });
+    // No room, and less than none (the anchor's end under the gutter's gap)
+    expect(promptLayoutFor({ sideRoom: 0, fullRoom: 576, others: 253, border: 2 })).toMatchObject({ room: 256, shift: 256 });
+    expect(promptLayoutFor({ sideRoom: -4, fullRoom: 576, others: 253, border: 2 })).toMatchObject({ room: 256, shift: 260 });
+    // In every room smaller than the prompt: the prompt's far end (room - shift from the anchor) is the side's
+    for (const sideRoom of [-40, -4, 0, 1, 11, 119, 120, 121, 241, 254]) {
+      for (const list of [{}, { twoLine: 220, oneLine: 156 }, { twoLine: 772, oneLine: 676 }]) {
+        const layout = promptLayoutFor({ sideRoom, fullRoom: 576, others: 253, border: 2, ...list });
+        expect(layout.room - layout.shift).toBe(sideRoom);
+        expect(layout.room).toBeLessThanOrEqual(576);
+      }
+    }
+  });
+
+  test('a prompt without a list that its side cannot hold reaches over its anchor; one that fits is not touched', () => {
+    // 1024 × 640, a paragraph of five lines selected: 241px under it, the idle prompt needs 255
+    expect(promptLayoutFor({ sideRoom: 241, fullRoom: 576, others: 253, border: 2 }))
+      .toEqual({ compact: false, room: 256, shift: 15, listRoom: null, capped: false });
+    // It fits: the side's room as before, no shift (1440 × 900: 602px; and exactly as high as the room)
+    expect(promptLayoutFor({ sideRoom: 602, fullRoom: 836, others: 253, border: 2 }))
+      .toEqual({ compact: false, room: 602, shift: 0, listRoom: null, capped: false });
+    expect(promptLayoutFor({ sideRoom: 255, fullRoom: 576, others: 253, border: 2 })).toMatchObject({ room: 255, shift: 0 });
+    // Only a prompt that the whole height cannot hold scrolls as a whole (an error with a long answer shown)
+    expect(promptLayoutFor({ sideRoom: 241, fullRoom: 576, others: 700, border: 2 })).toMatchObject({ room: 576, shift: 335 });
+    // Rows that cannot be read: the least height, still inside the gutter
+    expect(promptLayoutFor({ sideRoom: 44, fullRoom: 576, others: NaN })).toMatchObject({ room: 120, shift: 76 });
+    expect(promptLayoutFor({ sideRoom: NaN, fullRoom: NaN, others: NaN })).toEqual({ compact: false, room: 120, shift: 0, listRoom: null, capped: false });
   });
 
   // jsdom has no layout: the prompt's and the list's heights follow what the core has written, as a browser's would
@@ -938,6 +985,79 @@ describe('the layout of a prompt whose context list is open (F3)', () => {
     cmPlace(tip, long, anchor, space);
     expect(long.state()).toEqual({ compact: true, capped: true, room: '576px', listRoom: '373px', bridge: '', offset: -223 });
     expect(long.drawn()).toMatchObject({ top: 32, bottom: 608 });
+  });
+
+  test('a target as tall as the text pane: the prompt stands between the gutters at once, list closed or open (review of F3)', () => {
+    const editor = setup(layers[0]);
+    editor.openEdit();
+    const tip = cmView.getTooltip(editor.view, editor.tooltips()[0]);
+    const space = { left: 16, top: 16, right: 1008, bottom: 624 };                 // 1024 × 640 less the gutters
+    // The whole chapter is the target: its start far above the window, its end at the pane's lower edge
+    const anchor = { top: -683, bottom: 596 };
+    const idle = fakeLayout(tip, { others: 255, twoLine: 220, oneLine: 156 });     // the idle prompt, edges counted
+    idle.list.remove();
+
+    // CodeMirror has the prompt under the target's end, 596–851 in a 640px window. Drawn at once where it
+    // belongs: 244px over the target, its lower end where the 12px of room end (624 - 596 - 16)
+    cmPlace(tip, idle, anchor, space);
+    expect(idle.state()).toEqual({ compact: false, capped: false, room: '256px', listRoom: '', bridge: '-244px', offset: -244 });
+    expect(idle.drawn()).toMatchObject({ top: 352, bottom: 607 });
+    // The prompt does not scroll as a whole: it is as high as its rows
+    expect(idle.height()).toBe(255);
+    cmPlace(tip, idle, anchor, space);
+    expect(idle.state()).toEqual({ compact: false, capped: false, room: '256px', listRoom: '', bridge: '', offset: -244 });
+    expect(idle.drawn()).toMatchObject({ top: 352, bottom: 607 });
+
+    // Muuta: the list opens (the quick actions step aside in the low window, so the other rows take 203px)
+    const open = fakeLayout(tip, { others: 203, twoLine: 220, oneLine: 156 });
+    cmPlace(tip, open, anchor, space);
+    expect(open.state()).toEqual({ compact: true, capped: false, room: '360px', listRoom: '157px', bridge: '-104px', offset: -348 });
+    expect(open.drawn()).toMatchObject({ top: 248, bottom: 607 });
+    cmPlace(tip, open, anchor, space);
+    expect(open.state()).toMatchObject({ bridge: '', offset: -348 });
+    expect(open.drawn()).toMatchObject({ top: 248, bottom: 607 });
+
+    // Above its target with 8px of room over it (40 - 16 - 16): the prompt reaches down, its upper end stays
+    const other = setup(layers[0]);
+    other.openEdit();
+    const upper = cmView.getTooltip(other.view, other.tooltips()[0]);
+    upper.dom.classList.add('cm-tooltip-above');
+    const high = fakeLayout(upper, { others: 255, twoLine: 220, oneLine: 156 });
+    high.list.remove();
+    cmPlace(upper, high, { top: 40, bottom: 900 }, space);
+    expect(high.state()).toMatchObject({ room: '256px', offset: -248 });
+    expect(high.drawn()).toMatchObject({ top: 33, bottom: 288 });
+    cmPlace(upper, high, { top: 40, bottom: 900 }, space);
+    expect(high.state()).toMatchObject({ bridge: '', offset: -248 });
+    expect(high.drawn()).toMatchObject({ top: 33, bottom: 288 });
+  });
+
+  test('a prompt whose rows grew past its room is measured without the cap (review of F3)', () => {
+    // Measured in the app: a capped prompt has a scroller's bar of 15px, the quick actions wrap onto a
+    // second line, and scrollHeight reads 281 for rows of 253
+    const editor = setup(layers[0]);
+    editor.openEdit();
+    const tip = cmView.getTooltip(editor.view, editor.tooltips()[0]);
+    const dom = tip.dom;
+    let rows = 255;
+    const cap = () => parseFloat(dom.style.getPropertyValue('--cm-faust-prompt-room'));
+    const capped = () => Number.isFinite(cap()) && cap() < rows;
+    const shown = () => (capped() ? cap() : rows);
+    Object.defineProperty(dom, 'scrollHeight', { configurable: true, get: () => rows + (capped() ? 28 : 0) });
+    Object.defineProperty(dom, 'clientHeight', { configurable: true, get: shown });
+    Object.defineProperty(dom, 'offsetHeight', { configurable: true, get: shown });
+    jest.spyOn(dom, 'getBoundingClientRect').mockImplementation(() => rect(488, 300, 1008, 300 + shown()));
+    const space = { left: 16, top: 16, right: 1008, bottom: 624 };
+
+    tip.positioned(space);
+    expect(dom.style.getPropertyValue('--cm-faust-prompt-room')).toBe('308px');     // 624 - 300 - 16: it fits
+    expect(tip.offset).toEqual({ x: 0, y: 0 });
+    // The model's answer makes the rows 340px: more than the room, so the prompt is capped when it is laid out again
+    rows = 340;
+    expect(dom.scrollHeight).toBe(368);
+    tip.positioned(space);
+    expect(dom.style.getPropertyValue('--cm-faust-prompt-room')).toBe('341px');     // its rows and one pixel, not 369
+    expect(tip.offset).toEqual({ x: 0, y: -33 });                                   // 341 - 308 over the anchor
   });
 
   test('when the list opens, the text first gives the two-line list room, and the prompt follows it in the same frame', () => {
