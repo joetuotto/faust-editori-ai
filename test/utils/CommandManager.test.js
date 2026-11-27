@@ -235,3 +235,89 @@ test('the marks of the state are never changed in place by a step', () => {
   expect(JSON.stringify(marks)).toBe(frozen);
   expect(doc.marks()).not.toBe(marks);
 });
+
+// ---------------------------------------------------------------------------
+// Bookmarks follow the steps of the history the same way: a step notes the project's bookmarks as
+// they stood on the text it writes over, and hands them to the setter on the way back.
+// ---------------------------------------------------------------------------
+
+function createBookmarkedProject(content, bookmarks) {
+  let project = { structure: [{ id: 'chapter-1', content, wordCount: 0 }, { id: 'chapter-2', content: 'Toinen luku.', wordCount: 2 }], bookmarks };
+  return {
+    setProject: (update, edit) => { project = followEdits(project, typeof update === 'function' ? update(project) : update, edit); },
+    change: (fn) => { project = fn(project); },
+    text: () => project.structure[0].content,
+    bookmarks: () => project.bookmarks,
+    // The text that follows a bookmark
+    after: (id, length = 9) => {
+      const found = project.bookmarks.find(item => item.id === id);
+      return project.structure[0].content.slice(found.position, found.position + length);
+    }
+  };
+}
+const bookmarkAt = (text, words, id, chapterId = 'chapter-1') => ({ id, chapterId, position: text.indexOf(words), name: id, context: '' });
+
+test('typing above a bookmark moves it with its text; undo returns it to where it was, redo moves it again', () => {
+  const manager = new CommandManager();
+  const elsewhere = bookmarkAt('Toinen luku.', 'luku', 'b2', 'chapter-2');
+  const doc = createBookmarkedProject(PROSE, [bookmarkAt(PROSE, 'laukkunsa', 'b1'), elsewhere]);
+  const start = doc.bookmarks()[0].position;
+
+  const at = PROSE.indexOf('Asemalla');
+  'Ilta. '.split('').forEach((char, i) => {
+    step(manager, doc, typeAt(doc.text(), at + i, char), { changes: [{ from: at + i, to: at + i, insert: char }] });
+  });
+  expect(manager.undoStack).toHaveLength(1);
+  expect(doc.bookmarks()[0].position).toBe(start + 6);
+  expect(doc.after('b1')).toBe('laukkunsa');
+  expect(doc.bookmarks()[1]).toBe(elsewhere);                   // another chapter's bookmark is never touched
+
+  expect(manager.undo()).toBe(true);
+  expect(doc.text()).toBe(PROSE);
+  expect(doc.bookmarks()[0].position).toBe(start);
+  expect(manager.redo()).toBe(true);
+  expect(doc.after('b1')).toBe('laukkunsa');
+  expect(doc.bookmarks()[1]).toBe(elsewhere);
+});
+
+test('a bookmark inside a deleted passage returns to its word on undo, not to the end of the passage', () => {
+  const manager = new CommandManager();
+  const doc = createBookmarkedProject(PROSE, [bookmarkAt(PROSE, 'laukkunsa', 'b1')]);
+  const from = PROSE.indexOf('Hän');
+  step(manager, doc, PROSE.slice(0, from), { meta: { noMerge: true }, changes: [{ from, to: PROSE.length, insert: '' }] });
+  expect(doc.bookmarks()).toHaveLength(1);                      // never dropped
+  expect(doc.bookmarks()[0].position).toBe(from);
+
+  manager.undo();
+  expect(doc.after('b1')).toBe('laukkunsa');                    // mapping alone would leave it after the passage
+  manager.redo();
+  expect(doc.bookmarks()[0].position).toBe(from);
+  manager.undo();
+  expect(doc.after('b1')).toBe('laukkunsa');
+});
+
+test('on undo a bookmark made after the step follows the text, and one removed since stays removed', () => {
+  const manager = new CommandManager();
+  const doc = createBookmarkedProject(PROSE, [bookmarkAt(PROSE, 'laukkunsa', 'b1')]);
+  const longer = 'Oli jo ilta. ' + PROSE;
+  step(manager, doc, longer, { meta: { noMerge: true }, changes: [{ from: 0, to: 0, insert: 'Oli jo ilta. ' }] });
+
+  // The author removes the old bookmark and adds one, both outside the history
+  doc.change(project => ({ ...project, bookmarks: [bookmarkAt(longer, 'ketään', 'b2')] }));
+  manager.undo();
+  expect(doc.text()).toBe(PROSE);
+  expect(doc.bookmarks().map(item => item.id)).toEqual(['b2']);
+  expect(doc.after('b2', 6)).toBe('ketään');
+});
+
+test('the bookmarks of the state are never changed in place by a step', () => {
+  const manager = new CommandManager();
+  const bookmarks = [bookmarkAt(PROSE, 'laukkunsa', 'b1')];
+  const frozen = JSON.stringify(bookmarks);
+  const doc = createBookmarkedProject(PROSE, bookmarks);
+  step(manager, doc, 'Yö. ' + PROSE, { meta: { noMerge: true } });
+  manager.undo();
+  manager.redo();
+  expect(JSON.stringify(bookmarks)).toBe(frozen);
+  expect(doc.bookmarks()).not.toBe(bookmarks);
+});

@@ -148,6 +148,8 @@ class UpdateContentCommand {
     // The chapter's margin marks as they stood on oldContent and on newContent, noted when the step
     // writes over that text: an undo or a redo puts the marks back exactly where they were
     this.marksOn = { old: null, new: null };
+    // The project's bookmarks, noted the same way: they are places in the text too
+    this.bookmarksOn = { old: null, new: null };
 
     // Typing run bookkeeping: a run is a series of small changes of the same
     // kind (inserting or deleting) with no long pause in between
@@ -194,6 +196,7 @@ class UpdateContentCommand {
     // run's earlier end no longer describe it
     this.changes = null;
     this.marksOn.new = null;
+    this.bookmarksOn.new = null;
     return true;
   }
 
@@ -207,23 +210,31 @@ class UpdateContentCommand {
 
   /**
    * Put the text of one side of the step ('old' or 'new') in place of the other. The margin marks
-   * are not moved here: the app's project setter does that for every update (followEdits in
-   * src/editor/annotationMapping.js) and takes what this step knows as its second argument: the
-   * change list, and the marks as they stood on the text being put back. A setter that takes the
-   * update alone (the tests' plain one) works as before.
+   * and the bookmarks are not moved here: the app's project setter does that for every update
+   * (followEdits in src/editor/annotationMapping.js) and takes what this step knows as its second
+   * argument: the change list, and the marks and bookmarks as they stood on the text being put
+   * back. A setter that takes the update alone (the tests' plain one) works as before.
    */
   write(from, to, changes) {
     const leaving = from === 'old' ? this.oldContent : this.newContent;
     const content = to === 'old' ? this.oldContent : this.newContent;
-    this.setProject(prev => ({
-      ...prev,
-      structure: prev.structure.map(ch => {
+    this.setProject(prev => {
+      // Noted only on the text this step knows; marks and bookmarks are state and never changed in place
+      let known = false;
+      const structure = prev.structure.map(ch => {
         if (ch.id !== this.chapterId) return ch;
-        // The marks are noted only on the text this step knows; they are state and never changed in place
-        this.marksOn[from] = ch.content === leaving && Array.isArray(ch.annotations) ? ch.annotations : null;
+        known = ch.content === leaving;
+        this.marksOn[from] = known && Array.isArray(ch.annotations) ? ch.annotations : null;
         return { ...ch, content, wordCount: countWords(content) };
-      })
-    }), { chapterId: this.chapterId, changes, restore: () => this.marksOn[to] });
+      });
+      this.bookmarksOn[from] = known && Array.isArray(prev.bookmarks) ? prev.bookmarks : null;
+      return { ...prev, structure };
+    }, {
+      chapterId: this.chapterId,
+      changes,
+      restore: () => this.marksOn[to],
+      restoreBookmarks: () => this.bookmarksOn[to]
+    });
   }
 }
 

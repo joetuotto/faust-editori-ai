@@ -110,4 +110,14 @@ describe('the wiring of app.js and FaustEditor.js', () => {
   test('the consistency checker\'s marks are moved onto the text as it is when they arrive', () => {
     expect(app).toContain('...mapAnnotationsBetween((stale.annotations || []).filter(a => a.type === AI_CONSISTENCY), stale.content, ch.content)');
   });
+
+  // Bookmarks are moved by the same setter (followEdits), so the app only has to read them as they are now
+  test('a bookmark\'s row reads its words from the chapter\'s text now, and a jump needs a chapter that exists', () => {
+    expect(app).toContain("const context = chapter ? excerptAround(chapter.content, bookmark.position) : stripMarkers(bookmark.context).trim();");
+    // The words kept with the bookmark are read the same way when it is made
+    expect(app).toContain('const context = excerptAround(activeChapter.content, position);');
+    expect(app).toMatch(/const jumpToBookmark = \(bookmark\) => \{[^}]*if \(!\(project\.structure \|\| \[\]\)\.some\(ch => ch\.id === bookmark\.chapterId\)\) \{\s*notify\('warning', 'Kirjanmerkin luku on poistettu\.'\);\s*return;/);
+    // No path of the app writes a bookmark's position itself: the list is only added to and filtered
+    expect(app.match(/bookmarks: /g)).toHaveLength(3);
+  });
 });

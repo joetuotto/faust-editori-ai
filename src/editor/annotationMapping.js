@@ -26,6 +26,11 @@
  * followEdits is where the rule is applied: the app's project setter passes every update of the
  * project through it (app.js), so no path that writes a chapter's text can leave the marks behind.
  *
+ * Bookmarks (kirjanmerkit, project.bookmarks: { id, chapterId, position }) are places in a
+ * chapter's text too, and they follow it by the same rule, as point marks: a bookmark stands in
+ * front of the text that follows it, and one whose surroundings are deleted stays at the place of
+ * the deletion. followEdits moves them in the same pass.
+ *
  * Pure functions, no DOM, nothing from @codemirror (test/editor/annotationMapping.test.js).
  */
 
@@ -54,6 +59,22 @@ function placedMark(mark, place) {
   if (mark.position === place.position && lengthOf(mark) === length) return mark;
   return { ...mark, position: place.position, length };
 }
+
+/** A place without a length (a bookmark) where the mapper puts it; the same object when it does not move. */
+function movedPoint(point, mapPos) {
+  if (!hasPlace(point)) return point;
+  const position = mapRange(point.position, point.position, mapPos).from;
+  return position === point.position ? point : { ...point, position };
+}
+
+/** The bookmark at a place noted earlier; the same object when it stands there. */
+function placedPoint(point, place) {
+  return point.position === place.position ? point : { ...point, position: place.position };
+}
+
+// The two kinds of things that stand on a text: a margin mark covers a range, a bookmark is a point
+const AS_RANGE = { moved: movedMark, placed: placedMark };
+const AS_POINT = { moved: movedPoint, placed: placedPoint };
 
 // A list with each mark replaced by move(mark); the same array when no mark moved
 function eachMark(annotations, move) {
@@ -116,17 +137,11 @@ function mapAnnotationsBetween(annotations, oldText, newText) {
   return eachMark(annotations, mark => movedMark(mark, mapPos));
 }
 
-// The marks of one chapter after an update that changed its text and left the marks as they were
-function followChapter(before, chapter, edit) {
-  const marks = chapter.annotations;
-  // No marks; or the update brought its own (a tilannekuva, an added, edited or removed mark): as they are
-  if (!Array.isArray(marks) || marks.length === 0 || marks !== before.annotations) return chapter;
-  const from = textOf(before.content);
-  const to = textOf(chapter.content);
-  if (from === to) return chapter;
-
+// Marks that stood on the text `from` (a chapter's margin marks, or its bookmarks), on the text `to`
+// an update wrote. `earlier` is the same kind of marks as they stood on `to` before, when the writer
+// knows them (an undo, a redo); `as` is AS_RANGE or AS_POINT. The same array when no mark moved.
+function followText(marks, from, to, edit, earlier, as) {
   // An undo or a redo puts back a text the marks have stood on: those that were there return to their places
-  const earlier = edit && typeof edit.restore === 'function' ? edit.restore() : null;
   const places = new Map();
   if (Array.isArray(earlier)) {
     for (const mark of earlier) if (hasPlace(mark) && mark.id != null) places.set(mark.id, mark);
@@ -140,22 +155,58 @@ function followChapter(before, chapter, edit) {
       : mapperBetween(marks.filter(mark => !placed(mark)), from, to).mapPos;
   }
 
-  const moved = eachMark(marks, mark => (placed(mark) ? placedMark(mark, places.get(mark.id)) : movedMark(mark, mapPos)));
+  return eachMark(marks, mark => (placed(mark) ? as.placed(mark, places.get(mark.id)) : as.moved(mark, mapPos)));
+}
+
+// What the writer noted of the marks as they stood on the text being put back, if it noted any
+const notedBy = (edit, name) => (edit && typeof edit[name] === 'function' ? edit[name]() : null);
+
+// The marks of one chapter after an update that changed its text and left the marks as they were
+function followChapter(before, chapter, edit) {
+  const marks = chapter.annotations;
+  // No marks; or the update brought its own (a tilannekuva, an added, edited or removed mark): as they are
+  if (!Array.isArray(marks) || marks.length === 0 || marks !== before.annotations) return chapter;
+  const from = textOf(before.content);
+  const to = textOf(chapter.content);
+  if (from === to) return chapter;
+
+  const moved = followText(marks, from, to, edit, notedBy(edit, 'restore'), AS_RANGE);
   return moved === marks ? chapter : { ...chapter, annotations: moved };
 }
 
+// The project's bookmarks after an update that changed one chapter's text: those of that chapter
+// follow it, the others are the same objects. The same array when no bookmark moved.
+function followBookmarks(bookmarks, before, chapter, edit) {
+  const from = textOf(before.content);
+  const to = textOf(chapter.content);
+  if (from === to) return bookmarks;
+  const here = (mark) => !!mark && mark.chapterId === chapter.id;
+  const own = bookmarks.filter(here);
+  if (own.length === 0) return bookmarks;
+
+  const noted = notedBy(edit, 'restoreBookmarks');
+  const moved = followText(own, from, to, edit, Array.isArray(noted) ? noted.filter(here) : null, AS_POINT);
+  if (moved === own) return bookmarks;
+  const next = new Map(own.map((mark, index) => [mark, moved[index]]));
+  return bookmarks.map(mark => (next.has(mark) ? next.get(mark) : mark));
+}
+
 /**
- * The project after an update, its margin marks moved onto the text the update wrote. Where the
- * update changed a chapter's `content` and left its `annotations` array as it was, the marks are
- * mapped; a chapter whose update set its own `annotations` (a restored tilannekuva, a new mark),
- * a new chapter (an import) and a chapter whose text did not change are returned as they are.
+ * The project after an update, its margin marks and bookmarks moved onto the text the update
+ * wrote. Where the update changed a chapter's `content` and left its `annotations` array as it
+ * was, the marks are mapped; a chapter whose update set its own `annotations` (a restored
+ * tilannekuva, a new mark), a new chapter (an import) and a chapter whose text did not change are
+ * returned as they are. The same holds for `bookmarks`, the one list of the project: where the
+ * update left it as it was, the bookmarks of every chapter whose text changed are mapped; a list
+ * the update set itself (a new or removed bookmark, another project) is kept.
  *
  * @param {object} prev the project before the update
- * @param {object} next the project the update made (not changed; returned as it is when no mark moved)
+ * @param {object} next the project the update made (not changed; returned as it is when nothing moved)
  * @param {{ chapterId: string, changes?: Array<{from: number, to: number, insert: string}>,
- *           restore?: () => (object[] | null) }} [edit] what the writer knows about its change of
- *   one chapter's text: the precise change list (used when it fits the two texts), and for an
- *   undo or a redo the chapter's marks as they stood on the text being put back
+ *           restore?: () => (object[] | null), restoreBookmarks?: () => (object[] | null) }} [edit]
+ *   what the writer knows about its change of one chapter's text: the precise change list (used
+ *   when it fits the two texts), and for an undo or a redo the chapter's marks and the project's
+ *   bookmarks as they stood on the text being put back
  * @returns {object}
  */
 function followEdits(prev, next, edit) {
@@ -164,7 +215,7 @@ function followEdits(prev, next, edit) {
   try {
     return followed(prev, next, edit);
   } catch (error) {
-    console.error('[Annotations] The margin marks could not follow a change of the text:', error);
+    console.error('[Annotations] The margin marks and bookmarks could not follow a change of the text:', error);
     return next;
   }
 }
@@ -175,6 +226,11 @@ function followed(prev, next, edit) {
   const after = next.structure;
   if (before === after || !Array.isArray(before) || !Array.isArray(after)) return next;
 
+  // Bookmarks the update left as they were follow the text; a list it set itself is kept as it is
+  const kept = Array.isArray(next.bookmarks) && next.bookmarks.length > 0 && next.bookmarks === prev.bookmarks
+    ? next.bookmarks
+    : null;
+  let bookmarks = kept;
   let byId = null;
   let structure = null;
   for (let index = 0; index < after.length; index++) {
@@ -187,12 +243,18 @@ function followed(prev, next, edit) {
       old = byId.get(chapter.id);
       if (!old || old === chapter) continue;
     }
-    const followed = followChapter(old, chapter, edit && edit.chapterId === chapter.id ? edit : null);
+    const known = edit && edit.chapterId === chapter.id ? edit : null;
+    if (bookmarks) bookmarks = followBookmarks(bookmarks, old, chapter, known);
+    const followed = followChapter(old, chapter, known);
     if (followed === chapter) continue;
     if (!structure) structure = after.slice();
     structure[index] = followed;
   }
-  return structure ? { ...next, structure } : next;
+  if (!structure && bookmarks === kept) return next;
+  const moved = { ...next };
+  if (structure) moved.structure = structure;
+  if (bookmarks !== kept) moved.bookmarks = bookmarks;
+  return moved;
 }
 
 module.exports = {

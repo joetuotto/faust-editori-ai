@@ -231,6 +231,15 @@ const excerptOf = (text, start, end, radius) => {
   return { before: stripMarkers(before).replace(/^\s+/, ''), hit: stripMarkers(text.substring(start, end)), after: stripMarkers(after).replace(/\s+$/, '') };
 };
 
+// The words around a place in a chapter's text, as a bookmark's row shows them
+const BOOKMARK_EXCERPT_RADIUS = 30;
+const excerptAround = (text, position) => {
+  const content = String(text || '');
+  const at = Math.max(0, Math.min(Number.isFinite(position) ? position : 0, content.length));
+  const near = excerptOf(content, at, at, BOOKMARK_EXCERPT_RADIUS);
+  return (near.before + near.after).trim();
+};
+
 // Status chip classes (visual foundations 4.4), used with LABELS.status
 const STATUS_CHIP = {
   plan: 'faust-chip--hollow',
@@ -1879,10 +1888,9 @@ function FAUSTApp() {
     if (!editorRef.current || !activeChapterId) return;
 
     const position = editorRef.current.selectionStart;
-    const content = activeChapter.content || '';
-    // The words around the cursor, cut at word boundaries and without Markdown markers
-    const near = excerptOf(content, position, position, 30);
-    const context = (near.before + near.after).trim();
+    // The words around the cursor, cut at word boundaries and without Markdown markers. Kept with the
+    // bookmark for the day its chapter is gone; while the chapter is there the row reads them from its text.
+    const context = excerptAround(activeChapter.content, position);
 
     const bookmark = {
       id: `bookmark-${Date.now()}`,
@@ -1911,7 +1919,14 @@ function FAUSTApp() {
     setUnsavedChanges(true);
   };
 
+  // A bookmark's position follows its chapter's text (followEdits in src/editor/annotationMapping.js), so the
+  // one in the project now is the place to go to
   const jumpToBookmark = (bookmark) => {
+    // A bookmark whose chapter was deleted has no place: say so and stay where the author is
+    if (!(project.structure || []).some(ch => ch.id === bookmark.chapterId)) {
+      notify('warning', 'Kirjanmerkin luku on poistettu.');
+      return;
+    }
     // Switch to chapter if needed
     if (bookmark.chapterId !== activeChapterId) {
       setActiveChapterId(bookmark.chapterId);
@@ -6228,6 +6243,8 @@ ${contextPrompt}`;
                     // The chapter line shows the chapter's current title
                     const chapter = (project.structure || []).find(ch => ch.id === bookmark.chapterId);
                     const chapterTitle = (chapter ? chapter.title : bookmark.chapterTitle) || 'Nimetön luku';
+                    // The words at the bookmark as they are now: the bookmark follows the text, and so does its row
+                    const context = chapter ? excerptAround(chapter.content, bookmark.position) : stripMarkers(bookmark.context).trim();
                     // A row holds its delete button, so it is a div with role="button", not a button
                     return e('div', {
                       key: bookmark.id,
@@ -6249,7 +6266,7 @@ ${contextPrompt}`;
                           className: 'faust-row__meta',
                           style: { display: 'flex', alignItems: 'center', gap: 'var(--sp-1)' }
                         }, icons.hexagon({ size: 12 }), 'Luku: ' + chapterTitle),
-                        bookmark.context && e('span', { className: 'faust-quote faust-clamp-2' }, `”…${stripMarkers(bookmark.context).trim()}…”`)
+                        context && e('span', { className: 'faust-quote faust-clamp-2' }, `”…${context}…”`)
                       ),
                       e('div', { className: 'faust-row__actions' },
                         e('button', {
