@@ -1239,7 +1239,8 @@ ipcMain.handle('print-manuscript', async (_event, { project, chapterIds = null }
   try {
     const book = manuscript.buildManuscript(project, { chapterIds });
     if (book.chapters.length === 0) {
-      return { success: false, error: 'Projektissa ei ole tulostettavaa tekstiä.' };
+      // empty: nothing went wrong with the printer, there is only nothing to print yet
+      return { success: false, empty: true, error: 'Projektissa ei ole tulostettavaa tekstiä.' };
     }
 
     return await withHiddenPage(manuscript.toHTML(book), (page) => new Promise((resolve) => {

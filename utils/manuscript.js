@@ -118,6 +118,8 @@ function parseBlocks(text) {
 
 /**
  * Chapters of a project in reading order (nested children included).
+ * A chapter or folder without text is left out, as the export dialog tells the writer:
+ * a bare heading in the exported book would be a chapter the writer has not written.
  * options.chapterId or options.chapterIds limit the result to those chapters.
  * @returns {Array<{id: string, title: string, content: string}>}
  */
@@ -128,8 +130,8 @@ function collectChapters(project, { chapterId = null, chapterIds = null } = {}) 
     for (const item of items || []) {
       if (!item) continue;
       const hasContent = typeof item.content === 'string' && item.content.trim().length > 0;
-      if (item.type !== 'folder' || hasContent) {
-        chapters.push({ id: item.id, title: item.title || 'Nimetön luku', content: item.content || '' });
+      if (hasContent) {
+        chapters.push({ id: item.id, title: item.title || 'Nimetön luku', content: item.content });
       }
       walk(item.children);
     }

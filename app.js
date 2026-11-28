@@ -2558,7 +2558,9 @@ function FAUSTApp() {
   const printManuscript = async () => {
     if (!window.electronAPI) return;
     const result = await window.electronAPI.printManuscript({ project });
-    if (!result.success && result.error) {
+    if (result.empty) {
+      notify('warning', 'Projektissa ei ole vielä tekstiä tulostettavaksi.');
+    } else if (!result.success && result.error) {
       console.error('[Print] Error:', result.error);
       notify('error', 'Tulostus epäonnistui. Tarkista tulostin ja yritä uudelleen.');
     }

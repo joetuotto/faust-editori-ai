@@ -123,6 +123,75 @@ describe('collectChapters', () => {
     expect(collectChapters({})).toEqual([]);
     expect(collectChapters(null)).toEqual([]);
   });
+
+  // The export dialog says "N lukua, joista M tyhjä jätetään pois": the main process has to do the same
+  describe('chapters without text', () => {
+    const withEmpty = {
+      title: 'Lumen alla',
+      structure: [
+        { id: 'a', type: 'chapter', title: 'Alku', content: 'Lumi satoi.' },
+        { id: 'tyhja', type: 'chapter', title: 'Kirjoittamaton luku', content: '' },
+        { id: 'valit', type: 'chapter', title: 'Vain rivinvaihtoja', content: ' \n\t\n ' },
+        { id: 'puuttuu', type: 'chapter', title: 'Luonnos ilman kappaleita' },
+        {
+          id: 'osa', type: 'chapter', title: 'Osan otsikko', content: '',
+          children: [{ id: 'kohtaus', type: 'scene', title: 'Kohtaus', content: 'Sisällä oli lämmin.' }]
+        },
+        { id: 'z', type: 'chapter', title: 'Loppu', content: 'Kevät tuli.' }
+      ]
+    };
+    // Titles without ä and ö, so that the same string can be looked for in RTF too (ä is \u228? there)
+    const emptyTitles = ['Kirjoittamaton luku', 'Vain rivinvaihtoja', 'Luonnos ilman kappaleita', 'Osan otsikko'];
+
+    test('are left out of the whole manuscript, their written children are kept', () => {
+      expect(collectChapters(withEmpty).map(c => c.id)).toEqual(['a', 'kohtaus', 'z']);
+    });
+
+    test('are left out also when asked for by id', () => {
+      expect(collectChapters(withEmpty, { chapterIds: ['a', 'tyhja', 'valit'] }).map(c => c.id)).toEqual(['a']);
+      expect(collectChapters(withEmpty, { chapterId: 'tyhja' })).toEqual([]);
+    });
+
+    test('leave no heading in any export format', async () => {
+      const book = buildManuscript(withEmpty);
+      expect(book.chapters.map(c => c.title)).toEqual(['Alku', 'Kohtaus', 'Loppu']);
+
+      const texts = [toPlainText(book), toMarkdown(book), toHTML(book), toRTF(book)];
+      const docx = await JSZip.loadAsync(await toDocx(book));
+      texts.push(await docx.file('word/document.xml').async('string'));
+      const epub = await JSZip.loadAsync(await toEPUB(book));
+      // The book's files as one text: chapter pages, table of contents and package file
+      const epubParts = [];
+      for (const name of Object.keys(epub.files)) {
+        if (/\.(xhtml|ncx|opf)$/.test(name)) epubParts.push(await epub.file(name).async('string'));
+      }
+      expect(epubParts.length).toBeGreaterThan(3);
+      texts.push(epubParts.join('\n'));
+
+      for (const text of texts) {
+        expect(text).toContain('Lumi satoi.');
+        expect(text).toContain('Loppu');
+        for (const title of emptyTitles) expect(text).not.toContain(title);
+      }
+    });
+
+    test('the whole book with one written chapter is still a book with its title page', () => {
+      const book = buildManuscript({
+        title: 'Lumen alla',
+        structure: [
+          { id: 'a', type: 'chapter', title: 'Alku', content: 'Lumi satoi.' },
+          { id: 'b', type: 'chapter', title: 'Kirjoittamaton luku', content: '' }
+        ]
+      });
+      expect(book.chapters.map(c => c.id)).toEqual(['a']);
+      expect(book.single).toBe(false);
+      expect(toMarkdown(book)).toContain('# Lumen alla');
+    });
+
+    test('a project with only unwritten chapters has nothing to export', () => {
+      expect(buildManuscript({ title: 'Uusi', structure: [{ id: 'a', type: 'chapter', title: 'Luku 1', content: '' }] }).chapters).toEqual([]);
+    });
+  });
 });
 
 describe('text exports', () => {
