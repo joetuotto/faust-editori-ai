@@ -16,10 +16,18 @@ const mockState = {
   clients: [],
   calls: [],
   userData: null,
+  cherryLocal: null, // what utils/cherryStudio.js readLocalGateway finds: null is no Cherry Studio
+  cherryReads: 0,
   respond: null      // (params, options) => Promise, set by each case
 };
 
 jest.mock('dotenv', () => ({ config: () => ({}) }));
+
+// The machine's own Cherry Studio is never read here: the read gives what a case puts in mockState
+jest.mock('../../utils/cherryStudio', () => ({
+  ...jest.requireActual('../../utils/cherryStudio'),
+  readLocalGateway: async () => { mockState.cherryReads += 1; return mockState.cherryLocal; }
+}));
 
 jest.mock('electron', () => ({
   app: {
@@ -337,4 +345,98 @@ describe('Pysäytä tekoäly and the old handlers (X-22)', () => {
     mockState.respond = answer('toimii');
     expect(await invoke('claude-api', { prompt: 'Seuraava luku' })).toMatchObject({ success: true, data: 'toimii' });
   }, 10000);
+});
+
+// After every other case: these change the saved source and key
+describe('the Cherry Studio on this computer', () => {
+  const LOCAL = { enabled: true, url: 'http://127.0.0.1:23333', key: 'cs-sk-local-000', defaultModel: 'abc:default-model' };
+  const PASTED = 'provider-key-pasted-by-mistake';
+
+  // ai:get-provider reads Cherry Studio again only when its last read is older than a moment (one
+  // read serves a burst of panels), so each look at the settings here comes a while after the last
+  const realNow = Date.now.bind(Date);
+  let later = 0;
+  let clock;
+  const settings = async () => { later += 60000; return invoke('ai:get-provider'); };
+
+  beforeAll(() => { clock = jest.spyOn(Date, 'now').mockImplementation(() => realNow() + later); });
+
+  afterAll(async () => {
+    mockState.cherryLocal = null;
+    await invoke('prefs:set', { aiOff: false });
+    await invoke('keys:set', { name: 'CHERRY_API_KEY', value: '' });
+    await settings();
+    clock.mockRestore();
+  });
+
+  test('a burst of panels asking for the settings is one read', async () => {
+    await settings();
+    const before = mockState.cherryReads;
+    await Promise.all([invoke('ai:get-provider'), invoke('ai:get-provider'), invoke('ai:get-provider')]);
+    expect(mockState.cherryReads).toBe(before);
+    await settings();
+    expect(mockState.cherryReads).toBe(before + 1);
+  });
+
+  test('its gateway key is used instead of a saved key that is not the gateway\'s, and neither reaches the renderer', async () => {
+    await invoke('ai:set-provider', { provider: 'cherry', model: '' });
+    await invoke('keys:set', { name: 'CHERRY_API_KEY', value: PASTED });
+    mockState.cherryLocal = LOCAL;
+
+    const provider = await settings();
+    expect(provider).toMatchObject({
+      success: true,
+      provider: 'cherry',
+      gatewayUrl: LOCAL.url,
+      model: LOCAL.defaultModel,
+      hasCherryKey: true,
+      hasStoredCherryKey: true,
+      cherryStudio: { found: true, gatewayOn: true, key: true, model: true, provider: false }
+    });
+    const keys = await invoke('load-api-keys');
+    expect(JSON.stringify([provider, keys])).not.toContain(LOCAL.key);
+    expect(JSON.stringify([provider, keys])).not.toContain(PASTED);
+
+    // The request goes to the gateway with the gateway's own key and Cherry Studio's default model
+    const tested = await invoke('ai:test-provider');
+    expect(tested.success).toBe(true);
+    const client = mockState.clients[mockState.clients.length - 1];
+    expect(client.options).toMatchObject({ apiKey: LOCAL.key, baseURL: LOCAL.url });
+    expect(mockState.calls[mockState.calls.length - 1].params.model).toBe(LOCAL.defaultModel);
+  });
+
+  test('the saved key can be removed and the gateway\'s key stays in use', async () => {
+    const removed = await invoke('keys:set', { name: 'CHERRY_API_KEY', value: '' });
+    expect(removed.keys.CHERRY_API_KEY).toBe(true);
+    expect(await settings()).toMatchObject({ hasCherryKey: true, hasStoredCherryKey: false, cherryStudio: { key: true } });
+  });
+
+  test('a model chosen in FAUST stays chosen', async () => {
+    const saved = await invoke('ai:set-provider', { model: 'abc:chosen-model' });
+    expect(saved).toMatchObject({ model: 'abc:chosen-model', cherryStudio: { key: true, model: false } });
+    await invoke('ai:set-provider', { model: '' });
+  });
+
+  test('a gateway that is switched off is reported, and a Cherry Studio that is gone leaves the saved settings', async () => {
+    mockState.cherryLocal = { ...LOCAL, enabled: false };
+    expect((await settings()).cherryStudio).toMatchObject({ found: true, gatewayOn: false });
+
+    mockState.cherryLocal = null;
+    expect(await settings()).toMatchObject({
+      provider: 'cherry', hasCherryKey: false, model: '', cherryStudio: { found: false, gatewayOn: null, key: false, model: false, provider: false }
+    });
+  });
+
+  test('with Tekoäly pois on, Cherry Studio is not read', async () => {
+    mockState.cherryLocal = LOCAL;
+    await invoke('prefs:set', { aiOff: true });
+    const before = mockState.cherryReads;
+    const provider = await settings();
+    expect(mockState.cherryReads).toBe(before);
+    expect(provider.cherryStudio.found).toBe(false);
+
+    await invoke('prefs:set', { aiOff: false });
+    expect((await settings()).cherryStudio.found).toBe(true);
+    expect(mockState.cherryReads).toBe(before + 1);
+  });
 });

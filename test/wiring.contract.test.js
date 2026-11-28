@@ -30,6 +30,7 @@ const MODULES = {
   'scripts/step0/score.js': ['parseResponse', 'isFixed', 'scoreModel'],
   'src/services/format.fi.js': ['formatCount', 'fiDate', 'fiDateTime', 'modelLabel', 'plural', 'pendingSuggestions', 'pendingWords', 'exportScopeHint', 'AI_OFF_SENTENCE'],
   'utils/aiRequest.js': ['AI_CONSTANTS', 'AI_OFF_MESSAGE', 'CANCELLED_MESSAGE', 'codedError', 'validateRequest', 'resolveModel', 'modelSettingsFor', 'buildParams', 'normalizeStopReason', 'normalizeUsage', 'createThinkFilter', 'classifyAIError', 'createRequestTable'],
+  'utils/cherryStudio.js': ['DEFAULT_GATEWAY_URL', 'PREFERENCE_KEYS', 'QUERY', 'FIELD', 'RECORD', 'preferencesPath', 'parseRows', 'toGatewayModelId', 'normalizeGateway', 'sameGateway', 'resolveProvider', 'readLocalGateway'],
   'utils/appSettings.js': ['KEY_NAMES', 'ROLE_NAMES', 'publicKeyStatus', 'applyKeyWrite', 'applyProviderPatch', 'readRoles', 'readModelSettings', 'mergePrefs'],
   'src/services/ai/aiClient.js': ['CLIENT_CONSTANTS', 'ROLES', 'ROLE_LABELS', 'judgeEdit', 'reasonText', 'stopNote', 'createAIClient', 'getAIClient'],
   'src/services/ai/tokenStats.js': ['DEFAULT_CHARS_PER_TOKEN', 'MIN_CALIBRATION_CHARS', 'MAX_PLAUSIBLE_CHARS_PER_TOKEN', 'MIN_PLAUSIBLE_CHARS_PER_TOKEN', 'estimateTokens', 'updateCalibration', 'looksTruncated'],

@@ -776,7 +776,7 @@ describe('createThinkFilter', () => {
 // ---------------------------------------------------------------------------
 
 describe('classifyAIError', () => {
-  const GATEWAY_AUTH = 'Cherry Studio hylkäsi API-avaimen. Kopioi avain Cherry Studiosta (Settings → API Gateway → API Key) ja tallenna se tietopaneelin Tekoäly-välilehdellä.';
+  const GATEWAY_AUTH = 'Cherry Studio hylkäsi API-avaimen. Kenttään kuuluu Cherry Studion oman API Gatewayn avain, ei mallin tarjoajan avain: kopioi se Cherry Studiosta (Settings → API Gateway → API Key) ja tallenna tietopaneelin Tekoäly-välilehdellä.';
 
   test('401 and 403 give `auth` with the gateway text in cherry mode and the Anthropic text in anthropic mode', () => {
     // The gateway answers a bad key with 403 and this body, not with the Anthropic envelope

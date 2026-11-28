@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, safeStorage, shell, nativeTheme, clipboard } = require('electron');
 const { createRequestTable, classifyAIError, codedError, AI_CONSTANTS, AI_OFF_MESSAGE, CANCELLED_MESSAGE } = require('./utils/aiRequest');
 const appSettings = require('./utils/appSettings');
+const cherryStudio = require('./utils/cherryStudio');
 const { buildGuardIndex, findProtected, collectStrings } = require('./utils/noAIGuard');
 const manuscript = require('./utils/manuscript');
 const importFolder = require('./utils/importFolder');
@@ -88,23 +89,39 @@ async function persistApiConfig(keys) {
 // at it gives FAUST every model configured in Cherry Studio without changing
 // the call sites: the same messages.create / messages.stream calls are used.
 
-const CHERRY_DEFAULT_GATEWAY_URL = 'http://127.0.0.1:23333';
+// The Cherry Studio on this computer: its gateway's address, key and default model, read from
+// Cherry Studio's own preferences (utils/cherryStudio.js). null when there is none. The writer does
+// not copy the key by hand; FAUST holds it in memory only and never stores or logs it.
+let cherryLocal = null;
+let cherryLocalReadAt = 0;
+let cherryLocalReading = null;
+
+// Read it anew unless the last read is younger than maxAgeMs. Never rejects.
+// With "Tekoäly pois" on FAUST does nothing for the AI, this read included.
+function refreshCherryStudio(maxAgeMs = 0) {
+  if (uiPrefs.aiOff === true) return Promise.resolve();
+  if (maxAgeMs > 0 && Date.now() - cherryLocalReadAt < maxAgeMs) return Promise.resolve();
+  if (!cherryLocalReading) {
+    cherryLocalReading = cherryStudio.readLocalGateway()
+      .then((found) => { cherryLocal = found; cherryLocalReadAt = Date.now(); })
+      .catch(() => {})
+      .then(() => { cherryLocalReading = null; });
+  }
+  return cherryLocalReading;
+}
+
+// A request reads Cherry Studio's settings again when the last read is older than this, so a key
+// changed in Cherry Studio is in use without restarting FAUST
+const CHERRY_LOCAL_MAX_AGE_MS = 15000;
+const CHERRY_PANEL_MAX_AGE_MS = 1500;
 
 function getAIProviderConfig() {
-  const provider = String(process.env.FAUST_AI_PROVIDER || apiConfig.AI_PROVIDER || 'anthropic').toLowerCase();
-  const gatewayUrl = String(process.env.CHERRY_GATEWAY_URL || apiConfig.CHERRY_GATEWAY_URL || CHERRY_DEFAULT_GATEWAY_URL)
-    .trim()
-    .replace(/\/+$/, '')
-    .replace(/\/v1$/, '');
+  // What FAUST was started with, the Cherry Studio on this computer and what the writer saved, in
+  // the order utils/cherryStudio.js resolveProvider gives
+  const cfg = cherryStudio.resolveProvider({ env: process.env, stored: apiConfig, local: cherryLocal });
 
   return {
-    provider: provider === 'cherry' ? 'cherry' : 'anthropic',
-    gatewayUrl,
-    model: process.env.CHERRY_MODEL || apiConfig.CHERRY_MODEL || '',
-    cherryKey: process.env.CHERRY_API_KEY || apiConfig.CHERRY_API_KEY || '',
-    anthropicKey: process.env.ANTHROPIC_API_KEY || apiConfig.ANTHROPIC_API_KEY || '',
-    // FAUST_ANTHROPIC_MODEL, not ANTHROPIC_MODEL: a value set in the shell for other tools is not picked up
-    anthropicModel: String(process.env.FAUST_ANTHROPIC_MODEL || apiConfig.ANTHROPIC_MODEL || '').trim(),
+    ...cfg,
     roles: appSettings.readRoles(apiConfig),
     modelSettings: appSettings.readModelSettings(apiConfig)
   };
@@ -128,7 +145,17 @@ function publicAIProviderConfig() {
     hasCherryKey: !!cfg.cherryKey,
     hasAnthropicKey: !!cfg.anthropicKey,
     providerFromEnv: !!process.env.FAUST_AI_PROVIDER,
-    keyFromEnv: { cherry: !!process.env.CHERRY_API_KEY, anthropic: !!process.env.ANTHROPIC_API_KEY }
+    keyFromEnv: { cherry: !!process.env.CHERRY_API_KEY, anthropic: !!process.env.ANTHROPIC_API_KEY },
+    // What came from the Cherry Studio on this computer (booleans only, never the key)
+    cherryStudio: {
+      found: !!cherryLocal,
+      gatewayOn: cherryLocal ? cherryLocal.enabled : null,
+      key: cfg.from.cherryKey === 'cherry-studio',
+      model: cfg.from.model === 'cherry-studio',
+      provider: cfg.from.provider === 'cherry-studio'
+    },
+    // A key the writer saved in FAUST, in use or not
+    hasStoredCherryKey: typeof apiConfig.CHERRY_API_KEY === 'string' && apiConfig.CHERRY_API_KEY !== ''
   };
 }
 
@@ -1009,6 +1036,9 @@ async function writeFileAtomic(filePath, text) {
 app.whenReady().then(async () => {
   await loadApiConfig();
   await loadUiPrefs();  // v1.4.1: Load UI preferences
+  // After the preferences ("Tekoäly pois" skips the read) and not awaited: the window does not wait
+  // for it, and ai:get-provider, which the window asks first, joins this same read
+  refreshCherryStudio();
   applyNativeTheme(uiPrefs.theme);  // before the window and its menus exist
   createWindow();
   // Voikko is looked for after the window exists; the menu follows what was found
@@ -1387,6 +1417,8 @@ ipcMain.handle('keys:set', async (_event, { name, value } = {}) => {
 
 // AI provider settings: Claude (Anthropic) or Cherry Studio gateway
 ipcMain.handle('ai:get-provider', async () => {
+  // The window asks this often (every panel that shows the model): one read serves a burst
+  await refreshCherryStudio(CHERRY_PANEL_MAX_AGE_MS);
   return { success: true, ...publicAIProviderConfig() };
 });
 
@@ -1404,6 +1436,7 @@ ipcMain.handle('ai:set-provider', async (_event, next = {}) => {
 
 // List the models Cherry Studio offers through its gateway
 ipcMain.handle('ai:list-cherry-models', async () => {
+  await refreshCherryStudio();
   const cfg = getAIProviderConfig();
   if (!cfg.cherryKey) {
     return { success: false, error: 'Cherry Studion API-avain puuttuu.' };
@@ -1466,6 +1499,7 @@ ipcMain.handle('ai:list-anthropic-models', async () => {
 // wrappers fill it in, and an empty Claude model field gives its own reason.
 ipcMain.handle('ai:test-provider', async () => {
   try {
+    await refreshCherryStudio();
     const client = getClaudeClient();
     const started = Date.now();
     const message = await withTimeout(
@@ -1607,9 +1641,12 @@ ipcMain.handle('clear-backup', async () => {
 // The renderer's client (src/services/ai/aiClient.js) sends AIRequest objects; the answer streams
 // back as ai:chunk messages tagged with the request id, and the call resolves with one result that
 // says how the answer ended. It never rejects.
-ipcMain.handle('ai:request', (event, request) => aiRequests.start(request, (chunk) => {
-  if (!event.sender.isDestroyed()) event.sender.send('ai:chunk', chunk);
-}));
+ipcMain.handle('ai:request', async (event, request) => {
+  await refreshCherryStudio(CHERRY_LOCAL_MAX_AGE_MS);
+  return aiRequests.start(request, (chunk) => {
+    if (!event.sender.isDestroyed()) event.sender.send('ai:chunk', chunk);
+  });
+});
 ipcMain.handle('ai:cancel', (_event, { id } = {}) => ({ ok: true, found: aiRequests.cancel(id) }));
 
 // Renderer settings kept in ui-prefs.json (the renderer's settings store reads and writes them here)
@@ -1663,6 +1700,7 @@ ipcMain.handle('claude-api', async (event, promptOrOptions) => {
     const maxTokens = (typeof promptOrOptions === 'object' && promptOrOptions.max_tokens) || 2000;
 
     // Claude directly, or the model selected in Cherry Studio's gateway; '' = the configured model
+    await refreshCherryStudio(CHERRY_LOCAL_MAX_AGE_MS);
     const anthropic = getClaudeClient();
 
     const message = await anthropic.messages.create({
@@ -1712,6 +1750,7 @@ ipcMain.handle('claude-api-stream', async (event, options) => {
       system = null
     } = options;
 
+    await refreshCherryStudio(CHERRY_LOCAL_MAX_AGE_MS);
     const anthropic = getClaudeClient();
 
     // Build messages array

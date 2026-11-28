@@ -374,7 +374,7 @@ function classifyAIError(error, cfg, context = {}) {
 
   if (status === 401 || status === 403) {
     return result('auth', cherry
-      ? 'Cherry Studio hylkäsi API-avaimen. Kopioi avain Cherry Studiosta (Settings → API Gateway → API Key) ja tallenna se tietopaneelin Tekoäly-välilehdellä.'
+      ? 'Cherry Studio hylkäsi API-avaimen. Kenttään kuuluu Cherry Studion oman API Gatewayn avain, ei mallin tarjoajan avain: kopioi se Cherry Studiosta (Settings → API Gateway → API Key) ja tallenna tietopaneelin Tekoäly-välilehdellä.'
       : 'Claude hylkäsi API-avaimen. Tarkista avain tietopaneelin Tekoäly-välilehdeltä.');
   }
 

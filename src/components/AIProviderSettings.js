@@ -65,6 +65,18 @@ const envKeyBlock = (label) => e('div', { className: 'faust-field' },
   e('div', null, keyChip(true, true)),
   e('div', { className: 'faust-field__hint' }, KEY_FROM_ENV));
 
+// The key in use is the gateway's own, read from the Cherry Studio on this computer
+// (utils/cherryStudio.js): nothing to paste, so no field. A key saved in FAUST earlier is not in
+// use then; it can be removed, and that is all that can be done to it.
+const KEY_FROM_CHERRY = 'FAUST lukee avaimen suoraan tämän koneen Cherry Studiosta, joten sitä ei tarvitse kopioida tähän.';
+const localKeyBlock = ({ hasStored, onRemoveStored }) => e('div', { className: 'faust-field' },
+  e('span', { className: 'faust-field__label' }, 'Cherry Studion API-avain'),
+  e('div', null, keyChip(true, true)),
+  e('div', { className: 'faust-field__hint' }, KEY_FROM_CHERRY),
+  hasStored && e('div', { className: 'faust-field__hint' }, 'FAUSTiin aiemmin tallennettu avain ei ole käytössä.'),
+  hasStored && e('div', { className: 'faust-field__row' },
+    actionButton({ label: 'Poista tallennettu avain', danger: true, onClick: onRemoveStored })));
+
 const statusLine = (status) => status && e('div', {
   role: 'status',
   className: status.kind === 'error' ? 'faust-field__error' : 'faust-field__hint'
@@ -149,6 +161,8 @@ export function AIProviderSettings({ onProviderChange, getEditorContext, askConf
 
   const isCherry = config.provider === 'cherry';
   const keyFromEnv = config.keyFromEnv || {};
+  // What the Cherry Studio on this computer gave: { found, gatewayOn, key, model, provider }
+  const local = config.cherryStudio || {};
 
   // Tekoäly pois: the first element of the block, and with it on, the only one
   const offSwitch = [
@@ -253,6 +267,21 @@ export function AIProviderSettings({ onProviderChange, getEditorContext, askConf
     if (refreshed && name === 'ANTHROPIC_API_KEY') setAnthropicModels([]);
   };
 
+  // The saved key that is not in use (the gateway's own key is read from Cherry Studio)
+  const clearUnusedKey = async () => {
+    if (typeof askConfirm === 'function') {
+      const confirmed = await askConfirm(
+        'Poistetaanko tallennettu avain?',
+        'FAUSTiin tallennettu Cherry Studion API-avain poistetaan. Tekoäly toimii kuten ennenkin, koska FAUST lukee käytössä olevan avaimen Cherry Studiosta.',
+        'Poista avain',
+        'Peruuta',
+        { danger: true }
+      );
+      if (!confirmed) return;
+    }
+    await writeKey('CHERRY_API_KEY', '');
+  };
+
   const changeModel = async (model) => {
     const saved = await api.aiSetProvider({ model });
     if (saved.success) applyConfig(saved);
@@ -336,14 +365,22 @@ export function AIProviderSettings({ onProviderChange, getEditorContext, askConf
     config.providerFromEnv && e('div', { className: 'faust-field__hint', style: { marginTop: 'var(--sp-2)' } },
       'Lähde on asetettu ympäristömuuttujalla FAUST_AI_PROVIDER.'),
 
+    local.provider && e('div', { className: 'faust-field__hint', style: { marginTop: 'var(--sp-2)' } },
+      'FAUST löysi tältä koneelta Cherry Studion ja käyttää sitä. Voit vaihtaa lähteen tästä.'),
+
     isCherry && e('div', { style: { display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', marginTop: 'var(--sp-3)' } },
 
-      e('div', { className: 'faust-field__hint' },
-        'Cherry Studion pitää olla käynnissä ja sen API Gateway päällä (Cherry Studiossa: Settings → API Gateway).'),
+      local.found && local.gatewayOn === false
+        ? e('div', { className: 'faust-field__error', role: 'status' },
+          'Cherry Studion API Gateway on pois päältä. Kytke se päälle Cherry Studiossa: Settings → API Gateway.')
+        : e('div', { className: 'faust-field__hint' },
+          'Cherry Studion pitää olla käynnissä ja sen API Gateway päällä (Cherry Studiossa: Settings → API Gateway).'),
 
       // API key of the gateway
       keyFromEnv.cherry
         ? envKeyBlock('Cherry Studion API-avain')
+        : local.key
+        ? localKeyBlock({ hasStored: config.hasStoredCherryKey, onRemoveStored: clearUnusedKey })
         : e('div', { className: 'faust-field' },
         e('label', { className: 'faust-field__label', htmlFor: keyId }, 'Cherry Studion API-avain'),
         e('input', {
@@ -381,6 +418,8 @@ export function AIProviderSettings({ onProviderChange, getEditorContext, askConf
         ),
         e('div', { className: 'faust-field__hint' },
           'Tätä mallia käytetään aina, kun tehtävälle ei ole valittu omaa mallia.'),
+        local.model && e('div', { className: 'faust-field__hint' },
+          'Malli on Cherry Studion oletusmalli. Voit valita tähän toisen.'),
         // What the last fetch or test found, right under the select it is about
         statusLine(status),
         // The field's two actions in one row, right-aligned (V 4.2)
