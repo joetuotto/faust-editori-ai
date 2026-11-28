@@ -9,6 +9,7 @@ const {
   plural,
   pendingSuggestions,
   pendingWords,
+  exportScopeHint,
   AI_OFF_SENTENCE
 } = require('../../src/services/format.fi');
 
@@ -125,6 +126,24 @@ describe('fixed wordings', () => {
     expect(pendingWords({ suggestions: 0, blocks: 2 })).toBe('2 käsittelemätöntä tekoälyn luonnosta');
     expect(pendingWords({ suggestions: 4, blocks: 2 })).toBe('4 käsittelemätöntä ehdotusta ja 2 tekoälyn luonnosta');
     expect(pendingWords({ suggestions: 1200 })).toBe(`1${NBSP}200 käsittelemätöntä ehdotusta`);
+  });
+
+  // Vie käsikirjoitus, the hint beside Koko käsikirjoitus
+  test('exportScopeHint counts the chapters and says how many stay out for having no text', () => {
+    expect(exportScopeHint(4, 0)).toBe('4 lukua');
+    expect(exportScopeHint(1, 0)).toBe('1 luku');
+    expect(exportScopeHint(3, 1)).toBe('4 lukua, joista 1 tyhjä jätetään pois');
+    expect(exportScopeHint(8, 3)).toBe('11 lukua, joista 3 tyhjää jätetään pois');
+    expect(exportScopeHint(1, 1)).toBe('2 lukua, joista 1 tyhjä jätetään pois');
+    expect(exportScopeHint(1200, 1300)).toBe(`2${NBSP}500 lukua, joista 1${NBSP}300 tyhjää jätetään pois`);
+  });
+
+  test('exportScopeHint does not count the same chapters twice when nothing is written yet', () => {
+    // Was: 1 luku, joista 1 tyhjä jätetään pois
+    expect(exportScopeHint(0, 1)).toBe('1 luku, jossa ei ole vielä tekstiä');
+    expect(exportScopeHint(0, 3)).toBe('3 lukua, joissa ei ole vielä tekstiä');
+    expect(exportScopeHint(0, 0)).toBe('0 lukua');
+    expect(exportScopeHint(undefined, undefined)).toBe('0 lukua');
   });
 
   test('AI_OFF_SENTENCE is Tekoäly pois -asetus on päällä.', () => {

@@ -28,7 +28,7 @@ const MODULES = {
   'src/services/ai/batchParagraphs.js': ['batchParagraphs'],
   'scripts/score-step0.js': ['scoreParagraph', 'scoreModel', 'loadTrials', 'report', 'maskSheet', 'REWRITTEN_RATIO'],
   'scripts/step0/score.js': ['parseResponse', 'isFixed', 'scoreModel'],
-  'src/services/format.fi.js': ['formatCount', 'fiDate', 'fiDateTime', 'modelLabel', 'plural', 'pendingSuggestions', 'pendingWords', 'AI_OFF_SENTENCE'],
+  'src/services/format.fi.js': ['formatCount', 'fiDate', 'fiDateTime', 'modelLabel', 'plural', 'pendingSuggestions', 'pendingWords', 'exportScopeHint', 'AI_OFF_SENTENCE'],
   'utils/aiRequest.js': ['AI_CONSTANTS', 'AI_OFF_MESSAGE', 'CANCELLED_MESSAGE', 'codedError', 'validateRequest', 'resolveModel', 'modelSettingsFor', 'buildParams', 'normalizeStopReason', 'normalizeUsage', 'createThinkFilter', 'classifyAIError', 'createRequestTable'],
   'utils/appSettings.js': ['KEY_NAMES', 'ROLE_NAMES', 'publicKeyStatus', 'applyKeyWrite', 'applyProviderPatch', 'readRoles', 'readModelSettings', 'mergePrefs'],
   'src/services/ai/aiClient.js': ['CLIENT_CONSTANTS', 'ROLES', 'ROLE_LABELS', 'judgeEdit', 'reasonText', 'stopNote', 'createAIClient', 'getAIClient'],

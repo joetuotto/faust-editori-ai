@@ -16,7 +16,7 @@
  */
 
 import { icons } from './icons.js';
-import { formatCount } from '../services/format.fi.js';
+import { formatCount, exportScopeHint } from '../services/format.fi.js';
 import { layerStack, holdLayer, returnFocus, scrimPress, Dialog } from './ui.js';
 
 const { createElement: e, useState, useEffect, useLayoutEffect, useRef, useId } = React;
@@ -528,9 +528,7 @@ export function ExportDialog({ open, onClose, chapters, activeChapterId, onExpor
       sectionTitle('Mitä viedään'),
       e('div', { className: 'faust-check-group faust-check-group--grid', role: 'radiogroup', 'aria-label': 'Mitä viedään' },
         // Chapters without text are not exported: the hint says so, so the count matches the sidebar's
-        radio('export-scope', 'all', scope, setScope, 'Koko käsikirjoitus', skipped > 0
-          ? `${count(chapters.length + skipped, 'luku')}, joista ${skipped.toLocaleString('fi-FI')} ${skipped === 1 ? 'tyhjä' : 'tyhjää'} jätetään pois`
-          : count(chapters.length, 'luku')),
+        radio('export-scope', 'all', scope, setScope, 'Koko käsikirjoitus', exportScopeHint(chapters.length, skipped)),
         radio('export-scope', 'current', scope, setScope, 'Avoin luku', currentAvailable ? null : 'luvussa ei ole tekstiä', !currentAvailable),
         radio('export-scope', 'selected', scope, setScope, 'Valitut luvut', null)
       ),

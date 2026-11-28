@@ -78,4 +78,23 @@ function pendingWords({ suggestions = 0, blocks = 0 } = {}) {
   return `${pendingSuggestions(suggestions)} ja ${drafts === 1 ? 'tekoälyn luonnos' : `${formatCount(drafts)} tekoälyn luonnosta`}`;
 }
 
-module.exports = { formatCount, fiDate, fiDateTime, modelLabel, plural, pendingSuggestions, pendingWords, AI_OFF_SENTENCE };
+/**
+ * The hint beside 'Koko käsikirjoitus' in the export dialog: how many chapters the project has and
+ * how many of them stay out of the export for having no text.
+ * `4 lukua, joista 1 tyhjä jätetään pois`, `11 lukua, joista 3 tyhjää jätetään pois`, and when nothing
+ * is written yet `1 luku, jossa ei ole vielä tekstiä` or `3 lukua, joissa ei ole vielä tekstiä`
+ * ('joista 1 tyhjä' of a single chapter would count the same chapter twice).
+ * @param {number} written chapters with text
+ * @param {number} skipped chapters without text
+ */
+function exportScopeHint(written, skipped) {
+  const withText = Math.max(0, Number(written) || 0);
+  const empty = Math.max(0, Number(skipped) || 0);
+  const total = withText + empty;
+  const chapters = `${formatCount(total)} ${plural(total, 'luku', 'lukua')}`;
+  if (empty === 0) return chapters;
+  if (withText === 0) return `${chapters}, ${plural(total, 'jossa', 'joissa')} ei ole vielä tekstiä`;
+  return `${chapters}, joista ${formatCount(empty)} ${plural(empty, 'tyhjä', 'tyhjää')} jätetään pois`;
+}
+
+module.exports = { formatCount, fiDate, fiDateTime, modelLabel, plural, pendingSuggestions, pendingWords, exportScopeHint, AI_OFF_SENTENCE };
