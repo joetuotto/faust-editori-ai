@@ -1,28 +1,95 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <!-- Suorakulmainen tausta -->
-  <rect width="1024" height="1024" fill="#f5f1e8"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>FAUST</title>
+  <defs>
+    <clipPath id="tile-clip"><path d="M383.414 100L640.586 100C722.193 100 762.997 100 799.794 112.143L806.921 113.888C854.878 131.344 892.656 169.122 910.112 217.079L911.857 224.206C924 261.003 924 301.807 924 383.414L924 640.586C924 722.193 924 762.997 911.857 799.794L910.112 806.921C892.656 854.878 854.878 892.656 806.921 910.112L799.794 911.857C762.997 924 722.193 924 640.586 924L383.414 924C301.807 924 261.003 924 224.206 911.857L217.079 910.112C169.122 892.656 131.344 854.878 113.888 806.921L112.143 799.794C100 762.997 100 722.193 100 640.586L100 383.414C100 301.807 100 261.003 112.143 224.206L113.888 217.079C131.344 169.122 169.122 131.344 217.079 113.888L224.206 112.143C261.003 100 301.807 100 383.414 100Z"/></clipPath>
+    <!-- the cover: lit from above the middle, falling to near black at the bottom and corners -->
+    <radialGradient id="cloth" gradientUnits="userSpaceOnUse" cx="512" cy="347.2" r="659.2">
+      <stop offset="0" stop-color="#2A251F"/>
+      <stop offset="0.52" stop-color="#141210"/>
+      <stop offset="1" stop-color="#0C0B09"/>
+    </radialGradient>
+    <linearGradient id="edge-light" gradientUnits="userSpaceOnUse" x1="0" y1="100" x2="0" y2="512">
+      <stop offset="0" stop-color="#FFF3DC" stop-opacity="0.16"/>
+      <stop offset="0.35" stop-color="#FFF3DC" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#FFF3DC" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="edge-shade" gradientUnits="userSpaceOnUse" x1="0" y1="512" x2="0" y2="924">
+      <stop offset="0" stop-color="#000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity="0.55"/>
+    </linearGradient>
+    <filter id="tile-shadow" filterUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <feGaussianBlur stdDeviation="17"/>
+      <feOffset dy="8"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.22"/></feComponentTransfer>
+    </filter>
+    <!-- book cloth: two sets of threads, across and down, as light and dark specks that
+         leave the tone as it is. The weave shows where the light falls and sinks into
+         the dark towards the corners. -->
+    <filter id="cloth-grain" filterUnits="userSpaceOnUse" x="100" y="100" width="824" height="824" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.035 0.7" numOctaves="2" seed="4" result="weft"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.7 0.035" numOctaves="2" seed="9" result="warp"/>
+      <feComposite in="weft" in2="warp" operator="arithmetic" k2="0.5" k3="0.5" result="weave"/>
+      <feColorMatrix in="weave" type="matrix" values="0 0 0 0 0.941  0 0 0 0 0.914  0 0 0 0 0.882  0.26 0 0 0 -0.13" result="light"/>
+      <feColorMatrix in="weave" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  -1 0 0 0 0.5" result="dark"/>
+      <feMerge><feMergeNode in="dark"/><feMergeNode in="light"/></feMerge>
+    </filter>
+    <radialGradient id="cloth-lit" gradientUnits="userSpaceOnUse" cx="512" cy="347.2" r="659.2">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#666"/>
+    </radialGradient>
+    <mask id="cloth-light" maskUnits="userSpaceOnUse" x="100" y="100" width="824" height="824">
+      <rect x="100" y="100" width="824" height="824" fill="url(#cloth-lit)"/>
+    </mask>
+    <!-- gold foil, lit from the top left; in the star's own units, like the star itself -->
+    <linearGradient id="foil" gradientUnits="userSpaceOnUse" x1="16" y1="16" x2="84" y2="84">
+      <stop offset="0" stop-color="#E9CE96"/>
+      <stop offset="0.16" stop-color="#F3DFAE"/>
+      <stop offset="0.42" stop-color="#D3AF66"/>
+      <stop offset="0.62" stop-color="#C39C58"/>
+      <stop offset="0.86" stop-color="#A67D50"/>
+      <stop offset="1" stop-color="#B38B56"/>
+    </linearGradient>
+    <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="512" cy="512" r="405.6">
+      <stop offset="0" stop-color="#B68B5C" stop-opacity="0.13"/>
+      <stop offset="0.55" stop-color="#B68B5C" stop-opacity="0.045"/>
+      <stop offset="1" stop-color="#B68B5C" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="star-shadow" filterUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <feGaussianBlur stdDeviation="5"/>
+      <feOffset dx="2" dy="6"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.6"/></feComponentTransfer>
+    </filter>
+    <!-- the bevel: the part of the star that a copy shifted away from, or towards, the light leaves uncovered -->
+    <mask id="bevel-light" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+      <path d="M50 2l8 29 26-15-15 26 29 8-29 8 15 26-26-15-8 29-8-29-26 15 15-26-29-8 29-8-15-26 26 15z" fill="#fff"/>
+      <path d="M50 2l8 29 26-15-15 26 29 8-29 8 15 26-26-15-8 29-8-29-26 15 15-26-29-8 29-8-15-26 26 15z" fill="#000" transform="translate(0.295 0.295)"/>
+    </mask>
+    <mask id="bevel-shade" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+      <path d="M50 2l8 29 26-15-15 26 29 8-29 8 15 26-26-15-8 29-8-29-26 15 15-26-29-8 29-8-15-26 26 15z" fill="#fff"/>
+      <path d="M50 2l8 29 26-15-15 26 29 8-29 8 15 26-26-15-8 29-8-29-26 15 15-26-29-8 29-8-15-26 26 15z" fill="#000" transform="translate(-0.295 -0.295)"/>
+    </mask>
+  </defs>
 
-  <!-- Kahdeksansakarainen tähti (isompi, keskitetty) -->
-  <g transform="translate(512, 512)">
-    <path d="
-      M 0,-320
-      L 32,-88
-      L 226,-226
-      L 88,-32
-      L 320,0
-      L 88,32
-      L 226,226
-      L 32,88
-      L 0,320
-      L -32,88
-      L -226,226
-      L -88,32
-      L -320,0
-      L -88,-32
-      L -226,-226
-      L -32,-88
-      Z
-    " fill="#1a1a1a"/>
+  <!-- tile: shadow, cloth, grain, edge light and shade -->
+  <path d="M383.414 100L640.586 100C722.193 100 762.997 100 799.794 112.143L806.921 113.888C854.878 131.344 892.656 169.122 910.112 217.079L911.857 224.206C924 261.003 924 301.807 924 383.414L924 640.586C924 722.193 924 762.997 911.857 799.794L910.112 806.921C892.656 854.878 854.878 892.656 806.921 910.112L799.794 911.857C762.997 924 722.193 924 640.586 924L383.414 924C301.807 924 261.003 924 224.206 911.857L217.079 910.112C169.122 892.656 131.344 854.878 113.888 806.921L112.143 799.794C100 762.997 100 722.193 100 640.586L100 383.414C100 301.807 100 261.003 112.143 224.206L113.888 217.079C131.344 169.122 169.122 131.344 217.079 113.888L224.206 112.143C261.003 100 301.807 100 383.414 100Z" fill="#000" filter="url(#tile-shadow)"/>
+  <path d="M383.414 100L640.586 100C722.193 100 762.997 100 799.794 112.143L806.921 113.888C854.878 131.344 892.656 169.122 910.112 217.079L911.857 224.206C924 261.003 924 301.807 924 383.414L924 640.586C924 722.193 924 762.997 911.857 799.794L910.112 806.921C892.656 854.878 854.878 892.656 806.921 910.112L799.794 911.857C762.997 924 722.193 924 640.586 924L383.414 924C301.807 924 261.003 924 224.206 911.857L217.079 910.112C169.122 892.656 131.344 854.878 113.888 806.921L112.143 799.794C100 762.997 100 722.193 100 640.586L100 383.414C100 301.807 100 261.003 112.143 224.206L113.888 217.079C131.344 169.122 169.122 131.344 217.079 113.888L224.206 112.143C261.003 100 301.807 100 383.414 100Z" fill="url(#cloth)"/>
+  <g clip-path="url(#tile-clip)">
+    <g mask="url(#cloth-light)">
+      <rect x="100" y="100" width="824" height="824" fill="#000" fill-opacity="0" filter="url(#cloth-grain)"/>
+    </g>
+    <path d="M383.414 100L640.586 100C722.193 100 762.997 100 799.794 112.143L806.921 113.888C854.878 131.344 892.656 169.122 910.112 217.079L911.857 224.206C924 261.003 924 301.807 924 383.414L924 640.586C924 722.193 924 762.997 911.857 799.794L910.112 806.921C892.656 854.878 854.878 892.656 806.921 910.112L799.794 911.857C762.997 924 722.193 924 640.586 924L383.414 924C301.807 924 261.003 924 224.206 911.857L217.079 910.112C169.122 892.656 131.344 854.878 113.888 806.921L112.143 799.794C100 762.997 100 722.193 100 640.586L100 383.414C100 301.807 100 261.003 112.143 224.206L113.888 217.079C131.344 169.122 169.122 131.344 217.079 113.888L224.206 112.143C261.003 100 301.807 100 383.414 100Z" fill="none" stroke="url(#edge-shade)" stroke-width="8"/>
+    <path d="M383.414 100L640.586 100C722.193 100 762.997 100 799.794 112.143L806.921 113.888C854.878 131.344 892.656 169.122 910.112 217.079L911.857 224.206C924 261.003 924 301.807 924 383.414L924 640.586C924 722.193 924 762.997 911.857 799.794L910.112 806.921C892.656 854.878 854.878 892.656 806.921 910.112L799.794 911.857C762.997 924 722.193 924 640.586 924L383.414 924C301.807 924 261.003 924 224.206 911.857L217.079 910.112C169.122 892.656 131.344 854.878 113.888 806.921L112.143 799.794C100 762.997 100 722.193 100 640.586L100 383.414C100 301.807 100 261.003 112.143 224.206L113.888 217.079C131.344 169.122 169.122 131.344 217.079 113.888L224.206 112.143C261.003 100 301.807 100 383.414 100Z" fill="none" stroke="url(#edge-light)" stroke-width="4"/>
+  </g>
+
+  <!-- the tooled rule -->
+  <path d="M403.316 146.5L620.684 146.5C694.633 146.5 731.608 146.5 764.951 157.503L771.409 159.085C814.866 174.902 849.098 209.134 864.915 252.591L866.497 259.049C877.5 292.392 877.5 329.367 877.5 403.316L877.5 620.684C877.5 694.633 877.5 731.608 866.497 764.951L864.915 771.409C849.098 814.866 814.866 849.098 771.409 864.915L764.951 866.497C731.608 877.5 694.633 877.5 620.684 877.5L403.316 877.5C329.367 877.5 292.392 877.5 259.049 866.497L252.591 864.915C209.134 849.098 174.902 814.866 159.085 771.409L157.503 764.951C146.5 731.608 146.5 694.633 146.5 620.684L146.5 403.316C146.5 329.367 146.5 292.392 157.503 259.049L159.085 252.591C174.902 209.134 209.134 174.902 252.591 159.085L259.049 157.503C292.392 146.5 329.367 146.5 403.316 146.5Z" fill="none" stroke="#C7A25A" stroke-opacity="0.55" stroke-width="3"/>
+
+  <!-- the mark: glow, shadow, foil, bevel -->
+  <circle cx="512" cy="512" r="405.6" fill="url(#glow)"/>
+  <path d="M50 2l8 29 26-15-15 26 29 8-29 8 15 26-26-15-8 29-8-29-26 15 15-26-29-8 29-8-15-26 26 15z" transform="translate(241.167 241.167) scale(5.417)" fill="#000" filter="url(#star-shadow)"/>
+  <path d="M50 2l8 29 26-15-15 26 29 8-29 8 15 26-26-15-8 29-8-29-26 15 15-26-29-8 29-8-15-26 26 15z" transform="translate(241.167 241.167) scale(5.417)" fill="url(#foil)"/>
+  <g transform="translate(241.167 241.167) scale(5.417)">
+    <path d="M50 2l8 29 26-15-15 26 29 8-29 8 15 26-26-15-8 29-8-29-26 15 15-26-29-8 29-8-15-26 26 15z" fill="#6F4F2B" fill-opacity="0.55" mask="url(#bevel-shade)"/>
+    <path d="M50 2l8 29 26-15-15 26 29 8-29 8 15 26-26-15-8 29-8-29-26 15 15-26-29-8 29-8-15-26 26 15z" fill="#FBEBC2" fill-opacity="0.9" mask="url(#bevel-light)"/>
   </g>
 </svg>
